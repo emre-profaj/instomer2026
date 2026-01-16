@@ -1,0 +1,142 @@
+.users-page {
+    width: 100%;
+    max-width: 100%;
+    padding: var(--spacing-lg) var(--spacing-lg) 40px var(--spacing-lg);
+    overflow-y: auto;
+    height: 100%;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+}
+
+.section-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.members-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.members-table th {
+    text-align: left;
+    padding: var(--spacing-md);
+    border-bottom: 2px solid var(--border-color);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.members-table td {
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.875rem;
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.member-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(160deg, #ef4444 0%, #f97316 50%, #fb923c 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+.member-avatar span {
+    color: #ffffff !important;
+}
+
+.member-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.badge-owner {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.badge-admin {
+    background-color: rgba(220, 38, 38, 0.1);
+    color: #dc2626;
+}
+
+.badge-agent {
+    background-color: rgba(107, 114, 128, 0.1);
+    color: var(--text-secondary);
+}
+
+.empty-state {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-secondary);
+}
+
+.loading {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-secondary);
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-icon:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.btn-icon.btn-danger:hover {
+    background-color: rgba(244, 67, 54, 0.1);
+    color: var(--danger);
+}
+
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.role-select {
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    outline: none;
+}
+
+.role-select:focus {
+    border-color: var(--primary);
+}

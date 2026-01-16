@@ -1,0 +1,394 @@
+import { useState, useEffect } from 'react';
+import { formWebhookAPI } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import { Plus, Trash2, Copy, Check, AlertCircle, ExternalLink, Sparkles, X } from 'lucide-react';
+import './WebForms.css';
+
+const WebForms = () => {
+    const { currentWorkspace } = useAuth();
+    const [webhooks, setWebhooks] = useState([]);
+    const [submissions, setSubmissions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [showModal, setShowModal] = useState(false);
+    const [copiedId, setCopiedId] = useState(null);
+    const [activeTab, setActiveTab] = useState('webhooks');
+
+    const [formData, setFormData] = useState({
+        name: '',
+        siteUrl: ''
+    });
+
+    useEffect(() => {
+        if (currentWorkspace) {
+            loadData();
+        }
+    }, [currentWorkspace, activeTab]);
+
+    const loadData = async () => {
+        try {
+            setLoading(true);
+            if (activeTab === 'webhooks') {
+                const webhooksRes = await formWebhookAPI.getWebhooks(currentWorkspace.id);
+                setWebhooks(webhooksRes.data.webhooks || []);
+            } else {
+                const submissionsRes = await formWebhookAPI.getSubmissions(currentWorkspace.id, { limit: 100 });
+                setSubmissions(submissionsRes.data.submissions || []);
+            }
+        } catch (error) {
+            console.error('Load data error:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreate = async () => {
+        try {
+            await formWebhookAPI.createWebhook(currentWorkspace.id, {
+                name: formData.name,
+                siteUrl: formData.siteUrl
+            });
+            setShowModal(false);
+            setFormData({ name: '', siteUrl: '' });
+            loadData();
+        } catch (error) {
+            console.error('Create error:', error);
+            alert('Form webhook oluşturulamadı');
+        }
+    };
+
+    const handleDelete = async (webhookId) => {
+        if (!confirm('Bu webhook\'u silmek istediğinize emin misiniz?')) return;
+        try {
+            await formWebhookAPI.deleteWebhook(currentWorkspace.id, webhookId);
+            loadData();
+        } catch (error) {
+            console.error('Delete error:', error);
+            alert('Silinemedi');
+        }
+    };
+
+    const handleDeleteSubmission = async (submissionId) => {
+        if (!confirm('Bu form gönderisini silmek istediğinize emin misiniz?')) return;
+        try {
+            await formWebhookAPI.deleteSubmission(currentWorkspace.id, submissionId);
+            loadData();
+        } catch (error) {
+            console.error('Delete submission error:', error);
+            alert('Form gönderisi silinemedi');
+        }
+    };
+
+    const copyToClipboard = (text, id) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
+    const getElementorInstructions = (webhook) => {
+        return `📋 ELEMENTOR FORM WEBHOOK KURULUMU
+
+🌐 Site: ${webhook.siteUrl || 'Belirtilmedi'}
+
+1️⃣ Elementor Form Widget'ınızı açın
+2️⃣ "Actions After Submit" bölümüne gidin
+3️⃣ "Webhook" action'ını ekleyin
+4️⃣ Webhook URL'ini girin:
+
+${webhook.webhookUrl}
+
+5️⃣ (Opsiyonel) Custom Headers ekleyin:
+   Key: X-Webhook-Token
+   Value: ${webhook.webhookToken}
+
+✅ TAMAMLANDI!
+
+🤖 Otomatik Field Algılama Aktif:
+- Elementor'daki field adlarınız (name, email, phone, message vb.) 
+  otomatik olarak CRM'e eşleştirilecek.
+- Türkçe veya İngilizce field adları kullanabilirsiniz.
+- Özel field'lar "Diğer Bilgiler" olarak kaydedilecek.
+
+📝 Örnek Field Adları:
+✓ form_fields[name] → İsim
+✓ form_fields[email] → E-posta  
+✓ form_fields[phone] → Telefon
+✓ form_fields[message] → Mesaj
+✓ form_fields[company] → Şirket`;
+    };
+
+    if (loading) return <div className="loading">Yükleniyor...</div>;
+
+    return (
+        <div className="web-forms-page">
+            <div className="web-forms-header">
+                <div className="web-forms-header-left">
+                    <h1>
+                        <Sparkles size={24} />
+                        Web Form Entegrasyonu
+                    </h1>
+                    <p>Elementor formlarınızı CRM'e bağlayın - Otomatik field algılama aktif</p>
+                </div>
+                <div className="header-actions">
+                    <button className="btn-primary" onClick={() => setShowModal(true)}>
+                        <Plus size={18} />
+                        Yeni Webhook
+                    </button>
+                </div>
+            </div>
+
+            <div className="web-forms-tabs">
+                <button
+                    className={`tab-btn ${activeTab === 'webhooks' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('webhooks')}
+                >
+                    Webhooks
+                    <span className="tab-badge">{webhooks.length}</span>
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'submissions' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('submissions')}
+                >
+                    Form Gönderileri
+                    <span className="tab-badge">{submissions.length}</span>
+                </button>
+            </div>
+
+            <div className="web-forms-content">
+                {activeTab === 'webhooks' ? (
+                    <>
+                        <div className="auto-mapping-info">
+                            <AlertCircle size={18} />
+                            <div>
+                                <strong>🎨 Elementor Form Entegrasyonu</strong><br />
+                                Elementor'daki form field'larınız (name, email, phone, message vb.)
+                                otomatik olarak CRM'e eşleştirilir. Field ID'leri (field_1, field_2)
+                                veya özel adlar kullanabilirsiniz. Webhook URL'ini Elementor'da
+                                "Actions After Submit → Webhook" bölümüne yapıştırmanız yeterli!
+                            </div>
+                        </div>
+
+                        {webhooks.length === 0 ? (
+                            <div className="empty-state">
+                                <Sparkles size={48} />
+                                <h3>Henüz webhook oluşturulmadı</h3>
+                                <p>Web sitenizden form gönderileri almak için bir webhook oluşturun</p>
+                                <button className="btn-primary" onClick={() => setShowModal(true)}>
+                                    <Plus size={18} />
+                                    İlk Webhook'u Oluştur
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="webhooks-grid">
+                                {webhooks.map(webhook => (
+                                    <div key={webhook.id} className="webhook-card">
+                                        <div className="webhook-header">
+                                            <div>
+                                                <h3>{webhook.name}</h3>
+                                                {webhook.siteUrl && (
+                                                    <p className="webhook-site-url">
+                                                        🌐 {webhook.siteUrl}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="webhook-actions">
+                                                <button
+                                                    className="btn-icon-danger"
+                                                    onClick={() => handleDelete(webhook.id)}
+                                                    title="Sil"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <span className="status-badge success">
+                                            <Check size={14} />
+                                            Otomatik field algılama aktif
+                                        </span>
+
+                                        <div className="webhook-url">
+                                            <label>Webhook URL</label>
+                                            <div className="copy-field">
+                                                <input
+                                                    type="text"
+                                                    value={webhook.webhookUrl}
+                                                    readOnly
+                                                />
+                                                <button
+                                                    onClick={() => copyToClipboard(webhook.webhookUrl, `url-${webhook.id}`)}
+                                                    className="btn-copy"
+                                                    title="Kopyala"
+                                                >
+                                                    {copiedId === `url-${webhook.id}` ? <Check size={16} /> : <Copy size={16} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="webhook-token">
+                                            <label>Token (Opsiyonel)</label>
+                                            <div className="copy-field">
+                                                <input
+                                                    type="password"
+                                                    value={webhook.webhookToken}
+                                                    readOnly
+                                                />
+                                                <button
+                                                    onClick={() => copyToClipboard(webhook.webhookToken, `token-${webhook.id}`)}
+                                                    className="btn-copy"
+                                                    title="Kopyala"
+                                                >
+                                                    {copiedId === `token-${webhook.id}` ? <Check size={16} /> : <Copy size={16} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <details className="integration-code">
+                                            <summary>📋 Elementor Kurulum Talimatları</summary>
+                                            <pre>{getElementorInstructions(webhook)}</pre>
+                                            <button
+                                                onClick={() => copyToClipboard(getElementorInstructions(webhook), `code-${webhook.id}`)}
+                                                className="btn-copy-code"
+                                            >
+                                                {copiedId === `code-${webhook.id}` ? '✓ Kopyalandı!' : 'Talimatları Kopyala'}
+                                            </button>
+                                        </details>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        {submissions.length === 0 ? (
+                            <div className="empty-state">
+                                <AlertCircle size={48} />
+                                <h3>Henüz form gönderisi yok</h3>
+                                <p>Web sitenizden form gönderildiğinde burada görünecek</p>
+                            </div>
+                        ) : (
+                            <div className="submissions-table">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Tarih</th>
+                                            <th>Form</th>
+                                            <th>İsim</th>
+                                            <th>E-posta</th>
+                                            <th>Telefon</th>
+                                            <th>Durum</th>
+                                            <th style={{ width: '150px' }}>İşlemler</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {submissions.map(sub => (
+                                            <tr key={sub.id}>
+                                                <td>{new Date(sub.createdAt).toLocaleString('tr-TR')}</td>
+                                                <td>{sub.formWebhook?.name}</td>
+                                                <td>{sub.name || '-'}</td>
+                                                <td>{sub.email || '-'}</td>
+                                                <td>{sub.phone || '-'}</td>
+                                                <td>
+                                                    <select
+                                                        value={sub.status}
+                                                        onChange={(e) => {
+                                                            formWebhookAPI.updateSubmissionStatus(
+                                                                currentWorkspace.id,
+                                                                sub.id,
+                                                                e.target.value
+                                                            ).then(loadData);
+                                                        }}
+                                                        className="status-select"
+                                                    >
+                                                        <option value="NEW">Yeni</option>
+                                                        <option value="CONTACTED">İletişime Geçildi</option>
+                                                        <option value="CONVERTED">Dönüştürüldü</option>
+                                                        <option value="CLOSED">Kapatıldı</option>
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                        {sub.conversationId && (
+                                                            <button
+                                                                className="btn-view"
+                                                                onClick={() => window.location.href = `/inbox?conversation=${sub.conversationId}`}
+                                                                title="Görüntüle"
+                                                            >
+                                                                <ExternalLink size={14} />
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            className="btn-delete"
+                                                            onClick={() => handleDeleteSubmission(sub.id)}
+                                                            title="Sil"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+
+            {showModal && (
+                <div className="modal-overlay" onClick={() => setShowModal(false)}>
+                    <div className="modal" onClick={e => e.stopPropagation()}>
+                        <h2>Yeni Form Webhook</h2>
+
+                        <div className="auto-mapping-info">
+                            <Sparkles size={16} />
+                            <div>
+                                <strong>🎨 Elementor için otomatik algılama!</strong><br />
+                                Webhook URL'i app.instomer.com üzerinden oluşturulacak.
+                                Elementor'da "Actions After Submit → Webhook" bölümüne yapıştırın.
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Form Adı</label>
+                            <input
+                                type="text"
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                placeholder="İletişim Formu"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Site URL <span style={{ color: '#dc2626' }}>*</span></label>
+                            <input
+                                type="url"
+                                value={formData.siteUrl}
+                                onChange={e => setFormData({ ...formData, siteUrl: e.target.value })}
+                                placeholder="https://egeproktoloji.com"
+                                required
+                            />
+                            <small style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                                📌 Formun bulunduğu web sitesinin tam adresi (Örnek: https://egeproktoloji.com)
+                            </small>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setShowModal(false)}>
+                                İptal
+                            </button>
+                            <button
+                                className="btn-primary"
+                                onClick={handleCreate}
+                                disabled={!formData.name || !formData.siteUrl}
+                            >
+                                Oluştur
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default WebForms;
+

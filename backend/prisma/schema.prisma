@@ -1,0 +1,764 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  password              String?
+  name                  String
+  avatar                String?
+  role                  String                 @default("USER")
+  facebookId            String?                @unique
+  facebookAccessToken   String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  transfersTo           ConversationTransfer[] @relation("TransfersTo")
+  transfersFrom         ConversationTransfer[] @relation("TransfersFrom")
+  assignedConversations Conversation[]
+  internalNotes         InternalNote[]
+  sentMessages          Message[]
+  teamMemberships       TeamMember[]
+  schedules             UserSchedule[]
+  workspaceMembers      WorkspaceMember[]
+  ownedCompanies        Company[]              @relation("CompanyOwner")
+  assignedDeals         Deal[]                 @relation("DealAssignee")
+
+  @@map("users")
+}
+
+// Firma (Company) - Birden fazla workspace içeren üst organizasyon
+model Company {
+  id                   String      @id @default(uuid())
+  name                 String
+  slug                 String      @unique
+  description          String?
+  logo                 String?
+  ownerId              String // Firma sahibi (OWNER)
+  owner                User        @relation("CompanyOwner", fields: [ownerId], references: [id])
+  maxWorkspaces        Int         @default(3) // Firma altında oluşturulabilecek maksimum workspace sayısı
+  // AI Kullanım Limitleri (Firma bazlı)
+  dailyAiChatLimit     Int         @default(50)
+  aiSubscriptionType   String      @default("FREE") // FREE, BASIC, PRO, UNLIMITED
+  aiSubscriptionEndsAt DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  workspaces           Workspace[]
+
+  @@index([ownerId])
+  @@map("companies")
+}
+
+model Workspace {
+  id                  String   @id @default(uuid())
+  name                String
+  slug                String   @unique
+  description         String?
+  avatar              String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  aiApiKey            String?
+  // Company Info (workspace'e özel şirket bilgileri)
+  companyName         String?
+  companyDescription  String?
+  companyAddress      String?
+  companyPhone        String?
+  companyEmail        String?
+  companyWebsite      String?
+  companyWorkingHours String?
+  companyLogo         String?
+
+  // Firma (Company) ilişkisi
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  // AI Kullanım Limitleri (workspace bazlı - veya firmadan miras alınır)
+  dailyAiChatLimit     Int       @default(50) // Günlük AI sohbet limiti (ücretsiz: 50)
+  dailyAiChatCount     Int       @default(0) // Bugünkü kullanım sayısı
+  lastAiCountResetAt   DateTime  @default(now()) // Son sıfırlama tarihi
+  aiSubscriptionType   String    @default("FREE") // FREE, BASIC, PRO, UNLIMITED
+  aiSubscriptionEndsAt DateTime? // Abonelik bitiş tarihi (null = süresiz)
+
+  // Relations
+  aiBots               AIBot[]
+  contacts             Contact[]
+  conversations        Conversation[]
+  emailChannels        EmailChannel[]
+  facebookPages        FacebookPage[]
+  facebookLeads        FacebookLead[]
+  teams                Team[]
+  webWidget            WebWidget[]
+  whatsappPhoneNumbers WhatsappPhoneNumber[]
+  members              WorkspaceMember[]
+  knowledgeBase        KnowledgeBase[]
+  whatsappTemplates    WhatsappTemplate[]
+  automations          Automation[]
+  formWebhooks         FormWebhook[]
+  formSubmissions      FormSubmission[]
+  invitations          Invitation[]
+  deals                Deal[]
+
+  @@index([companyId])
+  @@map("workspaces")
+}
+
+model KnowledgeBase {
+  id          String    @id @default(uuid())
+  workspaceId String
+  title       String
+  content     String
+  sourceType  String    @default("TEXT")
+  filename    String?
+  fileType    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("knowledge_base")
+}
+
+model AIBot {
+  id               String   @id @default(uuid())
+  name             String
+  role             String   @default("Teknik Servis")
+  prompt           String?
+  isActive         Boolean  @default(false)
+  whatsappEnabled  Boolean  @default(false)
+  facebookEnabled  Boolean  @default(false)
+  instagramEnabled Boolean  @default(false)
+  widgetEnabled    Boolean  @default(false)
+  botType          String   @default("CHATS")
+  workspaceId      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Scheduler: Bot active between these times
+  schedulerEnabled  Boolean   @default(false)
+  scheduleStartTime String? // Format: "HH:mm" (e.g., "09:00")
+  scheduleEndTime   String? // Format: "HH:mm" (e.g., "18:00")
+  scheduleStartDate DateTime? // Optional: Start date for scheduling
+  scheduleEndDate   DateTime? // Optional: End date for scheduling
+  scheduleDays      String? // JSON array of days: ["monday","tuesday",...]
+
+  // Auto-reply delay: Send auto message if not replied within X seconds
+  autoReplyDelayEnabled Boolean @default(false)
+  autoReplyDelaySeconds Int     @default(30)
+  autoReplyDelayMessage String? // Custom message to send after delay
+
+  // Follow-up: Inactivity warning (e.g., 40 seconds)
+  inactivityWarningEnabled Boolean @default(false)
+  inactivityWarningSeconds Int     @default(40)
+  inactivityWarningMessage String? // Message to send after X seconds of customer inactivity
+
+  // Follow-up: Daily reminder (1 day later, max 1 time)
+  dailyReminderEnabled Boolean @default(false)
+  dailyReminderHours   Int     @default(24) // Hours after last bot message
+  dailyReminderMessage String? // Reminder message (sent only once)
+
+  documents             AIBotDocument[]
+  conversations         Conversation[]
+  facebookPages         FacebookPage[]        @relation("FacebookBot")
+  instagramPages        FacebookPage[]        @relation("InstagramBot")
+  commentPages          FacebookPage[]        @relation("CommentBot")
+  instagramCommentPages FacebookPage[]        @relation("InstagramCommentBot")
+  whatsappPhoneNumbers  WhatsappPhoneNumber[]
+  emailChannels         EmailChannel[]
+  webWidgets            WebWidget[]
+  teams                 Team[]
+  teamMemberships       TeamMember[]
+  workspace             Workspace             @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@map("ai_bots")
+}
+
+model AIBotDocument {
+  id        String   @id @default(uuid())
+  botId     String
+  filename  String
+  content   String
+  fileType  String
+  createdAt DateTime @default(now())
+  bot       AIBot    @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId])
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  role        String    @default("AGENT")
+  userId      String
+  workspaceId String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@map("workspace_members")
+}
+
+model FacebookPage {
+  id                    String         @id @default(uuid())
+  pageId                String
+  pageName              String
+  pageAccessToken       String
+  workspaceId           String
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  instagramBusinessId   String?
+  instagramUsername     String?
+  assignedBotId         String?
+  assignedBot           AIBot?         @relation("FacebookBot", fields: [assignedBotId], references: [id])
+  instagramBotId        String?
+  instagramBot          AIBot?         @relation("InstagramBot", fields: [instagramBotId], references: [id])
+  commentBotId          String?
+  commentBot            AIBot?         @relation("CommentBot", fields: [commentBotId], references: [id])
+  instagramCommentBotId String?
+  instagramCommentBot   AIBot?         @relation("InstagramCommentBot", fields: [instagramCommentBotId], references: [id])
+  conversations         Conversation[]
+  leads                 FacebookLead[]
+  workspace             Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, workspaceId])
+  @@index([workspaceId])
+  @@index([pageId])
+  @@map("facebook_pages")
+}
+
+model Contact {
+  id                String           @id @default(uuid())
+  workspaceId       String?
+  workspace         Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name              String?
+  fullName          String?
+  email             String?
+  phone             String?
+  emails            String           @default("[]")
+  phones            String           @default("[]")
+  avatar            String?
+  facebookId        String?          @unique
+  instagramId       String?          @unique
+  instagramUsername String?
+  whatsappId        String?          @unique
+  tags              String           @default("[]")
+  status            String           @default("NEW")
+  source            String           @default("MANUAL")
+  category          String           @default("CUSTOMER") // CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
+  lastContactedAt   DateTime?
+  isBlocked         Boolean          @default(false)
+  blockedAt         DateTime?
+  blockedReason     String?
+  isArchived        Boolean          @default(false)
+  archivedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  conversations     Conversation[]
+  formSubmissions   FormSubmission[]
+  deals             Deal[]
+  company           String?
+  notes             String?
+
+  @@index([workspaceId])
+  @@index([instagramId])
+  @@index([whatsappId])
+  @@map("contacts")
+}
+
+model Conversation {
+  id                    String                 @id @default(uuid())
+  status                String                 @default("OPEN")
+  contactId             String
+  workspaceId           String
+  facebookPageId        String?
+  assignedToId          String?
+  assignedBotId         String?
+  assignedBot           AIBot?                 @relation(fields: [assignedBotId], references: [id])
+  whatsappPhoneNumberId String?
+  instagramBusinessId   String?
+  emailChannelId        String?
+  channel               String                 @default("UNKNOWN")
+  teamIds               String                 @default("[]")
+  unreadCount           Int                    @default(0)
+  lastMessageAt         DateTime               @default(now())
+  resolvedAt            DateTime? // When conversation was marked as RESOLVED
+  resolvedById          String? // Who resolved the conversation
+  botEnabled            Boolean                @default(true) // Bot enabled for this conversation
+  botDelayedUntil       DateTime? // Bot will not respond until this time (for 30sec delay)
+  assignedTeamId        String? // Team assigned to this conversation
+  aiTopic               String? // AI-generated conversation topic
+  aiSummary             String? // AI-generated conversation summary
+  handoffPending        Boolean                @default(false) // Bot awaiting user confirmation for handoff
+  // Follow-up tracking
+  lastBotMessageAt      DateTime? // When bot last sent a message
+  inactivityWarningSent Boolean                @default(false) // 40s inactivity warning sent?
+  reminderSentAt        DateTime? // 1-day reminder sent? (null = not sent)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  transfers             ConversationTransfer[]
+  contact               Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  workspace             Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage          FacebookPage?          @relation(fields: [facebookPageId], references: [id])
+  assignedTo            User?                  @relation(fields: [assignedToId], references: [id])
+  whatsappPhoneNumber   WhatsappPhoneNumber?   @relation(fields: [whatsappPhoneNumberId], references: [id])
+  emailChannel          EmailChannel?          @relation(fields: [emailChannelId], references: [id])
+  internalNotes         InternalNote[]
+  messages              Message[]
+  formSubmissions       FormSubmission[]
+
+  @@map("conversations")
+}
+
+model WhatsappPhoneNumber {
+  id                 String             @id @default(uuid())
+  phoneNumberId      String             @unique
+  wabaId             String
+  name               String?
+  displayPhoneNumber String
+  accessToken        String
+  workspaceId        String
+  assignedBotId      String?
+  assignedBot        AIBot?             @relation(fields: [assignedBotId], references: [id])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  conversations      Conversation[]
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  templates          WhatsappTemplate[]
+
+  @@map("whatsapp_phone_numbers")
+}
+
+model Message {
+  id                String       @id @default(uuid())
+  content           String
+  messageType       String       @default("TEXT")
+  conversationId    String
+  senderId          String?
+  isFromContact     Boolean      @default(true)
+  facebookMessageId String?      @unique
+  whatsappMessageId String?      @unique
+  status            String       @default("SENT") // SENT, DELIVERED, READ, FAILED
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  emailMessageId    String?      @unique
+  emailSubject      String?
+  sender            User?        @relation(fields: [senderId], references: [id])
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model WebWidget {
+  id              String    @id @default(uuid())
+  workspaceId     String
+  name            String    @default("Web Widget") // e.g., "Ana Website", "Blog", "E-ticaret"
+  siteUrl         String? // Optional website URL
+  title           String    @default("Müşteri Destek")
+  subtitle        String?   @default("Size nasıl yardımcı olabiliriz?")
+  primaryColor    String    @default("#ef4444")
+  greetingMessage String?   @default("Merhaba! Size nasıl yardımcı olabilirim?")
+  isActive        Boolean   @default(true)
+  position        String    @default("RIGHT")
+  width           Int       @default(350)
+  assignedBotId   String?
+  assignedBot     AIBot?    @relation(fields: [assignedBotId], references: [id], onDelete: SetNull)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("web_widgets")
+}
+
+model EmailChannel {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  provider        String         @default("GMAIL") // GMAIL, IMAP (for Yandex, Webmail, Outlook etc.)
+  accessToken     String? // For Gmail OAuth
+  refreshToken    String? // For Gmail OAuth
+  expiryDate      BigInt?
+  workspaceId     String
+  isActive        Boolean        @default(true)
+  assignedBotId   String?
+  assignedBot     AIBot?         @relation(fields: [assignedBotId], references: [id])
+  lastSyncAt      DateTime?
+  // Pub/Sub Watch fields
+  historyId       String?
+  watchExpiration DateTime?
+  // Custom IMAP settings (for Yandex, Webmail, Outlook etc.)
+  imapHost        String?
+  imapPort        Int?           @default(993)
+  imapUser        String?
+  imapPass        String?
+  imapSecure      Boolean        @default(true)
+  // Custom SMTP settings
+  smtpHost        String?
+  smtpPort        Int?           @default(465)
+  smtpUser        String?
+  smtpPass        String?
+  smtpSecure      Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  conversations   Conversation[]
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("email_channels")
+}
+
+model InternalNote {
+  id             String       @id @default(uuid())
+  conversationId String
+  userId         String
+  content        String
+  mentionedUsers String       @default("[]")
+  createdAt      DateTime     @default(now())
+  user           User         @relation(fields: [userId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([userId])
+  @@map("internal_notes")
+}
+
+model ConversationTransfer {
+  id             String       @id @default(uuid())
+  conversationId String
+  fromUserId     String
+  toUserId       String?
+  toTeamId       String?
+  note           String?
+  status         String       @default("PENDING")
+  createdAt      DateTime     @default(now())
+  team           Team?        @relation(fields: [toTeamId], references: [id])
+  toUser         User?        @relation("TransfersTo", fields: [toUserId], references: [id])
+  fromUser       User         @relation("TransfersFrom", fields: [fromUserId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([toTeamId])
+  @@map("conversation_transfers")
+}
+
+model Team {
+  id              String                 @id @default(uuid())
+  workspaceId     String
+  name            String
+  description     String?
+  color           String                 @default("#3b82f6")
+  assignedBotId   String?
+  assignedBot     AIBot?                 @relation(fields: [assignedBotId], references: [id])
+  createdAt       DateTime               @default(now())
+  transfers       ConversationTransfer[]
+  members         TeamMember[]
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channelRoutings ChannelRouting[]
+
+  @@index([workspaceId])
+  @@map("teams")
+}
+
+// Kanal → Ekip Yönlendirme
+model ChannelRouting {
+  id          String   @id @default(uuid())
+  workspaceId String
+  channel     String // INSTAGRAM, FACEBOOK, WHATSAPP, EMAIL, WEB_WIDGET, FORM
+  teamId      String
+  botDelay    Int      @default(30) // Bot devreye girmeden önce bekleme süresi (saniye)
+  botEnabled  Boolean  @default(true) // Bu kanal için bot aktif mi
+  priority    Int      @default(0) // Birden fazla kural varsa öncelik
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, channel]) // Her kanal için tek yönlendirme
+  @@index([workspaceId])
+  @@index([teamId])
+  @@map("channel_routings")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String?
+  botId     String?
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bot       AIBot?   @relation(fields: [botId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@unique([teamId, botId])
+  @@index([teamId])
+  @@index([userId])
+  @@index([botId])
+  @@map("team_members")
+}
+
+model UserSchedule {
+  id        String  @id @default(uuid())
+  userId    String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  isActive  Boolean @default(true)
+  timezone  String  @default("Europe/Istanbul")
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek])
+  @@index([userId])
+  @@map("user_schedules")
+}
+
+model FacebookLead {
+  id             String        @id @default(uuid())
+  leadId         String        @unique
+  workspaceId    String
+  facebookPageId String?
+  formId         String
+  formName       String?
+  adId           String?
+  adName         String?
+  campaignId     String?
+  campaignName   String?
+  fieldData      String        @default("{}")
+  name           String?
+  email          String?
+  phone          String?
+  status         String        @default("NEW")
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  facebookPage   FacebookPage? @relation(fields: [facebookPageId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([facebookPageId])
+  @@index([formId])
+  @@index([status])
+  @@map("facebook_leads")
+}
+
+model Appointment {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  title        String
+  description  String?
+  startTime    DateTime
+  endTime      DateTime
+  assignedToId String
+  contactId    String?
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+  status       String   @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
+  color        String   @default("#3b82f6")
+  reminderSent Boolean  @default(false)
+  notes        String?
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([workspaceId])
+  @@index([assignedToId])
+  @@index([startTime])
+  @@index([status])
+  @@map("appointments")
+}
+
+// WhatsApp Message Templates
+model WhatsappTemplate {
+  id                    String   @id @default(uuid())
+  workspaceId           String
+  whatsappPhoneNumberId String?
+  templateId            String // WhatsApp template ID from Meta
+  name                  String
+  language              String   @default("tr")
+  category              String   @default("MARKETING") // MARKETING, UTILITY, AUTHENTICATION
+  status                String   @default("APPROVED") // APPROVED, PENDING, REJECTED
+  components            String   @default("[]") // JSON array of template components
+  headerType            String? // TEXT, IMAGE, VIDEO, DOCUMENT
+  headerContent         String? // Header text or media URL
+  bodyText              String // Main template text with {{1}}, {{2}} placeholders
+  footerText            String?
+  buttons               String? // JSON array of buttons
+  exampleValues         String? // JSON array of example values for placeholders
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  whatsappPhoneNumber WhatsappPhoneNumber? @relation(fields: [whatsappPhoneNumberId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, templateId])
+  @@index([workspaceId])
+  @@index([whatsappPhoneNumberId])
+  @@index([status])
+  @@map("whatsapp_templates")
+}
+
+// Automation Rules
+model Automation {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  name           String
+  description    String?
+  isActive       Boolean  @default(true)
+  trigger        String // NEW_LEAD, NEW_MESSAGE, NEW_CONVERSATION
+  triggerChannel String? // WHATSAPP, FACEBOOK, INSTAGRAM, ALL
+  action         String // SEND_TEMPLATE, SEND_MESSAGE, ASSIGN_AGENT, SEND_EMAIL (legacy, single action)
+  actions        String? // JSON array of actions [{ type, templateId, emailChannelId, etc }]
+  actionLogic    String   @default("AND") // AND = all actions, OR = first matching
+  templateId     String? // WhatsApp template ID if action is SEND_TEMPLATE
+  messageContent String? // Message content if action is SEND_MESSAGE
+  assignToUserId String? // User ID if action is ASSIGN_AGENT
+  // Email action fields
+  emailChannelId String? // Email channel to send from
+  emailSubject   String? // Email subject
+  emailBody      String? // Email body content
+  emailIsHtml    Boolean  @default(false) // Send as HTML or plain text
+  delayMinutes   Int      @default(0) // Delay before executing action
+  conditions     String? // JSON conditions for when to trigger
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([isActive])
+  @@index([trigger])
+  @@map("automations")
+}
+
+model FormWebhook {
+  id           String           @id @default(uuid())
+  workspaceId  String
+  name         String
+  siteUrl      String?
+  webhookUrl   String           @unique
+  webhookToken String           @unique
+  isActive     Boolean          @default(true)
+  fieldMapping String           @default("{}")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  submissions  FormSubmission[]
+
+  @@index([workspaceId])
+  @@index([webhookToken])
+  @@map("form_webhooks")
+}
+
+model FormSubmission {
+  id             String        @id @default(uuid())
+  formWebhookId  String
+  workspaceId    String
+  contactId      String?
+  conversationId String?
+  formData       String        @default("{}")
+  name           String?
+  email          String?
+  phone          String?
+  company        String?
+  message        String?
+  status         String        @default("NEW")
+  source         String?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  formWebhook    FormWebhook   @relation(fields: [formWebhookId], references: [id], onDelete: Cascade)
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([formWebhookId])
+  @@index([status])
+  @@map("form_submissions")
+}
+
+// Workspace Invitation System
+model Invitation {
+  id          String    @id @default(uuid())
+  email       String
+  workspaceId String
+  role        String    @default("AGENT") // OWNER, ADMIN, AGENT, VIEWER
+  token       String    @unique
+  status      String    @default("PENDING") // PENDING, ACCEPTED, EXPIRED, CANCELLED
+  invitedBy   String? // User ID who sent the invitation
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([workspaceId])
+  @@index([token])
+  @@index([status])
+  @@map("invitations")
+}
+
+// Sales Module - Deals (Teklifler, Siparişler, Faturalar)
+model Deal {
+  id          String  @id @default(uuid())
+  workspaceId String
+  contactId   String
+  title       String
+  description String?
+
+  // Fiyatlama
+  amount   Float  @default(0)
+  currency String @default("TRY") // TRY, USD, EUR, GBP
+
+  // Aşama ve Durum
+  stage  String @default("QUOTE") // QUOTE, ORDER, INVOICE
+  status String @default("OPEN") // OPEN, WON, LOST
+
+  // Ürünler (JSON array)
+  products String @default("[]") // [{ name, quantity, unitPrice, total }]
+
+  // Numaralar (Teklif/Sipariş/Fatura numaraları)
+  quoteNumber   String? // TEK-2026-0001
+  orderNumber   String? // SIP-2026-0001
+  invoiceNumber String? // FAT-2026-0001
+
+  // Atama
+  assignedToId String?
+
+  // Notlar
+  notes String?
+
+  // Durum Değişiklikleri
+  wonAt      DateTime?
+  lostAt     DateTime?
+  lostReason String?
+
+  // Dönüşüm Takibi (stage geçiş tarihleri)
+  quoteCreatedAt   DateTime  @default(now())
+  orderCreatedAt   DateTime?
+  invoiceCreatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  workspace  Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact    Contact   @relation(fields: [contactId], references: [id])
+  assignedTo User?     @relation("DealAssignee", fields: [assignedToId], references: [id])
+
+  @@index([workspaceId])
+  @@index([contactId])
+  @@index([stage])
+  @@index([status])
+  @@map("deals")
+}
