@@ -90,6 +90,7 @@ const AdminDashboard = () => {
     const [isEditAiLimitModalOpen, setIsEditAiLimitModalOpen] = useState(false);
     const [aiLimitForm, setAiLimitForm] = useState({ dailyAiChatLimit: 50, aiSubscriptionType: 'FREE' });
 
+
     useEffect(() => {
         loadData();
     }, []);
@@ -780,7 +781,7 @@ const AdminDashboard = () => {
                         <div key={ws.id} className="workspace-card">
                             <div className="workspace-card-header">
                                 <Database size={24} />
-                                <h3>{ws.name}</h3>
+                                <h3 style={{ color: '#111827', fontWeight: 600 }}>{ws.name}</h3>
                             </div>
                             <div className="workspace-card-stats">
                                 <div className="mini-stat">

@@ -174,6 +174,7 @@
         opacity: 0;
         max-height: 0;
     }
+
     to {
         opacity: 1;
         max-height: 500px;
@@ -1070,17 +1071,17 @@
         grid-template-columns: 1fr;
         gap: 12px;
     }
-    
+
     .limit-setting-row {
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
     }
-    
+
     .limit-setting-row label {
         min-width: auto;
     }
-    
+
     .plan-select,
     .ai-limit-settings .limit-input {
         width: 100%;
@@ -1431,7 +1432,7 @@
     margin: 0;
     font-size: 16px;
     font-weight: 600;
-    color: #1e293b;
+    color: #1e293b !important;
 }
 
 .workspace-card-stats {
@@ -1802,21 +1803,21 @@
     .companies-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .workspace-stats-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .form-row {
         grid-template-columns: 1fr;
     }
-    
+
     .dashboard-header {
         flex-direction: column;
         align-items: flex-start;
         gap: 16px;
     }
-    
+
     .unassigned-workspaces-grid {
         grid-template-columns: 1fr;
     }

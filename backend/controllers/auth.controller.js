@@ -298,7 +298,8 @@ export const facebookCallback = async (req, res) => {
                     {
                         params: {
                             access_token: user.facebookAccessToken,
-                            fields: 'id,name,access_token,category,instagram_business_account{id,username}'
+                            fields: 'id,name,access_token,category,instagram_business_account{id,username}',
+                            limit: 100 // Get up to 100 per page
                         }
                     }
                 );
@@ -306,7 +307,23 @@ export const facebookCallback = async (req, res) => {
                 console.log('🛑 [DEBUG] Raw Accounts Response:', JSON.stringify(response.data));
 
                 pages = response.data.data || [];
-                console.log(`Found ${pages.length} Facebook pages`);
+
+                // Handle pagination - fetch all pages if there are more
+                let nextPageUrl = response.data.paging?.next;
+                while (nextPageUrl) {
+                    console.log(`📄 Fetching next page of Facebook pages... (currently have ${pages.length})`);
+                    try {
+                        const nextResponse = await axios.get(nextPageUrl);
+                        const nextPages = nextResponse.data.data || [];
+                        pages = pages.concat(nextPages);
+                        nextPageUrl = nextResponse.data.paging?.next;
+                    } catch (pageError) {
+                        console.error('Error fetching next page:', pageError.message);
+                        break; // Stop pagination on error
+                    }
+                }
+
+                console.log(`Found ${pages.length} Facebook pages (after pagination)`);
 
                 // Filter pages based on channel type
                 if (channelType === 'instagram') {

@@ -88,15 +88,15 @@ export const getAppointment = async (req, res) => {
 export const createAppointment = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { 
+        const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
             color, notes
         } = req.body;
 
         if (!title || !startTime || !endTime || !assignedToId) {
-            return res.status(400).json({ 
-                error: 'Başlık, başlangıç/bitiş zamanı ve atanan kişi gereklidir' 
+            return res.status(400).json({
+                error: 'Başlık, başlangıç/bitiş zamanı ve atanan kişi gereklidir'
             });
         }
 
@@ -104,8 +104,8 @@ export const createAppointment = async (req, res) => {
         const end = new Date(endTime);
 
         if (start >= end) {
-            return res.status(400).json({ 
-                error: 'Bitiş zamanı başlangıç zamanından sonra olmalıdır' 
+            return res.status(400).json({
+                error: 'Bitiş zamanı başlangıç zamanından sonra olmalıdır'
             });
         }
 
@@ -114,7 +114,7 @@ export const createAppointment = async (req, res) => {
         if (conflict) {
             // Suggest next available slot
             const suggestion = await suggestNextAvailableSlot(assignedToId, start, end);
-            return res.status(409).json({ 
+            return res.status(409).json({
                 error: 'Bu zaman diliminde agent meşgul',
                 conflict: true,
                 conflictingAppointment: conflict,
@@ -146,8 +146,8 @@ export const createAppointment = async (req, res) => {
             select: { id: true, name: true, avatar: true }
         });
 
-        res.status(201).json({ 
-            appointment: { ...appointment, assignedTo: agent } 
+        res.status(201).json({
+            appointment: { ...appointment, assignedTo: agent }
         });
     } catch (error) {
         console.error('Create appointment error:', error);
@@ -159,7 +159,7 @@ export const createAppointment = async (req, res) => {
 export const updateAppointment = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { 
+        const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
             status, color, notes
@@ -193,7 +193,7 @@ export const updateAppointment = async (req, res) => {
             const conflict = await checkAppointmentConflict(newAgent, newStart, newEnd, id);
             if (conflict) {
                 const suggestion = await suggestNextAvailableSlot(newAgent, newStart, newEnd);
-                return res.status(409).json({ 
+                return res.status(409).json({
                     error: 'Bu zaman diliminde agent meşgul',
                     conflict: true,
                     conflictingAppointment: conflict,
@@ -258,7 +258,7 @@ export const getAgentAvailability = async (req, res) => {
         let where = {
             workspaceId,
             startTime: { gte: startOfDay, lte: endOfDay },
-            status: { not: 'CANCELLED' }
+            status: { notIn: ['CANCELLED', 'COMPLETED'] } // Exclude cancelled and completed
         };
 
         if (assignedToId) {
@@ -317,7 +317,7 @@ export const getAgentAvailability = async (req, res) => {
 async function checkAppointmentConflict(assignedToId, startTime, endTime, excludeId = null) {
     const where = {
         assignedToId,
-        status: { not: 'CANCELLED' },
+        status: { notIn: ['CANCELLED', 'COMPLETED'] }, // Exclude cancelled and completed
         OR: [
             // New appointment starts during existing
             { startTime: { lte: startTime }, endTime: { gt: startTime } },
@@ -345,10 +345,10 @@ async function suggestNextAvailableSlot(assignedToId, preferredStart, preferredE
     for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
         const searchDate = new Date(preferredStart);
         searchDate.setDate(searchDate.getDate() + dayOffset);
-        
+
         const startOfDay = new Date(searchDate);
         startOfDay.setHours(9, 0, 0, 0); // Work starts at 9 AM
-        
+
         const endOfDay = new Date(searchDate);
         endOfDay.setHours(18, 0, 0, 0); // Work ends at 6 PM
 
@@ -357,13 +357,13 @@ async function suggestNextAvailableSlot(assignedToId, preferredStart, preferredE
             where: {
                 assignedToId,
                 startTime: { gte: startOfDay, lt: endOfDay },
-                status: { not: 'CANCELLED' }
+                status: { notIn: ['CANCELLED', 'COMPLETED'] } // Exclude cancelled and completed
             },
             orderBy: { startTime: 'asc' }
         });
 
         // Find gaps
-        let checkTime = dayOffset === 0 
+        let checkTime = dayOffset === 0
             ? new Date(Math.max(startOfDay.getTime(), preferredStart.getTime()))
             : startOfDay;
 
@@ -382,8 +382,8 @@ async function suggestNextAvailableSlot(assignedToId, preferredStart, preferredE
                     startTime: checkTime,
                     endTime: new Date(checkTime.getTime() + duration),
                     dayOffset,
-                    message: dayOffset === 0 
-                        ? 'Bugün için öneri' 
+                    message: dayOffset === 0
+                        ? 'Bugün için öneri'
                         : `${dayOffset} gün sonrası için öneri`
                 };
             }
@@ -397,8 +397,8 @@ async function suggestNextAvailableSlot(assignedToId, preferredStart, preferredE
                 startTime: checkTime,
                 endTime: new Date(checkTime.getTime() + duration),
                 dayOffset,
-                message: dayOffset === 0 
-                    ? 'Bugün için öneri' 
+                message: dayOffset === 0
+                    ? 'Bugün için öneri'
                     : `${dayOffset} gün sonrası için öneri`
             };
         }

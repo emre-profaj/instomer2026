@@ -117,16 +117,20 @@
 .upcoming-info {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .upcoming-info h4 {
-    margin: 0 0 4px 0;
-    font-size: 14px;
+    margin: 0;
+    font-size: 13px;
     font-weight: 600;
     color: #1f2937;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.3;
 }
 
 .upcoming-contact {
@@ -193,11 +197,11 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.toggle-label input:checked + .toggle-slider {
+.toggle-label input:checked+.toggle-slider {
     background: #22c55e;
 }
 
-.toggle-label input:checked + .toggle-slider::before {
+.toggle-label input:checked+.toggle-slider::before {
     transform: translateX(16px);
 }
 
@@ -220,10 +224,10 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    margin-bottom: 4px;
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    width: fit-content;
 }
 
 .upcoming-status.completed {
@@ -235,18 +239,18 @@
     .calendar-page {
         flex-direction: column;
     }
-    
+
     .upcoming-sidebar {
         width: 100%;
         min-width: 100%;
     }
-    
+
     .upcoming-list {
         flex-direction: row;
         flex-wrap: wrap;
         max-height: none;
     }
-    
+
     .upcoming-item {
         flex: 1;
         min-width: 200px;
@@ -693,15 +697,18 @@
     border-radius: 50% !important;
     margin-left: 16px !important;
     flex-shrink: 0 !important;
-    box-shadow: 0 0 12px currentColor, inset 0 1px 2px rgba(255,255,255,0.5) !important;
+    box-shadow: 0 0 12px currentColor, inset 0 1px 2px rgba(255, 255, 255, 0.5) !important;
     animation: pulse-dot 2s ease-in-out infinite !important;
 }
 
 @keyframes pulse-dot {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
         transform: scale(1);
     }
+
     50% {
         opacity: 0.8;
         transform: scale(1.15);
@@ -877,35 +884,23 @@
         flex-direction: column;
         align-items: flex-start;
     }
-    
+
     .calendar-controls {
         width: 100%;
         justify-content: space-between;
     }
-    
+
     .calendar-day {
         min-height: 80px;
         padding: 4px;
     }
-    
+
     .appointment-pill {
         font-size: 10px;
         padding: 2px 4px;
     }
-    
+
     .form-row {
         grid-template-columns: 1fr;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-

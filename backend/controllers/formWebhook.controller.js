@@ -243,10 +243,10 @@ export const handleFormSubmission = async (req, res) => {
                 if (name && !contact.name) updateData.name = name;
                 if (company && !contact.company) updateData.company = company;
 
-                // Telefon varsa ve status NEW ise POTENTIAL yap
+                // Telefon varsa ve status NEW ise HOT_OPPORTUNITY yap
                 if (phone && phone.trim() && contact.status === 'NEW') {
-                    updateData.status = 'POTENTIAL';
-                    console.log(`📱 Contact will be upgraded to POTENTIAL: ${contact.id}`);
+                    updateData.status = 'HOT_OPPORTUNITY';
+                    console.log(`📱 Contact will be upgraded to HOT_OPPORTUNITY: ${contact.id}`);
                 }
 
                 if (Object.keys(updateData).length > 0) {
@@ -261,8 +261,8 @@ export const handleFormSubmission = async (req, res) => {
 
         // If no contact found, create a new one
         if (!contact) {
-            // Telefon varsa POTENTIAL, yoksa NEW
-            const initialStatus = phone && phone.trim() ? 'POTENTIAL' : 'NEW';
+            // Telefon varsa HOT_OPPORTUNITY, yoksa NEW
+            const initialStatus = phone && phone.trim() ? 'HOT_OPPORTUNITY' : 'NEW';
 
             contact = await prisma.contact.create({
                 data: {

@@ -125,7 +125,13 @@ export const getContacts = async (req, res) => {
                     select: {
                         channel: true,
                         createdAt: true,
-                        lastMessageAt: true
+                        lastMessageAt: true,
+                        assignedTo: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
                     },
                     orderBy: { createdAt: 'asc' }
                 }
@@ -173,11 +179,8 @@ export const getContacts = async (req, res) => {
                     .sort((a, b) => b[1] - a[1])[0][0];
             }
 
-            // Remove conversations from response (we just needed it for source calculation)
-            const { conversations, ...contactWithoutConvs } = contact;
-
             return {
-                ...contactWithoutConvs,
+                ...contact,
                 source: contactSource,
                 channels: [...new Set(channels)], // Unique channels this contact has
                 firstMessageAt,
@@ -277,12 +280,12 @@ export const updateContact = async (req, res) => {
             updateData.emails = typeof emails === 'string' ? emails : JSON.stringify(emails);
         }
 
-        // Auto-upgrade status to POTENTIAL if phone is being added and current status is NEW
+        // Auto-upgrade status to HOT_OPPORTUNITY if phone is being added and current status is NEW
         const newPhone = phone !== undefined ? phone : existing.phone;
         const currentStatus = status !== undefined ? status : existing.status;
         if (newPhone && newPhone.trim() && currentStatus === 'NEW' && status === undefined) {
-            updateData.status = 'POTENTIAL';
-            console.log(`📱 [Contact] Auto-upgrading status to POTENTIAL (phone added): ${id}`);
+            updateData.status = 'HOT_OPPORTUNITY';
+            console.log(`📱 [Contact] Auto-upgrading status to HOT_OPPORTUNITY (phone added): ${id}`);
         }
 
         const contact = await prisma.contact.update({
@@ -303,7 +306,7 @@ export const updateContact = async (req, res) => {
                 emitToWorkspace(conv.workspaceId, 'contact_updated', {
                     workspaceId: conv.workspaceId,
                     contactId: id,
-                    updatedFields: { name, phone, email, notes, tags }
+                    updatedFields: { name, phone, email, notes, tags, category, status }
                 });
             }
         }
@@ -345,8 +348,8 @@ export const createContact = async (req, res) => {
             });
         }
 
-        // Determine initial status - POTENTIAL if phone exists, otherwise NEW
-        const initialStatus = phone && phone.trim() ? 'POTENTIAL' : 'NEW';
+        // Determine initial status - HOT_OPPORTUNITY if phone exists, otherwise NEW
+        const initialStatus = phone && phone.trim() ? 'HOT_OPPORTUNITY' : 'NEW';
 
         // Handle phones and emails arrays
         const { phones, emails } = req.body;
@@ -493,7 +496,7 @@ export const getContactAnalytics = async (req, res) => {
         // Count by status
         const statusCounts = {
             NEW: 0,
-            POTENTIAL: 0,
+            HOT_OPPORTUNITY: 0,
             INFORMED: 0,
             NEGOTIATING: 0,
             CONVERTED: 0,
@@ -557,7 +560,7 @@ export const getContactAnalytics = async (req, res) => {
         // Status labels in Turkish
         const statusLabels = {
             NEW: 'Yeni Müşteri',
-            POTENTIAL: 'Potansiyel Müşteri',
+            HOT_OPPORTUNITY: 'Potansiyel Müşteri',
             INFORMED: 'Bilgi Verildi',
             NEGOTIATING: 'Görüşme Aşamasında',
             CONVERTED: 'Müşteri Oldu',
@@ -584,7 +587,7 @@ export const getContactAnalytics = async (req, res) => {
             totalLeads,
             totalConversations,
             conversionRate: parseFloat(conversionRate),
-            positiveContacts: statusCounts.CONVERTED + statusCounts.NEGOTIATING + statusCounts.POTENTIAL,
+            positiveContacts: statusCounts.CONVERTED + statusCounts.NEGOTIATING + statusCounts.HOT_OPPORTUNITY,
             negativeContacts: statusCounts.NEGATIVE + statusCounts.LOST,
             statusData,
             channelData,

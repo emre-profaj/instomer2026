@@ -27,6 +27,33 @@ const releaseAiReplyLock = (conversationId) => {
     aiReplyLocks.delete(conversationId);
 };
 
+// Helper to get effective AI API key (workspace key > global key)
+const getEffectiveAiApiKey = async (workspaceId) => {
+    // 1. Check workspace's own key first
+    const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { aiApiKey: true }
+    });
+
+    if (workspace?.aiApiKey) {
+        console.log(`🔑 [AI] Using workspace-specific API key for workspace ${workspaceId}`);
+        return workspace.aiApiKey;
+    }
+
+    // 2. Fallback to global settings
+    const globalSettings = await prisma.globalSettings.findUnique({
+        where: { id: 'singleton' }
+    });
+
+    if (globalSettings?.globalAiApiKey) {
+        console.log(`🌐 [AI] Using global API key for workspace ${workspaceId}`);
+        return globalSettings.globalAiApiKey;
+    }
+
+    console.log(`❌ [AI] No API key configured for workspace ${workspaceId}`);
+    return null;
+};
+
 // Configure Multer for memory storage
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -176,13 +203,9 @@ export const generateResponse = async (req, res) => {
         const { workspaceId } = req.params;
         const { conversationId, botId } = req.body;
 
-        // 1. Get Workspace + API Key
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { aiApiKey: true }
-        });
-
-        if (!workspace || !workspace.aiApiKey) {
+        // 1. Get API Key (workspace key > global key)
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
             return res.status(400).json({ error: 'AI API Key not configured' });
         }
 
@@ -325,7 +348,7 @@ ${documentContext || "Bilgi bankası boş."}
             });
         }
 
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(aiApiKey);
 
         // Helper function to try generating content with fallback
         const tryGenerate = async (modelName) => {
@@ -377,13 +400,9 @@ export const summarizeConversation = async (req, res) => {
         const { workspaceId } = req.params;
         const { conversationId } = req.body;
 
-        // 1. Get Workspace + API Key
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { aiApiKey: true }
-        });
-
-        if (!workspace || !workspace.aiApiKey) {
+        // 1. Get API Key (workspace key > global key)
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
             return res.status(400).json({ error: 'AI API Key not configured' });
         }
 
@@ -420,7 +439,7 @@ ${chatLog}
 
 ÖZET:`;
 
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(aiApiKey);
 
         let result;
         const trySummarize = async (modelName) => {
@@ -490,19 +509,17 @@ export const getSuggestedReplies = async (req, res) => {
 
         console.log(`💡 [AI Suggestions] Getting reply suggestions for conversation ${conversationId}`);
 
-        // 1. Get Workspace + API Key
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: {
-                aiApiKey: true,
-                companyName: true,
-                companyDescription: true
-            }
-        });
-
-        if (!workspace || !workspace.aiApiKey) {
+        // 1. Get API Key (workspace key > global key)
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
             return res.status(400).json({ error: 'AI API Key not configured' });
         }
+
+        // Get company context separately
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { companyName: true, companyDescription: true }
+        });
 
         // 2. Get Recent Messages (last 10)
         const conversation = await prisma.conversation.findUnique({
@@ -573,7 +590,7 @@ SADECE JSON formatında yanıt ver, başka açıklama ekleme:
 }`;
 
         // 5. Call AI
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(aiApiKey);
 
         let result;
         const tryGenerate = async (modelName) => {
@@ -625,13 +642,9 @@ export const extractContactInfo = async (req, res) => {
 
         console.log(`🔍 [AI Extract] Processing conversation ${conversationId} for workspace ${workspaceId}`);
 
-        // 1. Get Workspace + API Key
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { aiApiKey: true }
-        });
-
-        if (!workspace || !workspace.aiApiKey) {
+        // 1. Get API Key (workspace key > global key)
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
             console.error('❌ [AI Extract] API Key missing for workspace:', workspaceId);
             return res.status(400).json({ error: 'AI API Key not configured' });
         }
@@ -670,7 +683,7 @@ ${chatLog}
 
 JSON:`;
 
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(aiApiKey);
 
         const tryExtract = async (modelName) => {
             console.log(`🤖 [AI Extract] Attempting with model: ${modelName}`);
@@ -908,8 +921,11 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 activeBot = conversation.emailChannel.assignedBot;
             } else if (channel?.toLowerCase() === 'widget') {
                 // For Widget, check if there's a WebWidget with assigned bot
-                const webWidget = await prisma.webWidget.findUnique({
-                    where: { workspaceId },
+                const webWidget = await prisma.webWidget.findFirst({
+                    where: {
+                        workspaceId,
+                        isActive: true // Only get active widgets
+                    },
                     include: { assignedBot: { include: { documents: true } } }
                 });
                 if (webWidget?.assignedBot) {
@@ -1072,15 +1088,15 @@ ${documentContext || "Bilgi bankası boş."}
         }
 
         // 4. Generate
-        // Get Workspace API Key
-        const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { aiApiKey: true } });
-        if (!workspace?.aiApiKey) {
+        // Get API Key (workspace key > global key)
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
             console.error(`❌ AI Auto-Reply error: Workspace ${workspaceId} has NO aiApiKey configured.`);
             if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
             return null;
         }
 
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(aiApiKey);
 
         // Fallback Logic
         const tryGenerate = async (modelName) => {
@@ -1529,13 +1545,9 @@ export const autoExtractFromConversation = async (workspaceId, conversationId) =
     try {
         console.log(`🤖 [AI Auto-Extract] Starting for conversation: ${conversationId}`);
 
-        // 1. Get Workspace + API Key
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { aiApiKey: true }
-        });
-
-        if (!workspace?.aiApiKey) {
+        // 1. Get API Key (workspace key > global key)
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
             console.log('ℹ️ [AI Auto-Extract] No API key configured for workspace:', workspaceId);
             return null;
         }
@@ -1609,7 +1621,7 @@ ${chatLog}
 
 JSON:`;
 
-        const genAI = new GoogleGenerativeAI(workspace.aiApiKey);
+        const genAI = new GoogleGenerativeAI(aiApiKey);
 
         const tryModel = async (modelName) => {
             console.log(`🤖 [AI Auto-Extract] Trying model: ${modelName}`);
@@ -1767,10 +1779,10 @@ JSON:`;
         }
 
         if (Object.keys(updateData).length > 0) {
-            // Auto-upgrade status to POTENTIAL if phone is being added and current status is NEW
+            // Auto-upgrade status to HOT_OPPORTUNITY if phone is being added and current status is NEW
             if (updateData.phone && conversation.contact.status === 'NEW') {
-                updateData.status = 'POTENTIAL';
-                console.log(`📱 [AI Auto-Extract] Auto-upgrading status to POTENTIAL (phone extracted)`);
+                updateData.status = 'HOT_OPPORTUNITY';
+                console.log(`📱 [AI Auto-Extract] Auto-upgrading status to HOT_OPPORTUNITY (phone extracted)`);
             }
 
             console.log(`💾 [AI Auto-Extract] Saving new info for contact ${conversation.contact.id}:`, updateData);

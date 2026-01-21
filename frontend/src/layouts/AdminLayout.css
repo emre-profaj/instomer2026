@@ -6,7 +6,7 @@
 
 /* Sidebar Styling - White Theme */
 .admin-sidebar {
-    width: 260px;
+    width: 225px;
     height: 100vh;
     background-color: #ffffff;
     border-right: 1px solid #e5e7eb;
@@ -156,7 +156,7 @@
 /* Main Content Area */
 .admin-main {
     flex: 1;
-    margin-left: 260px;
+    margin-left: 225px;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -186,7 +186,8 @@
     padding: 24px;
     flex: 1;
     overflow-y: auto;
-    height: calc(100vh - 64px); /* 64px = admin-header height */
+    height: calc(100vh - 64px);
+    /* 64px = admin-header height */
 }
 
 /* Mobile Adjustments */
@@ -328,13 +329,13 @@
 
     .admin-sidebar {
         position: fixed;
-        left: -260px;
+        left: -225px;
         height: 100%;
         box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
     }
 
     .admin-sidebar.open {
-        transform: translateX(260px);
+        transform: translateX(225px);
     }
 
     .sidebar-overlay {

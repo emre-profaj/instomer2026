@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { getAutoReply } from './ai.controller.js';
 import { getIO, emitToWorkspace } from '../socket.js';
+import { applyChannelRouting } from '../services/conversationRouting.service.js';
 
 const prisma = new PrismaClient();
 
@@ -207,6 +208,21 @@ export const handleWidgetChat = async (req, res) => {
                 }
             });
             isNewConversation = true;
+
+            // Apply channel routing for team assignment
+            try {
+                const routingResult = await applyChannelRouting(
+                    workspaceId,
+                    conversation.id,
+                    'WEB_WIDGET',
+                    true
+                );
+                if (routingResult.teamId) {
+                    console.log(`📍 [Widget] Routed to team ${routingResult.teamId}`);
+                }
+            } catch (routingError) {
+                console.error('❌ [Widget] Routing error:', routingError);
+            }
         }
 
         // 3. Save Visitor Message

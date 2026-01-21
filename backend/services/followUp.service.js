@@ -34,45 +34,54 @@ export const processInactivityWarnings = async () => {
 
         const conversations = await prisma.conversation.findMany({
             where: {
-                assignedBotId: { not: null },
+                OR: [
+                    // Conversation-level bot assignment (WhatsApp)
+                    { assignedBotId: { not: null } },
+                    // Page-level bot assignment (Facebook/Instagram)
+                    { facebookPage: { assignedBotId: { not: null } } },
+                    // Email channel-level bot assignment
+                    { emailChannel: { assignedBotId: { not: null } } }
+                ],
                 lastBotMessageAt: { not: null },
                 inactivityWarningSent: false,
                 status: 'OPEN',
-                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM'] }
+                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
             },
             include: {
                 assignedBot: true,
                 contact: true,
-                facebookPage: true,
-                whatsappPhoneNumber: true
+                facebookPage: { include: { assignedBot: true } },
+                whatsappPhoneNumber: true,
+                emailChannel: { include: { assignedBot: true } }
             }
         });
 
-        // Debug: log how many conversations found
+        // Summary log (only if conversations found)
         if (conversations.length > 0) {
             const botNames = [...new Set(conversations.map(c => c.assignedBot?.name || 'No Bot'))];
-            console.log(`🔍 [Follow-up] Found ${conversations.length} eligible (bots: ${botNames.join(', ')})`);
+            console.log(`🔍 [Follow-up] Processing ${conversations.length} conversations (bots: ${botNames.join(', ')})`);
         }
 
         for (const conversation of conversations) {
-            const bot = conversation.assignedBot;
+            // Get bot from conversation, page, or email channel
+            let bot = conversation.assignedBot;
+            if (!bot && conversation.facebookPage?.assignedBot) {
+                bot = conversation.facebookPage.assignedBot;
+            }
+            if (!bot && conversation.emailChannel?.assignedBot) {
+                bot = conversation.emailChannel.assignedBot;
+            }
+
             if (!bot) {
-                console.log(`⚠️ [Follow-up] No bot for conversation ${conversation.id}`);
-                continue;
+                continue; // No bot assigned anywhere
             }
             if (!bot.inactivityWarningEnabled) {
-                // Only log once per unique bot name to avoid spam
                 continue;
             }
 
-            console.log(`✅ [Follow-up] Bot ${bot.name} has inactivityWarningEnabled=true, checking timing...`);
-
+            // Removed verbose logging - only log when actually sending
             const warningSeconds = bot.inactivityWarningSeconds || 40;
             const warningThreshold = new Date(now.getTime() - warningSeconds * 1000);
-
-            // Check if enough time has passed since bot's last message
-            const timePassed = Math.floor((now.getTime() - conversation.lastBotMessageAt.getTime()) / 1000);
-            console.log(`⏱️ [Follow-up] Conv ${conversation.id.substring(0, 8)}: ${timePassed}s passed, need ${warningSeconds}s`);
 
             if (conversation.lastBotMessageAt && conversation.lastBotMessageAt < warningThreshold) {
                 // Check if customer has responded after bot's message
@@ -85,10 +94,9 @@ export const processInactivityWarnings = async () => {
                 });
 
                 if (customerMessage) {
-                    console.log(`👤 [Follow-up] Conv ${conversation.id.substring(0, 8)}: Customer responded, skipping`);
+                    // Customer responded, skip (no log to reduce spam)
                 } else {
                     // If customer hasn't responded, send warning
-                    console.log(`📤 [Follow-up] Conv ${conversation.id.substring(0, 8)}: Sending inactivity warning...`);
                     const message = bot.inactivityWarningMessage || DEFAULT_INACTIVITY_MESSAGE;
                     const sent = await sendFollowUpMessage(conversation, message, 'inactivity');
 
@@ -97,7 +105,6 @@ export const processInactivityWarnings = async () => {
                             where: { id: conversation.id },
                             data: { inactivityWarningSent: true }
                         });
-                        console.log(`⏰ [Follow-up] Inactivity warning sent to conversation ${conversation.id}`);
                     }
                 }
             }
@@ -124,22 +131,38 @@ export const processDailyReminders = async () => {
 
         const conversations = await prisma.conversation.findMany({
             where: {
-                assignedBotId: { not: null },
+                OR: [
+                    // Conversation-level bot assignment (WhatsApp)
+                    { assignedBotId: { not: null } },
+                    // Page-level bot assignment (Facebook/Instagram)
+                    { facebookPage: { assignedBotId: { not: null } } },
+                    // Email channel-level bot assignment
+                    { emailChannel: { assignedBotId: { not: null } } }
+                ],
                 lastBotMessageAt: { not: null },
                 reminderSentAt: null,
                 status: 'OPEN',
-                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM'] }
+                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
             },
             include: {
                 assignedBot: true,
                 contact: true,
-                facebookPage: true,
-                whatsappPhoneNumber: true
+                facebookPage: { include: { assignedBot: true } },
+                whatsappPhoneNumber: true,
+                emailChannel: { include: { assignedBot: true } }
             }
         });
 
         for (const conversation of conversations) {
-            const bot = conversation.assignedBot;
+            // Get bot from conversation, page, or email channel
+            let bot = conversation.assignedBot;
+            if (!bot && conversation.facebookPage?.assignedBot) {
+                bot = conversation.facebookPage.assignedBot;
+            }
+            if (!bot && conversation.emailChannel?.assignedBot) {
+                bot = conversation.emailChannel.assignedBot;
+            }
+
             if (!bot || !bot.dailyReminderEnabled) continue;
 
             const reminderHours = bot.dailyReminderHours || 24;
@@ -180,15 +203,14 @@ export const processDailyReminders = async () => {
  * Send follow-up message based on channel
  */
 const sendFollowUpMessage = async (conversation, message, type) => {
-    const { channel, contact, facebookPage, whatsappPhoneNumber } = conversation;
+    const { channel, contact, facebookPage, whatsappPhoneNumber, emailChannel } = conversation;
     let messageSent = false;
     let waMessageId = null;
 
     // WhatsApp ID can be in whatsappId or phone field
     const whatsappId = contact?.whatsappId || contact?.phone;
 
-    // Debug: Log channel info
-    console.log(`🔍 [Follow-up] Channel: ${channel}, HasWAPhone: ${!!whatsappPhoneNumber}, WaId: ${whatsappId || 'null'}`);
+    // Removed verbose channel logging to reduce spam
 
     try {
         if (channel === 'WHATSAPP' && whatsappPhoneNumber && whatsappId) {
@@ -221,10 +243,12 @@ const sendFollowUpMessage = async (conversation, message, type) => {
             const axios = (await import('axios')).default;
             const recipientId = channel === 'INSTAGRAM' ? contact.instagramId : contact.facebookId;
 
-            // Debug token
-            console.log(`🔑 [Follow-up] FB Page: ${facebookPage.id}, Token exists: ${!!facebookPage.accessToken}, Token length: ${facebookPage.accessToken?.length || 0}`);
+            // Skip silently if no token (old/deleted pages)
+            if (!facebookPage.pageAccessToken) {
+                return; // Don't log, don't send
+            }
 
-            if (recipientId && facebookPage.accessToken) {
+            if (recipientId && facebookPage.pageAccessToken) {
                 console.log(`📤 [Follow-up] Sending ${channel} ${type} to ${recipientId}...`);
 
                 await axios.post(
@@ -235,7 +259,7 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                     },
                     {
                         headers: {
-                            'Authorization': `Bearer ${facebookPage.accessToken}`,
+                            'Authorization': `Bearer ${facebookPage.pageAccessToken}`,
                             'Content-Type': 'application/json'
                         }
                     }
@@ -244,6 +268,16 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                 console.log(`✅ [Follow-up] ${channel} message sent!`);
                 messageSent = true;
             }
+        } else if (channel === 'EMAIL' && emailChannel && contact?.email) {
+            // Send via Email
+            const { sendEmailViaChannel } = await import('./emailSender.service.js');
+            console.log(`📤 [Follow-up] Sending Email ${type} to ${contact.email}...`);
+
+            const subject = type === 'reminder' ? 'Hatırlatma: Mesajınızı Bekliyoruz' : 'Yanıtınızı Bekliyoruz';
+            await sendEmailViaChannel(emailChannel.id, contact.email, subject, message);
+
+            console.log(`✅ [Follow-up] Email sent!`);
+            messageSent = true;
         }
 
         // Only save message to database if actually sent

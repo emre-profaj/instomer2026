@@ -5,7 +5,7 @@
 
 .main-content {
     flex: 1;
-    margin-left: 260px;
+    margin-left: 225px;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -29,8 +29,9 @@
     /* Ensure child fills height */
     flex-direction: column;
 }
+
 /* Force contacts-page to fill content area */
-.content > .contacts-page {
+.content>.contacts-page {
     flex: 1 !important;
     height: 100% !important;
     min-height: 100% !important;

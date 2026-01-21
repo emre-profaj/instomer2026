@@ -14,7 +14,7 @@ const prisma = new PrismaClient();
 export async function applyChannelRouting(workspaceId, conversationId, channel, isNewConversation = true) {
     try {
         console.log(`📡 [Routing] Applying routing for channel ${channel} in workspace ${workspaceId} (isNew: ${isNewConversation})`);
-        
+
         // Önce mevcut konuşmayı kontrol et
         const existingConversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
@@ -36,7 +36,7 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
                 botEnabled: existingConversation.botEnabled
             };
         }
-        
+
         // Kanal yönlendirmesini bul
         const routing = await prisma.channelRouting.findUnique({
             where: {
@@ -72,7 +72,7 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
         }
 
         // Bot gecikmesi SADECE yeni konuşmalarda veya ilk kez yönlendirilenlerde uygulanacak
-        const botDelaySeconds = routing.botDelay || 30;
+        const botDelaySeconds = routing.botDelay ?? 30;
         const botDelayedUntil = isNewConversation ? new Date(Date.now() + botDelaySeconds * 1000) : null;
 
         // Konuşmayı güncelle - ekip ata ve bot gecikmesini ayarla
@@ -276,7 +276,7 @@ export async function processPendingBotResponses() {
             }
 
             console.log(`🤖 [Bot Scheduler] Triggering bot response for conversation ${conversation.id}`);
-            
+
             // botDelayedUntil'i null yap ki tekrar tetiklenmesin
             await prisma.conversation.update({
                 where: { id: conversation.id },
@@ -286,7 +286,7 @@ export async function processPendingBotResponses() {
             // Bot cevabını tetikle
             try {
                 const { getAutoReply } = await import('../controllers/ai.controller.js');
-                
+
                 // Kanal tipini belirle
                 let channel = conversation.channel?.toLowerCase() || 'facebook';
                 if (channel === 'instagram') channel = 'instagram';
@@ -303,7 +303,7 @@ export async function processPendingBotResponses() {
 
                 if (aiResponse) {
                     console.log(`🤖 [Bot Scheduler] AI Response for ${conversation.id}: ${aiResponse.substring(0, 50)}...`);
-                    
+
                     // Kanal tipine göre mesaj gönder
                     if (conversation.channel === 'WHATSAPP' && conversation.whatsappPhoneNumber) {
                         const { sendWhatsAppMessage } = await import('../controllers/whatsapp.controller.js');
@@ -316,10 +316,10 @@ export async function processPendingBotResponses() {
                     } else if ((conversation.channel === 'FACEBOOK' || conversation.channel === 'INSTAGRAM') && conversation.facebookPage) {
                         const axios = (await import('axios')).default;
                         const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
-                        
+
                         // Alıcı ID'sini belirle
                         const recipientId = conversation.contact.facebookId || conversation.contact.instagramId;
-                        
+
                         if (recipientId) {
                             const sendResponse = await axios.post(
                                 `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
@@ -331,9 +331,9 @@ export async function processPendingBotResponses() {
                                     params: { access_token: conversation.facebookPage.pageAccessToken }
                                 }
                             );
-                            
+
                             const sentMessageId = sendResponse.data?.message_id;
-                            
+
                             // Mesajı kaydet
                             const botMessage = await prisma.message.create({
                                 data: {
@@ -346,7 +346,7 @@ export async function processPendingBotResponses() {
                                     status: 'SENT'
                                 }
                             });
-                            
+
                             // Socket event gönder
                             emitToWorkspace(conversation.workspaceId, 'new_message', {
                                 workspaceId: conversation.workspaceId,
@@ -355,7 +355,7 @@ export async function processPendingBotResponses() {
                                 contact: conversation.contact,
                                 channel: conversation.channel
                             });
-                            
+
                             console.log(`✅ [Bot Scheduler] Bot response sent for conversation ${conversation.id}`);
                         }
                     }

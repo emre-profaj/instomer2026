@@ -852,11 +852,11 @@ export const webhookHandler = async (req, res) => {
                                 phone: from,
                                 avatar: avatarUrl,
                                 tags: '["whatsapp"]',
-                                status: 'POTENTIAL', // Telefon var = Potansiyel müşteri
+                                status: 'HOT_OPPORTUNITY', // Telefon var = Potansiyel müşteri
                                 source: 'WHATSAPP'
                             }
                         });
-                        console.log(`👤 [WA Contact] Created as POTENTIAL: ${contactName} (${from})`);
+                        console.log(`👤 [WA Contact] Created as HOT_OPPORTUNITY: ${contactName} (${from})`);
                     } else {
                         // Contact exists - check if it has a placeholder name (phone number or social label)
                         const currentName = contact.name || '';
@@ -865,7 +865,7 @@ export const webhookHandler = async (req, res) => {
                             currentName.toLowerCase().includes('whatsapp') ||
                             /^\d+$/.test(currentName); // Only digits
 
-                        // Telefon numarası var ve status NEW ise POTENTIAL yap
+                        // Telefon numarası var ve status NEW ise HOT_OPPORTUNITY yap
                         const shouldUpgradeStatus = contact.status === 'NEW' && contact.phone;
 
                         if (isPlaceholder && name && name !== currentName) {
@@ -876,8 +876,8 @@ export const webhookHandler = async (req, res) => {
                                 avatar: contact.avatar || newAvatarUrl
                             };
                             if (shouldUpgradeStatus) {
-                                updateData.status = 'POTENTIAL';
-                                console.log(`📱 [WA] Upgrading status to POTENTIAL: ${contact.id}`);
+                                updateData.status = 'HOT_OPPORTUNITY';
+                                console.log(`📱 [WA] Upgrading status to HOT_OPPORTUNITY: ${contact.id}`);
                             }
                             contact = await prisma.contact.update({
                                 where: { id: contact.id },
@@ -888,7 +888,7 @@ export const webhookHandler = async (req, res) => {
                             // Contact has name but no avatar or needs status upgrade
                             const updateData = {};
                             if (!contact.avatar) updateData.avatar = getAvatarFallback(contact.name);
-                            if (shouldUpgradeStatus) updateData.status = 'POTENTIAL';
+                            if (shouldUpgradeStatus) updateData.status = 'HOT_OPPORTUNITY';
 
                             if (Object.keys(updateData).length > 0) {
                                 contact = await prisma.contact.update({

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI } from '../../services/api';
+import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI } from '../../services/api';
 import { io } from 'socket.io-client';
 import DOMPurify from 'dompurify';
 import {
@@ -10,7 +10,7 @@ import {
     Check, CheckCheck, Phone, Calendar, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2
+    UserRoundPlus, CheckCircle2, Bell
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
@@ -89,6 +89,34 @@ const CONVERSATION_STATUS_OPTIONS = [
     { value: 'RESOLVED', label: 'Çözüldü', color: '#10b981', bg: '#ecfdf5', icon: '✅' }
 ];
 
+// Customer status options
+const CUSTOMER_STATUS_OPTIONS = [
+    { value: 'NEW_APPLICATION', label: 'Yeni Başvuru', color: '#3b82f6' },
+    { value: 'HOT_OPPORTUNITY', label: 'Sıcak Fırsat', color: '#f59e0b' },
+    { value: 'COMPLAINT', label: 'Şikayet', color: '#ef4444' },
+    { value: 'INFO_PROVIDED', label: 'Bilgi Verildi', color: '#10b981' },
+    { value: 'APPOINTMENT_SCHEDULED', label: 'Randevu Planlandı', color: '#8b5cf6' },
+    { value: 'SALE_COMPLETED', label: 'Satış Gerçekleşti', color: '#059669' },
+    { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b' },
+    { value: 'SPAM', label: 'Spam', color: '#6b7280' },
+    { value: 'LOST', label: 'Kaybedildi', color: '#1f2937' }
+];
+
+// Customer category options (synced with Customers page)
+const CATEGORY_OPTIONS = [
+    { value: 'NEW', label: 'Yeni', color: '#3b82f6' },
+    { value: 'CUSTOMER', label: 'Müşteriler', color: '#10b981' },
+    { value: 'OPPORTUNITY', label: 'Fırsatlar', color: '#f59e0b' },
+    { value: 'VIP', label: 'VIP', color: '#8b5cf6' },
+    { value: 'PARTNER', label: 'İş Ortakları', color: '#3b82f6' },
+    { value: 'SPAM', label: 'Spam', color: '#ef4444' },
+    { value: 'BLACKLIST', label: 'Kara Liste', color: '#1f2937' }
+];
+
+const getCategoryInfo = (category) => {
+    return CATEGORY_OPTIONS.find(c => c.value === category) || CATEGORY_OPTIONS[0];
+};
+
 const getStatusInfo = (status) => {
     return LEAD_STATUS_OPTIONS.find(s => s.value === status) || LEAD_STATUS_OPTIONS[0];
 };
@@ -111,6 +139,7 @@ const Inbox = () => {
     const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'MINE', 'PENDING', 'ALL'
     const [showResolved, setShowResolved] = useState(false); // Hide resolved conversations by default
     const [statusFilter, setStatusFilter] = useState(null); // null = All, 'POTENTIAL' = Only potential customers
+    const [appointments, setAppointments] = useState([]); // For reminder indicators
     const filterDropdownRef = useRef(null);
 
     const filterLabels = {
@@ -273,6 +302,32 @@ const Inbox = () => {
             }
         }
     }, [inboxItems, searchParams]);
+
+
+    // Load appointments for reminder indicators
+    useEffect(() => {
+        const loadAppointments = async () => {
+            if (!currentWorkspace) return;
+            try {
+                const now = new Date();
+                const pastDate = new Date();
+                pastDate.setDate(pastDate.getDate() - 30); // Include past 30 days for overdue reminders
+                const futureDate = new Date();
+                futureDate.setMonth(futureDate.getMonth() + 3);
+
+                const response = await appointmentAPI.getAll(currentWorkspace.id, {
+                    startDate: pastDate.toISOString(), // Include past appointments
+                    endDate: futureDate.toISOString()
+                });
+                // Filter out completed appointments
+                const activeAppointments = (response.data.appointments || []).filter(apt => apt.status !== 'COMPLETED');
+                setAppointments(activeAppointments);
+            } catch (err) {
+                console.error('Load appointments error:', err);
+            }
+        };
+        loadAppointments();
+    }, [currentWorkspace]);
 
     // WebSocket for real-time updates
     useEffect(() => {
@@ -737,7 +792,8 @@ const Inbox = () => {
                             (activeFilters.includes('widget') && (conv.channel === 'WIDGET' || conv.channel === 'FORM')) ||
                             (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
                             (activeFilters.includes('leads') && conv.channel === 'LEAD') ||
-                            (activeFilters.includes('notes') && conv.channel === 'INTERNAL');
+                            (activeFilters.includes('notes') && conv.channel === 'INTERNAL') ||
+                            conv.channel === 'MANUAL'; // Manual conversations always visible
                     }
 
                     if (channelMatch) {
@@ -1050,11 +1106,10 @@ const Inbox = () => {
             }
             phone = phone.replace('+', '');
 
-            const response = await conversationAPI.create(currentWorkspace.id, {
+            const response = await conversationAPI.createManual(currentWorkspace.id, {
                 phone,
                 name: newConversationName || `Müşteri ${phone.slice(-4)}`,
-                channel: 'WHATSAPP',
-                initialMessage: newConversationMessage || null
+                description: newConversationMessage || null
             });
 
             // Close modal and reset
@@ -1065,8 +1120,8 @@ const Inbox = () => {
 
             // Refresh inbox and select new conversation
             await loadInboxItems();
-            if (response?.data?.id) {
-                setSelectedItem(response.data);
+            if (response?.data?.conversation?.id) {
+                setSelectedItem(response.data.conversation);
                 setSelectedItemType('message');
             }
         } catch (error) {
@@ -1328,6 +1383,18 @@ const Inbox = () => {
         }
     };
 
+    const hasReminder = (item) => {
+        if (!item.contact) return false;
+        const contactName = item.contact.name;
+        const contactPhone = item.contact.phone;
+
+        return appointments.some(apt => {
+            const nameMatch = apt.contactName && contactName && apt.contactName.trim() === contactName.trim();
+            const phoneMatch = apt.contactPhone && contactPhone && apt.contactPhone.trim() === contactPhone.trim();
+            return nameMatch || phoneMatch;
+        });
+    };
+
     const getItemIcon = (item) => {
         if (item.inboxType === INBOX_TYPES.EMAIL || item.channel === 'EMAIL') {
             return <Mail size={14} className="item-type-icon email" />;
@@ -1561,11 +1628,13 @@ const Inbox = () => {
                                 onChange={(e) => setStatusFilter(e.target.value || null)}
                             >
                                 <option value="">Tüm Durumlar</option>
-                                <option value="POTENTIAL">Potansiyel</option>
+                                <option value="NEW_APPLICATION">Yeni Başvuru</option>
                                 <option value="COMPLAINT">Şikayet</option>
-                                <option value="INFO">Bilgi</option>
+                                <option value="INFO_PROVIDED">Bilgi Verildi</option>
+                                <option value="HOT_OPPORTUNITY">Sıcak Fırsat</option>
+                                <option value="APPOINTMENT_SCHEDULED">Randevu Planlandı</option>
+                                <option value="SALE_COMPLETED">Satış Gerçekleşti</option>
                                 <option value="UNREACHABLE">Ulaşılamadı</option>
-                                <option value="NEGOTIATING">Görüşme</option>
                                 <option value="SPAM">Spam</option>
                                 <option value="LOST">Kaybedildi</option>
                             </select>
@@ -1713,9 +1782,33 @@ const Inbox = () => {
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
+                                            {/* Takım Badge */}
+                                            {item.teamIds && (() => {
+                                                try {
+                                                    const teamIdList = JSON.parse(item.teamIds);
+                                                    if (teamIdList.length > 0) {
+                                                        const team = teams.find(t => t.id === teamIdList[0]);
+                                                        if (team) {
+                                                            return (
+                                                                <div className="team-badge" title={`Takım: ${team.name}`}>
+                                                                    {team.name.length > 8 ? team.name.slice(0, 8) + '...' : team.name}
+                                                                </div>
+                                                            );
+                                                        }
+                                                    }
+                                                } catch (e) { }
+                                                return null;
+                                            })()}
+                                            {/* Atanan Kişi Badge */}
                                             {item.assignedTo && (
-                                                <div className="assignee-badge" title={`Atanan: ${item.assignedTo.name}`}>
-                                                    {item.assignedTo.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                                <div className="assignee-name-badge" title={`Atanan: ${item.assignedTo.name}`}>
+                                                    {item.assignedTo.name}
+                                                </div>
+                                            )}
+                                            {/* Reminder Indicator */}
+                                            {hasReminder(item) && (
+                                                <div className="reminder-indicator" title="Hatırlatıcı var">
+                                                    <Bell size={12} />
                                                 </div>
                                             )}
                                         </div>
@@ -1770,9 +1863,12 @@ const Inbox = () => {
                                                 <div className="detail-channel-info">
                                                     {getItemIcon(selectedItem)}
                                                     <span>
-                                                        {selectedItem.instagramBusinessId ? 'Instagram' :
-                                                            selectedItem.whatsappPhoneNumberId ? 'WhatsApp' :
-                                                                selectedItem.channel === 'EMAIL' ? 'E-posta' : selectedItem.channel === 'FORM' ? 'Web Form' : 'Facebook'}
+                                                        {selectedItem.channel === 'MANUAL' ? 'Yeni Görüşme' :
+                                                            selectedItem.instagramBusinessId ? 'Instagram' :
+                                                                selectedItem.whatsappPhoneNumberId ? 'WhatsApp' :
+                                                                    selectedItem.channel === 'EMAIL' ? 'E-posta' :
+                                                                        selectedItem.channel === 'FORM' ? 'Web Form' :
+                                                                            selectedItem.channel === 'WIDGET' ? 'Web Widget' : 'Facebook'}
                                                     </span>
                                                     {/* Hangi hesaptan geldiğini göster */}
                                                     {selectedItem.facebookPage && (
@@ -1800,6 +1896,25 @@ const Inbox = () => {
                                                     );
                                                 })()}
                                             </div>
+                                            {/* Status Dropdown */}
+                                            {selectedItemType === INBOX_TYPES.MESSAGE && (
+                                                <div className="status-dropdown-compact">
+                                                    <span
+                                                        className="status-dot"
+                                                        style={{ backgroundColor: getConversationStatusInfo(selectedItem.status).color }}
+                                                    />
+                                                    <select
+                                                        value={selectedItem.status || 'OPEN'}
+                                                        onChange={(e) => handleConversationStatusChange(selectedItem.id, e.target.value)}
+                                                    >
+                                                        {CONVERSATION_STATUS_OPTIONS.map(opt => (
+                                                            <option key={opt.value} value={opt.value}>
+                                                                {opt.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
                                             <button
                                                 className="profile-action-btn delete"
                                                 onClick={() => handleDeleteItem(selectedItem)}
@@ -1849,8 +1964,8 @@ const Inbox = () => {
 
                                                                 // Eğer takım seçili değilse tüm agent'ları göster, seçiliyse sadece takımdakileri
                                                                 const filteredMembers = selectedTeamId
-                                                                    ? members.filter(m => m.role !== 'OWNER' && teamMemberIds.includes(m.user.id))
-                                                                    : members.filter(m => m.role !== 'OWNER');
+                                                                    ? members.filter(m => teamMemberIds.includes(m.user.id))
+                                                                    : members;
 
                                                                 return filteredMembers.map(m => (
                                                                     <option key={m.id} value={m.user.id}>{m.user.name}</option>
@@ -1861,50 +1976,36 @@ const Inbox = () => {
                                                 </>
                                             )}
 
-                                            {/* Take Over Button - henüz kimseye atanmamış veya başka birine atanmışsa göster */}
-                                            {selectedItemType === INBOX_TYPES.MESSAGE && (
-                                                !selectedItem.assignedToId || selectedItem.assignedToId !== user.id
-                                            ) && (
-                                                    <button
-                                                        className="take-over-btn"
-                                                        onClick={handleTakeOver}
-                                                        disabled={takingOver}
-                                                        title="Bu konuşmayı üstlen - Bot devre dışı kalacak"
-                                                    >
-                                                        <UserCheck size={16} />
-                                                        <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
-                                                    </button>
-                                                )}
-
-                                            {/* Bot Toggle - for message conversations */}
-                                            {selectedItemType === INBOX_TYPES.MESSAGE && (
-                                                <div
-                                                    className={`bot-toggle-btn ${botEnabled ? 'active' : 'inactive'}`}
-                                                    onClick={handleBotToggle}
-                                                    title={botEnabled ? 'Bot Aktif - Kapatmak için tıklayın' : 'Bot Kapalı - Açmak için tıklayın'}
-                                                >
-                                                    <Bot size={16} />
-                                                    <span>{botEnabled ? 'Açık' : 'Kapalı'}</span>
-                                                    {togglingBot && <Loader size={12} className="spin" />}
-                                                </div>
-                                            )}
+                                            {/* Üstlen button moved to message input area */}
                                         </div>
 
-                                        {/* Right Group: Status Dropdown */}
+                                        {/* Right Group: Contact Status */}
                                         <div className="assignment-right-group">
-                                            {selectedItemType === INBOX_TYPES.MESSAGE && (
-                                                <div className="assignment-item status-item">
+                                            {selectedItemType === INBOX_TYPES.MESSAGE && selectedItem.contact && (
+                                                <div className="assignment-item contact-status-item">
                                                     <span
                                                         className="status-dot"
-                                                        style={{ backgroundColor: getConversationStatusInfo(selectedItem.status).color }}
+                                                        style={{ backgroundColor: CUSTOMER_STATUS_OPTIONS.find(o => o.value === (selectedItem.contact.status || 'NEW_APPLICATION'))?.color || '#3b82f6' }}
                                                     />
                                                     <select
-                                                        value={selectedItem.status || 'OPEN'}
-                                                        onChange={(e) => handleConversationStatusChange(selectedItem.id, e.target.value)}
+                                                        value={selectedItem.contact.status || 'NEW_APPLICATION'}
+                                                        onChange={async (e) => {
+                                                            const newStatus = e.target.value;
+                                                            try {
+                                                                await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStatus });
+                                                                setSelectedItem(prev => ({
+                                                                    ...prev,
+                                                                    contact: { ...prev.contact, status: newStatus }
+                                                                }));
+                                                            } catch (err) {
+                                                                console.error('Status update error:', err);
+                                                                alert('Durum güncellenirken bir hata oluştu.');
+                                                            }
+                                                        }}
                                                     >
-                                                        {CONVERSATION_STATUS_OPTIONS.map(opt => (
-                                                            <option key={opt.value} value={opt.value}>
-                                                                {opt.label}
+                                                        {CUSTOMER_STATUS_OPTIONS.map(option => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label}
                                                             </option>
                                                         ))}
                                                     </select>
@@ -2155,6 +2256,16 @@ const Inbox = () => {
                                                 }}
                                             />
                                             <div className="input-actions">
+                                                {/* Oto Pilot Toggle */}
+                                                <div
+                                                    className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
+                                                    onClick={handleBotToggle}
+                                                    title={botEnabled ? 'Oto Pilot Aktif - Kapatmak için tıklayın' : 'Oto Pilot Kapalı - Açmak için tıklayın'}
+                                                >
+                                                    <Bot size={14} />
+                                                    <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
+                                                    {togglingBot && <Loader size={12} className="spin" />}
+                                                </div>
                                                 {/* WhatsApp Template Button - show for Lead or WhatsApp channel */}
                                                 {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP') && templates.length > 0 && (
                                                     <div className="template-dropdown">
@@ -2192,6 +2303,19 @@ const Inbox = () => {
                                                             )}
                                                         </div>
                                                     </div>
+                                                )}
+                                                {/* Üstlen Button */}
+                                                {(!selectedItem?.assignedToId || selectedItem?.assignedToId !== user.id) && (
+                                                    <button
+                                                        type="button"
+                                                        className="take-over-btn-input"
+                                                        onClick={handleTakeOver}
+                                                        disabled={takingOver}
+                                                        title="Bu konuşmayı üstlen"
+                                                    >
+                                                        <UserCheck size={14} />
+                                                        <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
+                                                    </button>
                                                 )}
                                                 <button
                                                     type="button"
@@ -2279,7 +2403,7 @@ const Inbox = () => {
                                                         <User size={14} />
                                                         <select defaultValue="">
                                                             <option value="">Agent Seç</option>
-                                                            {members.filter(m => m.role !== 'OWNER').map(m => (
+                                                            {members.map(m => (
                                                                 <option key={m.id} value={m.user.id}>{m.user.name}</option>
                                                             ))}
                                                         </select>
@@ -2570,9 +2694,6 @@ const Inbox = () => {
                                     rows={3}
                                 />
                             </div>
-                            <p className="form-hint">
-                                WhatsApp üzerinden yeni bir görüşme başlatılacaktır.
-                            </p>
                             <div className="modal-footer">
                                 <button
                                     className="btn-cancel"

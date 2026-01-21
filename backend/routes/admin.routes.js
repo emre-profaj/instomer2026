@@ -22,7 +22,10 @@ import {
     checkSystemEmail,
     sendEmail,
     sendBulkEmail,
-    syncPhoneNumbersFromConversations
+    syncPhoneNumbersFromConversations,
+    getGlobalSettings,
+    updateGlobalSettings,
+    checkFacebookPagesHealth
 } from '../controllers/admin.controller.js';
 import { authenticateJWT, requireRole } from '../middleware/auth.middleware.js';
 
@@ -33,6 +36,10 @@ router.use(authenticateJWT, requireRole('SUPER_ADMIN'));
 
 // Dashboard Stats
 router.get('/stats', getSystemStats);
+
+// Global Settings (AI API Key, etc.)
+router.get('/global-settings', getGlobalSettings);
+router.put('/global-settings', updateGlobalSettings);
 
 // User Management
 router.get('/users', getAllUsers);
@@ -70,5 +77,7 @@ router.post('/email/bulk', sendBulkEmail);
 // Data Sync Utilities
 router.post('/sync/phone-numbers', syncPhoneNumbersFromConversations);
 
-export default router;
+// Facebook/Instagram Health Check
+router.get('/facebook/health-check', checkFacebookPagesHealth);
 
+export default router;

@@ -8,8 +8,8 @@
 
 /* Left Panel - Inbox List */
 .inbox-list-panel {
-    width: 340px;
-    min-width: 340px;
+    width: 320px;
+    min-width: 320px;
     background: #ffffff;
     border-right: 1px solid #e2e8f0;
     display: flex;
@@ -685,6 +685,44 @@
     border: 1px solid #fecaca;
 }
 
+.team-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 9px;
+    font-weight: 500;
+    border: 1px solid #bfdbfe;
+    white-space: nowrap;
+}
+
+.assignee-name-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #fef2f2;
+    color: #ef4444;
+    font-size: 9px;
+    font-weight: 500;
+    border: 1px solid #fecaca;
+    white-space: nowrap;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.reminder-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fef2f2;
+    color: #ef4444;
+    border: 1px solid #fecaca;
+    margin-left: auto;
+}
+
 /* Detail Panel */
 .inbox-detail-panel {
     flex: 1;
@@ -732,7 +770,7 @@
     justify-content: space-between;
     width: 100%;
     padding: 12px 16px;
-    border-bottom: 1px solid #f1f5f9;
+    overflow-x: hidden;
 }
 
 .profile-bar-left {
@@ -753,6 +791,32 @@
     align-items: center;
     gap: 8px;
     margin-left: auto;
+}
+
+.status-dropdown-compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+}
+
+.status-dropdown-compact select {
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    padding: 0;
+}
+
+.status-dropdown-compact .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
 }
 
 .profile-action-btn {
@@ -1560,6 +1624,61 @@
     gap: 8px;
 }
 
+/* Autopilot Toggle in message input */
+.autopilot-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-right: auto;
+}
+
+.autopilot-toggle.active {
+    background: #dcfce7;
+    color: #16a34a;
+    border: 1px solid #86efac;
+}
+
+.autopilot-toggle.inactive {
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fca5a5;
+}
+
+.autopilot-toggle:hover {
+    opacity: 0.8;
+}
+
+/* Üstlen Button in message input */
+.take-over-btn-input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid #93c5fd;
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    color: #2563eb;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.take-over-btn-input:hover {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+}
+
+.take-over-btn-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* AI Suggest Button */
 .ai-suggest-btn {
     display: flex;
@@ -2110,9 +2229,9 @@
 
 /* Contact Sidebar Wrapper in Inbox - narrower */
 .inbox-contact-sidebar-wrapper {
-    width: 350px;
-    min-width: 350px;
-    max-width: 350px;
+    width: 310px;
+    min-width: 310px;
+    max-width: 310px;
     flex-shrink: 0;
     height: 100%;
     overflow-y: auto;
@@ -2124,6 +2243,10 @@
     width: 100%;
     min-height: 100%;
     border-left: none;
+}
+
+.inbox-contact-sidebar-wrapper .contact-sidebar .sidebar-content {
+    padding: 8px;
 }
 
 /* WhatsApp Template Dropdown */
@@ -2763,7 +2886,7 @@
     color: white;
     border: none;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 9px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -2922,7 +3045,7 @@
     color: white;
     border: none;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 9px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -2947,5 +3070,5 @@
     padding: 0 20px;
     display: flex;
     align-items: center;
-    border-bottom: 1px solid #e2e8f0;
+    overflow-x: hidden;
 }

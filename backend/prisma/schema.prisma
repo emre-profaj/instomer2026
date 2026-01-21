@@ -7,6 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Global platform settings (singleton row)
+model GlobalSettings {
+  id              String   @id @default("singleton")
+  globalAiApiKey  String?  // Super Admin tarafından girilen global AI API key
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("global_settings")
+}
+
 model User {
   id                    String                 @id @default(uuid())
   email                 String                 @unique

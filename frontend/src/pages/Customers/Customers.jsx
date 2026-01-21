@@ -27,7 +27,8 @@ import {
     ArchiveRestore,
     StickyNote,
     Save,
-    Download
+    Download,
+    ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import './Customers.css';
@@ -35,11 +36,13 @@ import '../../components/ContactSidebar/ContactSidebar.css';
 
 // Müşteri durumu seçenekleri
 const CUSTOMER_STATUS_OPTIONS = [
-    { value: 'POTENTIAL', label: 'Potansiyel', color: '#3b82f6', bg: '#eff6ff' },
+    { value: 'NEW_APPLICATION', label: 'Yeni Başvuru', color: '#3b82f6', bg: '#eff6ff' },
     { value: 'COMPLAINT', label: 'Şikayet', color: '#ef4444', bg: '#fef2f2' },
-    { value: 'INFO', label: 'Bilgi', color: '#f59e0b', bg: '#fffbeb' },
+    { value: 'INFO_PROVIDED', label: 'Bilgi Verildi', color: '#10b981', bg: '#ecfdf5' },
+    { value: 'HOT_OPPORTUNITY', label: 'Sıcak Fırsat', color: '#f59e0b', bg: '#fffbeb' },
+    { value: 'APPOINTMENT_SCHEDULED', label: 'Randevu Planlandı', color: '#8b5cf6', bg: '#f5f3ff' },
+    { value: 'SALE_COMPLETED', label: 'Satış Gerçekleşti', color: '#059669', bg: '#d1fae5' },
     { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b', bg: '#f8fafc' },
-    { value: 'NEGOTIATING', label: 'Görüşme', color: '#8b5cf6', bg: '#f5f3ff' },
     { value: 'SPAM', label: 'Spam', color: '#6b7280', bg: '#f3f4f6' },
     { value: 'LOST', label: 'Kaybedildi', color: '#1f2937', bg: '#f9fafb' }
 ];
@@ -67,6 +70,7 @@ const getSourceInfo = (source) => {
 // Kategori seçenekleri
 const CATEGORY_OPTIONS = [
     { value: 'ALL', label: 'Tüm Kategoriler', icon: Users, color: '#6b7280' },
+    { value: 'NEW', label: 'Yeni', icon: User, color: '#3b82f6' },
     { value: 'CUSTOMER', label: 'Müşteriler', icon: User, color: '#10b981' },
     { value: 'OPPORTUNITY', label: 'Fırsatlar', icon: User, color: '#f59e0b' },
     { value: 'VIP', label: 'VIP', icon: User, color: '#8b5cf6' },
@@ -98,6 +102,8 @@ const Customers = () => {
     const [noteTitle, setNoteTitle] = useState('');
     const [contactNotes, setContactNotes] = useState('');
     const [savingNotes, setSavingNotes] = useState(false);
+    const [notesExpanded, setNotesExpanded] = useState(false);
+    const [expandedNotes, setExpandedNotes] = useState({});
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -134,6 +140,14 @@ const Customers = () => {
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
                 console.log('🔄 [Customers] Real-time contact update received, reloading...');
                 loadContacts();
+
+                // Also update selectedContact if it matches
+                if (selectedContact && data.contactId === selectedContact.id && data.updatedFields) {
+                    setSelectedContact(prev => ({
+                        ...prev,
+                        ...data.updatedFields
+                    }));
+                }
             }
         };
 
@@ -735,6 +749,7 @@ const Customers = () => {
                                 <tr>
                                     <th>İSİM</th>
                                     <th>KAYNAK</th>
+                                    <th>ATANAN</th>
                                     <th>TELEFON</th>
                                     <th>FİRMA</th>
                                     <th>DURUM</th>
@@ -742,7 +757,6 @@ const Customers = () => {
                                     <th>İLK YAZMA</th>
                                     <th>SON YAZMA</th>
                                     <th>SON NOT</th>
-                                    <th>İŞLEMLER</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -782,6 +796,9 @@ const Customers = () => {
                                                     <SourceIcon size={12} />
                                                     <span>{sourceInfo.label}</span>
                                                 </div>
+                                            </td>
+                                            <td className="contact-assigned">
+                                                {contact.conversations?.[0]?.assignedTo?.name || '---'}
                                             </td>
                                             <td className="contact-phone">
                                                 {contact.phone || '---'}
@@ -839,58 +856,6 @@ const Customers = () => {
                                                     }
                                                     return '---';
                                                 })()}
-                                            </td>
-                                            <td className="contact-actions">
-                                                <div className="action-dates" style={{ display: 'flex', gap: '8px', marginRight: '12px', fontSize: '12px', color: '#6b7280' }}>
-                                                    <span title="İlk Yazma">{formatDate(contact.firstMessageAt)}</span>
-                                                    <span title="Son Yazma">{formatDate(contact.lastMessageAt)}</span>
-                                                </div>
-                                                <button
-                                                    className="action-btn edit-btn"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleEditContact(contact);
-                                                    }}
-                                                    title="Düzenle"
-                                                >
-                                                    <Edit2 size={16} />
-                                                </button>
-                                                <button
-                                                    className={`action-btn archive-btn ${contact.isArchived ? 'archived' : ''}`}
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        try {
-                                                            if (contact.isArchived) {
-                                                                await contactAPI.unarchive(currentWorkspace.id, contact.id);
-                                                                setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, isArchived: false } : c));
-                                                            } else {
-                                                                await contactAPI.archive(currentWorkspace.id, contact.id);
-                                                                if (!showArchived) {
-                                                                    setContacts(prev => prev.filter(c => c.id !== contact.id));
-                                                                } else {
-                                                                    setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, isArchived: true } : c));
-                                                                }
-                                                            }
-                                                        } catch (err) {
-                                                            console.error('Archive error:', err);
-                                                        }
-                                                    }}
-                                                    title={contact.isArchived ? 'Arşivden Çıkar' : 'Arşivle'}
-                                                >
-                                                    {contact.isArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-                                                </button>
-                                                <button
-                                                    className="action-btn delete-btn"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (window.confirm(`"${getDisplayName(contact)}" kişisini silmek istediğinizden emin misiniz?`)) {
-                                                            handleDeleteContact(contact.id);
-                                                        }
-                                                    }}
-                                                    title="Sil"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
                                             </td>
                                         </tr>
                                     );
@@ -1202,8 +1167,8 @@ const Customers = () => {
 
                     <div className="divider"></div>
 
-                    {/* Notes Section - ContactSidebar Style */}
-                    <div className="section-container ai-summary-section">
+                    {/* Notes Section - Compact Design */}
+                    <div className="section-container ai-summary-section" style={{ margin: '10px' }}>
                         <div className="section-header">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <StickyNote size={18} style={{ color: '#f59e0b' }} />
@@ -1211,75 +1176,141 @@ const Customers = () => {
                             </div>
                         </div>
 
-                        <div className="summary-content-wrapper">
-                            {/* Topic/Note Title */}
-                            <div className="topic-card">
-                                <span className="topic-label">NOT BAŞLIĞI</span>
-                                <input
-                                    type="text"
-                                    className="topic-input"
-                                    value={noteTitle}
-                                    onChange={(e) => setNoteTitle(e.target.value)}
-                                    placeholder="Not başlığı giriniz..."
-                                />
-                            </div>
+                        {/* Saved Notes List - Always Visible */}
+                        {selectedContact.notes && (() => {
+                            try {
+                                const notes = JSON.parse(selectedContact.notes);
+                                if (Array.isArray(notes) && notes.length > 0) {
+                                    return (
+                                        <div className="saved-notes-list" style={{ marginTop: '12px' }}>
+                                            {notes.map((note, index) => {
+                                                const title = note.title || 'Not';
+                                                const content = note.content || '';
+                                                const hasMoreContent = content && content.length > 60;
+                                                const isExpanded = expandedNotes[index];
 
-                            {/* Analysis/Content Textarea */}
-                            <div className="summary-text-card">
-                                <span className="summary-label">ANALİZ</span>
-                                <textarea
-                                    className="summary-textarea"
-                                    value={contactNotes}
-                                    onChange={(e) => setContactNotes(e.target.value)}
-                                    placeholder="Analiz metni veya manuel not giriniz..."
-                                    rows={5}
-                                />
-                                <button
-                                    className="save-note-btn"
-                                    onClick={handleSaveNotes}
-                                    disabled={savingNotes || (!noteTitle.trim() && !contactNotes.trim())}
-                                >
-                                    <Save size={14} />
-                                    {savingNotes ? 'Kaydediliyor...' : 'Kaydet'}
-                                </button>
-                            </div>
-
-                            {/* Saved Notes List */}
-                            {selectedContact.notes && (() => {
-                                try {
-                                    const notes = JSON.parse(selectedContact.notes);
-                                    if (Array.isArray(notes) && notes.length > 0) {
-                                        return (
-                                            <div className="saved-notes-list">
-                                                <div className="notes-list-header">
-                                                    <span>Kaydedilen Notlar</span>
-                                                </div>
-                                                {notes.map((note, index) => (
-                                                    <div key={index} className="saved-note-item">
-                                                        <button
-                                                            className="delete-note-btn"
-                                                            onClick={() => handleDeleteNote(index)}
-                                                            disabled={savingNotes}
-                                                            title="Bu notu sil"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                        <div className="note-timestamp">{note.timestamp}</div>
-                                                        <div className="note-content">
-                                                            {note.title && <strong>{note.title}</strong>}
-                                                            {note.content && <p>{note.content}</p>}
+                                                return (
+                                                    <div
+                                                        key={index}
+                                                        className={`saved-note-item ${isExpanded ? 'expanded' : ''}`}
+                                                        onClick={() => hasMoreContent && setExpandedNotes(prev => ({ ...prev, [index]: !prev[index] }))}
+                                                        style={{ cursor: hasMoreContent ? 'pointer' : 'default' }}
+                                                    >
+                                                        <div className="note-header">
+                                                            <span className="note-timestamp">{note.timestamp}</span>
+                                                            <button
+                                                                className="delete-note-btn"
+                                                                onClick={(e) => { e.stopPropagation(); handleDeleteNote(index); }}
+                                                                disabled={savingNotes}
+                                                                title="Bu notu sil"
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </button>
                                                         </div>
+                                                        <div className="note-title">{title}</div>
+                                                        {!isExpanded ? (
+                                                            <div className="note-preview">
+                                                                {content.substring(0, 40)}{hasMoreContent ? ' - Tıklayın' : ''}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="note-content">
+                                                                <p>{content}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ))}
-                                            </div>
-                                        );
-                                    }
-                                } catch (e) {
-                                    return null;
+                                                );
+                                            })}
+                                        </div>
+                                    );
                                 }
+                            } catch (e) {
                                 return null;
-                            })()}
-                        </div>
+                            }
+                            return null;
+                        })()}
+
+                        {/* Add Note Button / Collapsible Form */}
+                        {!notesExpanded ? (
+                            <button
+                                className="add-note-btn"
+                                onClick={() => setNotesExpanded(true)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    width: '100%',
+                                    padding: '10px 12px',
+                                    marginTop: '12px',
+                                    background: '#f8fafc',
+                                    border: '1px dashed #d1d5db',
+                                    borderRadius: '8px',
+                                    color: '#6b7280',
+                                    fontSize: '0.8125rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                <Plus size={14} />
+                                Not Ekle
+                            </button>
+                        ) : (
+                            <div className="summary-content-wrapper" style={{ marginTop: '12px' }}>
+                                {/* Topic/Note Title */}
+                                <div className="topic-card">
+                                    <span className="topic-label">NOT BAŞLIĞI</span>
+                                    <input
+                                        type="text"
+                                        className="topic-input"
+                                        value={noteTitle}
+                                        onChange={(e) => setNoteTitle(e.target.value)}
+                                        placeholder="Not başlığı giriniz..."
+                                    />
+                                </div>
+
+                                {/* Note Content */}
+                                <div className="summary-text-card">
+                                    <span className="summary-label">İÇERİK</span>
+                                    <textarea
+                                        className="summary-textarea"
+                                        value={contactNotes}
+                                        onChange={(e) => setContactNotes(e.target.value)}
+                                        placeholder="Not içeriği..."
+                                        rows={3}
+                                    />
+                                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                        <button
+                                            className="save-note-btn"
+                                            onClick={() => {
+                                                handleSaveNotes();
+                                                setNotesExpanded(false);
+                                            }}
+                                            disabled={savingNotes || (!noteTitle.trim() && !contactNotes.trim())}
+                                            style={{ flex: 1 }}
+                                        >
+                                            <Save size={14} />
+                                            {savingNotes ? 'Kaydediliyor...' : 'Kaydet'}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setNotesExpanded(false);
+                                                setNoteTitle('');
+                                                setContactNotes('');
+                                            }}
+                                            style={{
+                                                padding: '8px 12px',
+                                                background: '#f3f4f6',
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                color: '#6b7280',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Previous Conversations */}
@@ -1325,6 +1356,106 @@ const Customers = () => {
                         ) : (
                             <p className="no-conversations">Henüz sohbet yok</p>
                         )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="sidebar-actions" style={{
+                        padding: '16px',
+                        borderTop: '1px solid #e5e7eb',
+                        display: 'flex',
+                        gap: '8px',
+                        marginTop: 'auto'
+                    }}>
+                        <button
+                            className="action-btn edit-btn"
+                            onClick={() => handleEditContact(selectedContact)}
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                padding: '10px',
+                                background: '#f0f9ff',
+                                border: '1px solid #bae6fd',
+                                borderRadius: '8px',
+                                color: '#0284c7',
+                                fontSize: '0.8125rem',
+                                fontWeight: 500,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <Edit2 size={16} />
+                            Düzenle
+                        </button>
+                        <button
+                            className={`action-btn archive-btn ${selectedContact.isArchived ? 'archived' : ''}`}
+                            onClick={async () => {
+                                try {
+                                    if (selectedContact.isArchived) {
+                                        await contactAPI.unarchive(currentWorkspace.id, selectedContact.id);
+                                        setSelectedContact(prev => ({ ...prev, isArchived: false }));
+                                        setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, isArchived: false } : c));
+                                    } else {
+                                        await contactAPI.archive(currentWorkspace.id, selectedContact.id);
+                                        setSelectedContact(prev => ({ ...prev, isArchived: true }));
+                                        if (!showArchived) {
+                                            setContacts(prev => prev.filter(c => c.id !== selectedContact.id));
+                                            setSelectedContact(null);
+                                        } else {
+                                            setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, isArchived: true } : c));
+                                        }
+                                    }
+                                } catch (err) {
+                                    console.error('Archive error:', err);
+                                }
+                            }}
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                padding: '10px',
+                                background: selectedContact.isArchived ? '#fef3c7' : '#f3f4f6',
+                                border: `1px solid ${selectedContact.isArchived ? '#fcd34d' : '#d1d5db'}`,
+                                borderRadius: '8px',
+                                color: selectedContact.isArchived ? '#92400e' : '#6b7280',
+                                fontSize: '0.8125rem',
+                                fontWeight: 500,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            {selectedContact.isArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+                            {selectedContact.isArchived ? 'Çıkar' : 'Arşivle'}
+                        </button>
+                        <button
+                            className="action-btn delete-btn"
+                            onClick={() => {
+                                if (window.confirm(`"${getDisplayName(selectedContact)}" kişisini silmek istediğinizden emin misiniz?`)) {
+                                    handleDeleteContact(selectedContact.id);
+                                    setSelectedContact(null);
+                                }
+                            }}
+                            style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                padding: '10px',
+                                background: '#fef2f2',
+                                border: '1px solid #fecaca',
+                                borderRadius: '8px',
+                                color: '#dc2626',
+                                fontSize: '0.8125rem',
+                                fontWeight: 500,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <Trash2 size={16} />
+                            Sil
+                        </button>
                     </div>
                 </div>
             )}

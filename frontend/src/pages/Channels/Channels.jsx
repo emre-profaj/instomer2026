@@ -70,6 +70,7 @@ const Channels = () => {
     const [selectedPages, setSelectedPages] = useState([]);
     const [connectingPages, setConnectingPages] = useState(false);
     const [pageSelectChannelType, setPageSelectChannelType] = useState('facebook');
+    const [pageSearchTerm, setPageSearchTerm] = useState('');
 
     const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(user?.role);
 
@@ -128,12 +129,25 @@ const Channels = () => {
     const handleSaveRouting = async (channel, teamId) => {
         try {
             setSavingRouting(channel);
-            await channelRoutingAPI.upsert(currentWorkspace.id, {
-                channel,
-                teamId,
-                botDelay: 0, // Bot gecikmesi artık AI Asistanlar'da ayarlanıyor
-                botEnabled: true
-            });
+
+            if (!teamId) {
+                // Eğer takım seçilmemişse, routing'i sil
+                try {
+                    await channelRoutingAPI.delete(currentWorkspace.id, channel);
+                } catch (deleteError) {
+                    // Routing zaten yoksa hata verme
+                    console.log('No existing routing to delete');
+                }
+            } else {
+                // Takım seçilmişse, upsert yap
+                await channelRoutingAPI.upsert(currentWorkspace.id, {
+                    channel,
+                    teamId,
+                    botDelay: 0,
+                    botEnabled: true
+                });
+            }
+
             const response = await channelRoutingAPI.getAll(currentWorkspace.id);
             setChannelRoutings(response.data.routings || []);
         } catch (error) {
@@ -665,7 +679,7 @@ const Channels = () => {
                 isActive: widget.isActive,
                 hasChatBot: true,
                 chatBotId: widget.assignedBotId,
-                hasRouting: false
+                hasRouting: true
             });
         });
 
@@ -752,6 +766,19 @@ const Channels = () => {
                                                     {channel.isActive ? <Eye size={14} /> : <EyeOff size={14} />}
                                                 </button>
                                             )}
+                                            {(channel.type === 'facebook' || channel.type === 'instagram') && (
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    onClick={() => handleOAuthConnect(channel.type === 'instagram' ? 'instagram' : 'facebook')}
+                                                    title="Yeniden Bağlan (Token Yenile)"
+                                                    style={{
+                                                        background: '#e8f5e9',
+                                                        color: '#2e7d32'
+                                                    }}
+                                                >
+                                                    <RefreshCcw size={14} />
+                                                </button>
+                                            )}
                                             {channel.type === 'webwidget' && (
                                                 <button
                                                     className="btn-icon-sm"
@@ -803,14 +830,6 @@ const Channels = () => {
                                     <div className="channel-card-body">
                                         <h3 className="channel-name">{channel.name}</h3>
                                         <p className="channel-subtitle">{channel.subtitle}</p>
-
-                                        {channel.type === 'webform' && (
-                                            <div className="channel-status">
-                                                <span className={`status-badge ${channel.isActive ? 'active' : 'inactive'}`}>
-                                                    {channel.isActive ? '✓ Aktif' : '○ Pasif'}
-                                                </span>
-                                            </div>
-                                        )}
                                     </div>
 
                                     {/* Chat Bot for Facebook/Instagram */}
@@ -1091,35 +1110,66 @@ const Channels = () => {
                             </button>
                         </div>
                         <div className="modal-body">
-                            <p style={{ marginBottom: '16px', color: '#64748b' }}>
+                            <p style={{ marginBottom: '12px', color: '#64748b' }}>
                                 Bağlamak istediğiniz {pageSelectChannelType === 'instagram' ? 'hesapları' : 'sayfaları'} seçin:
                             </p>
+
+                            {/* Search Input */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Sayfa ara..."
+                                    value={pageSearchTerm}
+                                    onChange={(e) => setPageSearchTerm(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: '8px',
+                                        fontSize: '14px'
+                                    }}
+                                />
+                            </div>
+
+                            {/* Page Count */}
+                            <div style={{ marginBottom: '8px', fontSize: '13px', color: '#64748b' }}>
+                                {availablePages.filter(page =>
+                                    page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) ||
+                                    page.id.includes(pageSearchTerm)
+                                ).length} / {availablePages.length} sayfa
+                            </div>
+
                             <div className="page-selection-list">
-                                {availablePages.map(page => (
-                                    <div
-                                        key={page.id}
-                                        className={`page-selection-item ${selectedPages.includes(page.id) ? 'selected' : ''}`}
-                                        onClick={() => togglePageSelection(page.id)}
-                                    >
-                                        <div className="page-selection-checkbox">
-                                            {selectedPages.includes(page.id) ? (
-                                                <CheckCircle size={24} color="#16a34a" />
-                                            ) : (
-                                                <div className="empty-checkbox" />
-                                            )}
+                                {availablePages
+                                    .filter(page =>
+                                        page.name.toLowerCase().includes(pageSearchTerm.toLowerCase()) ||
+                                        page.id.includes(pageSearchTerm)
+                                    )
+                                    .map(page => (
+                                        <div
+                                            key={page.id}
+                                            className={`page-selection-item ${selectedPages.includes(page.id) ? 'selected' : ''}`}
+                                            onClick={() => togglePageSelection(page.id)}
+                                        >
+                                            <div className="page-selection-checkbox">
+                                                {selectedPages.includes(page.id) ? (
+                                                    <CheckCircle size={24} color="#16a34a" />
+                                                ) : (
+                                                    <div className="empty-checkbox" />
+                                                )}
+                                            </div>
+                                            <div className="page-selection-info">
+                                                <div className="page-selection-name">{page.name}</div>
+                                                <div className="page-selection-id">ID: {page.id}</div>
+                                                {pageSelectChannelType === 'instagram' && page.instagram_business_account && (
+                                                    <div className="page-selection-instagram">
+                                                        <Instagram size={14} />
+                                                        @{page.instagram_business_account.username}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="page-selection-info">
-                                            <div className="page-selection-name">{page.name}</div>
-                                            <div className="page-selection-id">ID: {page.id}</div>
-                                            {pageSelectChannelType === 'instagram' && page.instagram_business_account && (
-                                                <div className="page-selection-instagram">
-                                                    <Instagram size={14} />
-                                                    @{page.instagram_business_account.username}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
                             </div>
                         </div>
                         <div className="modal-footer">

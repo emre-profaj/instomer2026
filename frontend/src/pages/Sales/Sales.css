@@ -263,7 +263,7 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 24px;
+    margin-bottom: 0;
 }
 
 .detail-header h2 {
@@ -645,7 +645,7 @@
     .sales-content {
         grid-template-columns: 1fr;
     }
-    
+
     .deal-detail-panel {
         position: fixed;
         top: 0;
@@ -657,7 +657,7 @@
         z-index: 100;
         box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
     }
-    
+
     .product-input-row {
         grid-template-columns: 1fr 1fr;
     }

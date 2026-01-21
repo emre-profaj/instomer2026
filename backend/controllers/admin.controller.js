@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { getAiUsageStats, updateAiLimit, SUBSCRIPTION_PLANS } from '../services/aiUsage.service.js';
+import axios from 'axios';
 
 const prisma = new PrismaClient();
 
@@ -965,3 +966,114 @@ export const syncPhoneNumbersFromConversations = async (req, res) => {
     }
 };
 
+// Check Facebook/Instagram pages health
+export const checkFacebookPagesHealth = async (req, res) => {
+    try {
+        // Get all Facebook pages from all workspaces
+        const pages = await prisma.facebookPage.findMany({
+            include: {
+                workspace: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        });
+
+        console.log(`🔍 [Admin] Checking health of ${pages.length} Facebook/Instagram pages...`);
+
+        const results = [];
+
+        for (const page of pages) {
+            try {
+                // Test the token by making a simple API call
+                const response = await axios.get(`https://graph.facebook.com/v21.0/me`, {
+                    params: {
+                        access_token: page.pageAccessToken
+                    },
+                    timeout: 5000
+                });
+
+                results.push({
+                    pageId: page.pageId,
+                    pageName: page.pageName,
+                    channelType: page.channelType,
+                    workspaceId: page.workspace.id,
+                    workspaceName: page.workspace.name,
+                    status: 'healthy',
+                    tokenValid: true
+                });
+            } catch (error) {
+                const errorCode = error.response?.data?.error?.code;
+                const errorMessage = error.response?.data?.error?.message || error.message;
+
+                results.push({
+                    pageId: page.pageId,
+                    pageName: page.pageName,
+                    channelType: page.channelType,
+                    workspaceId: page.workspace.id,
+                    workspaceName: page.workspace.name,
+                    status: 'unhealthy',
+                    tokenValid: false,
+                    errorCode,
+                    errorMessage
+                });
+            }
+        }
+
+        const unhealthyPages = results.filter(r => !r.tokenValid);
+        const healthyPages = results.filter(r => r.tokenValid);
+
+        console.log(`✅ [Admin] Health check complete: ${healthyPages.length} healthy, ${unhealthyPages.length} unhealthy`);
+
+        res.json({
+            total: results.length,
+            healthy: healthyPages.length,
+            unhealthy: unhealthyPages.length,
+            pages: results,
+            unhealthyPages: unhealthyPages
+        });
+    } catch (error) {
+        console.error('Check Facebook pages health error:', error);
+        res.status(500).json({ error: 'Failed to check pages health' });
+    }
+};
+
+// Get global settings
+export const getGlobalSettings = async (req, res) => {
+    try {
+        const settings = await prisma.globalSettings.findFirst();
+        res.json({ settings: settings || {} });
+    } catch (error) {
+        console.error('Get global settings error:', error);
+        res.status(500).json({ error: 'Failed to get global settings' });
+    }
+};
+
+// Update global settings
+export const updateGlobalSettings = async (req, res) => {
+    try {
+        const { globalAiApiKey } = req.body;
+
+        // Check if settings exist
+        const existing = await prisma.globalSettings.findFirst();
+
+        let settings;
+        if (existing) {
+            settings = await prisma.globalSettings.update({
+                where: { id: existing.id },
+                data: { globalAiApiKey }
+            });
+        } else {
+            settings = await prisma.globalSettings.create({
+                data: { globalAiApiKey }
+            });
+        }
+
+        res.json({ settings });
+    } catch (error) {
+        console.error('Update global settings error:', error);
+        res.status(500).json({ error: 'Failed to update global settings' });
+    }
+};

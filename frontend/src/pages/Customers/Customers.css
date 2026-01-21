@@ -664,11 +664,11 @@
 }
 
 .sidebar-avatar {
-    width: 80px;
-    height: 80px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     object-fit: cover;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .sidebar-name {
@@ -1685,7 +1685,6 @@
 /* Override sidebar styles to match ContactSidebar exactly */
 .contact-sidebar .section-container {
     padding: 16px 20px;
-    border-bottom: 1px solid #f3f4f6;
 }
 
 .contact-sidebar .section-title {
@@ -1761,7 +1760,19 @@
     padding: 12px 16px;
     background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
     border-radius: 12px;
-    margin: 8px 16px;
+}
+
+/* Accordion styles for notes section */
+.contact-sidebar .ai-summary-section.collapsed .summary-content-wrapper {
+    display: none;
+}
+
+.contact-sidebar .accordion-header {
+    user-select: none;
+}
+
+.contact-sidebar .accordion-header:hover {
+    opacity: 0.9;
 }
 
 .contact-sidebar .section-header {
@@ -1831,6 +1842,66 @@
     margin-bottom: 8px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+.contact-sidebar .summary-textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #374151;
+    background: white;
+    resize: vertical;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.contact-sidebar .summary-textarea:focus {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.contact-sidebar .summary-textarea::placeholder {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.contact-sidebar .save-note-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: #f3f4f6;
+    color: #6b7280;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.contact-sidebar .save-note-btn:hover:not(:disabled) {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.contact-sidebar .save-note-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.contact-sidebar .saved-notes-list {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
 }
 
 .contact-sidebar .divider {

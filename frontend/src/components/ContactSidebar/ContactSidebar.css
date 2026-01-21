@@ -14,6 +14,7 @@
     position: relative;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     z-index: 10;
+    overflow-x: hidden;
 }
 
 /* Removed close-btn-absolute styles */
@@ -21,6 +22,7 @@
 .sidebar-content {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px;
 }
 
@@ -730,6 +732,174 @@
     height: 40px;
 }
 
+/* Summary Text Card */
+.summary-text-card {
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #fecaca;
+}
+
+.summary-text-card .summary-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #991b1b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.summary-textarea {
+    width: 100%;
+    min-height: 100px;
+    padding: 8px;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #4b5563;
+    background: white;
+    resize: vertical;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.summary-textarea:focus {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.summary-textarea::placeholder {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.save-note-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.save-note-btn:hover:not(:disabled) {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3);
+}
+
+.save-note-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Saved Notes List */
+.saved-notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.saved-note-item {
+    background: #f9fafb;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 16px;
+    transition: background 0.2s ease;
+}
+
+.saved-note-item:hover {
+    background: #f3f4f6;
+}
+
+.saved-note-item.expanded {
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.note-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.delete-note-btn {
+    background: transparent;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: #9ca3af;
+    opacity: 0.6;
+    transition: all 0.2s;
+}
+
+.delete-note-btn:hover:not(:disabled) {
+    opacity: 1;
+    color: #dc2626;
+}
+
+.delete-note-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.note-timestamp {
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.note-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 2px;
+    line-height: 1.4;
+}
+
+.note-preview {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.expand-hint {
+    color: #6b7280;
+    font-size: 0.75rem;
+}
+
+.note-content {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: #4b5563;
+    margin-top: 8px;
+}
+
+.note-content p {
+    margin: 0 0 8px 0;
+}
+
+.note-content p:last-child {
+    margin-bottom: 0;
+}
+
+
 /* Block Contact Section */
 .block-section {
     margin-top: 8px;
@@ -877,6 +1047,7 @@
     border-radius: 12px;
     padding: 16px;
     border: 1px solid #a7f3d0;
+    overflow-x: hidden;
 }
 
 .deals-section h3 {
@@ -1238,4 +1409,277 @@
     position: absolute;
     top: 8px;
     right: 8px;
+}
+
+/* Reminder Add Button - Icon Only */
+.reminder-add-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border: none;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+}
+
+.reminder-add-btn svg {
+    color: #fff !important;
+    stroke: #fff !important;
+}
+
+.reminder-add-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+}
+
+/* Reminder List */
+.reminder-list {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reminder-list-loading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #9ca3af;
+    margin-top: 8px;
+}
+
+.reminder-item {
+    padding: 10px 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    border-left: 3px solid #ef4444;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.reminder-item-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.reminder-item-time {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #dc2626;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.reminder-item-desc {
+    font-size: 13px;
+    color: #374151;
+    line-height: 1.4;
+}
+
+.reminder-complete-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid #fecaca;
+    background: #fff;
+    color: #10b981;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reminder-complete-btn:hover {
+    background: #ecfdf5;
+    border-color: #10b981;
+    transform: scale(1.05);
+}
+
+/* Overdue reminder styling */
+.reminder-item-overdue {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    border-left-color: #dc2626;
+    animation: pulse-red 2s ease-in-out infinite;
+}
+
+.reminder-item-overdue .reminder-item-time {
+    color: #991b1b;
+    font-weight: 600;
+}
+
+.reminder-item-overdue .reminder-item-desc {
+    color: #7f1d1d;
+}
+
+@keyframes pulse-red {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1);
+    }
+}
+
+/* Reminder Modal Styles */
+.reminder-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.reminder-modal {
+    background: #fff;
+    border-radius: 12px;
+    width: 400px;
+    max-width: 90vw;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+.reminder-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+    border-bottom: 1px solid #fca5a5;
+}
+
+.reminder-modal-header h3 {
+    flex: 1;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #991b1b;
+}
+
+.reminder-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: #991b1b;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.reminder-modal-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.reminder-modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.reminder-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.reminder-form-group label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.reminder-form-group input,
+.reminder-form-group select,
+.reminder-form-group textarea {
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.reminder-form-group input:focus,
+.reminder-form-group select:focus,
+.reminder-form-group textarea:focus {
+    outline: none;
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.reminder-form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.reminder-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+}
+
+.reminder-modal-footer .btn-cancel {
+    padding: 8px 16px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reminder-modal-footer .btn-cancel:hover {
+    background: #f3f4f6;
+}
+
+.reminder-modal-footer .btn-save {
+    padding: 8px 16px;
+    border: none;
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.reminder-modal-footer .btn-save:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.reminder-modal-footer .btn-save:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
 }

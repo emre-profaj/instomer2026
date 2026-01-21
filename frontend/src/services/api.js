@@ -59,7 +59,12 @@ export const adminAPI = {
     getSubscriptionPlans: () => api.get('/admin/subscription-plans'),
     getWorkspaceAiUsage: (workspaceId) => api.get(`/admin/workspaces/${workspaceId}/ai-usage`),
     updateWorkspaceAiLimit: (workspaceId, data) => api.put(`/admin/workspaces/${workspaceId}/ai-limit`, data),
-    resetWorkspaceAiCounter: (workspaceId) => api.post(`/admin/workspaces/${workspaceId}/ai-reset`)
+    resetWorkspaceAiCounter: (workspaceId) => api.post(`/admin/workspaces/${workspaceId}/ai-reset`),
+    // Global Settings (AI API Key, etc.)
+    getGlobalSettings: () => api.get('/admin/global-settings'),
+    updateGlobalSettings: (data) => api.put('/admin/global-settings', data),
+    // Facebook/Instagram Health Check
+    checkFacebookHealth: () => api.get('/admin/facebook/health-check')
 };
 
 export default api;

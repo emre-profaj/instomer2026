@@ -624,8 +624,9 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 400px;
+    max-height: 60vh;
     overflow-y: auto;
+    padding-right: 4px;
 }
 
 .page-selection-item {
@@ -1669,6 +1670,7 @@
     background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
 }
+
 /* Fix delete button icon visibility */
 .btn-icon-sm svg,
 .btn-icon-sm.btn-danger svg {

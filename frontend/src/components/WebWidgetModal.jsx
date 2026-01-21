@@ -29,10 +29,13 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
 
     const loadBots = async () => {
         try {
+            console.log('[WebWidget] Loading bots for workspace:', workspaceId);
             const res = await aiAPI.getBots(workspaceId);
+            console.log('[WebWidget] Bots loaded:', res.data.bots);
             setAvailableBots(res.data.bots || []);
         } catch (error) {
-            console.error('Error loading bots:', error);
+            console.error('[WebWidget] Error loading bots:', error);
+            setAvailableBots([]);
         }
     };
 

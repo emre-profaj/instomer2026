@@ -1398,7 +1398,7 @@ export const getPendingTransfers = async (req, res) => {
 export const createManualConversation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone, email, description } = req.body;
+        const { name, phone, email, description, channel } = req.body;
 
         console.log(`📝 [Manual Conversation] Creating for workspace: ${workspaceId}`);
 
@@ -1484,7 +1484,8 @@ export const createManualConversation = async (req, res) => {
                     channel: 'MANUAL',
                     status: 'OPEN',
                     lastMessageAt: new Date(),
-                    teamIds: '[]'
+                    teamIds: '[]',
+                    assignedToId: req.user.id
                 },
                 include: {
                     contact: true

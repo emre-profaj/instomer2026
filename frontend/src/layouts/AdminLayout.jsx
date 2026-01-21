@@ -10,7 +10,8 @@ import {
     Menu,
     X,
     ChevronDown,
-    Building2
+    Building2,
+    Settings
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -69,6 +70,11 @@ const AdminLayout = () => {
             path: '/admin',
             icon: <Building2 size={20} />,
             label: 'Firmalar'
+        },
+        {
+            path: '/admin/settings',
+            icon: <Settings size={20} />,
+            label: 'Ayarlar'
         }
     ];
 

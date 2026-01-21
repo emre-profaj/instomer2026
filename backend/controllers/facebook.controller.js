@@ -1790,6 +1790,7 @@ export const getContactProfile = async (req, res) => {
             email: conversation.contact.email || null,
             fullName: conversation.contact.fullName || null,
             status: conversation.contact.status || 'NEW',
+            category: conversation.contact.category || 'NEW',
             assignedToId: conversation.assignedToId,
             tags: tags,
             profile_pic: conversation.contact.avatar, // Use stored avatar if available
@@ -2689,24 +2690,24 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     email: leadEmail,
                     phone: leadPhone,
                     facebookId: `lead_${leadData.id}`,
-                    status: 'POTENTIAL', // Lead = Potansiyel Müşteri
+                    status: 'HOT_OPPORTUNITY', // Lead = Potansiyel Müşteri
                     source: 'FACEBOOK_LEAD'
                 }
             });
-            console.log(`✅ [LEADGEN] Contact created as POTENTIAL: ${contact.id}`);
+            console.log(`✅ [LEADGEN] Contact created as HOT_OPPORTUNITY: ${contact.id}`);
         } else {
-            // Mevcut contact varsa, bilgileri güncelle ve status'ü POTENTIAL yap
+            // Mevcut contact varsa, bilgileri güncelle ve status'ü HOT_OPPORTUNITY yap
             contact = await prisma.contact.update({
                 where: { id: contact.id },
                 data: {
                     name: leadName || contact.name,
                     email: leadEmail || contact.email,
                     phone: leadPhone || contact.phone,
-                    status: 'POTENTIAL', // Lead = Potansiyel Müşteri
+                    status: 'HOT_OPPORTUNITY', // Lead = Potansiyel Müşteri
                     source: contact.source === 'MANUAL' ? 'FACEBOOK_LEAD' : contact.source
                 }
             });
-            console.log(`✅ [LEADGEN] Contact updated as POTENTIAL: ${contact.id}`);
+            console.log(`✅ [LEADGEN] Contact updated as HOT_OPPORTUNITY: ${contact.id}`);
         }
 
         // 3. Find or Create Conversation for Inbox (prevent duplicates)

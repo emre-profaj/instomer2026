@@ -27,11 +27,11 @@ import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
 import Invoices from './pages/Sales/Invoices';
-import Website from './pages/Website/Website';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
+import AdminSettings from './pages/Admin/AdminSettings';
 
 function App() {
   return (
@@ -39,8 +39,6 @@ function App() {
       <ToastProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public Website Landing Page */}
-            <Route path="/website" element={<Website />} />
 
             <Route path="/login" element={<Login />} />
             <Route path="/admin-secret-access" element={<AdminRegister />} />
@@ -52,6 +50,7 @@ function App() {
               </AdminRoute>
             }>
               <Route index element={<AdminDashboard />} />
+              <Route path="settings" element={<AdminSettings />} />
               <Route path="company/:companyId" element={<AdminDashboard />} />
               <Route path="company/:companyId/workspace/:workspaceId" element={<AdminDashboard />} />
               <Route path="workspace/:workspaceId" element={<AdminDashboard />} />
