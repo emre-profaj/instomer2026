@@ -1736,7 +1736,11 @@ async function processWebhookAsync(body) {
                                 } // Close autoReplyDelayEnabled else
                             }
                         } catch (aiError) {
-                            console.error('❌ AI Auto-Reply failed:', aiError);
+                            // Silently skip Instagram "user not found" errors (code 100)
+                            const errorCode = aiError.response?.data?.error?.code;
+                            if (errorCode !== 100) {
+                                console.error('❌ AI Auto-Reply failed:', aiError);
+                            }
                         }
                         // --- AI AUTO REPLY END ---
 

@@ -62,7 +62,16 @@ export const processInactivityWarnings = async () => {
             console.log(`🔍 [Follow-up] Processing ${conversations.length} conversations (bots: ${botNames.join(', ')})`);
         }
 
-        for (const conversation of conversations) {
+        // Process in batches to avoid rate limiting (max 50 per cycle)
+        const BATCH_SIZE = 50;
+        const conversationsBatch = conversations.slice(0, BATCH_SIZE);
+
+        if (conversations.length > BATCH_SIZE) {
+            console.log(`⚠️ [Follow-up] Rate limit protection: Processing ${BATCH_SIZE} of ${conversations.length} conversations`);
+        }
+
+        let processedCount = 0;
+        for (const conversation of conversationsBatch) {
             // Get bot from conversation, page, or email channel
             let bot = conversation.assignedBot;
             if (!bot && conversation.facebookPage?.assignedBot) {
@@ -96,18 +105,30 @@ export const processInactivityWarnings = async () => {
                 if (customerMessage) {
                     // Customer responded, skip (no log to reduce spam)
                 } else {
-                    // If customer hasn't responded, send warning
-                    const message = bot.inactivityWarningMessage || DEFAULT_INACTIVITY_MESSAGE;
-                    const sent = await sendFollowUpMessage(conversation, message, 'inactivity');
+                    // Use transaction to prevent race condition - mark as sent BEFORE sending
+                    const updated = await prisma.conversation.updateMany({
+                        where: {
+                            id: conversation.id,
+                            inactivityWarningSent: false // Only update if still false
+                        },
+                        data: { inactivityWarningSent: true }
+                    });
 
-                    if (sent) {
-                        await prisma.conversation.update({
-                            where: { id: conversation.id },
-                            data: { inactivityWarningSent: true }
-                        });
+                    // Only send if we successfully marked it (prevents duplicates)
+                    if (updated.count > 0) {
+                        const message = bot.inactivityWarningMessage || DEFAULT_INACTIVITY_MESSAGE;
+                        await sendFollowUpMessage(conversation, message, 'inactivity');
+                        processedCount++;
+
+                        // Add delay between API calls to avoid rate limiting (200ms)
+                        await new Promise(resolve => setTimeout(resolve, 200));
                     }
                 }
             }
+        }
+
+        if (processedCount > 0) {
+            console.log(`✅ [Follow-up] Sent ${processedCount} inactivity warnings`);
         }
     } catch (error) {
         console.error('❌ [Follow-up] Inactivity warning error:', error.message);
@@ -153,7 +174,16 @@ export const processDailyReminders = async () => {
             }
         });
 
-        for (const conversation of conversations) {
+        // Process in batches to avoid rate limiting (max 30 per cycle for daily reminders)
+        const BATCH_SIZE = 30;
+        const conversationsBatch = conversations.slice(0, BATCH_SIZE);
+
+        if (conversations.length > BATCH_SIZE) {
+            console.log(`⚠️ [Follow-up] Rate limit protection: Processing ${BATCH_SIZE} of ${conversations.length} daily reminders`);
+        }
+
+        let processedCount = 0;
+        for (const conversation of conversationsBatch) {
             // Get bot from conversation, page, or email channel
             let bot = conversation.assignedBot;
             if (!bot && conversation.facebookPage?.assignedBot) {
@@ -181,18 +211,31 @@ export const processDailyReminders = async () => {
 
                 // If customer hasn't responded, send reminder (only once)
                 if (!customerMessage) {
-                    const message = bot.dailyReminderMessage || DEFAULT_REMINDER_MESSAGE;
-                    const sent = await sendFollowUpMessage(conversation, message, 'reminder');
+                    // Use transaction to prevent race condition - mark as sent BEFORE sending
+                    const updated = await prisma.conversation.updateMany({
+                        where: {
+                            id: conversation.id,
+                            reminderSentAt: null // Only update if still null
+                        },
+                        data: { reminderSentAt: now }
+                    });
 
-                    if (sent) {
-                        await prisma.conversation.update({
-                            where: { id: conversation.id },
-                            data: { reminderSentAt: now }
-                        });
+                    // Only send if we successfully marked it (prevents duplicates)
+                    if (updated.count > 0) {
+                        const message = bot.dailyReminderMessage || DEFAULT_REMINDER_MESSAGE;
+                        await sendFollowUpMessage(conversation, message, 'reminder');
                         console.log(`📅 [Follow-up] Daily reminder sent to conversation ${conversation.id}`);
+                        processedCount++;
+
+                        // Add delay between API calls to avoid rate limiting (200ms)
+                        await new Promise(resolve => setTimeout(resolve, 200));
                     }
                 }
             }
+        }
+
+        if (processedCount > 0) {
+            console.log(`✅ [Follow-up] Sent ${processedCount} daily reminders`);
         }
     } catch (error) {
         console.error('❌ [Follow-up] Daily reminder error:', error.message);
@@ -303,6 +346,21 @@ const sendFollowUpMessage = async (conversation, message, type) => {
 
         return messageSent;
     } catch (error) {
+        // Silently skip Facebook 24-hour policy errors (code 10, subcode 2018278)
+        // and unreachable user errors (code 551, subcode 1545041)
+        const errorCode = error.response?.data?.error?.code;
+        const errorSubcode = error.response?.data?.error?.error_subcode;
+
+        if (errorCode === 10 && errorSubcode === 2018278) {
+            // 24-hour messaging window expired - this is expected, don't log
+            return false;
+        }
+        if (errorCode === 551 && errorSubcode === 1545041) {
+            // User unreachable - this is expected, don't log
+            return false;
+        }
+
+        // Log other unexpected errors
         console.error(`❌ [Follow-up] Failed to send ${type} message:`, error.response?.data || error.message);
         return false;
     }

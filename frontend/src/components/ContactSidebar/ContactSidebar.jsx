@@ -591,7 +591,7 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
 
 
                         {/* Reminder Section */}
-                        <div className="section-container reminder-section" style={{ margin: '10px' }}>
+                        <div className="section-container reminder-section">
                             <div className="section-header">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <Bell size={18} style={{ color: '#ef4444' }} />
@@ -685,7 +685,7 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
 
 
                         {/* Notes Section - Compact Design */}
-                        <div className="section-container ai-summary-section" style={{ margin: '10px' }}>
+                        <div className="section-container notes-section">
                             <div className="section-header">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <StickyNote size={18} style={{ color: '#f59e0b' }} />

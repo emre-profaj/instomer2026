@@ -260,7 +260,7 @@ model Contact {
   tags              String           @default("[]")
   status            String           @default("NEW")
   source            String           @default("MANUAL")
-  category          String           @default("CUSTOMER") // CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
+  category          String           @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
   lastContactedAt   DateTime?
   isBlocked         Boolean          @default(false)
   blockedAt         DateTime?

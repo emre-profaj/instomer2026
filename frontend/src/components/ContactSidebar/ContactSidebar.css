@@ -156,7 +156,24 @@
 
 /* Meta Data Section */
 .section-container {
-    margin-bottom: 8px;
+    margin-bottom: 16px;
+    padding: 0;
+}
+
+/* Ensure all section types have consistent left alignment */
+.section-container.reminder-section,
+.section-container.notes-section,
+.section-container.deals-section,
+.section-container.block-section {
+    padding: 12px 0;
+    margin: 0 0 16px 0;
+    border-radius: 12px;
+}
+
+/* Reminder Section specific styling */
+.section-container.reminder-section {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border: 1px solid #fca5a5;
 }
 
 .section-header {
@@ -1045,7 +1062,7 @@
 .deals-section {
     background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
     border-radius: 12px;
-    padding: 16px;
+    padding: 12px 0;
     border: 1px solid #a7f3d0;
     overflow-x: hidden;
 }
@@ -1133,7 +1150,10 @@
 
 /* Notes Section */
 .notes-section {
-    padding: 16px;
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    border-radius: 12px;
+    padding: 12px 0;
+    border: 1px solid #fcd34d;
 }
 
 .notes-input-container {

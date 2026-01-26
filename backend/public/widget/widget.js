@@ -29,7 +29,6 @@
     }
 
     // 3. Load Settings & Initialize
-    // If widgetId is provided, use the widgetId endpoint; otherwise use workspaceId endpoint
     const settingsUrl = widgetId
         ? `${apiBaseUrl}/widget/${widgetId}`
         : `${apiBaseUrl}/${workspaceId}/widget`;
@@ -40,7 +39,6 @@
             return res.json();
         })
         .then(data => {
-            // If using widgetId endpoint, get workspaceId from response
             if (widgetId && data.workspaceId) {
                 workspaceId = data.workspaceId;
             }
@@ -57,12 +55,32 @@
         });
 
     function initWidget(settings) {
-        // Inject CSS
-        const style = document.createElement('style');
+        // Create container and attach Shadow DOM
+        const container = document.createElement('div');
+        container.id = 'ag-widget-root';
+        document.body.appendChild(container);
+
+        // Attach Shadow DOM for complete CSS isolation
+        const shadow = container.attachShadow({ mode: 'open' });
+
         const isLeft = settings.position === 'LEFT';
         const widgetWidth = settings.width || 350;
 
-        style.innerHTML = `
+        // Create style element inside Shadow DOM
+        const style = document.createElement('style');
+        style.textContent = `
+            /* Reset all styles to prevent inheritance */
+            :host {
+                all: initial;
+                display: block;
+            }
+            
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
             #ag-widget-container {
                 position: fixed;
                 bottom: 20px;
@@ -82,6 +100,7 @@
                 justify-content: center;
                 transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
                 ${isLeft ? 'margin-right: auto;' : 'margin-left: auto;'}
+                border: none;
             }
             #ag-fab:hover { transform: scale(1.1); }
             #ag-fab svg { width: 28px; height: 28px; fill: white; }
@@ -99,116 +118,164 @@
                 display: none;
                 flex-direction: column;
                 overflow: hidden;
-                transform-origin: ${isLeft ? 'bottom left' : 'bottom right'};
-                transition: transform 0.3s ease, opacity 0.3s ease;
-                opacity: 0;
-                transform: scale(0.9) translateY(20px);
             }
-            #ag-chat-window.open {
-                display: flex;
-                opacity: 1;
-                transform: scale(1) translateY(0);
-            }
+            #ag-chat-window.open { display: flex; }
             
             .ag-header {
                 background-color: ${settings.primaryColor};
                 padding: 20px;
                 color: white;
+                position: relative;
             }
-            .ag-header-title { font-weight: 700; font-size: 16px; }
-            .ag-header-subtitle { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+            .ag-header-title {
+                font-size: 18px;
+                font-weight: 600;
+                margin-bottom: 4px;
+            }
+            .ag-header-subtitle {
+                font-size: 13px;
+                opacity: 0.9;
+            }
+            
+            .ag-minimize-btn {
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                width: 28px;
+                height: 28px;
+                border: none;
+                border-radius: 50%;
+                background: rgba(255,255,255,0.2);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s;
+                padding: 0;
+            }
+            .ag-minimize-btn:hover { background: rgba(255,255,255,0.3); }
+            .ag-minimize-btn svg { width: 16px; height: 16px; fill: white; }
             
             .ag-messages {
                 flex: 1;
-                padding: 16px;
                 overflow-y: auto;
-                background: #f8fafc;
-                display: flex;
-                flex-direction: column;
-                gap: 12px;
+                padding: 16px;
+                background: #f9fafb;
             }
             .ag-message {
-                max-width: 80%;
+                margin-bottom: 12px;
                 padding: 10px 14px;
-                font-size: 14px;
+                border-radius: 12px;
+                max-width: 80%;
+                word-wrap: break-word;
                 line-height: 1.4;
+                font-size: 14px;
             }
             .ag-message.bot {
                 background: white;
-                color: #1e293b;
+                color: #1f2937;
                 align-self: flex-start;
-                border-radius: 0 12px 12px 12px;
-                border: 1px solid #e2e8f0;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05);
             }
             .ag-message.user {
-                background-color: ${settings.primaryColor};
+                background: ${settings.primaryColor};
                 color: white;
+                margin-left: auto;
                 align-self: flex-end;
-                border-radius: 12px 12px 0 12px;
+            }
+            
+            .ag-typing {
+                display: none;
+                padding: 0 16px 8px;
+                font-size: 13px;
+                color: #6b7280;
+                font-style: italic;
             }
             
             .ag-input-area {
-                padding: 12px;
-                border-top: 1px solid #e2e8f0;
                 display: flex;
+                padding: 12px;
+                border-top: 1px solid #e5e7eb;
+                background: white;
                 gap: 8px;
             }
             .ag-input {
                 flex: 1;
-                border: 1px solid #e2e8f0;
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
                 border-radius: 8px;
-                padding: 8px 12px;
-                outline: none;
                 font-size: 14px;
+                outline: none;
+                font-family: inherit;
             }
-            .ag-input:focus { border-color: ${settings.primaryColor}; }
+            .ag-input:focus {
+                border-color: ${settings.primaryColor};
+                box-shadow: 0 0 0 3px ${settings.primaryColor}20;
+            }
             .ag-send-btn {
-                background: ${settings.primaryColor};
-                border: none;
+                padding: 10px 20px;
+                background-color: ${settings.primaryColor};
                 color: white;
-                padding: 8px 12px;
+                border: none;
                 border-radius: 8px;
                 cursor: pointer;
-                font-weight: 600;
+                font-weight: 500;
+                font-size: 14px;
+                transition: opacity 0.2s;
+                font-family: inherit;
             }
-            .ag-typing { font-size: 11px; color: #64748b; margin-top: 4px; display: none; }
+            .ag-send-btn:hover { opacity: 0.9; }
+            .ag-send-btn:active { transform: scale(0.98); }
         `;
-        document.head.appendChild(style);
 
-        // Inject HTML
-        const container = document.createElement('div');
-        container.id = 'ag-widget-container';
-        container.innerHTML = `
-            <div id="ag-chat-window">
-                <div class="ag-header">
-                    <div class="ag-header-title">${settings.title || 'Canlı Destek'}</div>
-                    <div class="ag-header-subtitle">${settings.subtitle || ''}</div>
+        // Create widget HTML
+        const widgetHTML = `
+            <div id="ag-widget-container">
+                <div id="ag-chat-window">
+                    <div class="ag-header">
+                        <div class="ag-header-title">${settings.title || 'Canlı Destek'}</div>
+                        <div class="ag-header-subtitle">${settings.subtitle || ''}</div>
+                        <button class="ag-minimize-btn" id="ag-minimize" title="Küçült">
+                            <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+                        </button>
+                    </div>
+                    <div class="ag-messages" id="ag-messages">
+                        <div class="ag-message bot">${settings.greetingMessage || 'Merhaba!'}</div>
+                    </div>
+                    <div id="ag-typing" class="ag-typing">Asistan yazıyor...</div>
+                    <div class="ag-input-area">
+                        <input type="text" class="ag-input" id="ag-input" placeholder="Mesajınızı yazın...">
+                        <button class="ag-send-btn" id="ag-send">Gönder</button>
+                    </div>
                 </div>
-                <div class="ag-messages" id="ag-messages">
-                    <div class="ag-message bot">${settings.greetingMessage || 'Merhaba!'}</div>
-                </div>
-                <div id="ag-typing" class="ag-typing" style="padding: 0 16px 8px;">Asistan yazıyor...</div>
-                <div class="ag-input-area">
-                    <input type="text" class="ag-input" id="ag-input" placeholder="Mesajınızı yazın...">
-                    <button class="ag-send-btn" id="ag-send">Gönder</button>
+                <div id="ag-fab">
+                    <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
                 </div>
             </div>
-            <div id="ag-fab">
-                <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
-            </div>
         `;
-        document.body.appendChild(container);
 
-        // Logic
-        const fab = document.getElementById('ag-fab');
-        const chatWindow = document.getElementById('ag-chat-window');
-        const input = document.getElementById('ag-input');
-        const sendBtn = document.getElementById('ag-send');
-        const messagesContainer = document.getElementById('ag-messages');
-        const typingIndicator = document.getElementById('ag-typing');
+        // Append style and HTML to Shadow DOM
+        shadow.appendChild(style);
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = widgetHTML;
+        shadow.appendChild(wrapper);
+
+        // Get elements from Shadow DOM
+        const fab = shadow.getElementById('ag-fab');
+        const chatWindow = shadow.getElementById('ag-chat-window');
+        const input = shadow.getElementById('ag-input');
+        const sendBtn = shadow.getElementById('ag-send');
+        const messagesContainer = shadow.getElementById('ag-messages');
+        const typingIndicator = shadow.getElementById('ag-typing');
+        const minimizeBtn = shadow.getElementById('ag-minimize');
 
         fab.onclick = () => {
             chatWindow.classList.toggle('open');
+        };
+
+        minimizeBtn.onclick = () => {
+            chatWindow.classList.remove('open');
         };
 
         function addMessage(text, type) {
@@ -226,7 +293,6 @@
             input.value = '';
             addMessage(text, 'user');
 
-            // Show typing
             typingIndicator.style.display = 'block';
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
 

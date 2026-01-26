@@ -811,7 +811,8 @@ const Inbox = () => {
                 });
             }
 
-            if (shouldLoadFbComments) {
+            // Skip comments when status filter is active (comments don't have contact status)
+            if (shouldLoadFbComments && !statusFilter) {
                 // For Facebook comments, we load posts which contain comments
                 if (pages.length > 0) {
                     const postsPromises = pages.map(page =>
@@ -832,7 +833,7 @@ const Inbox = () => {
                 }
             }
 
-            if (shouldLoadIgComments) {
+            if (shouldLoadIgComments && !statusFilter) {
                 // For Instagram comments, we load Instagram posts which contain comments
                 if (pages.length > 0) {
                     const instagramPages = pages.filter(p => p.instagramBusinessId);
@@ -1896,8 +1897,8 @@ const Inbox = () => {
                                                     );
                                                 })()}
                                             </div>
-                                            {/* Status Dropdown */}
-                                            {selectedItemType === INBOX_TYPES.MESSAGE && (
+                                            {/* Status Dropdown - for both MESSAGE and EMAIL */}
+                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
                                                 <div className="status-dropdown-compact">
                                                     <span
                                                         className="status-dot"
@@ -1981,7 +1982,7 @@ const Inbox = () => {
 
                                         {/* Right Group: Contact Status */}
                                         <div className="assignment-right-group">
-                                            {selectedItemType === INBOX_TYPES.MESSAGE && selectedItem.contact && (
+                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact && (
                                                 <div className="assignment-item contact-status-item">
                                                     <span
                                                         className="status-dot"
@@ -2141,6 +2142,16 @@ const Inbox = () => {
                                                 className="email-reply-textarea"
                                             />
                                             <div className="email-reply-actions">
+                                                {/* Oto Pilot Toggle */}
+                                                <div
+                                                    className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
+                                                    onClick={handleBotToggle}
+                                                    title={botEnabled ? 'Oto Pilot Aktif - Kapatmak için tıklayın' : 'Oto Pilot Kapalı - Açmak için tıklayın'}
+                                                >
+                                                    <Bot size={14} />
+                                                    <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
+                                                    {togglingBot && <Loader size={12} className="spin" />}
+                                                </div>
                                                 {/* Template Button for emails */}
                                                 {templates.length > 0 && (
                                                     <div className="template-dropdown">
@@ -2178,6 +2189,19 @@ const Inbox = () => {
                                                             )}
                                                         </div>
                                                     </div>
+                                                )}
+                                                {/* Üstlen Button */}
+                                                {(!selectedItem?.assignedToId || selectedItem?.assignedToId !== user.id) && (
+                                                    <button
+                                                        type="button"
+                                                        className="take-over-btn-input"
+                                                        onClick={handleTakeOver}
+                                                        disabled={takingOver}
+                                                        title="Bu e-postayı üstlen"
+                                                    >
+                                                        <UserCheck size={14} />
+                                                        <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
+                                                    </button>
                                                 )}
                                                 <button
                                                     type="button"
@@ -2345,45 +2369,64 @@ const Inbox = () => {
                         {selectedItemType === INBOX_TYPES.COMMENT && (
                             <>
                                 <div className="detail-header">
-                                    {/* Profile Bar - same as MESSAGE view */}
+                                    {/* Profile Bar - SAME as MESSAGE view */}
                                     <div className="profile-bar">
                                         <div className="profile-bar-left">
                                             <div className="detail-avatar">
-                                                {selectedPost?.full_picture ? (
-                                                    <img src={selectedPost.full_picture} alt="post" className="post-thumb" />
+                                                {comments[0]?.from?.profile_picture_url ? (
+                                                    <img src={comments[0].from.profile_picture_url} alt={comments[0].from?.name} />
                                                 ) : (
                                                     <User size={24} />
                                                 )}
                                             </div>
                                             <div className="profile-info">
-                                                <h3>{selectedPost?.message?.substring(0, 50) || 'Gönderi'}</h3>
+                                                <h3>{comments[0]?.from?.name || comments[0]?.from?.username || 'Bilinmeyen'}</h3>
                                                 <div className="detail-channel-info">
                                                     {selectedPost?.platform === 'INSTAGRAM' ? (
                                                         <Instagram size={12} style={{ color: '#E4405F' }} />
                                                     ) : (
                                                         <Facebook size={12} style={{ color: '#1877F2' }} />
                                                     )}
-                                                    <span>{comments.length} yorum</span>
+                                                    <span>
+                                                        {selectedPost?.platform === 'INSTAGRAM' ? 'Instagram' : 'Facebook'}
+                                                    </span>
+                                                    <span className="page-source">
+                                                        • {selectedPost?.pageName}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div className="profile-bar-actions">
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginRight: '16px', fontSize: '11px', color: '#6b7280', alignItems: 'flex-end' }}>
+                                                <span>İlk Yazma: {comments[0]?.created_time ? new Date(comments[0].created_time).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}</span>
+                                                <span>Son Yazma: {comments[comments.length - 1]?.created_time ? new Date(comments[comments.length - 1].created_time).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}</span>
+                                            </div>
+                                            {/* Status Dropdown */}
+                                            <div className="status-dropdown-compact">
+                                                <span className="status-dot" style={{ backgroundColor: '#10b981' }} />
+                                                <select defaultValue="OPEN">
+                                                    <option value="OPEN">Açık</option>
+                                                    <option value="PENDING">Beklemede</option>
+                                                    <option value="RESOLVED">Çözüldü</option>
+                                                </select>
+                                            </div>
                                             {selectedPost?.permalink_url && (
                                                 <a
                                                     href={selectedPost.permalink_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="view-post-link-btn"
+                                                    className="profile-action-btn"
+                                                    title="Gönderiye Git"
+                                                    style={{ marginLeft: '8px' }}
                                                 >
                                                     <ExternalLink size={16} />
-                                                    <span>Gönderiye Git</span>
                                                 </a>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Assignment Bar - same as MESSAGE view */}
+                                    {/* Assignment Bar - SAME as MESSAGE view */}
                                     <div className="assignment-bar">
                                         <div className="assignment-left-group">
                                             {isOwner && (
@@ -2410,33 +2453,18 @@ const Inbox = () => {
                                                     </div>
                                                 </>
                                             )}
-
-                                            {/* Üstlen Button */}
-                                            <button
-                                                className="take-over-btn"
-                                                onClick={handleTakeOver}
-                                                disabled={takingOver}
-                                                title="Bu gönderiye atanmak için tıklayın"
-                                            >
-                                                <UserCheck size={16} />
-                                                <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
-                                            </button>
-
-                                            {/* Açık/Kapalı Toggle */}
-                                            <button className="open-status-btn active">
-                                                <Calendar size={14} />
-                                                <span>Açık</span>
-                                            </button>
                                         </div>
 
-                                        {/* Status Badge - right side */}
+                                        {/* Right Group: Contact Status */}
                                         <div className="assignment-right-group">
-                                            <div className="assignment-item status-item">
-                                                <span className="status-dot" style={{ backgroundColor: '#10b981' }} />
-                                                <select defaultValue="OPEN">
-                                                    <option value="OPEN">Açık</option>
-                                                    <option value="PENDING">Beklemede</option>
-                                                    <option value="RESOLVED">Çözüldü</option>
+                                            <div className="assignment-item contact-status-item">
+                                                <span className="status-dot" style={{ backgroundColor: '#3b82f6' }} />
+                                                <select defaultValue="NEW_APPLICATION">
+                                                    {CUSTOMER_STATUS_OPTIONS.map(opt => (
+                                                        <option key={opt.value} value={opt.value}>
+                                                            {opt.label}
+                                                        </option>
+                                                    ))}
                                                 </select>
                                             </div>
                                         </div>
@@ -2485,6 +2513,27 @@ const Inbox = () => {
                                             }}
                                         />
                                         <div className="input-actions">
+                                            {/* Oto Pilot Toggle */}
+                                            <div
+                                                className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
+                                                onClick={handleBotToggle}
+                                                title={botEnabled ? 'Oto Pilot Aktif - Kapatmak için tıklayın' : 'Oto Pilot Kapalı - Açmak için tıklayın'}
+                                            >
+                                                <Bot size={14} />
+                                                <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
+                                                {togglingBot && <Loader size={12} className="spin" />}
+                                            </div>
+                                            {/* Üstlen Button */}
+                                            <button
+                                                type="button"
+                                                className="take-over-btn-input"
+                                                onClick={handleTakeOver}
+                                                disabled={takingOver}
+                                                title="Bu yorumu üstlen"
+                                            >
+                                                <UserCheck size={14} />
+                                                <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
+                                            </button>
                                             <button
                                                 type="button"
                                                 className="ai-suggest-btn"
