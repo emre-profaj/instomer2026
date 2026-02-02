@@ -383,6 +383,62 @@ export const removeMember = async (req, res) => {
     }
 };
 
+// Change member password (Owner/Admin only)
+export const changeMemberPassword = async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
+
+        const { workspaceId, userId } = req.params;
+        const { newPassword } = req.body;
+
+        // Check if requester has permission (must be OWNER or SUPER_ADMIN)
+        if (!['OWNER', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
+            return res.status(403).json({ error: 'Yetkiniz yok' });
+        }
+
+        // Verify the target user is a member of this workspace
+        const member = await prisma.workspaceMember.findUnique({
+            where: {
+                userId_workspaceId: {
+                    userId,
+                    workspaceId
+                }
+            },
+            include: {
+                user: {
+                    select: { id: true, name: true, email: true }
+                }
+            }
+        });
+
+        if (!member) {
+            return res.status(404).json({ error: 'Kullanıcı bu workspace\'te bulunamadı' });
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Update the user's password
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword }
+        });
+
+        console.log(`🔐 Password changed for user ${member.user.email} by ${req.user.email}`);
+
+        res.json({
+            success: true,
+            message: `${member.user.name} kullanıcısının şifresi başarıyla değiştirildi`
+        });
+    } catch (error) {
+        console.error('Change member password error:', error);
+        res.status(500).json({ error: 'Şifre değiştirilemedi' });
+    }
+};
+
 export const deleteWorkspace = async (req, res) => {
     try {
         const { workspaceId } = req.params;
@@ -439,14 +495,14 @@ export const getCompanyInfo = async (req, res) => {
 export const updateCompanyInfo = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { 
-            companyName, 
-            companyDescription, 
-            companyAddress, 
-            companyPhone, 
-            companyEmail, 
-            companyWebsite, 
-            companyWorkingHours 
+        const {
+            companyName,
+            companyDescription,
+            companyAddress,
+            companyPhone,
+            companyEmail,
+            companyWebsite,
+            companyWorkingHours
         } = req.body;
 
         const workspace = await prisma.workspace.update({
@@ -572,16 +628,16 @@ export const deleteCompanyLogo = async (req, res) => {
 
 // Eski fonksiyonlar geriye uyumluluk için boş response döner
 export const getSubWorkspaces = async (req, res) => {
-    res.json({ 
-        subWorkspaces: [], 
+    res.json({
+        subWorkspaces: [],
         parentWorkspace: null,
-        message: 'Alt workspace sistemi kaldırıldı. Firma sistemi kullanılmaktadır.' 
+        message: 'Alt workspace sistemi kaldırıldı. Firma sistemi kullanılmaktadır.'
     });
 };
 
 export const createSubWorkspace = async (req, res) => {
-    res.status(410).json({ 
-        error: 'Alt workspace sistemi kaldırıldı. Firma altında workspace oluşturmak için /api/companies/:companyId/workspaces endpoint\'ini kullanın.' 
+    res.status(410).json({
+        error: 'Alt workspace sistemi kaldırıldı. Firma altında workspace oluşturmak için /api/companies/:companyId/workspaces endpoint\'ini kullanın.'
     });
 };
 
@@ -599,8 +655,8 @@ export const checkIsParentWorkspace = async (req, res) => {
 
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
-            select: { 
-                id: true, 
+            select: {
+                id: true,
                 name: true,
                 companyId: true,
                 company: {

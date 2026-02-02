@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { getAutoReply } from './ai.controller.js';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting } from '../services/conversationRouting.service.js';
+import { executeWebFormAutomation } from './automation.controller.js';
 
 const prisma = new PrismaClient();
 
@@ -222,6 +223,14 @@ export const handleWidgetChat = async (req, res) => {
                 }
             } catch (routingError) {
                 console.error('❌ [Widget] Routing error:', routingError);
+            }
+
+            // Trigger NEW_WEBFORM automations (e.g., send WhatsApp template)
+            try {
+                executeWebFormAutomation(workspaceId, contact, { message });
+                console.log(`🤖 [Widget] Web form automation triggered for contact ${contact.id}`);
+            } catch (automationError) {
+                console.error('❌ [Widget] Automation trigger error:', automationError);
             }
         }
 

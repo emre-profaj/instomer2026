@@ -1,20 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState('company');
-    
+
     // Knowledge Base States
     const [knowledgeEntries, setKnowledgeEntries] = useState([]);
     const [kbLoading, setKbLoading] = useState(false);
     const [newKbContent, setNewKbContent] = useState('');
     const [uploading, setUploading] = useState(false);
     const [expandedEntries, setExpandedEntries] = useState({}); // Track which entries are expanded
-    
+
+    // Edit Modal States
+    const [editingEntry, setEditingEntry] = useState(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editContent, setEditContent] = useState('');
+    const [saving, setSaving] = useState(false);
+
     // Company Info States
     const [companyInfo, setCompanyInfo] = useState({
         name: '',
@@ -114,7 +120,7 @@ const KnowledgeBase = () => {
 
     const handleDeleteLogo = async () => {
         if (!confirm('Logoyu silmek istediğinize emin misiniz?')) return;
-        
+
         try {
             await workspaceAPI.deleteCompanyLogo(currentWorkspace.id);
             setCompanyInfo(prev => ({ ...prev, logoPreview: '' }));
@@ -179,6 +185,43 @@ const KnowledgeBase = () => {
         }
     };
 
+    const handleEditEntry = (entry) => {
+        setEditingEntry(entry);
+        setEditTitle(entry.title);
+        setEditContent(entry.content);
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editTitle.trim() || !editContent.trim()) {
+            alert('Başlık ve içerik gereklidir');
+            return;
+        }
+
+        try {
+            setSaving(true);
+            await knowledgeBaseAPI.update(currentWorkspace.id, editingEntry.id, {
+                title: editTitle,
+                content: editContent
+            });
+            setEditingEntry(null);
+            setEditTitle('');
+            setEditContent('');
+            loadKnowledgeBase();
+            alert('Bilgi güncellendi');
+        } catch (error) {
+            console.error('Error updating entry:', error);
+            alert('Bilgi güncellenirken hata oluştu');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setEditingEntry(null);
+        setEditTitle('');
+        setEditContent('');
+    };
+
     const handleDeleteEntry = async (entryId) => {
         if (!confirm('Bu bilgiyi silmek istediğinize emin misiniz?')) return;
 
@@ -210,28 +253,28 @@ const KnowledgeBase = () => {
 
             {/* Tabs */}
             <div className="kb-tabs">
-                <button 
+                <button
                     className={`kb-tab ${activeTab === 'company' ? 'active' : ''}`}
                     onClick={() => setActiveTab('company')}
                 >
                     <Building2 size={16} />
                     Şirket Bilgileri
                 </button>
-                <button 
+                <button
                     className={`kb-tab ${activeTab === 'text' ? 'active' : ''}`}
                     onClick={() => setActiveTab('text')}
                 >
                     <FileText size={16} />
                     Metin Ekle
                 </button>
-                <button 
+                <button
                     className={`kb-tab ${activeTab === 'files' ? 'active' : ''}`}
                     onClick={() => setActiveTab('files')}
                 >
                     <Upload size={16} />
                     Dosya Yükle
                 </button>
-                <button 
+                <button
                     className={`kb-tab ${activeTab === 'list' ? 'active' : ''}`}
                     onClick={() => setActiveTab('list')}
                 >
@@ -246,13 +289,13 @@ const KnowledgeBase = () => {
                     <div className="company-logo-section">
                         <div className="logo-preview">
                             {companyInfo.logoPreview ? (
-                                <img 
-                                    src={companyInfo.logoPreview.startsWith('data:') 
-                                        ? companyInfo.logoPreview 
-                                        : companyInfo.logoPreview.startsWith('http') 
+                                <img
+                                    src={companyInfo.logoPreview.startsWith('data:')
+                                        ? companyInfo.logoPreview
+                                        : companyInfo.logoPreview.startsWith('http')
                                             ? companyInfo.logoPreview
                                             : `${import.meta.env.VITE_API_URL || ''}/uploads${companyInfo.logoPreview.replace('/uploads', '')}`
-                                    } 
+                                    }
                                     alt="Şirket Logosu"
                                     onError={(e) => {
                                         console.error('Logo yüklenemedi:', e.target.src);
@@ -363,7 +406,7 @@ const KnowledgeBase = () => {
                     </div>
 
                     <div className="kb-form-actions">
-                        <button 
+                        <button
                             className="btn btn-primary"
                             onClick={handleSaveCompanyInfo}
                             disabled={savingCompany}
@@ -394,7 +437,7 @@ const KnowledgeBase = () => {
                         />
                     </div>
                     <div className="kb-form-actions">
-                        <button 
+                        <button
                             className="btn btn-primary"
                             onClick={handleAddTextEntry}
                             disabled={!newKbContent.trim()}
@@ -429,7 +472,7 @@ const KnowledgeBase = () => {
                             Birden fazla dosya seçebilirsiniz
                         </p>
                     </div>
-                    
+
                     {knowledgeEntries.filter(e => e.sourceType === 'FILE').length > 0 && (
                         <div className="kb-file-list">
                             <h4 style={{ marginBottom: '12px', color: '#6b7280' }}>Yüklenen Dosyalar</h4>
@@ -444,7 +487,7 @@ const KnowledgeBase = () => {
                                             {entry.fileType?.toUpperCase()} • {new Date(entry.createdAt).toLocaleDateString('tr-TR')}
                                         </span>
                                     </div>
-                                    <button 
+                                    <button
                                         className="btn-icon btn-danger"
                                         onClick={() => handleDeleteEntry(entry.id)}
                                         title="Sil"
@@ -484,28 +527,39 @@ const KnowledgeBase = () => {
                                         <div className="kb-entry-info">
                                             <h4>{entry.title}</h4>
                                             <span className="kb-entry-meta">
-                                                {entry.sourceType === 'FILE' ? entry.fileType?.toUpperCase() : 'Metin'} • 
+                                                {entry.sourceType === 'FILE' ? entry.fileType?.toUpperCase() : 'Metin'} •
                                                 {new Date(entry.createdAt).toLocaleDateString('tr-TR')}
                                             </span>
                                         </div>
-                                        <button 
-                                            className="btn-icon btn-danger"
-                                            onClick={() => handleDeleteEntry(entry.id)}
-                                            title="Sil"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        <div className="kb-entry-actions">
+                                            {entry.sourceType === 'TEXT' && (
+                                                <button
+                                                    className="btn-icon btn-edit"
+                                                    onClick={() => handleEditEntry(entry)}
+                                                    title="Düzenle"
+                                                >
+                                                    <Pencil size={16} />
+                                                </button>
+                                            )}
+                                            <button
+                                                className="btn-icon btn-danger"
+                                                onClick={() => handleDeleteEntry(entry.id)}
+                                                title="Sil"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div 
+                                    <div
                                         className={`kb-entry-content ${expandedEntries[entry.id] ? 'expanded' : ''}`}
-                                        onClick={() => setExpandedEntries(prev => ({ 
-                                            ...prev, 
-                                            [entry.id]: !prev[entry.id] 
+                                        onClick={() => setExpandedEntries(prev => ({
+                                            ...prev,
+                                            [entry.id]: !prev[entry.id]
                                         }))}
                                         style={{ cursor: entry.content.length > 300 ? 'pointer' : 'default' }}
                                     >
-                                        {expandedEntries[entry.id] 
-                                            ? entry.content 
+                                        {expandedEntries[entry.id]
+                                            ? entry.content
                                             : entry.content.substring(0, 300) + (entry.content.length > 300 ? '...' : '')
                                         }
                                         {entry.content.length > 300 && (
@@ -519,6 +573,54 @@ const KnowledgeBase = () => {
                         </div>
                     )}
                 </>
+            )}
+
+            {/* Edit Modal */}
+            {editingEntry && (
+                <div className="modal-overlay" onClick={handleCancelEdit}>
+                    <div className="modal-content kb-edit-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Bilgiyi Düzenle</h2>
+                            <button className="btn-icon" onClick={handleCancelEdit}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="form-group">
+                                <label>Başlık</label>
+                                <input
+                                    type="text"
+                                    className="input"
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    placeholder="Bilgi başlığı"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>İçerik</label>
+                                <textarea
+                                    className="input"
+                                    rows="12"
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    placeholder="Bilgi içeriği"
+                                />
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn btn-outline" onClick={handleCancelEdit}>
+                                İptal
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleSaveEdit}
+                                disabled={saving || !editTitle.trim() || !editContent.trim()}
+                            >
+                                {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

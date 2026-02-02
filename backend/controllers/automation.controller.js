@@ -1270,3 +1270,134 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
     }
 };
 
+// Execute automation for web form / widget submission (called internally)
+export const executeWebFormAutomation = async (workspaceId, contact, formData = {}) => {
+    try {
+        console.log(`🤖 [AUTOMATION] executeWebFormAutomation called`);
+        console.log(`🤖 [AUTOMATION] WorkspaceId: ${workspaceId}`);
+
+        // PRIORITY: Use phone from form data first, then contact's stored phone
+        const phoneToUse = formData.phone || contact?.phone;
+        console.log(`🤖 [AUTOMATION] Contact ID: ${contact?.id}, Name: ${contact?.name}`);
+        console.log(`🤖 [AUTOMATION] Phone from form: ${formData.phone}, Phone from contact: ${contact?.phone}`);
+        console.log(`🤖 [AUTOMATION] Using phone: ${phoneToUse}`);
+
+        // Find active automations for NEW_WEBFORM trigger
+        const automations = await prisma.automation.findMany({
+            where: {
+                workspaceId,
+                isActive: true,
+                trigger: 'NEW_WEBFORM'
+            }
+        });
+
+        console.log(`🤖 [AUTOMATION] Found ${automations.length} active NEW_WEBFORM automations`);
+
+        if (automations.length === 0) {
+            console.log(`ℹ️ [AUTOMATION] No active automations for NEW_WEBFORM trigger`);
+            return;
+        }
+
+        for (const automation of automations) {
+            console.log(`🤖 [AUTOMATION] Processing: ${automation.name}`);
+
+            // Parse actions from JSON or use legacy single action
+            let actionsToExecute = [];
+            try {
+                actionsToExecute = automation.actions ? JSON.parse(automation.actions) : [automation.action];
+            } catch (e) {
+                actionsToExecute = [automation.action];
+            }
+
+            console.log(`🤖 [AUTOMATION] Actions: ${actionsToExecute.join(', ')}, Logic: ${automation.actionLogic || 'AND'}`);
+
+            // Execute each action
+            for (const actionType of actionsToExecute) {
+                console.log(`🤖 [AUTOMATION] Executing action: ${actionType}`);
+
+                // SEND_TEMPLATE action
+                if (actionType === 'SEND_TEMPLATE' && automation.templateId) {
+                    if (!phoneToUse) {
+                        console.log(`⚠️ [AUTOMATION] Skipping SEND_TEMPLATE - No phone number available`);
+                        continue;
+                    }
+
+                    // Create contact object with form phone prioritized
+                    const contactWithFormPhone = {
+                        ...contact,
+                        phone: phoneToUse,
+                        name: formData.name || contact?.name
+                    };
+
+                    // Delay if configured
+                    if (automation.delayMinutes > 0) {
+                        console.log(`⏱️ [AUTOMATION] Scheduling template send in ${automation.delayMinutes} minutes`);
+                        setTimeout(async () => {
+                            await sendTemplateToContact(workspaceId, automation.templateId, contactWithFormPhone);
+                        }, automation.delayMinutes * 60 * 1000);
+                    } else {
+                        console.log(`📤 [AUTOMATION] Sending template immediately...`);
+                        await sendTemplateToContact(workspaceId, automation.templateId, contactWithFormPhone);
+                    }
+                }
+
+
+                // SEND_EMAIL action
+                if (actionType === 'SEND_EMAIL' && automation.emailChannelId) {
+                    if (!contact?.email) {
+                        console.log(`⚠️ [AUTOMATION] Skipping SEND_EMAIL - Contact has no email address`);
+                        continue;
+                    }
+
+                    const sendEmailAction = async () => {
+                        try {
+                            const { sendEmailViaChannel, replacePlaceholders } = await import('../services/emailSender.service.js');
+
+                            // Replace placeholders in subject and body
+                            const emailData = {
+                                name: contact.name || formData.name || '',
+                                phone: contact.phone || formData.phone || '',
+                                email: contact.email || formData.email || ''
+                            };
+
+                            const subject = replacePlaceholders(automation.emailSubject || 'Web Form Bildirimi', emailData);
+                            const body = replacePlaceholders(automation.emailBody || '', emailData);
+
+                            await sendEmailViaChannel(
+                                automation.emailChannelId,
+                                contact.email,
+                                subject,
+                                body,
+                                { isHtml: automation.emailIsHtml }
+                            );
+
+                            console.log(`✅ [AUTOMATION] Email sent to ${contact.email}`);
+                        } catch (emailError) {
+                            console.error(`❌ [AUTOMATION] Email send error:`, emailError);
+                        }
+                    };
+
+                    // Delay if configured
+                    if (automation.delayMinutes > 0) {
+                        console.log(`⏱️ [AUTOMATION] Scheduling email in ${automation.delayMinutes} minutes`);
+                        setTimeout(sendEmailAction, automation.delayMinutes * 60 * 1000);
+                    } else {
+                        console.log(`📧 [AUTOMATION] Sending email immediately...`);
+                        await sendEmailAction();
+                    }
+                }
+
+                // SEND_MESSAGE action (for channels that support direct messaging)
+                if (actionType === 'SEND_MESSAGE' && automation.messageContent) {
+                    console.log(`💬 [AUTOMATION] SEND_MESSAGE configured - will be sent via channel if available`);
+                    // This would be handled by the conversation/messaging system
+                }
+            }
+        }
+
+        console.log(`✅ [AUTOMATION] All web form automations processed`);
+    } catch (error) {
+        console.error('❌ [AUTOMATION] Execute web form automation error:', error);
+    }
+};
+

@@ -1172,6 +1172,20 @@ async function processWebhookAsync(body) {
                 console.log(`🔄 Processing for workspace: ${facebookPage.workspaceId}`);
 
                 const isInstagram = body.object === 'instagram' || recipientId === facebookPage.instagramBusinessId;
+
+                // 🚫 EARLY CHECK: Ignore Instagram Lead Form DMs BEFORE creating contact/conversation
+                if (isInstagram && message?.text && !isOutgoingMessage) {
+                    const messageText = message.text;
+                    const isLeadFormDM = messageText.includes('Full name:') &&
+                        (messageText.includes('Phone number:') || messageText.includes('Email:'));
+
+                    if (isLeadFormDM) {
+                        console.log('🚫 [Instagram] Lead form DM detected (EARLY CHECK), skipping workspace processing');
+                        console.log(`📋 [Instagram] Message preview: ${messageText.substring(0, 100)}...`);
+                        continue; // Skip to next workspace
+                    }
+                }
+
                 const platformBotId = isInstagram ? facebookPage.instagramBotId : facebookPage.assignedBotId;
 
                 // For outgoing messages, the contact is the recipient, not the sender
@@ -1812,9 +1826,11 @@ export const getContactProfile = async (req, res) => {
         // IMPORTANT: Instagram-Scoped User IDs (IGScopedID) cannot be queried via Graph API
         // They return error: "Object with ID 'xxx' does not exist or cannot be loaded"
         // Only fetch for Facebook Messenger contacts, not Instagram
+        // ALSO: Lead contacts (facebookId starting with 'lead_') should not be queried
         const isInstagram = !!conversation.instagramBusinessId;
+        const isLead = conversation.contact?.facebookId?.startsWith('lead_');
 
-        if (!isInstagram && conversation.facebookPage?.pageAccessToken && conversation.contact?.facebookId) {
+        if (!isInstagram && !isLead && conversation.facebookPage?.pageAccessToken && conversation.contact?.facebookId) {
             try {
                 // Facebook Messenger only - Instagram IDs are not queryable
                 const fields = 'name,first_name,last_name,gender,locale,timezone,email,link';
@@ -2557,13 +2573,26 @@ async function handleLeadgenEvent(leadValue, entryId) {
 
     const pageId = leadValue?.page_id || entryId;
 
-    // Find page in database
+    // Find page in database - check both pageId and instagramBusinessId
     const facebookPage = await prisma.facebookPage.findFirst({
-        where: { pageId: pageId }
+        where: {
+            OR: [
+                { pageId: pageId },
+                { instagramBusinessId: pageId }
+            ]
+        }
     });
 
     if (!facebookPage) {
         console.log(`❌ [LEADGEN] Page ${pageId} not found in database`);
+        return;
+    }
+
+    // IMPORTANT: Block Instagram leads to prevent duplicates
+    // If the pageId matches instagramBusinessId, this is an Instagram lead - skip it
+    if (pageId === facebookPage.instagramBusinessId) {
+        console.log(`🚫 [LEADGEN] Instagram lead detected (pageId: ${pageId} matches instagramBusinessId). Skipping to prevent duplicate.`);
+        console.log(`ℹ️ [LEADGEN] Facebook page ${facebookPage.pageId} will handle this lead instead.`);
         return;
     }
 

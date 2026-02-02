@@ -83,6 +83,8 @@
     display: flex;
     align-items: center;
     margin-bottom: 12px;
+    padding: 0 8px;
+    /* Kenarlardan boşluk */
 }
 
 .filter-dropdown-icon {
@@ -361,6 +363,8 @@
 .inbox-search {
     position: relative;
     margin-bottom: 12px;
+    margin-left: 19px;
+    margin-right: 19px;
 }
 
 .inbox-search .search-icon {
@@ -2229,12 +2233,14 @@
 
 /* Contact Sidebar Wrapper in Inbox - narrower */
 .inbox-contact-sidebar-wrapper {
-    width: 310px;
-    min-width: 310px;
-    max-width: 310px;
+    width: 320px;
+    min-width: 320px;
+    max-width: 320px;
     flex-shrink: 0;
     height: 100%;
     overflow-y: auto;
+    overflow-x: hidden;
+    /* Prevent horizontal scroll */
     border-left: 1px solid #e2e8f0;
     background: #ffffff;
 }
@@ -2246,8 +2252,26 @@
 }
 
 .inbox-contact-sidebar-wrapper .contact-sidebar .sidebar-content {
-    padding: 8px;
+    padding: 12px 16px;
+    /* More right padding for balance */
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
+
+/* Prevent all child elements from overflowing */
+.inbox-contact-sidebar-wrapper * {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.inbox-contact-sidebar-wrapper input,
+.inbox-contact-sidebar-wrapper select,
+.inbox-contact-sidebar-wrapper textarea,
+.inbox-contact-sidebar-wrapper button {
+    max-width: 100%;
+}
+
 
 /* WhatsApp Template Dropdown */
 .template-dropdown {
@@ -3071,4 +3095,200 @@
     display: flex;
     align-items: center;
     overflow-x: hidden;
+}
+
+/* =====================================================
+   BULK SELECTION TOOLBAR & CHECKBOX STYLES
+   ===================================================== */
+
+.bulk-selection-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    min-height: 44px;
+    overflow-x: auto;
+    /* Scroll if needed */
+}
+
+.bulk-select-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.bulk-select-toggle:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.bulk-select-toggle.active {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #ef4444;
+}
+
+.select-all-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.select-all-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #ef4444;
+    cursor: pointer;
+}
+
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 4px 8px;
+    background: #fef2f2;
+    border-radius: 6px;
+    border: 1px solid #fecaca;
+    flex-shrink: 0;
+}
+
+.selected-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: #ef4444;
+    white-space: nowrap;
+}
+
+.bulk-assign-select {
+    padding: 4px 8px;
+    border: 1px solid #fecaca;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #1e293b;
+    font-size: 11px;
+    cursor: pointer;
+    min-width: 90px;
+}
+
+.bulk-assign-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.bulk-actions .spin {
+    color: #ef4444;
+}
+
+/* Bulk Select Checkbox in Inbox Items */
+.bulk-select-checkbox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-right: 4px;
+}
+
+.bulk-select-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #ef4444;
+    cursor: pointer;
+}
+
+/* Selected item highlight */
+.inbox-item.bulk-selected {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+}
+
+.inbox-item.bulk-selected:hover {
+    background: #fee2e2;
+}
+
+/* Date Range Filter */
+.date-range-filter {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    /* Push to right side */
+}
+
+.date-picker-input {
+    padding: 6px 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 11px;
+    width: 85px;
+    /* Further reduced */
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.date-picker-input:focus {
+    outline: none;
+    border-color: #4285f4;
+}
+
+.date-picker-input:hover {
+    border-color: #cbd5e1;
+}
+
+.clear-date-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #64748b;
+    min-width: 28px;
+    /* Fixed width for icon button */
+}
+
+.clear-date-btn:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #ef4444;
+}
+
+/* react-datepicker custom styles */
+.react-datepicker-wrapper {
+    width: auto;
+}
+
+.react-datepicker__input-container {
+    width: auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .date-range-filter {
+        flex-wrap: wrap;
+        margin-left: 0;
+        margin-top: 8px;
+        width: 100%;
+    }
+
+    .date-picker-input {
+        flex: 1;
+        min-width: 100px;
+    }
 }

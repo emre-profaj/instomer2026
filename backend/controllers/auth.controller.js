@@ -235,7 +235,51 @@ export const facebookCallback = async (req, res) => {
         }
 
         // Priority 3: Create new workspace ONLY if user has no workspace at all
+        // BUT: Do NOT auto-create for SUPER_ADMIN - they should manually create workspaces
         if (!workspaceMember) {
+            // Check if user is SUPER_ADMIN
+            if (user.role === 'SUPER_ADMIN') {
+                console.log('⚠️ SUPER_ADMIN detected - NOT creating automatic workspace');
+                console.log('🛑 Super Admin must manually create workspaces from admin panel');
+
+                // Redirect to admin panel instead
+                const frontendUrl = process.env.FRONTEND_URL || 'https://app.instomer.com';
+                return res.send(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Super Admin - No Workspace</title>
+                        <style>
+                            body {
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                                height: 100vh;
+                                margin: 0;
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                            }
+                            .icon { font-size: 64px; margin-bottom: 20px; }
+                            h2 { margin: 0 0 10px 0; }
+                            p { margin: 0; opacity: 0.9; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="icon">⚠️</div>
+                        <h2>Super Admin - Workspace Gerekli</h2>
+                        <p>Lütfen önce Admin Panel'den bir workspace oluşturun.</p>
+                        <script>
+                            setTimeout(function() {
+                                window.location.href = '${frontendUrl}/admin';
+                            }, 2000);
+                        </script>
+                    </body>
+                    </html>
+                `);
+            }
+
             console.log('⚠️ Creating new workspace for user:', user.email);
             const workspace = await prisma.workspace.create({
                 data: {

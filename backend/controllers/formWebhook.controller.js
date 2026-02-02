@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { smartFieldMatcher } from '../utils/fieldMatcher.js';
+import { executeWebFormAutomation } from './automation.controller.js';
 
 const prisma = new PrismaClient();
 
@@ -148,6 +149,7 @@ export const handleFormSubmission = async (req, res) => {
 
         // 🎨 ELEMENTOR FORMAT DETECTION & NORMALIZATION
         let normalizedData = { ...formData };
+        let fieldTitleMap = {}; // 🆕 Store field ID -> title mapping
 
         // Elementor sends data in nested format: { fields: { name: { value: 'x' } } }
         if (formData.fields && typeof formData.fields === 'object') {
@@ -160,15 +162,18 @@ export const handleFormSubmission = async (req, res) => {
                     // Use field ID as key, extract value
                     normalizedData[fieldId] = fieldData.value;
 
-                    // Also try to use the title if available
+                    // 🆕 Store title mapping for later use (for readable display)
                     if (fieldData.title) {
+                        fieldTitleMap[fieldId] = fieldData.title;
+                        // Also add with title as key for pattern matching
                         normalizedData[fieldData.title] = fieldData.value;
                     }
                 }
             }
 
-            // Keep original data for reference
+            // Keep original data and title mapping for reference
             normalizedData._elementor_original = formData;
+            normalizedData._fieldTitleMap = fieldTitleMap;
         }
         // Elementor also sends data as form_fields[field_id] or nested object
         else if (formData.form_fields) {
@@ -216,6 +221,7 @@ export const handleFormSubmission = async (req, res) => {
         const message = autoMapped.message;
         const subject = autoMapped.subject;
         const product = autoMapped.product;
+        const age = autoMapped.age;
 
         // Get source info
         const source = formData._source || req.headers.referer || null;
@@ -325,18 +331,85 @@ export const handleFormSubmission = async (req, res) => {
             data: { conversationId: conversation.id }
         });
 
-        // Create message with table format
+        // Create message with table format - DYNAMIC: show ALL form fields
         let messageContent = `📋 ${webhook.name}\n\n`;
 
-        // Build table rows
+        // 🆕 Track displayed values to prevent duplicates (Elementor sends both ID and title)
+        const displayedValues = new Set();
+
+        // Build table rows for known fields with icons
         const rows = [];
-        if (name) rows.push(`👤 İsim | ${name}`);
-        if (email) rows.push(`📧 E-posta | ${email}`);
-        if (phone) rows.push(`📞 Telefon | ${phone}`);
-        if (company) rows.push(`🏢 Şirket | ${company}`);
-        if (product) rows.push(`🛍️ Ürün/Hizmet | ${product}`);
-        if (subject) rows.push(`📋 Konu | ${subject}`);
-        if (message) rows.push(`💬 Mesaj | ${message}`);
+        if (name) {
+            rows.push(`👤 İsim | ${name}`);
+            displayedValues.add(name);
+        }
+        if (email) {
+            rows.push(`📧 E-posta | ${email}`);
+            displayedValues.add(email);
+        }
+        if (phone) {
+            rows.push(`📞 Telefon | ${phone}`);
+            displayedValues.add(phone);
+        }
+        if (company) {
+            rows.push(`🏢 Şirket | ${company}`);
+            displayedValues.add(company);
+        }
+        if (age) {
+            rows.push(`🎂 Yaş | ${age}`);
+            displayedValues.add(age);
+        }
+        if (product) {
+            rows.push(`🛍️ Ürün/Hizmet | ${product}`);
+            displayedValues.add(product);
+        }
+        if (subject) {
+            rows.push(`📋 Konu | ${subject}`);
+            displayedValues.add(subject);
+        }
+        if (message) {
+            rows.push(`💬 Mesaj | ${message}`);
+            displayedValues.add(message);
+        }
+
+        // 🆕 DYNAMIC: Add ALL unmapped/unknown fields automatically
+        // This ensures any form field (regardless of name) is captured
+        const unmappedFields = autoMapped.unmapped || {};
+        const unmappedRows = [];
+
+        // 🆕 Get title mapping from Elementor data if available
+        const titleMap = normalizedData._fieldTitleMap || {};
+
+        for (const [fieldName, fieldValue] of Object.entries(unmappedFields)) {
+            // Skip internal fields (starting with _) and empty values
+            if (fieldName.startsWith('_') || !fieldValue) continue;
+
+            // Skip if it's an object (like _elementor_original)
+            if (typeof fieldValue === 'object') continue;
+
+            // 🆕 Skip if this value was already displayed (prevents Elementor duplicates)
+            if (displayedValues.has(fieldValue)) {
+                console.log(`⏭️ Skipping duplicate value: ${fieldValue}`);
+                continue;
+            }
+
+            // 🆕 First check if we have a title from Elementor
+            if (titleMap[fieldName]) {
+                // Use the actual form label from Elementor
+                unmappedRows.push(`📝 ${titleMap[fieldName]} | ${fieldValue}`);
+                displayedValues.add(fieldValue);
+            } else {
+                // Fall back to smart field name detection (analyzes value content)
+                const { name: readableName, icon } = smartFieldMatcher.getReadableFieldName(fieldName, fieldValue);
+                unmappedRows.push(`${icon} ${readableName} | ${fieldValue}`);
+                displayedValues.add(fieldValue);
+            }
+        }
+
+        // Add unmapped fields to the message
+        if (unmappedRows.length > 0) {
+            rows.push(...unmappedRows);
+        }
 
         // Join with line breaks
         messageContent += rows.join('\n');
@@ -372,6 +445,24 @@ export const handleFormSubmission = async (req, res) => {
             console.log(`✅ Form submission processed: ${submission.id} (confidence: ${confidence.confidence})`);
         } catch (socketError) {
             console.error('❌ Socket emit error:', socketError);
+        }
+
+        // 🤖 Trigger NEW_WEBFORM automations (e.g., send WhatsApp template)
+        if (contact && contact.phone) {
+            try {
+                await executeWebFormAutomation(webhook.workspaceId, contact, {
+                    name,
+                    email,
+                    phone,
+                    message,
+                    formName: webhook.name
+                });
+                console.log(`🤖 [FormWebhook] Web form automation triggered for contact ${contact.id}`);
+            } catch (automationError) {
+                console.error('❌ [FormWebhook] Automation trigger error:', automationError);
+            }
+        } else {
+            console.log(`ℹ️ [FormWebhook] Skipping automation - contact has no phone number`);
         }
 
         res.json({

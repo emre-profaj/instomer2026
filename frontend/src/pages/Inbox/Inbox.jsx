@@ -15,6 +15,8 @@ import {
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
 import { useToast } from '../../components/Toast/Toast';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import './Inbox.css';
 
 // Inbox item types
@@ -131,14 +133,16 @@ const Inbox = () => {
     const { showAssignment } = useToast();
 
     // Filter states - All channels selected by default (uncheck to hide)
-    const allFilters = ['whatsapp', 'facebook', 'instagram', 'widget', 'emails', 'leads', 'notes', 'fb_comments', 'ig_comments'];
+    const allFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'notes', 'fb_comments', 'ig_comments'];
     const [activeFilters, setActiveFilters] = useState(allFilters); // All filters active by default
     const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
     const [searchTerm, setSearchTerm] = useState('');
     const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'MINE', 'PENDING', 'ALL'
     const [showResolved, setShowResolved] = useState(false); // Hide resolved conversations by default
+    const [showOnlyAssigned, setShowOnlyAssigned] = useState(false); // Filter to show only UNassigned conversations
     const [statusFilter, setStatusFilter] = useState(null); // null = All, 'POTENTIAL' = Only potential customers
+    const [dateRange, setDateRange] = useState({ from: null, to: null }); // Date range filter
     const [appointments, setAppointments] = useState([]); // For reminder indicators
     const filterDropdownRef = useRef(null);
 
@@ -146,7 +150,8 @@ const Inbox = () => {
         whatsapp: 'WhatsApp',
         facebook: 'Facebook',
         instagram: 'Instagram',
-        widget: 'Web Formları',
+        web_widget: 'Web Widget',
+        web_form: 'Web Formları',
         fb_comments: 'FB Yorumları',
         ig_comments: 'IG Yorumları',
         emails: 'E-postalar',
@@ -184,6 +189,12 @@ const Inbox = () => {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const currentPageRef = useRef(1); // Track current page with ref for immediate access
+
+    // Bulk selection states
+    const [selectedItems, setSelectedItems] = useState([]);
+    const [bulkSelectMode, setBulkSelectMode] = useState(false);
+    const [bulkAssigning, setBulkAssigning] = useState(false);
 
     // Message conversation states
     const [messages, setMessages] = useState([]);
@@ -266,9 +277,12 @@ const Inbox = () => {
     // Load inbox items after pages are loaded
     useEffect(() => {
         if (currentWorkspace) {
+            // Reset to page 1 when filters change
+            setCurrentPage(1);
+            currentPageRef.current = 1;
             loadInboxItems();
         }
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, searchTerm, statusFilter]);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showOnlyAssigned, searchTerm, statusFilter, dateRange]);
 
     // Listen for new conversation created event
     useEffect(() => {
@@ -516,8 +530,13 @@ const Inbox = () => {
             console.log('📬 Conversation assigned to you:', data);
             const { conversationId, contact, assignedBy, message } = data;
 
-            // Inbox'ı yenile
-            loadInboxItems(false);
+            // 🚀 Satışçıya atama yapıldığında "Bana Atanan" tab'ına geç
+            // Böylece yeni atanan konuşma listede görünür
+            setAssignmentTab('MINE');
+
+            // Inbox'ı yenile (tab değiştiğinde useEffect zaten yenileyecek ama 
+            // state güncellenmeden önce çağrılabilir, bu yüzden ekstra güvenlik)
+            setTimeout(() => loadInboxItems(false), 100);
 
             // Sağ alt köşede popup toast göster
             showAssignment(
@@ -544,9 +563,18 @@ const Inbox = () => {
             console.log('📋 Conversation assigned:', data);
             const { conversationId, assignedToId, assignedToName, botEnabled, teamIds } = data;
 
-            // Takım veya agent değiştiğinde listeyi tamamen yenile
-            // Çünkü yeni atanan takım/agent bu konuşmayı görmeli
-            loadInboxItems(false);
+            // Update local state instead of reloading to preserve pagination
+            setInboxItems(prev => prev.map(item =>
+                item.id === conversationId
+                    ? {
+                        ...item,
+                        assignedToId,
+                        teamIds: teamIds || item.teamIds,
+                        assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
+                        botEnabled
+                    }
+                    : item
+            ));
 
             // Seçili konuşmayı güncelle
             if (selectedItem?.id === conversationId) {
@@ -566,8 +594,12 @@ const Inbox = () => {
             console.log('🔄 Bot handoff received:', data);
             const { conversationId, botName } = data;
 
-            // Refresh inbox to show updated conversation
-            loadInboxItems(false);
+            // Update local state instead of reloading to preserve pagination
+            setInboxItems(prev => prev.map(item =>
+                item.id === conversationId
+                    ? { ...item, botEnabled: false }
+                    : item
+            ));
 
             // Update selected conversation if it's the one being handed off
             if (selectedItem?.id === conversationId) {
@@ -627,18 +659,39 @@ const Inbox = () => {
             const moreConversations = response.data.conversations || [];
             const pagination = response.data.pagination;
 
-            // Add new conversations to existing items
-            const newItems = moreConversations.map(conv => ({
-                ...conv,
-                inboxType: conv.channel === 'EMAIL' ? INBOX_TYPES.EMAIL : INBOX_TYPES.MESSAGE,
-                sortDate: new Date(conv.lastMessageAt || conv.createdAt)
-            }));
+            // Filter and add new conversations to existing items
+            const newItems = moreConversations
+                .filter(conv => {
+                    // Apply date range filter
+                    if (dateRange.from || dateRange.to) {
+                        const convDate = new Date(conv.lastMessageAt || conv.createdAt);
+
+                        if (dateRange.from) {
+                            const startOfDay = new Date(dateRange.from);
+                            startOfDay.setHours(0, 0, 0, 0);
+                            if (convDate < startOfDay) return false;
+                        }
+
+                        if (dateRange.to) {
+                            const endOfDay = new Date(dateRange.to);
+                            endOfDay.setHours(23, 59, 59, 999);
+                            if (convDate > endOfDay) return false;
+                        }
+                    }
+                    return true;
+                })
+                .map(conv => ({
+                    ...conv,
+                    inboxType: conv.channel === 'EMAIL' ? INBOX_TYPES.EMAIL : INBOX_TYPES.MESSAGE,
+                    sortDate: new Date(conv.lastMessageAt || conv.createdAt)
+                }));
 
             setInboxItems(prev => [...prev, ...newItems]);
 
             if (pagination) {
                 setHasMore(pagination.page < pagination.totalPages);
                 setCurrentPage(pagination.page);
+                currentPageRef.current = pagination.page;
             }
         } catch (error) {
             console.error('Error loading more items:', error);
@@ -716,7 +769,7 @@ const Inbox = () => {
             let items = [];
 
             // Load based on active filters (if all are selected = show all, unchecked = hide)
-            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'widget', 'emails', 'leads', 'notes'];
+            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'notes'];
             const commentFilters = ['fb_comments', 'ig_comments'];
 
             // loadAll only when ALL filters are active (nothing hidden)
@@ -733,23 +786,20 @@ const Inbox = () => {
             // - If channel filter selected: load only those channels, NOT comments (unless comment filter also selected)
             // - If comment filter selected: load only those comments, NOT channels (unless channel filter also selected)
 
-            // Comments should only load if:
-            // 1. No filters at all (loadAll) OR
-            // 2. Specifically the comment filter is selected
-            // NOT when only channel filters (whatsapp, facebook, instagram, emails, leads) are selected
-            const loadFbComments = loadAll || activeFilters.includes('fb_comments');
-            const loadIgComments = loadAll || activeFilters.includes('ig_comments');
-
-            // But if a channel filter is selected WITHOUT comment filters, don't load comments
-            // Also, if activeChannel is set (top buttons), don't load comments unless explicitly filtered
-            const shouldLoadFbComments = loadFbComments && (!hasChannelFilter || activeFilters.includes('fb_comments')) && !activeChannel;
-            const shouldLoadIgComments = loadIgComments && (!hasChannelFilter || activeFilters.includes('ig_comments')) && !activeChannel;
+            // Yorumları sadece şu durumlarda yükle:
+            // 1. Tüm filtreler seçili (loadAll) - her şeyi göster
+            // 2. İlgili yorum filtresi açıkça seçili (fb_comments veya ig_comments)
+            // NOT: Channel filtresi (whatsapp, facebook, vb.) seçiliyse yorumları YÜKLEME
+            const shouldLoadFbComments = (loadAll || activeFilters.includes('fb_comments')) && !activeChannel && !statusFilter;
+            const shouldLoadIgComments = (loadAll || activeFilters.includes('ig_comments')) && !activeChannel && !statusFilter;
 
             const loadConversations = loadAll || hasChannelFilter || activeChannel;
 
             // Load all conversations in one API call to avoid duplicates
             if (loadConversations) {
-                const params = { limit: 100, page: 1 }; // Load more conversations
+                // Always use current page from ref (preserves pagination)
+                const pageToLoad = currentPageRef.current;
+                const params = { limit: 100, page: pageToLoad };
                 if (assignmentTab === 'MINE') params.assignedToId = 'mine';
                 else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
 
@@ -761,6 +811,7 @@ const Inbox = () => {
                 if (pagination) {
                     setHasMore(pagination.page < pagination.totalPages);
                     setCurrentPage(pagination.page);
+                    currentPageRef.current = pagination.page;
                 }
 
                 // Filter conversations based on channel and resolved status
@@ -768,6 +819,13 @@ const Inbox = () => {
                     // Check if resolved filter applies
                     if (!showResolved && conv.status === 'RESOLVED') {
                         return; // Skip resolved conversations if showResolved is false
+                    }
+
+                    // Check if "only unassigned" filter applies
+                    // A conversation is considered "assigned" if it has either assignedToId or assignedTo object
+                    const isAssigned = (conv.assignedToId && conv.assignedToId !== '') || conv.assignedTo;
+                    if (showOnlyAssigned && isAssigned) {
+                        return; // Skip assigned conversations if showOnlyAssigned is true (show only unassigned)
                     }
 
                     // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
@@ -780,26 +838,54 @@ const Inbox = () => {
                     // If specific channel filters are selected, only show matching channels
                     let channelMatch = false;
 
-                    if (!hasChannelFilter) {
-                        // No channel filter active - show all conversations
+
+
+                    if (loadAll) {
+                        // Tüm filtreler seçili - her şeyi göster
                         channelMatch = true;
-                    } else {
-                        // Specific channel filter(s) active - check if conversation matches
+                    } else if (hasChannelFilter) {
+                        // Belirli filtreler seçili - sadece eşleşenleri göster
                         channelMatch =
                             (activeFilters.includes('whatsapp') && conv.channel === 'WHATSAPP') ||
                             (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
                             (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
-                            (activeFilters.includes('widget') && (conv.channel === 'WIDGET' || conv.channel === 'FORM')) ||
+                            (activeFilters.includes('web_widget') && conv.channel === 'WIDGET') ||
+                            (activeFilters.includes('web_form') && conv.channel === 'FORM') ||
                             (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
-                            (activeFilters.includes('leads') && conv.channel === 'LEAD') ||
-                            (activeFilters.includes('notes') && conv.channel === 'INTERNAL') ||
-                            conv.channel === 'MANUAL'; // Manual conversations always visible
+                            (activeFilters.includes('leads') &&
+                                conv.channel === 'LEAD' &&
+                                conv.facebookPageId) || // Only Facebook LEADs (has facebookPageId, excludes Web Form/Widget)
+                            (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL')); // Notes includes both INTERNAL and MANUAL
+                    } else {
+                        // Hiçbir filtre seçili değil - hiçbir şey gösterme
+                        channelMatch = false;
                     }
 
                     if (channelMatch) {
                         // Check contact status filter
                         if (statusFilter && conv.contact?.status !== statusFilter) {
                             return; // Skip if status doesn't match
+                        }
+
+                        // Check date range filter
+                        if (dateRange.from || dateRange.to) {
+                            const convDate = new Date(conv.lastMessageAt || conv.createdAt);
+
+                            if (dateRange.from) {
+                                const startOfDay = new Date(dateRange.from);
+                                startOfDay.setHours(0, 0, 0, 0); // Start of selected day
+                                if (convDate < startOfDay) {
+                                    return; // Skip if before start date
+                                }
+                            }
+
+                            if (dateRange.to) {
+                                const endOfDay = new Date(dateRange.to);
+                                endOfDay.setHours(23, 59, 59, 999); // End of selected day
+                                if (convDate > endOfDay) {
+                                    return; // Skip if after end date
+                                }
+                            }
                         }
 
                         items.push({
@@ -1064,6 +1150,14 @@ const Inbox = () => {
         try {
             console.log('🔄 [handleAssignUser] conversationId:', conversationId, 'userId:', userId, 'type:', typeof userId);
             const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { userId: userId || null });
+
+            // Update local state instead of reloading
+            setInboxItems(prev => prev.map(item =>
+                item.id === conversationId
+                    ? { ...item, assignedToId: userId || null, assignedTo: response.data.conversation?.assignedTo || null }
+                    : item
+            ));
+
             // Update selectedItem with new assignment
             if (selectedItem?.id === conversationId) {
                 setSelectedItem(prev => ({
@@ -1072,7 +1166,6 @@ const Inbox = () => {
                     assignedTo: response.data.conversation?.assignedTo || null
                 }));
             }
-            loadInboxItems(false);
         } catch (error) {
             console.error('Assign user error:', error);
         }
@@ -1178,6 +1271,13 @@ const Inbox = () => {
 
             await conversationAPI.assign(currentWorkspace.id, conversationId, assignData);
 
+            // Update local state instead of reloading
+            setInboxItems(prev => prev.map(item =>
+                item.id === conversationId
+                    ? { ...item, teamIds: teamId ? JSON.stringify([teamId]) : '[]' }
+                    : item
+            ));
+
             // Update selectedItem with new team assignment
             if (selectedItem?.id === conversationId) {
                 setSelectedItem(prev => ({
@@ -1186,11 +1286,6 @@ const Inbox = () => {
                     // Agent atamasına dokunma - mevcut atamayı koru
                 }));
             }
-
-            // Artık takım değişikliği agent atamasını etkilemediği için
-            // "Bana Atanan" tabında kalabilir
-
-            loadInboxItems(false);
         } catch (error) {
             console.error('Assign team error:', error);
         }
@@ -1199,6 +1294,20 @@ const Inbox = () => {
     const handleAssignBot = async (conversationId, botId) => {
         try {
             const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { botId: botId || null });
+
+            // Update local state instead of reloading
+            setInboxItems(prev => prev.map(item =>
+                item.id === conversationId
+                    ? {
+                        ...item,
+                        assignedBotId: botId || null,
+                        assignedBot: response.data.conversation?.assignedBot || null,
+                        assignedToId: botId ? null : item.assignedToId,
+                        assignedTo: botId ? null : item.assignedTo
+                    }
+                    : item
+            ));
+
             // Update selectedItem with new bot assignment
             if (selectedItem?.id === conversationId) {
                 setSelectedItem(prev => ({
@@ -1210,9 +1319,60 @@ const Inbox = () => {
                     assignedTo: botId ? null : prev.assignedTo
                 }));
             }
-            loadInboxItems(false);
         } catch (error) {
             console.error('Assign bot error:', error);
+        }
+    };
+
+    // Bulk selection functions
+    const handleToggleSelect = (itemId, checked) => {
+        if (checked) {
+            setSelectedItems(prev => [...prev, itemId]);
+        } else {
+            setSelectedItems(prev => prev.filter(id => id !== itemId));
+        }
+    };
+
+    const handleSelectAll = (checked) => {
+        if (checked) {
+            const visibleItems = inboxItems.filter(item => {
+                if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
+                    return false;
+                }
+                return true;
+            });
+            setSelectedItems(visibleItems.map(item => item.id));
+        } else {
+            setSelectedItems([]);
+        }
+    };
+
+    const handleBulkAssign = async (userId) => {
+        if (selectedItems.length === 0 || !userId) return;
+
+        try {
+            setBulkAssigning(true);
+            await Promise.all(
+                selectedItems.map(convId =>
+                    conversationAPI.assign(currentWorkspace.id, convId, { userId: userId || null })
+                )
+            );
+
+            // Update local state for all assigned conversations
+            const assignedUser = members.find(m => m.userId === userId);
+            setInboxItems(prev => prev.map(item =>
+                selectedItems.includes(item.id)
+                    ? { ...item, assignedToId: userId, assignedTo: assignedUser?.user || null }
+                    : item
+            ));
+
+            setSelectedItems([]);
+            setBulkSelectMode(false);
+        } catch (error) {
+            console.error('Bulk assign error:', error);
+            alert('Toplu atama sırasında hata oluştu.');
+        } finally {
+            setBulkAssigning(false);
         }
     };
 
@@ -1548,10 +1708,19 @@ const Inbox = () => {
                                     <label className="filter-option">
                                         <input
                                             type="checkbox"
-                                            checked={activeFilters.includes('widget')}
-                                            onChange={() => toggleFilter('widget')}
+                                            checked={activeFilters.includes('web_widget')}
+                                            onChange={() => toggleFilter('web_widget')}
                                         />
                                         <MessageSquare size={18} className="icon-widget" />
+                                        <span>Web Widget</span>
+                                    </label>
+                                    <label className="filter-option">
+                                        <input
+                                            type="checkbox"
+                                            checked={activeFilters.includes('web_form')}
+                                            onChange={() => toggleFilter('web_form')}
+                                        />
+                                        <FileText size={18} className="icon-form" />
                                         <span>Web Formları</span>
                                     </label>
                                     <label className="filter-option">
@@ -1606,12 +1775,23 @@ const Inbox = () => {
                                         <span>Çözülenleri Göster</span>
                                     </label>
 
-                                    {(activeFilters.length < allFilters.length || showResolved) && (
+                                    <label className="filter-option resolved-toggle">
+                                        <input
+                                            type="checkbox"
+                                            checked={showOnlyAssigned}
+                                            onChange={() => setShowOnlyAssigned(!showOnlyAssigned)}
+                                        />
+                                        <UserCheck size={18} className="icon-resolved" />
+                                        <span>Atanmayanları Göster</span>
+                                    </label>
+
+                                    {(activeFilters.length < allFilters.length || showResolved || showOnlyAssigned) && (
                                         <button
                                             className="filter-clear-btn"
                                             onClick={() => {
                                                 setActiveFilters(allFilters);
                                                 setShowResolved(false);
+                                                setShowOnlyAssigned(false);
                                             }}
                                         >
                                             Filtreleri Sıfırla
@@ -1716,6 +1896,87 @@ const Inbox = () => {
                     )}
                 </div>
 
+                {/* Bulk Selection Toolbar */}
+                <div className="bulk-selection-toolbar">
+                    <button
+                        className={`bulk-select-toggle ${bulkSelectMode ? 'active' : ''}`}
+                        onClick={() => {
+                            setBulkSelectMode(!bulkSelectMode);
+                            if (bulkSelectMode) setSelectedItems([]);
+                        }}
+                    >
+                        <CheckCircle2 size={14} />
+                        {bulkSelectMode ? 'İptal' : 'Toplu Seç'}
+                    </button>
+
+                    {/* Date Range Filter */}
+                    <div className="date-range-filter">
+                        <DatePicker
+                            selected={dateRange.from}
+                            onChange={(date) => setDateRange({ ...dateRange, from: date })}
+                            selectsStart
+                            startDate={dateRange.from}
+                            endDate={dateRange.to}
+                            placeholderText="Başlangıç"
+                            dateFormat="dd/MM/yyyy"
+                            className="date-picker-input"
+                        />
+                        <DatePicker
+                            selected={dateRange.to}
+                            onChange={(date) => setDateRange({ ...dateRange, to: date })}
+                            selectsEnd
+                            startDate={dateRange.from}
+                            endDate={dateRange.to}
+                            minDate={dateRange.from}
+                            placeholderText="Bitiş"
+                            dateFormat="dd/MM/yyyy"
+                            className="date-picker-input"
+                        />
+                        {(dateRange.from || dateRange.to) && (
+                            <button
+                                className="clear-date-btn"
+                                onClick={() => setDateRange({ from: null, to: null })}
+                                title="Tarihleri Temizle"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+
+                    {bulkSelectMode && (
+                        <>
+                            <label className="select-all-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedItems.length === inboxItems.filter(item => !(!showResolved && item.status === 'RESOLVED')).length && selectedItems.length > 0}
+                                    onChange={(e) => handleSelectAll(e.target.checked)}
+                                />
+                                Tümünü Seç
+                            </label>
+
+                            {selectedItems.length > 0 && (
+                                <div className="bulk-actions">
+                                    <span className="selected-count">{selectedItems.length} seçili</span>
+                                    <select
+                                        className="bulk-assign-select"
+                                        onChange={(e) => handleBulkAssign(e.target.value)}
+                                        disabled={bulkAssigning}
+                                        value=""
+                                    >
+                                        <option value="">Ata...</option>
+                                        {members.map(m => (
+                                            <option key={m.userId} value={m.userId}>
+                                                {m.user?.name || m.user?.email}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {bulkAssigning && <Loader size={14} className="spin" />}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
                 {/* Inbox Items List */}
                 <div className="inbox-items">
                     {loading ? (
@@ -1727,6 +1988,13 @@ const Inbox = () => {
                         // Hide resolved conversations unless showResolved is true
                         if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
                             return false;
+                        }
+                        // Hide assigned conversations if showOnlyAssigned is true (show only unassigned)
+                        if (showOnlyAssigned) {
+                            const isAssigned = (item.assignedToId && item.assignedToId !== '') || item.assignedTo;
+                            if (isAssigned) {
+                                return false;
+                            }
                         }
                         return true;
                     }).length === 0 ? (
@@ -1744,18 +2012,57 @@ const Inbox = () => {
                         </div>
                     ) : (
                         <>
-                            {inboxItems.filter(item => {
+                            {inboxItems.filter((item, index, allItems) => {
                                 // Hide resolved conversations unless showResolved is true
                                 if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
                                     return false;
                                 }
+                                // Hide assigned conversations if showOnlyAssigned is true (show only unassigned)
+                                if (showOnlyAssigned) {
+                                    const isAssigned = (item.assignedToId && item.assignedToId !== '') || item.assignedTo;
+                                    if (isAssigned) {
+                                        return false;
+                                    }
+                                }
+
+                                // Hide duplicate Instagram leads if Facebook lead exists with same phone/email
+                                if (item.inboxType === INBOX_TYPES.LEAD && item.channel === 'INSTAGRAM') {
+                                    // Get phone and email from lead data
+                                    const itemPhone = item.phone || item.leadData?.phone_number || item.leadData?.telefon_numarasi;
+                                    const itemEmail = item.email || item.leadData?.email || item.leadData?.e_posta;
+
+                                    // Check if there's a Facebook lead with same phone or email
+                                    const hasFacebookDuplicate = allItems.some(otherItem =>
+                                        otherItem.inboxType === INBOX_TYPES.LEAD &&
+                                        otherItem.channel === 'FACEBOOK' &&
+                                        otherItem.id !== item.id &&
+                                        (
+                                            (itemPhone && (otherItem.phone === itemPhone || otherItem.leadData?.phone_number === itemPhone || otherItem.leadData?.telefon_numarasi === itemPhone)) ||
+                                            (itemEmail && (otherItem.email === itemEmail || otherItem.leadData?.email === itemEmail || otherItem.leadData?.e_posta === itemEmail))
+                                        )
+                                    );
+
+                                    if (hasFacebookDuplicate) {
+                                        return false; // Hide Instagram lead if Facebook duplicate exists
+                                    }
+                                }
+
                                 return true;
                             }).map((item) => (
                                 <div
                                     key={`${item.inboxType}-${item.id}`}
-                                    className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''}`}
-                                    onClick={() => handleSelectItem(item)}
+                                    className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
+                                    onClick={() => bulkSelectMode ? handleToggleSelect(item.id, !selectedItems.includes(item.id)) : handleSelectItem(item)}
                                 >
+                                    {bulkSelectMode && (
+                                        <div className="bulk-select-checkbox" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedItems.includes(item.id)}
+                                                onChange={(e) => handleToggleSelect(item.id, e.target.checked)}
+                                            />
+                                        </div>
+                                    )}
                                     <div className="inbox-item-avatar">
                                         {item.inboxType === INBOX_TYPES.COMMENT && item.full_picture ? (
                                             <img src={item.full_picture} alt="post" className="post-thumb" />

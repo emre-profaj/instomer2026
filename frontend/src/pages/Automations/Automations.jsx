@@ -337,6 +337,7 @@ const Automations = () => {
             case 'NEW_LEAD': return '🎯 Yeni Lead';
             case 'NEW_MESSAGE': return '💬 Yeni Mesaj';
             case 'NEW_CONVERSATION': return '📱 Yeni Sohbet';
+            case 'NEW_WEBFORM': return '📋 Yeni Web Form';
             default: return trigger;
         }
     };
@@ -683,6 +684,7 @@ const Automations = () => {
                                         <option value="NEW_LEAD">🎯 Yeni Lead Geldiğinde</option>
                                         <option value="NEW_MESSAGE">💬 Yeni Mesaj Geldiğinde</option>
                                         <option value="NEW_CONVERSATION">📱 Yeni Sohbet Başladığında</option>
+                                        <option value="NEW_WEBFORM">📋 Yeni Web Form Geldiğinde</option>
                                     </select>
                                 </div>
                                 <div className="form-group">

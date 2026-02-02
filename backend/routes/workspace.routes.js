@@ -7,6 +7,7 @@ import {
     addMember,
     updateMemberRole,
     removeMember,
+    changeMemberPassword,
     getWorkspaceMembers,
     deleteWorkspace,
     getCompanyInfo,
@@ -77,6 +78,16 @@ router.put(
 
 // Remove member
 router.delete('/:workspaceId/members/:userId', requireWorkspaceAccess, removeMember);
+
+// Change member password
+router.put(
+    '/:workspaceId/members/:userId/password',
+    requireWorkspaceAccess,
+    [
+        body('newPassword').isLength({ min: 6 }).withMessage('Şifre en az 6 karakter olmalıdır')
+    ],
+    changeMemberPassword
+);
 
 // Company info routes
 router.get('/:workspaceId/company', requireWorkspaceAccess, getCompanyInfo);

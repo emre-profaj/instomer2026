@@ -48,20 +48,32 @@ export const getConversations = async (req, res) => {
             });
             const myTeamIds = userTeams.map(t => t.teamId);
 
-            // 🚀 GÜNCELLEME: Agent'lar şunları görür:
-            // 1. Kendisine atanmış konuşmalar
-            // 2. Takımındaki VE kimseye atanmamış konuşmalar (başka birine atanmışsa gizle)
-            const accessCondition = {
-                OR: [
-                    { assignedToId: req.user.id }, // Kendisine atanmış
-                    ...myTeamIds.map(tid => ({
-                        AND: [
-                            { teamIds: { contains: `"${tid}"` } },
-                            { assignedToId: null } // Takımında VE kimseye atanmamış
-                        ]
-                    }))
-                ]
-            };
+            // 🚀 LEAD Kanalı için özel kural:
+            // LEAD'ler için agent sadece kendisine atanmış olanları görebilir
+            // Diğer kanallar için: kendisine atanmış VEYA takımında atanmamış olanlar
+            const isLeadChannel = channel === 'LEAD';
+
+            let accessCondition;
+            if (isLeadChannel) {
+                // LEAD: Sadece kendisine atanmış lead'ler
+                accessCondition = {
+                    assignedToId: req.user.id
+                };
+                console.log(`🔒 [LEAD Filter] Agent ${req.user.id} can only see assigned leads`);
+            } else {
+                // Diğer kanallar: Kendisine atanmış VEYA takımında atanmamış
+                accessCondition = {
+                    OR: [
+                        { assignedToId: req.user.id }, // Kendisine atanmış
+                        ...myTeamIds.map(tid => ({
+                            AND: [
+                                { teamIds: { contains: `"${tid}"` } },
+                                { assignedToId: null } // Takımında VE kimseye atanmamış
+                            ]
+                        }))
+                    ]
+                };
+            }
 
             // Combine access control with requested filters
             if (assignedToId) {
@@ -70,12 +82,22 @@ export const getConversations = async (req, res) => {
                     console.log(`🔍 [MINE Filter - AGENT] User ${req.user.id} looking for their assigned conversations`);
                 } else if (assignedToId === 'my_teams') {
                     // Takımındaki tüm konuşmalar (kimseye atanmamış olanlar)
-                    where.AND = [
-                        { OR: myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } })) },
-                        { assignedToId: null }
-                    ];
+                    // LEAD için bu filtre çalışmaz - sadece atanmış lead'ler
+                    if (isLeadChannel) {
+                        where.assignedToId = req.user.id;
+                    } else {
+                        where.AND = [
+                            { OR: myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } })) },
+                            { assignedToId: null }
+                        ];
+                    }
                 } else if (assignedToId === 'unassigned') {
-                    where.AND = [accessCondition, { assignedToId: null, teamIds: { equals: '[]' } }];
+                    // LEAD için atanmamışları gösterme
+                    if (isLeadChannel) {
+                        where.AND = [{ assignedToId: req.user.id }, { id: 'impossible' }]; // Boş sonuç
+                    } else {
+                        where.AND = [accessCondition, { assignedToId: null, teamIds: { equals: '[]' } }];
+                    }
                 } else if (assignedToId.startsWith('team:')) {
                     const tid = assignedToId.split(':')[1];
                     where.AND = [accessCondition, { teamIds: { contains: `"${tid}"` } }];
@@ -299,8 +321,11 @@ export const getConversation = async (req, res) => {
         // Verify conversation belongs to this workspace
         const existing = await prisma.conversation.findFirst({ where: { id: conversationId, workspaceId } });
         if (!existing) {
+            console.log(`❌ [getConversation] Conversation not found: ${conversationId} in workspace ${workspaceId}`);
             return res.status(404).json({ error: 'Conversation not found' });
         }
+
+        console.log(`📋 [getConversation] User ${req.user.id} (role: ${req.workspaceMember?.role}) loading conversation ${conversationId}, assignedToId: ${existing.assignedToId}`);
 
         const conversation = await prisma.conversation.update({
             where: { id: conversationId },
@@ -369,6 +394,7 @@ export const getConversation = async (req, res) => {
             return res.status(404).json({ error: 'Conversation not found' });
         }
 
+        console.log(`✅ [getConversation] Returning conversation with ${conversation.messages?.length || 0} messages, ${conversation.internalNotes?.length || 0} notes`);
         res.json({ conversation });
     } catch (error) {
         console.error('Get conversation error:', error);

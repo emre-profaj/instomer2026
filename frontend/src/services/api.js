@@ -90,6 +90,8 @@ export const workspaceAPI = {
         api.put(`/workspaces/${workspaceId}/members/${userId}`, data),
     removeMember: (workspaceId, userId) =>
         api.delete(`/workspaces/${workspaceId}/members/${userId}`),
+    changeMemberPassword: (workspaceId, userId, newPassword) =>
+        api.put(`/workspaces/${workspaceId}/members/${userId}/password`, { newPassword }),
     delete: (workspaceId) => api.delete(`/workspaces/${workspaceId}`),
     // Company Info
     getCompanyInfo: (workspaceId) => api.get(`/workspaces/${workspaceId}/company`),

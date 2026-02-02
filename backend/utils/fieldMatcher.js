@@ -9,19 +9,25 @@ export const smartFieldMatcher = {
             'isim_soyisim', 'isimsoyisim', 'isim soyisim', 'ad soyad',
             'your_name', 'yourname', 'customer_name', 'user_name', 'username',
             'first_name', 'firstname', 'last_name', 'lastname', 'nameandsurname',
+            'namesurname', 'name_surname', 'surname', 'soyisim', 'soyad',
+            'adiniz', 'adiniz_soyadiniz', 'adınız', 'adınız_soyadınız',
             'field_1', 'field_name', 'field_ad', 'field_isim' // Elementor default IDs
         ],
         email: [
             'email', 'e-mail', 'e_mail', 'mail', 'eposta', 'e-posta', 'e_posta',
             'your_email', 'youremail', 'customer_email', 'user_email',
             'email_address', 'emailaddress', 'e-mail_address', 'email_adresi',
+            'emailiniz', 'e_posta_adresiniz', 'iletisim_eposta',
             'field_2', 'field_email', 'field_mail', 'field_eposta' // Elementor
         ],
         phone: [
             'phone', 'telefon', 'tel', 'telephone', 'mobile', 'mobil', 'gsm',
             'phone_number', 'phonenumber', 'telefon_no', 'telefon_numarasi',
             'your_phone', 'yourphone', 'customer_phone', 'user_phone',
-            'cell', 'cellphone', 'cep', 'cep_telefonu',
+            'cell', 'cellphone', 'cep', 'cep_telefonu', 'cetel',
+            'whatsapp', 'whatsappno', 'whatsapp_no', 'wp', 'wp_no',
+            'gsmwhatsapp', 'gsm_whatsapp', 'gsmwhatsappno',
+            'telefonunuz', 'telefon_numaraniz', 'iletisim_no', 'numara',
             'field_3', 'field_phone', 'field_tel', 'field_telefon' // Elementor
         ],
         company: [
@@ -34,16 +40,25 @@ export const smartFieldMatcher = {
             'your_message', 'yourmessage', 'comment', 'comments', 'yorum',
             'note', 'notes', 'notlar', 'details', 'detaylar', 'text',
             'content', 'icerik', 'içerik', 'inquiry', 'talep',
+            'mesajiniz', 'mesajınız', 'soru', 'sorunuz', 'aciklamaniz',
             'field_4', 'field_message', 'field_mesaj', 'field_textarea' // Elementor
         ],
         subject: [
             'subject', 'konu', 'baslik', 'başlık', 'title', 'topic',
-            'your_subject', 'message_subject', 'inquiry_type'
+            'your_subject', 'message_subject', 'inquiry_type', 'konusu'
         ],
         product: [
             'product', 'urun', 'ürün', 'service', 'hizmet', 'category',
             'kategori', 'product_name', 'urun_adi', 'service_type',
-            'hizmet_turu', 'interest', 'ilgi_alani', 'urun_secimi'
+            'hizmet_turu', 'interest', 'ilgi_alani', 'urun_secimi',
+            'interestedin', 'interested_in', 'i_am_interested_in', 'iaminterestedin',
+            'secim', 'seçim', 'tedavi', 'treatment', 'procedure', 'islem',
+            'hizmet_secimi', 'tedavi_secimi', 'islem_turu'
+        ],
+        age: [
+            'age', 'yas', 'yaş', 'dogumtarihi', 'dogum_tarihi', 'doğum_tarihi',
+            'birthdate', 'birth_date', 'yasgrubu', 'yas_grubu', 'yaş_grubu',
+            'age_range', 'agerange', 'yasiniz', 'yaşınız'
         ],
         city: [
             'city', 'sehir', 'şehir', 'il', 'location', 'konum', 'lokasyon'
@@ -74,24 +89,24 @@ export const smartFieldMatcher = {
      */
     matchField(formFieldName) {
         const normalized = this.normalize(formFieldName);
-        
+
         // Her CRM field için kontrol et
         for (const [crmField, patterns] of Object.entries(this.patterns)) {
             for (const pattern of patterns) {
                 const normalizedPattern = this.normalize(pattern);
-                
+
                 // Tam eşleşme
                 if (normalized === normalizedPattern) {
                     return crmField;
                 }
-                
+
                 // Kısmi eşleşme (field adı pattern'i içeriyor)
                 if (normalized.includes(normalizedPattern) || normalizedPattern.includes(normalized)) {
                     return crmField;
                 }
             }
         }
-        
+
         return null; // Eşleşme bulunamadı
     },
 
@@ -107,6 +122,7 @@ export const smartFieldMatcher = {
             message: null,
             subject: null,
             product: null,
+            age: null,
             city: null,
             address: null,
             unmapped: {} // Eşleşmeyen field'lar
@@ -115,9 +131,9 @@ export const smartFieldMatcher = {
         for (const [fieldName, value] of Object.entries(formData)) {
             // Internal field'ları atla
             if (fieldName.startsWith('_')) continue;
-            
+
             const crmField = this.matchField(fieldName);
-            
+
             if (crmField && mapped.hasOwnProperty(crmField)) {
                 // İlk eşleşmeyi kullan (zaten dolu değilse)
                 if (!mapped[crmField]) {
@@ -139,13 +155,75 @@ export const smartFieldMatcher = {
         const mapped = this.autoMap(formData);
         const totalFields = Object.keys(formData).filter(k => !k.startsWith('_')).length;
         const mappedCount = Object.values(mapped).filter(v => v !== null && typeof v !== 'object').length;
-        
+
         return {
             score: totalFields > 0 ? (mappedCount / totalFields) * 100 : 0,
             mapped: mappedCount,
             total: totalFields,
             confidence: mappedCount >= 2 ? 'high' : mappedCount === 1 ? 'medium' : 'low'
         };
+    },
+
+    /**
+     * 🆕 Değer içeriğine bakarak alan tipini tahmin et
+     * Elementor gibi sistemlerde field_a8e1087 gibi isimler geldiğinde
+     * değere bakarak ne olduğunu anlamaya çalışır
+     */
+    detectFieldTypeByValue(value) {
+        if (!value || typeof value !== 'string') return null;
+
+        const trimmedValue = value.trim();
+
+        // Email kontrolü
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedValue)) {
+            return { type: 'email', label: 'E-posta', icon: '📧' };
+        }
+
+        // Telefon kontrolü (en az 7 rakam içeren)
+        const digitsOnly = trimmedValue.replace(/\D/g, '');
+        if (digitsOnly.length >= 7 && digitsOnly.length <= 15) {
+            // Telefon formatına benziyor
+            if (/^[\d\s\-\+\(\)]+$/.test(trimmedValue)) {
+                return { type: 'phone', label: 'Telefon', icon: '📞' };
+            }
+        }
+
+        // URL kontrolü
+        if (/^https?:\/\//.test(trimmedValue) || /^www\./.test(trimmedValue)) {
+            return { type: 'url', label: 'Web Sitesi', icon: '🌐' };
+        }
+
+        // Tarih kontrolü (basit)
+        if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$/.test(trimmedValue)) {
+            return { type: 'date', label: 'Tarih', icon: '📅' };
+        }
+
+        return null;
+    },
+
+    /**
+     * 🆕 Okunabilir alan adı oluştur
+     * field_a600875 gibi anlamsız isimleri değere göre anlamlı hale getirir
+     */
+    getReadableFieldName(fieldName, value) {
+        // Önce değere bakarak tip tespiti yap
+        const detectedType = this.detectFieldTypeByValue(value);
+        if (detectedType) {
+            return { name: detectedType.label, icon: detectedType.icon };
+        }
+
+        // field_xxxx formatındaysa "Ek Bilgi" olarak göster (anlamsız hex ID'ler için)
+        if (/^field_[a-f0-9]+$/i.test(fieldName)) {
+            return { name: 'Ek Bilgi', icon: '�' };
+        }
+
+        // Diğer durumlarda field adını temizleyip kullan
+        const readableName = fieldName
+            .replace(/[_-]/g, ' ')
+            .replace(/\b\w/g, char => char.toUpperCase())
+            .replace(/^Field\s*/i, ''); // "Field " prefix'ini kaldır
+
+        return { name: readableName || 'Bilgi', icon: '📝' };
     }
 };
 
