@@ -265,7 +265,7 @@
                 padding: 10px 12px;
                 border: 1px solid #d1d5db;
                 border-radius: 8px;
-                font-size: 14px;
+                font-size: 16px; /* Minimum 16px to prevent iOS Safari auto-zoom */
                 outline: none;
                 font-family: inherit;
             }
@@ -305,7 +305,121 @@
             .ag-footer a:hover {
                 color: ${settings.primaryColor};
             }
+            
+            /* Pre-Chat Form Styles */
+            .ag-prechat-form {
+                padding: 24px;
+                background: #f9fafb;
+                flex: 1;
+                overflow-y: auto;
+            }
+            .ag-form-title {
+                font-size: 16px;
+                font-weight: 600;
+                color: #1f2937;
+                margin-bottom: 4px;
+            }
+            .ag-form-subtitle {
+                font-size: 13px;
+                color: #6b7280;
+                margin-bottom: 20px;
+            }
+            .ag-form-group {
+                margin-bottom: 16px;
+            }
+            .ag-form-label {
+                display: block;
+                font-size: 13px;
+                font-weight: 500;
+                color: #374151;
+                margin-bottom: 6px;
+            }
+            .ag-form-label .required {
+                color: #ef4444;
+                margin-left: 2px;
+            }
+            .ag-form-input {
+                width: 100%;
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 14px;
+                outline: none;
+                font-family: inherit;
+                transition: border-color 0.2s, box-shadow 0.2s;
+            }
+            .ag-form-input:focus {
+                border-color: ${settings.primaryColor};
+                box-shadow: 0 0 0 3px ${settings.primaryColor}20;
+            }
+            .ag-form-input.error {
+                border-color: #ef4444;
+            }
+            .ag-form-input::placeholder {
+                color: #9ca3af;
+            }
+            .ag-form-select {
+                width: 100%;
+                padding: 10px 12px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                font-size: 14px;
+                outline: none;
+                font-family: inherit;
+                background: white;
+                cursor: pointer;
+            }
+            .ag-form-select:focus {
+                border-color: ${settings.primaryColor};
+                box-shadow: 0 0 0 3px ${settings.primaryColor}20;
+            }
+            .ag-form-error {
+                font-size: 12px;
+                color: #ef4444;
+                margin-top: 4px;
+                display: none;
+            }
+            .ag-form-error.show {
+                display: block;
+            }
+            .ag-form-submit {
+                width: 100%;
+                padding: 12px;
+                background-color: ${settings.primaryColor};
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: opacity 0.2s;
+                font-family: inherit;
+                margin-top: 8px;
+            }
+            .ag-form-submit:hover {
+                opacity: 0.9;
+            }
+            .ag-form-submit:disabled {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
+            
+            /* Hide chat area when form is shown */
+            .ag-chat-content {
+                display: flex;
+                flex-direction: column;
+                flex: 1;
+                overflow: hidden;
+            }
+            .ag-chat-content.hidden {
+                display: none;
+            }
         `;
+
+        // Check if form was already submitted (visitor returning) OR form is disabled
+        const formSubmittedKey = `antigravity_form_submitted_${workspaceId}`;
+        const prechatFormEnabled = settings.prechatFormEnabled !== undefined ? settings.prechatFormEnabled : true;
+        let formAlreadySubmitted = localStorage.getItem(formSubmittedKey) === 'true' || !prechatFormEnabled;
 
         // Create widget HTML
         const widgetHTML = `
@@ -318,14 +432,55 @@
                             <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
                         </button>
                     </div>
-                    <div class="ag-messages" id="ag-messages">
-                        <div class="ag-message bot">${settings.greetingMessage || 'Merhaba!'}</div>
+                    
+                    <!-- Pre-Chat Form -->
+                    <div id="ag-prechat-form" class="ag-prechat-form" ${formAlreadySubmitted ? 'style="display:none;"' : ''}>
+                        <div class="ag-form-title">Sohbete Başlamadan Önce</div>
+                        <div class="ag-form-subtitle">Lütfen bilgilerinizi girin</div>
+                        
+                        <div class="ag-form-group">
+                            <label class="ag-form-label">
+                                İsim Soyisim <span class="required">*</span>
+                            </label>
+                            <input type="text" class="ag-form-input" id="ag-form-name" placeholder="Adınız ve soyadınız">
+                            <div class="ag-form-error" id="ag-error-name">Bu alan zorunludur</div>
+                        </div>
+                        
+                        <div class="ag-form-group">
+                            <label class="ag-form-label">
+                                Telefon <span class="required">*</span>
+                            </label>
+                            <input type="tel" class="ag-form-input" id="ag-form-phone" placeholder="05XX XXX XX XX">
+                            <div class="ag-form-error" id="ag-error-phone">Geçerli bir telefon numarası girin</div>
+                        </div>
+                        
+                        <div class="ag-form-group">
+                            <label class="ag-form-label">Konu</label>
+                            <select class="ag-form-select" id="ag-form-subject">
+                                <option value="">Seçiniz...</option>
+                                <option value="Genel Soru">Genel Soru</option>
+                                <option value="Satış">Satış</option>
+                                <option value="Teknik Destek">Teknik Destek</option>
+                                <option value="Şikayet">Şikayet</option>
+                                <option value="Diğer">Diğer</option>
+                            </select>
+                        </div>
+                        
+                        <button class="ag-form-submit" id="ag-form-submit">Sohbete Başla</button>
                     </div>
-                    <div id="ag-typing" class="ag-typing">Asistan yazıyor...</div>
-                    <div class="ag-input-area">
-                        <input type="text" class="ag-input" id="ag-input" placeholder="Mesajınızı yazın...">
-                        <button class="ag-send-btn" id="ag-send">Gönder</button>
+                    
+                    <!-- Chat Content (hidden until form submitted) -->
+                    <div id="ag-chat-content" class="ag-chat-content ${formAlreadySubmitted ? '' : 'hidden'}">
+                        <div class="ag-messages" id="ag-messages">
+                            <div class="ag-message bot">${settings.greetingMessage || 'Merhaba!'}</div>
+                        </div>
+                        <div id="ag-typing" class="ag-typing">Asistan yazıyor...</div>
+                        <div class="ag-input-area">
+                            <input type="text" class="ag-input" id="ag-input" placeholder="Mesajınızı yazın...">
+                            <button class="ag-send-btn" id="ag-send">Gönder</button>
+                        </div>
                     </div>
+                    
                     <div class="ag-footer">
                         Powered by <a href="https://instomer.com" target="_blank" rel="noopener">Instomer</a>
                     </div>
@@ -356,12 +511,110 @@
         const typingIndicator = shadow.getElementById('ag-typing');
         const minimizeBtn = shadow.getElementById('ag-minimize');
 
+        // Pre-chat form elements
+        const prechatForm = shadow.getElementById('ag-prechat-form');
+        const chatContent = shadow.getElementById('ag-chat-content');
+        const formName = shadow.getElementById('ag-form-name');
+        const formPhone = shadow.getElementById('ag-form-phone');
+        const formSubject = shadow.getElementById('ag-form-subject');
+        const formSubmitBtn = shadow.getElementById('ag-form-submit');
+        const errorName = shadow.getElementById('ag-error-name');
+        const errorPhone = shadow.getElementById('ag-error-phone');
+
         fab.onclick = () => {
             chatWindow.classList.toggle('open');
         };
 
         minimizeBtn.onclick = () => {
             chatWindow.classList.remove('open');
+        };
+
+        // Form validation and submission
+        function validatePhone(phone) {
+            // Remove spaces, dashes, etc.
+            const cleaned = phone.replace(/[\s\-\(\)]/g, '');
+            // Turkish phone: 05XXXXXXXXX (11 digits) or +905XXXXXXXXX (13 chars)
+            return /^(\+90|0)?5\d{9}$/.test(cleaned);
+        }
+
+        async function handleFormSubmit() {
+            let isValid = true;
+
+            // Validate name
+            const name = formName.value.trim();
+            if (!name) {
+                formName.classList.add('error');
+                errorName.classList.add('show');
+                isValid = false;
+            } else {
+                formName.classList.remove('error');
+                errorName.classList.remove('show');
+            }
+
+            // Validate phone
+            const phone = formPhone.value.trim();
+            if (!phone || !validatePhone(phone)) {
+                formPhone.classList.add('error');
+                errorPhone.classList.add('show');
+                isValid = false;
+            } else {
+                formPhone.classList.remove('error');
+                errorPhone.classList.remove('show');
+            }
+
+            if (!isValid) return;
+
+            // Disable button and show loading
+            formSubmitBtn.disabled = true;
+            formSubmitBtn.textContent = 'Başlatılıyor...';
+
+            try {
+                // Send prechat data to backend
+                const response = await fetch(`${apiBaseUrl}/prechat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        workspaceId,
+                        visitorId,
+                        name: name,
+                        phone: phone,
+                        subject: formSubject.value || null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Save to localStorage to prevent showing form again
+                    localStorage.setItem(formSubmittedKey, 'true');
+
+                    // Store visitor info for personalization
+                    localStorage.setItem('antigravity_visitor_name', name);
+                    localStorage.setItem('antigravity_visitor_phone', phone);
+
+                    // Hide form, show chat
+                    prechatForm.style.display = 'none';
+                    chatContent.classList.remove('hidden');
+
+                    // Focus on input
+                    input.focus();
+                } else {
+                    throw new Error(data.error || 'Form gönderilemedi');
+                }
+            } catch (err) {
+                console.error('Prechat form error:', err);
+                formSubmitBtn.disabled = false;
+                formSubmitBtn.textContent = 'Sohbete Başla';
+                alert('Bir hata oluştu. Lütfen tekrar deneyin.');
+            }
+        }
+
+        // Form submit button click
+        formSubmitBtn.onclick = handleFormSubmit;
+
+        // Allow Enter key in phone field to submit
+        formPhone.onkeypress = (e) => {
+            if (e.key === 'Enter') handleFormSubmit();
         };
 
         function addMessage(text, type) {

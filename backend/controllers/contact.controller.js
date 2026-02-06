@@ -15,11 +15,6 @@ export const getContacts = async (req, res) => {
         // Build base conversation filter for this workspace
         let conversationFilter = { workspaceId: workspaceId };
 
-        // Add source/channel filter if provided (but not for MANUAL - that's handled separately)
-        if (source && source !== 'ALL' && source !== 'MANUAL') {
-            conversationFilter.channel = source;
-        }
-
         // AGENT role: only see contacts from their assigned conversations
         if (role === 'AGENT') {
             // Get agent's team IDs
@@ -114,45 +109,15 @@ export const getContacts = async (req, res) => {
             };
         }
 
-        const contacts = await prisma.contact.findMany({
-            where,
-            include: {
-                _count: {
-                    select: { conversations: true }
-                },
-                conversations: {
-                    where: { workspaceId: workspaceId },
-                    select: {
-                        channel: true,
-                        createdAt: true,
-                        lastMessageAt: true,
-                        assignedTo: {
-                            select: {
-                                id: true,
-                                name: true
-                            }
-                        }
-                    },
-                    orderBy: { createdAt: 'asc' }
-                }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: parseInt(limit),
-            skip: parseInt(offset)
-        });
-
-        // Add source field and message dates based on conversations
-        const contactsWithSource = contacts.map(contact => {
-            // Determine primary source from conversations
+        // Helper function to add source field and message dates
+        const enrichContactWithSource = (contact) => {
             const channels = contact.conversations?.map(c => c.channel) || [];
-            let contactSource = 'MANUAL'; // Default for manually added contacts
+            let contactSource = 'MANUAL';
 
-            // Calculate first and last message dates from conversations
             let firstMessageAt = null;
             let lastMessageAt = null;
 
             if (contact.conversations?.length > 0) {
-                // First message = earliest conversation createdAt (oldest)
                 const createdDates = contact.conversations
                     .map(c => c.createdAt)
                     .filter(d => d != null);
@@ -160,21 +125,17 @@ export const getContacts = async (req, res) => {
                     firstMessageAt = new Date(Math.min(...createdDates.map(d => new Date(d).getTime())));
                 }
 
-                // Last message = latest lastMessageAt across all conversations (newest)
                 const lastMsgDates = contact.conversations
-                    .map(c => c.lastMessageAt || c.createdAt) // Fallback to createdAt if lastMessageAt is null
+                    .map(c => c.lastMessageAt || c.createdAt)
                     .filter(d => d != null);
                 if (lastMsgDates.length > 0) {
                     lastMessageAt = new Date(Math.max(...lastMsgDates.map(d => new Date(d).getTime())));
                 }
 
-                // Count channel occurrences
                 const channelCounts = channels.reduce((acc, ch) => {
                     acc[ch] = (acc[ch] || 0) + 1;
                     return acc;
                 }, {});
-
-                // Find the most common channel
                 contactSource = Object.entries(channelCounts)
                     .sort((a, b) => b[1] - a[1])[0][0];
             }
@@ -182,32 +143,107 @@ export const getContacts = async (req, res) => {
             return {
                 ...contact,
                 source: contactSource,
-                channels: [...new Set(channels)], // Unique channels this contact has
+                channels: [...new Set(channels)],
                 firstMessageAt,
                 lastMessageAt
             };
-        });
+        };
 
-        // If source filter is applied, filter the results on the application level
-        // This is needed because the DB query filters conversations, not contacts directly
-        let filteredContacts = contactsWithSource;
-        if (source && source !== 'ALL') {
+        // Check if source filter is applied (not 'ALL')
+        const hasSourceFilter = source && source !== 'ALL';
+
+        let finalContacts = [];
+        let totalCount = 0;
+
+        if (hasSourceFilter) {
+            // SOURCE FILTER ACTIVE: Fetch ALL contacts, filter by source, then paginate at app level
+            // This ensures consistent page sizes (e.g., always 15 per page)
+            const allContacts = await prisma.contact.findMany({
+                where,
+                include: {
+                    _count: {
+                        select: { conversations: true }
+                    },
+                    conversations: {
+                        where: { workspaceId: workspaceId },
+                        select: {
+                            channel: true,
+                            createdAt: true,
+                            lastMessageAt: true,
+                            assignedTo: {
+                                select: {
+                                    id: true,
+                                    name: true
+                                }
+                            }
+                        },
+                        orderBy: { createdAt: 'asc' }
+                    }
+                },
+                orderBy: { createdAt: 'desc' }
+                // NO take/skip here - we get all and paginate after filtering
+            });
+
+            // Enrich with source info
+            const allContactsWithSource = allContacts.map(enrichContactWithSource);
+
+            // Apply source filter
+            let filteredContacts;
             if (source === 'MANUAL') {
-                // MANUAL = contacts with no conversations (manually added)
-                filteredContacts = contactsWithSource.filter(c =>
+                filteredContacts = allContactsWithSource.filter(c =>
                     c.source === 'MANUAL' || c.channels.length === 0
                 );
             } else {
-                filteredContacts = contactsWithSource.filter(c =>
+                filteredContacts = allContactsWithSource.filter(c =>
                     c.source === source || c.channels.includes(source)
                 );
             }
+
+            // Get total BEFORE pagination
+            totalCount = filteredContacts.length;
+
+            // Apply pagination at application level
+            const parsedLimit = parseInt(limit);
+            const parsedOffset = parseInt(offset);
+            finalContacts = filteredContacts.slice(parsedOffset, parsedOffset + parsedLimit);
+
+            console.log(`✅ [Get Contacts] Source filter '${source}' -> ${totalCount} total, showing ${finalContacts.length} (offset: ${parsedOffset})`);
+        } else {
+            // NO SOURCE FILTER: Use normal DB pagination
+            const contacts = await prisma.contact.findMany({
+                where,
+                include: {
+                    _count: {
+                        select: { conversations: true }
+                    },
+                    conversations: {
+                        where: { workspaceId: workspaceId },
+                        select: {
+                            channel: true,
+                            createdAt: true,
+                            lastMessageAt: true,
+                            assignedTo: {
+                                select: {
+                                    id: true,
+                                    name: true
+                                }
+                            }
+                        },
+                        orderBy: { createdAt: 'asc' }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: parseInt(limit),
+                skip: parseInt(offset)
+            });
+
+            finalContacts = contacts.map(enrichContactWithSource);
+            totalCount = await prisma.contact.count({ where });
+
+            console.log(`✅ [Get Contacts] No source filter -> ${totalCount} total, showing ${finalContacts.length}`);
         }
 
-        const total = await prisma.contact.count({ where });
-        console.log(`✅ [Get Contacts] Response -> Found ${filteredContacts.length} entries (Filtered Total: ${total})`);
-
-        res.json({ contacts: filteredContacts, total: source && source !== 'ALL' ? filteredContacts.length : total });
+        res.json({ contacts: finalContacts, total: totalCount });
     } catch (error) {
         console.error('Get contacts error:', error);
         res.status(500).json({ error: 'Failed to fetch contacts' });

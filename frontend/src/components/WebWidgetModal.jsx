@@ -20,6 +20,7 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
     const [position, setPosition] = useState('RIGHT');
     const [width, setWidth] = useState(350);
     const [assignedBotId, setAssignedBotId] = useState('');
+    const [prechatFormEnabled, setPrechatFormEnabled] = useState(false);
     const [availableBots, setAvailableBots] = useState([]);
 
     useEffect(() => {
@@ -51,6 +52,7 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
         setPosition(widget.position || 'RIGHT');
         setWidth(widget.width || 350);
         setAssignedBotId(widget.assignedBotId || '');
+        setPrechatFormEnabled(widget.prechatFormEnabled !== undefined ? widget.prechatFormEnabled : true);
     };
 
     const handleSave = async () => {
@@ -72,7 +74,8 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
                 isActive,
                 position,
                 width,
-                assignedBotId: assignedBotId || null
+                assignedBotId: assignedBotId || null,
+                prechatFormEnabled
             };
 
             if (mode === 'create') {
@@ -255,6 +258,21 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
                                         />
                                         Widget Aktif
                                     </label>
+                                </div>
+                                <div className="modal-form-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={prechatFormEnabled}
+                                            onChange={(e) => setPrechatFormEnabled(e.target.checked)}
+                                        />
+                                        Pre-Chat Formu Aktif
+                                    </label>
+                                    <small className="hint">
+                                        {prechatFormEnabled
+                                            ? '✅ Ziyaretçiler sohbet başlamadan önce iletişim bilgilerini dolduracak.'
+                                            : '⚠️ Ziyaretçiler doğrudan sohbete başlayacak.'}
+                                    </small>
                                 </div>
                             </div>
                         </div>

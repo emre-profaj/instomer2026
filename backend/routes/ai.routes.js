@@ -46,5 +46,6 @@ router.get('/public/widget/script', (req, res) => {
 router.get('/public/:workspaceId/widget', widgetController.getWidgetSettings);
 router.get('/public/widget/:widgetId', widgetController.getWidgetByWidgetId);
 router.post('/public/chat', widgetController.handleWidgetChat);
+router.post('/public/prechat', widgetController.handlePrechat);
 
 export default router;

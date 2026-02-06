@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI } from '../../services/api';
@@ -645,8 +645,8 @@ const Inbox = () => {
         }
     };
 
-    // Load more conversations
-    const loadMoreItems = async () => {
+    // Load more conversations - wrapped in useCallback to prevent stale closure
+    const loadMoreItems = useCallback(async () => {
         if (!hasMore || loadingMore) return;
 
         try {
@@ -659,9 +659,52 @@ const Inbox = () => {
             const moreConversations = response.data.conversations || [];
             const pagination = response.data.pagination;
 
+            // Use same filtering logic as loadInboxItems
+            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'notes'];
+            const loadAll = activeFilters.length === allFilters.length;
+            const hasChannelFilter = channelFilters.some(f => activeFilters.includes(f));
+
             // Filter and add new conversations to existing items
             const newItems = moreConversations
                 .filter(conv => {
+                    // Check if resolved filter applies
+                    if (!showResolved && conv.status === 'RESOLVED') {
+                        return false;
+                    }
+
+                    // Check if "only unassigned" filter applies
+                    const isAssigned = (conv.assignedToId && conv.assignedToId !== '') || conv.assignedTo;
+                    if (showOnlyAssigned && isAssigned) {
+                        return false;
+                    }
+
+                    // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
+                    if (activeChannel && conv.channel !== activeChannel) {
+                        return false;
+                    }
+
+                    // Check dropdown channel filter - same logic as loadInboxItems
+                    let channelMatch = false;
+                    if (loadAll) {
+                        channelMatch = true;
+                    } else if (hasChannelFilter) {
+                        channelMatch =
+                            (activeFilters.includes('whatsapp') && conv.channel === 'WHATSAPP') ||
+                            (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
+                            (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
+                            (activeFilters.includes('web_widget') && conv.channel === 'WIDGET') ||
+                            (activeFilters.includes('web_form') && conv.channel === 'FORM') ||
+                            (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
+                            (activeFilters.includes('leads') && conv.channel === 'LEAD' && conv.facebookPageId) ||
+                            (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
+                    }
+                    if (!channelMatch) return false;
+
+                    // Check contact status filter
+                    if (statusFilter && conv.contact?.status !== statusFilter) {
+                        return false;
+                    }
+
                     // Apply date range filter
                     if (dateRange.from || dateRange.to) {
                         const convDate = new Date(conv.lastMessageAt || conv.createdAt);
@@ -678,6 +721,7 @@ const Inbox = () => {
                             if (convDate > endOfDay) return false;
                         }
                     }
+
                     return true;
                 })
                 .map(conv => ({
@@ -689,16 +733,40 @@ const Inbox = () => {
             setInboxItems(prev => [...prev, ...newItems]);
 
             if (pagination) {
-                setHasMore(pagination.page < pagination.totalPages);
+                const morePages = pagination.page < pagination.totalPages;
                 setCurrentPage(pagination.page);
                 currentPageRef.current = pagination.page;
+
+                // If filtered results are empty but backend has more pages,
+                // automatically try loading the next page (max 5 auto-retries)
+                if (newItems.length === 0 && morePages) {
+                    // Check retry count to prevent infinite loop
+                    const retryCount = (window.__loadMoreRetryCount || 0) + 1;
+                    window.__loadMoreRetryCount = retryCount;
+
+                    if (retryCount <= 5) {
+                        // Auto-load next page after short delay
+                        setTimeout(() => {
+                            loadMoreItems();
+                        }, 100);
+                        return; // Don't set hasMore yet, we're auto-continuing
+                    } else {
+                        // Max retries reached, no more matching items
+                        setHasMore(false);
+                        window.__loadMoreRetryCount = 0;
+                    }
+                } else {
+                    // Got some items or no more pages
+                    setHasMore(morePages);
+                    window.__loadMoreRetryCount = 0;
+                }
             }
         } catch (error) {
             console.error('Error loading more items:', error);
         } finally {
             setLoadingMore(false);
         }
-    };
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showOnlyAssigned, activeChannel, statusFilter, dateRange]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -969,6 +1037,15 @@ const Inbox = () => {
             }
 
             setInboxItems(items);
+
+            // If we have very few filtered items but more pages exist, auto-load more
+            // This handles the case where filtering removes most items from first page
+            if (items.length < 10 && hasMore) {
+                window.__loadMoreRetryCount = 0; // Reset retry counter
+                setTimeout(() => {
+                    loadMoreItems();
+                }, 200);
+            }
         } catch (error) {
             console.error('Error loading inbox items:', error);
         } finally {
@@ -2124,8 +2201,8 @@ const Inbox = () => {
                                 </div>
                             ))}
 
-                            {/* Load More Button */}
-                            {hasMore && (
+                            {/* Load More Button - hide when filters reduce visible items */}
+                            {hasMore && activeFilters.length === allFilters.length && !showOnlyAssigned && inboxItems.length >= 50 && (
                                 <button
                                     className="load-more-btn"
                                     onClick={loadMoreItems}

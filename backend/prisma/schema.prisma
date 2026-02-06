@@ -376,6 +376,7 @@ model WebWidget {
   isActive        Boolean   @default(true)
   position        String    @default("RIGHT")
   width           Int       @default(350)
+  prechatFormEnabled Boolean @default(false) // Pre-chat form aktif/pasif
   assignedBotId   String?
   assignedBot     AIBot?    @relation(fields: [assignedBotId], references: [id], onDelete: SetNull)
   createdAt       DateTime  @default(now())

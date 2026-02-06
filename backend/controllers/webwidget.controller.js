@@ -63,7 +63,7 @@ export const getWidget = async (req, res) => {
 // Create new widget
 export const createWidget = async (req, res) => {
     try {
-        const { workspaceId, name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId } = req.body;
+        const { workspaceId, name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled } = req.body;
 
         if (!workspaceId || !name) {
             return res.status(400).json({ error: 'workspaceId and name are required' });
@@ -81,7 +81,8 @@ export const createWidget = async (req, res) => {
                 isActive: isActive !== undefined ? isActive : true,
                 position: position || 'RIGHT',
                 width: width || 350,
-                assignedBotId: assignedBotId || null
+                assignedBotId: assignedBotId || null,
+                prechatFormEnabled: prechatFormEnabled !== undefined ? prechatFormEnabled : false
             },
             include: {
                 assignedBot: {
@@ -105,7 +106,7 @@ export const createWidget = async (req, res) => {
 export const updateWidget = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId } = req.body;
+        const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled } = req.body;
 
         const widget = await prisma.webWidget.update({
             where: { id },
@@ -119,7 +120,8 @@ export const updateWidget = async (req, res) => {
                 ...(isActive !== undefined && { isActive }),
                 ...(position !== undefined && { position }),
                 ...(width !== undefined && { width }),
-                ...(assignedBotId !== undefined && { assignedBotId: assignedBotId || null })
+                ...(assignedBotId !== undefined && { assignedBotId: assignedBotId || null }),
+                ...(prechatFormEnabled !== undefined && { prechatFormEnabled })
             },
             include: {
                 assignedBot: {

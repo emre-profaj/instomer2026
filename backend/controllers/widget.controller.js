@@ -164,12 +164,7 @@ export const handleWidgetChat = async (req, res) => {
             }
         });
 
-        // If contact exists but has phone/email, it's a "completed" contact
-        // Create a new one for this new visitor session
-        if (contact && (contact.phone || contact.email)) {
-            contact = null; // Force creation of new contact
-        }
-
+        // If contact with this visitorId exists, reuse it (even if it has phone/email from prechat form)
         if (!contact) {
             contact = await prisma.contact.create({
                 data: {
@@ -326,5 +321,173 @@ export const handleWidgetChat = async (req, res) => {
     } catch (error) {
         console.error('Widget chat error:', error);
         res.status(500).json({ error: 'Mesaj gönderilemedi.' });
+    }
+};
+
+// Handle pre-chat form submission from widget
+export const handlePrechat = async (req, res) => {
+    try {
+        const { workspaceId, visitorId, name, phone, subject } = req.body;
+
+        if (!workspaceId || !visitorId || !name || !phone) {
+            return res.status(400).json({ error: 'Eksik bilgi.' });
+        }
+
+        console.log(`📝 [Widget Prechat] Received form: ${name}, ${phone}, ${subject || 'Konu yok'}`);
+
+        // Normalize phone number
+        let normalizedPhone = phone.replace(/[\s\-\(\)]/g, '');
+        if (normalizedPhone.startsWith('+90')) {
+            normalizedPhone = '0' + normalizedPhone.slice(3);
+        }
+
+        // 1. Find existing contact by phone OR visitorId, or create new one
+        let contact = await prisma.contact.findFirst({
+            where: {
+                workspaceId,
+                OR: [
+                    { phone: normalizedPhone },
+                    { phone: phone }, // Try exact match too
+                    { tags: { contains: visitorId } }
+                ]
+            }
+        });
+
+        if (contact) {
+            // Update existing contact with new info and mark as HOT_LEAD
+            contact = await prisma.contact.update({
+                where: { id: contact.id },
+                data: {
+                    name: name,
+                    phone: normalizedPhone,
+                    status: 'HOT_OPPORTUNITY',
+                    tags: JSON.stringify([visitorId, ...(contact.tags ? JSON.parse(contact.tags).filter(t => t !== visitorId) : [])])
+                }
+            });
+            console.log(`✅ [Widget Prechat] Updated existing contact ${contact.id} as HOT_OPPORTUNITY`);
+        } else {
+            // Create new contact
+            contact = await prisma.contact.create({
+                data: {
+                    workspaceId,
+                    name: name,
+                    phone: normalizedPhone,
+                    tags: JSON.stringify([visitorId]),
+                    source: 'WEB_WIDGET',
+                    status: 'HOT_OPPORTUNITY'
+                }
+            });
+            console.log(`✅ [Widget Prechat] Created new contact ${contact.id} as HOT_LEAD`);
+        }
+
+        // 2. Check for existing OPEN conversation, or create new one
+        let conversation = await prisma.conversation.findFirst({
+            where: {
+                contactId: contact.id,
+                workspaceId,
+                status: 'OPEN'
+            }
+        });
+
+        let isNewConversation = false;
+        if (!conversation) {
+            // Get widget settings for assignedBotId
+            const settings = await prisma.webWidget.findFirst({
+                where: { workspaceId }
+            });
+
+            conversation = await prisma.conversation.create({
+                data: {
+                    contactId: contact.id,
+                    workspaceId,
+                    status: 'OPEN',
+                    channel: 'WIDGET',
+                    assignedBotId: settings?.assignedBotId
+                },
+                include: {
+                    contact: true
+                }
+            });
+            isNewConversation = true;
+
+            // Apply channel routing for team assignment
+            try {
+                const routingResult = await applyChannelRouting(
+                    workspaceId,
+                    conversation.id,
+                    'WEB_WIDGET',
+                    true
+                );
+                if (routingResult.teamId) {
+                    console.log(`📍 [Widget Prechat] Routed to team ${routingResult.teamId}`);
+                }
+            } catch (routingError) {
+                console.error('❌ [Widget Prechat] Routing error:', routingError);
+            }
+
+            // Trigger NEW_WEBFORM automations
+            try {
+                executeWebFormAutomation(workspaceId, contact, { name, phone, subject });
+                console.log(`🤖 [Widget Prechat] Web form automation triggered for contact ${contact.id}`);
+            } catch (automationError) {
+                console.error('❌ [Widget Prechat] Automation trigger error:', automationError);
+            }
+        }
+
+        // 3. Save form data as first message (system note)
+        const formMessage = `📋 **İletişim Formu**\n• İsim: ${name}\n• Telefon: ${normalizedPhone}${subject ? `\n• Konu: ${subject}` : ''}`;
+
+        const formDataMessage = await prisma.message.create({
+            data: {
+                content: formMessage,
+                conversationId: conversation.id,
+                isFromContact: true
+            }
+        });
+
+        // Update conversation
+        const updatedConversation = await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+                lastMessageAt: new Date(),
+                unreadCount: { increment: 1 }
+            },
+            include: {
+                contact: true
+            }
+        });
+
+        // Emit socket events
+        try {
+            if (isNewConversation) {
+                emitToWorkspace(workspaceId, 'new_conversation', {
+                    workspaceId,
+                    conversationId: conversation.id,
+                    conversation: updatedConversation,
+                    channel: 'WIDGET'
+                });
+                console.log(`📡 [Widget Prechat] new_conversation emitted`);
+            }
+
+            emitToWorkspace(workspaceId, 'new_message', {
+                workspaceId,
+                conversationId: conversation.id,
+                message: formDataMessage,
+                conversation: updatedConversation,
+                contact: updatedConversation.contact,
+                channel: 'WIDGET'
+            });
+        } catch (socketError) {
+            console.error('❌ [Widget Prechat] Socket emit error:', socketError);
+        }
+
+        res.json({
+            success: true,
+            contactId: contact.id,
+            conversationId: conversation.id
+        });
+    } catch (error) {
+        console.error('Widget prechat error:', error);
+        res.status(500).json({ error: 'Form işlenemedi.' });
     }
 };

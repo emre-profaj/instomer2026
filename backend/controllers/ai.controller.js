@@ -1011,18 +1011,52 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         // Build customer info string from contact data
         const contact = conversation?.contact;
         let customerInfo = '';
+        let hasContactInfo = false;
         if (contact) {
             const infoParts = [];
-            if (contact.name) infoParts.push(`Müşteri Adı: ${contact.name}`);
-            if (contact.phone) infoParts.push(`Telefon: ${contact.phone}`);
-            if (contact.email) infoParts.push(`E-posta: ${contact.email}`);
-            customerInfo = infoParts.length > 0 ? infoParts.join('\n') : 'Müşteri bilgisi mevcut değil.';
+            if (contact.name && contact.name !== 'Web Ziyaretçisi') {
+                infoParts.push(`Müşteri Adı: ${contact.name}`);
+                hasContactInfo = true;
+            }
+            if (contact.phone) {
+                infoParts.push(`Telefon: ${contact.phone}`);
+                hasContactInfo = true;
+            }
+            if (contact.email) {
+                infoParts.push(`E-posta: ${contact.email}`);
+                hasContactInfo = true;
+            }
+            if (infoParts.length > 0) {
+                customerInfo = infoParts.join('\n');
+                customerInfo += '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
+            } else {
+                customerInfo = 'Müşteri bilgisi mevcut değil.';
+            }
         } else {
             customerInfo = 'Müşteri bilgisi mevcut değil.';
         }
 
+        // If contact info exists, add prefix to bot prompt to prevent asking
+        let enhancedSystemPrompt = systemPrompt; // Use enriched systemPrompt, not raw activeBot.prompt
+        if (hasContactInfo) {
+            enhancedSystemPrompt = `⛔ ÖNEMLİ: Müşterinin isim ve telefon bilgisi ZATEN VAR. Bu bilgileri TEKRAR SORMA!\n\n${enhancedSystemPrompt}`;
+        }
+
         // Build enhanced system instruction with clear structure
-        const fullSystemInstruction = `### GÜNCEL TARİH VE SAAT ###
+        // Add critical warning at the VERY TOP if contact info exists
+        const contactWarning = hasContactInfo
+            ? `🚫🚫🚫 EN ÖNEMLİ KURAL 🚫🚫🚫
+MÜŞTERİNİN İSMİ VE TELEFON NUMARASI ZATEN BİLİNİYOR!
+- İsim: ${contact?.name || 'Bilinmiyor'}
+- Telefon: ${contact?.phone || 'Bilinmiyor'}
+BU BİLGİLERİ MÜŞTERİDEN TEKRAR İSTEME! GSM, telefon, isim, ad-soyad SORMA!
+Bu kuralı ihlal edersen işten atılırsın.
+🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫
+
+`
+            : '';
+
+        const fullSystemInstruction = `${contactWarning}### GÜNCEL TARİH VE SAAT ###
 Bugün: ${currentDay}, ${currentDate}
 Saat: ${currentTime} (Türkiye Saati)
 Yıl: ${now.getFullYear()}
@@ -1031,7 +1065,7 @@ Yıl: ${now.getFullYear()}
 ${customerInfo}
 
 ### SİSTEM TALİMATI ###
-${systemPrompt}
+${enhancedSystemPrompt}
 
 ### KULLANILACAK BİLGİLER ###
 ${documentContext || "Bilgi bankası boş."}
@@ -1044,7 +1078,8 @@ ${documentContext || "Bilgi bankası boş."}
 5. Müşteriye her zaman yardımcı olmaya çalış.
 6. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
 7. Eğer soruya bilgi bankasından cevap verebiliyorsan, [HANDOFF] YAZMA.
-8. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.`;
+8. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
+9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.`;
 
         const historyParts = [
             {
