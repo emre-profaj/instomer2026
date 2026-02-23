@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import './CompanyUsers.css';
 
 const CompanyUsers = ({ companyId }) => {
-    const { user } = useAuth();
+    const { user, onlineUsers } = useAuth();
     const [users, setUsers] = useState([]);
     const [companyWorkspaces, setCompanyWorkspaces] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -92,6 +92,7 @@ const CompanyUsers = ({ companyId }) => {
                                 ) : (
                                     <span>{user.name?.charAt(0)?.toUpperCase()}</span>
                                 )}
+                                <span className={`online-dot ${(onlineUsers.get(user.id)?.isOnline || user.isOnline) ? 'online' : 'offline'}`} />
                             </div>
                             <div className="user-details">
                                 <h3>{user.name}</h3>

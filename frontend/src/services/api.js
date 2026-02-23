@@ -440,3 +440,12 @@ export const dealAPI = {
     getByContact: (workspaceId, contactId) =>
         api.get(`/workspaces/${workspaceId}/contacts/${contactId}/deals`)
 };
+
+// Notification API
+export const notificationAPI = {
+    getAll: (workspaceId, limit = 50, offset = 0) => api.get(`/notifications/${workspaceId}?limit=${limit}&offset=${offset}`),
+    getUnreadCount: (workspaceId) => api.get(`/notifications/${workspaceId}/unread-count`),
+    markAsRead: (workspaceId, notificationId) => api.put(`/notifications/${workspaceId}/${notificationId}/read`),
+    markAllAsRead: (workspaceId) => api.put(`/notifications/${workspaceId}/read-all`),
+    deleteAll: (workspaceId) => api.delete(`/notifications/${workspaceId}/delete-all`)
+};

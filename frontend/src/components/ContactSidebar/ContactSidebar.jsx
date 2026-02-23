@@ -107,7 +107,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
 };
 
 const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false }) => {
-    const { currentWorkspace } = useAuth();
+    const { currentWorkspace, onlineUsers } = useAuth();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -128,6 +128,7 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
     const [savingNote, setSavingNote] = useState(false);
     const [notesExpanded, setNotesExpanded] = useState(false);
     const [expandedNotes, setExpandedNotes] = useState({});
+    const [isEditingName, setIsEditingName] = useState(false);
 
     // Reminder states
     const [showReminderModal, setShowReminderModal] = useState(false);
@@ -521,7 +522,40 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
                                 {/* Online indicator dummy */}
                                 <span className="status-indicator"></span>
                             </div>
-                            <h2 className="profile-name">{profile.name}</h2>
+                            {isEditingName ? (
+                                <input
+                                    type="text"
+                                    className="profile-name-input"
+                                    value={profile.name || ''}
+                                    onChange={(e) => setProfile(prev => ({ ...prev, name: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.target.blur();
+                                        } else if (e.key === 'Escape') {
+                                            setIsEditingName(false);
+                                        }
+                                    }}
+                                    onBlur={async () => {
+                                        setIsEditingName(false);
+                                        if (profile.id && profile.name?.trim()) {
+                                            try {
+                                                await contactAPI.update(currentWorkspace.id, profile.id, { name: profile.name.trim() });
+                                            } catch (err) {
+                                                console.error('Name update error:', err);
+                                            }
+                                        }
+                                    }}
+                                    autoFocus
+                                />
+                            ) : (
+                                <h2
+                                    className="profile-name editable"
+                                    onClick={() => !readOnly && setIsEditingName(true)}
+                                    title={readOnly ? '' : 'Düzenlemek için tıklayın'}
+                                >
+                                    {profile.name}
+                                </h2>
+                            )}
 
                             {/* Customer Category Select */}
                             <div className="customer-status-wrapper">
@@ -652,7 +686,7 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
                                                 <option value="">Agent Seç</option>
                                                 {members.map(member => (
                                                     <option key={member.user?.id || member.id} value={member.user?.id || member.id}>
-                                                        {member.user?.name || member.name}
+                                                        {(onlineUsers.get(member.user?.id || member.id)?.isOnline || member.user?.isOnline) ? '🟢' : '⚪'} {member.user?.name || member.name}
                                                     </option>
                                                 ))}
                                             </select>
@@ -700,7 +734,7 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
                                         }}
                                         title="Yapay zeka ile analiz et"
                                     >
-                                        <Sparkles size={14} />
+                                        <Sparkles size={14} color="#ffffff" className="btn-icon-white" />
                                         Analiz Et
                                     </button>
                                 )}
@@ -865,6 +899,56 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
                         </div>
 
 
+                        {/* Active Deals Section */}
+                        <div className="section-container deals-section">
+                            <div className="section-header">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <TrendingUp size={18} style={{ color: '#10b981' }} />
+                                    <h3>AKTİF SATIŞ</h3>
+                                </div>
+                                <button
+                                    className="ai-action-btn"
+                                    onClick={() => navigate('/quotes')}
+                                    title="Yeni teklif oluştur"
+                                >
+                                    <Plus size={14} color="#ffffff" className="btn-icon-white" />
+                                    Teklif
+                                </button>
+                            </div>
+
+                            <div className="deals-list-container">
+                                {dealsLoading ? (
+                                    <div className="summarizing-loader">
+                                        <Loader className="spin" size={14} />
+                                        <span>Yükleniyor...</span>
+                                    </div>
+                                ) : deals.length > 0 ? (
+                                    deals.slice(0, 5).map(deal => (
+                                        <div key={deal.id} className="deal-card-mini">
+                                            <div className="deal-card-mini-header">
+                                                <span className="deal-title-mini">{deal.title}</span>
+                                                <span className={`deal-stage-badge ${deal.stage.toLowerCase()}`}>
+                                                    {deal.stage === 'QUOTE' ? 'Teklif' : deal.stage === 'ORDER' ? 'Sipariş' : 'Fatura'}
+                                                </span>
+                                            </div>
+                                            <div className="deal-card-mini-footer">
+                                                <span className="deal-number-mini">{deal.quoteNumber || deal.orderNumber || deal.invoiceNumber}</span>
+                                                <span className="deal-amount-mini">
+                                                    {deal.currency === 'TRY' ? '₺' : deal.currency === 'USD' ? '$' : deal.currency === 'EUR' ? '€' : '£'}
+                                                    {deal.amount?.toLocaleString('tr-TR')}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="summary-placeholder">
+                                        Bu kişiye ait aktif satış yok.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+
                         {/* Tags Section */}
                         <div className="section-container">
                             <h3 className="section-title">ETIKETLER</h3>
@@ -901,11 +985,6 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
                                             placeholder="Etiket..."
                                             autoFocus
                                             onBlur={() => {
-                                                // Only close if empty, otherwise let user keep typing or click 'Add' (if we had a button)
-                                                // Actually, better to just close on blur to be simple, but maybe delay it?
-                                                // For now, keep it simple but careful.
-                                                // If we are submitting, we don't want to kill it? 
-                                                // But submission doesn't depend on this state being true strictly for logic.
                                                 if (!newTag.trim()) setIsAddingTag(false);
                                             }}
                                         />
@@ -915,56 +994,6 @@ const ContactSidebar = ({ conversationId, isOpen, members = [], onAssign, isOwne
                                         <Plus size={14} />
                                         <span>Ekle</span>
                                     </button>
-                                )}
-                            </div>
-                        </div>
-
-
-                        {/* Active Deals Section */}
-                        <div className="section-container deals-section">
-                            <div className="section-header">
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <TrendingUp size={18} style={{ color: '#10b981' }} />
-                                    <h3>AKTİF SATIŞ</h3>
-                                </div>
-                                <button
-                                    className="ai-action-btn"
-                                    onClick={() => navigate('/quotes')}
-                                    title="Yeni teklif oluştur"
-                                >
-                                    <Plus size={14} />
-                                    Teklif
-                                </button>
-                            </div>
-
-                            <div className="deals-list-container">
-                                {dealsLoading ? (
-                                    <div className="summarizing-loader">
-                                        <Loader className="spin" size={14} />
-                                        <span>Yükleniyor...</span>
-                                    </div>
-                                ) : deals.length > 0 ? (
-                                    deals.slice(0, 5).map(deal => (
-                                        <div key={deal.id} className="deal-card-mini">
-                                            <div className="deal-card-mini-header">
-                                                <span className="deal-title-mini">{deal.title}</span>
-                                                <span className={`deal-stage-badge ${deal.stage.toLowerCase()}`}>
-                                                    {deal.stage === 'QUOTE' ? 'Teklif' : deal.stage === 'ORDER' ? 'Sipariş' : 'Fatura'}
-                                                </span>
-                                            </div>
-                                            <div className="deal-card-mini-footer">
-                                                <span className="deal-number-mini">{deal.quoteNumber || deal.orderNumber || deal.invoiceNumber}</span>
-                                                <span className="deal-amount-mini">
-                                                    {deal.currency === 'TRY' ? '₺' : deal.currency === 'USD' ? '$' : deal.currency === 'EUR' ? '€' : '£'}
-                                                    {deal.amount?.toLocaleString('tr-TR')}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="summary-placeholder">
-                                        Bu kişiye ait aktif satış yok.
-                                    </p>
                                 )}
                             </div>
                         </div>

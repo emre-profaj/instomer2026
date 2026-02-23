@@ -186,6 +186,8 @@
     top: calc(100% + 4px);
     left: 0;
     min-width: 200px;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 10px;
@@ -270,16 +272,6 @@
     height: 1px;
     background: var(--border-color);
     margin: 8px 0;
-}
-
-.filter-section-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 6px 16px 4px;
-    margin-top: 4px;
 }
 
 .filter-option.resolved-toggle {
@@ -662,6 +654,23 @@
     color: white;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+.branch-tag-badge {
+    font-size: 8px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: white;
+    white-space: nowrap;
+}
+
+.branch-filter-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: inline-block;
+    flex-shrink: 0;
 }
 
 .unread-badge {
@@ -1806,6 +1815,34 @@
     background: #faf5ff;
     border-color: #c4b5fd;
     transform: translateX(4px);
+}
+
+.filter-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #64748b;
+    padding: 8px 16px 4px;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filter-section-toggle {
+    font-size: 10px;
+    font-weight: 600;
+    color: #3b82f6;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.filter-section-toggle:hover {
+    background: #eff6ff;
 }
 
 .suggestion-tone {

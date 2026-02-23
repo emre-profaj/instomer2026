@@ -78,6 +78,30 @@
     margin: 0 0 2px 0;
 }
 
+.profile-name.editable {
+    cursor: pointer;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.2s;
+}
+
+.profile-name.editable:hover {
+    border-bottom-color: #d1d5db;
+}
+
+.profile-name-input {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #111827;
+    text-align: center;
+    border: none;
+    border-bottom: 2px solid #ef4444;
+    background: transparent;
+    outline: none;
+    padding: 2px 4px;
+    width: 80%;
+    margin: 0 0 2px 0;
+}
+
 .profile-email {
     font-size: 0.8rem;
     color: #6b7280;
@@ -172,8 +196,8 @@
 
 /* Reminder Section specific styling */
 .section-container.reminder-section {
-    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-    border: 1px solid #fca5a5;
+    background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
+    border: 1px solid #fecaca;
 }
 
 .section-header {
@@ -616,6 +640,7 @@
 .ai-action-btn {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     background: #ef4444;
     color: white;
@@ -627,6 +652,14 @@
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.3);
+}
+
+.ai-action-btn svg,
+.btn-icon-white {
+    color: #ffffff !important;
+    stroke: #ffffff !important;
+    opacity: 1 !important;
+    flex-shrink: 0;
 }
 
 .ai-action-btn:hover {
@@ -1060,15 +1093,15 @@
 
 /* Active Deals Section */
 .deals-section {
-    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
     border-radius: 12px;
     padding: 12px 0;
-    border: 1px solid #a7f3d0;
+    border: 1px solid #fecaca;
     overflow-x: hidden;
 }
 
 .deals-section h3 {
-    color: #047857 !important;
+    color: #991b1b !important;
 }
 
 .deals-list-container {
@@ -1081,13 +1114,13 @@
     background: white;
     border-radius: 8px;
     padding: 10px 12px;
-    border: 1px solid #d1fae5;
+    border: 1px solid #fecaca;
     transition: all 0.2s;
 }
 
 .deal-card-mini:hover {
-    border-color: #10b981;
-    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.15);
+    border-color: #ef4444;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.15);
 }
 
 .deal-card-mini-header {
@@ -1145,15 +1178,15 @@
 .deal-amount-mini {
     font-size: 0.9rem;
     font-weight: 700;
-    color: #10b981;
+    color: #ef4444;
 }
 
 /* Notes Section */
 .notes-section {
-    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
     border-radius: 12px;
     padding: 12px 0;
-    border: 1px solid #fcd34d;
+    border: 1px solid #fecaca;
 }
 
 .notes-input-container {
@@ -1178,9 +1211,9 @@
 
 .notes-section .notes-textarea:focus {
     outline: none;
-    border-color: #f59e0b;
+    border-color: #ef4444;
     background: #ffffff;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
 .save-note-btn {
@@ -1189,7 +1222,7 @@
     justify-content: center;
     gap: 6px;
     padding: 8px 16px;
-    background: #f59e0b;
+    background: #ef4444;
     color: white;
     border: none;
     border-radius: 6px;
@@ -1201,7 +1234,7 @@
 }
 
 .save-note-btn:hover:not(:disabled) {
-    background: #d97706;
+    background: #dc2626;
 }
 
 .save-note-btn:disabled {

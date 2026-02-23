@@ -3,6 +3,7 @@ import { MessageSquare, Settings, MessageCircle, Bot, ChevronDown, ChevronLeft, 
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
+import NotificationPanel from './NotificationPanel';
 import './Sidebar.css';
 
 const Sidebar = () => {
@@ -60,7 +61,7 @@ const Sidebar = () => {
 
     // Filter menu items for AGENT role (but NOT for SUPER_ADMIN)
     const filteredMenuItems = (workspaceRole === 'AGENT' && user?.role !== 'SUPER_ADMIN')
-        ? menuItems.filter(item => ['/inbox', '/customers'].includes(item.path))
+        ? menuItems.filter(item => ['/inbox', '/customers', '/calendar'].includes(item.path))
         : menuItems;
 
     // Fetch all workspaces for all users (including sub-workspaces)
@@ -339,6 +340,7 @@ const Sidebar = () => {
             </div>
 
             <div className="sidebar-footer">
+                <NotificationPanel isCollapsed={isCollapsed} />
                 <button onClick={handleLogout} className="logout-button" title="Çıkış Yap">
                     <LogOut size={20} className="nav-icon" />
                     {!isCollapsed && <span>Çıkış Yap</span>}

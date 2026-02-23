@@ -128,7 +128,7 @@ const getConversationStatusInfo = (status) => {
 };
 
 const Inbox = () => {
-    const { currentWorkspace, user, setUnreadCount } = useAuth();
+    const { currentWorkspace, user, setUnreadCount, onlineUsers } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
     const { showAssignment } = useToast();
 
@@ -141,8 +141,10 @@ const Inbox = () => {
     const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'MINE', 'PENDING', 'ALL'
     const [showResolved, setShowResolved] = useState(false); // Hide resolved conversations by default
     const [showOnlyAssigned, setShowOnlyAssigned] = useState(false); // Filter to show only UNassigned conversations
+    const [showAssignedToMe, setShowAssignedToMe] = useState(false); // Filter to show only conversations assigned to me
     const [statusFilter, setStatusFilter] = useState(null); // null = All, 'POTENTIAL' = Only potential customers
     const [dateRange, setDateRange] = useState({ from: null, to: null }); // Date range filter
+
     const [appointments, setAppointments] = useState([]); // For reminder indicators
     const filterDropdownRef = useRef(null);
 
@@ -168,6 +170,8 @@ const Inbox = () => {
             }
         });
     };
+
+
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -225,6 +229,7 @@ const Inbox = () => {
     const [bots, setBots] = useState([]);
     const [pages, setPages] = useState([]);
 
+
     // Bot toggle state for current conversation
     const [botEnabled, setBotEnabled] = useState(true);
     const [togglingBot, setTogglingBot] = useState(false);
@@ -249,6 +254,7 @@ const Inbox = () => {
 
     const messagesContainerRef = useRef(null);
     const socketRef = useRef(null);
+    const loadRequestIdRef = useRef(0); // Race condition prevention for loadInboxItems
 
     // Get workspace member role - check both members array and global user role
     const workspaceMemberRole = currentWorkspace?.members?.[0]?.role;
@@ -282,7 +288,7 @@ const Inbox = () => {
             currentPageRef.current = 1;
             loadInboxItems();
         }
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showOnlyAssigned, searchTerm, statusFilter, dateRange]);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showOnlyAssigned, showAssignedToMe, searchTerm, statusFilter, dateRange]);
 
     // Listen for new conversation created event
     useEffect(() => {
@@ -533,10 +539,7 @@ const Inbox = () => {
             // 🚀 Satışçıya atama yapıldığında "Bana Atanan" tab'ına geç
             // Böylece yeni atanan konuşma listede görünür
             setAssignmentTab('MINE');
-
-            // Inbox'ı yenile (tab değiştiğinde useEffect zaten yenileyecek ama 
-            // state güncellenmeden önce çağrılabilir, bu yüzden ekstra güvenlik)
-            setTimeout(() => loadInboxItems(false), 100);
+            // setAssignmentTab('MINE') will trigger loadInboxItems via the useEffect dep array
 
             // Sağ alt köşede popup toast göster
             showAssignment(
@@ -640,6 +643,7 @@ const Inbox = () => {
             setBots(botsRes.data.bots || []);
             setPages(pagesRes.data.pages || []);
             setTemplates(templatesRes.data.templates || []);
+
         } catch (error) {
             console.error('Error loading support data:', error);
         }
@@ -678,12 +682,18 @@ const Inbox = () => {
                         return false;
                     }
 
+                    // Check if "assigned to me" filter applies
+                    if (showAssignedToMe && conv.assignedToId !== user?.id) {
+                        return false;
+                    }
+
                     // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
                     if (activeChannel && conv.channel !== activeChannel) {
                         return false;
                     }
 
-                    // Check dropdown channel filter - same logic as loadInboxItems
+
+
                     let channelMatch = false;
                     if (loadAll) {
                         channelMatch = true;
@@ -766,7 +776,7 @@ const Inbox = () => {
         } finally {
             setLoadingMore(false);
         }
-    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showOnlyAssigned, activeChannel, statusFilter, dateRange]);
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, dateRange]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -831,6 +841,7 @@ const Inbox = () => {
     };
 
     const loadInboxItems = async (showLoading = true) => {
+        const requestId = ++loadRequestIdRef.current;
         try {
             if (showLoading) setLoading(true);
 
@@ -858,8 +869,8 @@ const Inbox = () => {
             // 1. Tüm filtreler seçili (loadAll) - her şeyi göster
             // 2. İlgili yorum filtresi açıkça seçili (fb_comments veya ig_comments)
             // NOT: Channel filtresi (whatsapp, facebook, vb.) seçiliyse yorumları YÜKLEME
-            const shouldLoadFbComments = (loadAll || activeFilters.includes('fb_comments')) && !activeChannel && !statusFilter;
-            const shouldLoadIgComments = (loadAll || activeFilters.includes('ig_comments')) && !activeChannel && !statusFilter;
+            const shouldLoadFbComments = (loadAll || activeFilters.includes('fb_comments')) && !activeChannel && !statusFilter && workspaceMemberRole !== 'AGENT';
+            const shouldLoadIgComments = (loadAll || activeFilters.includes('ig_comments')) && !activeChannel && !statusFilter && workspaceMemberRole !== 'AGENT';
 
             const loadConversations = loadAll || hasChannelFilter || activeChannel;
 
@@ -896,6 +907,11 @@ const Inbox = () => {
                         return; // Skip assigned conversations if showOnlyAssigned is true (show only unassigned)
                     }
 
+                    // Check if "assigned to me" filter applies
+                    if (showAssignedToMe && conv.assignedToId !== user?.id) {
+                        return; // Skip conversations not assigned to me
+                    }
+
                     // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
                     if (activeChannel && conv.channel !== activeChannel) {
                         return; // Skip if channel doesn't match the active channel button
@@ -904,15 +920,13 @@ const Inbox = () => {
                     // Check dropdown channel filter
                     // If no channel filter is selected (loadAll), show all conversation channels
                     // If specific channel filters are selected, only show matching channels
+
+
                     let channelMatch = false;
 
-
-
                     if (loadAll) {
-                        // Tüm filtreler seçili - her şeyi göster
                         channelMatch = true;
                     } else if (hasChannelFilter) {
-                        // Belirli filtreler seçili - sadece eşleşenleri göster
                         channelMatch =
                             (activeFilters.includes('whatsapp') && conv.channel === 'WHATSAPP') ||
                             (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
@@ -922,10 +936,9 @@ const Inbox = () => {
                             (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
                             (activeFilters.includes('leads') &&
                                 conv.channel === 'LEAD' &&
-                                conv.facebookPageId) || // Only Facebook LEADs (has facebookPageId, excludes Web Form/Widget)
-                            (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL')); // Notes includes both INTERNAL and MANUAL
+                                conv.facebookPageId) ||
+                            (activeFilters.includes('notes') && (conv.channel === 'INTERNAL' || conv.channel === 'MANUAL'));
                     } else {
-                        // Hiçbir filtre seçili değil - hiçbir şey gösterme
                         channelMatch = false;
                     }
 
@@ -963,6 +976,12 @@ const Inbox = () => {
                         });
                     }
                 });
+            }
+
+            // Race condition check: discard stale requests before slow Meta API calls
+            if (requestId !== loadRequestIdRef.current) {
+                console.log('🔄 [Race] Stale request discarded before comments:', requestId, 'current:', loadRequestIdRef.current);
+                return;
             }
 
             // Skip comments when status filter is active (comments don't have contact status)
@@ -1010,6 +1029,12 @@ const Inbox = () => {
                 }
             }
 
+            // Race condition check: discard stale requests before updating state
+            if (requestId !== loadRequestIdRef.current) {
+                console.log('🔄 [Race] Stale request discarded before setState:', requestId, 'current:', loadRequestIdRef.current);
+                return;
+            }
+
             // Sort by date (most recent first)
             items.sort((a, b) => b.sortDate - a.sortDate);
 
@@ -1049,7 +1074,10 @@ const Inbox = () => {
         } catch (error) {
             console.error('Error loading inbox items:', error);
         } finally {
-            if (showLoading) setLoading(false);
+            // Only clear loading if this is still the latest request
+            if (showLoading && requestId === loadRequestIdRef.current) {
+                setLoading(false);
+            }
         }
     };
 
@@ -1754,7 +1782,23 @@ const Inbox = () => {
 
                             {filterDropdownOpen && (
                                 <div className="filter-dropdown-menu">
-                                    <div className="filter-section-title">Kanallar</div>
+                                    <div className="filter-section-title">
+                                        Kanallar
+                                        <button
+                                            className="filter-section-toggle"
+                                            onClick={() => {
+                                                const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'notes'];
+                                                const allChecked = channelFilters.every(f => activeFilters.includes(f));
+                                                if (allChecked) {
+                                                    setActiveFilters(prev => prev.filter(f => !channelFilters.includes(f)));
+                                                } else {
+                                                    setActiveFilters(prev => [...new Set([...prev, ...channelFilters])]);
+                                                }
+                                            }}
+                                        >
+                                            {['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'notes'].every(f => activeFilters.includes(f)) ? 'Kaldır' : 'Seç'}
+                                        </button>
+                                    </div>
                                     <label className="filter-option">
                                         <input
                                             type="checkbox"
@@ -1819,7 +1863,23 @@ const Inbox = () => {
                                         <span>Leads</span>
                                     </label>
                                     <div className="filter-divider" />
-                                    <div className="filter-section-title">Yorumlar</div>
+                                    <div className="filter-section-title">
+                                        Yorumlar
+                                        <button
+                                            className="filter-section-toggle"
+                                            onClick={() => {
+                                                const commentFilters = ['fb_comments', 'ig_comments'];
+                                                const allChecked = commentFilters.every(f => activeFilters.includes(f));
+                                                if (allChecked) {
+                                                    setActiveFilters(prev => prev.filter(f => !commentFilters.includes(f)));
+                                                } else {
+                                                    setActiveFilters(prev => [...new Set([...prev, ...commentFilters])]);
+                                                }
+                                            }}
+                                        >
+                                            {['fb_comments', 'ig_comments'].every(f => activeFilters.includes(f)) ? 'Kaldır' : 'Seç'}
+                                        </button>
+                                    </div>
 
                                     <label className="filter-option">
                                         <input
@@ -1839,6 +1899,8 @@ const Inbox = () => {
                                         <Instagram size={18} className="icon-instagram" />
                                         <span>IG Yorumları</span>
                                     </label>
+
+
 
                                     <div className="filter-divider" />
 
@@ -1862,13 +1924,24 @@ const Inbox = () => {
                                         <span>Atanmayanları Göster</span>
                                     </label>
 
-                                    {(activeFilters.length < allFilters.length || showResolved || showOnlyAssigned) && (
+                                    <label className="filter-option resolved-toggle">
+                                        <input
+                                            type="checkbox"
+                                            checked={showAssignedToMe}
+                                            onChange={() => setShowAssignedToMe(!showAssignedToMe)}
+                                        />
+                                        <User size={18} className="icon-resolved" />
+                                        <span>Bana Atananlar</span>
+                                    </label>
+
+                                    {(activeFilters.length < allFilters.length || showResolved || showOnlyAssigned || showAssignedToMe) && (
                                         <button
                                             className="filter-clear-btn"
                                             onClick={() => {
                                                 setActiveFilters(allFilters);
                                                 setShowResolved(false);
                                                 setShowOnlyAssigned(false);
+                                                setShowAssignedToMe(false);
                                             }}
                                         >
                                             Filtreleri Sıfırla
@@ -2043,7 +2116,7 @@ const Inbox = () => {
                                         <option value="">Ata...</option>
                                         {members.map(m => (
                                             <option key={m.userId} value={m.userId}>
-                                                {m.user?.name || m.user?.email}
+                                                {(onlineUsers.get(m.userId)?.isOnline || m.user?.isOnline) ? '🟢' : '⚪'} {m.user?.name || m.user?.email}
                                             </option>
                                         ))}
                                     </select>
@@ -2073,6 +2146,10 @@ const Inbox = () => {
                                 return false;
                             }
                         }
+                        // Show only my assigned conversations
+                        if (showAssignedToMe && item.assignedToId !== user?.id) {
+                            return false;
+                        }
                         return true;
                     }).length === 0 ? (
                         <div className="inbox-empty">
@@ -2100,6 +2177,10 @@ const Inbox = () => {
                                     if (isAssigned) {
                                         return false;
                                     }
+                                }
+                                // Show only my assigned conversations
+                                if (showAssignedToMe && item.assignedToId !== user?.id) {
+                                    return false;
                                 }
 
                                 // Hide duplicate Instagram leads if Facebook lead exists with same phone/email
@@ -2164,15 +2245,32 @@ const Inbox = () => {
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
                                             )}
+
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
                                             {/* Takım Badge */}
-                                            {item.teamIds && (() => {
+                                            {(() => {
+                                                // DEBUG: Team badge rendering
+                                                if (item.teamIds && item.teamIds !== '[]') {
+                                                    console.log('🏷️ [TeamBadge]', item.contact?.name, 'teamIds:', item.teamIds, 'teams:', teams.map(t => ({ id: t.id, name: t.name })));
+                                                }
+                                                if (!item.teamIds || item.teamIds === '[]') return null;
                                                 try {
                                                     const teamIdList = JSON.parse(item.teamIds);
                                                     if (teamIdList.length > 0) {
-                                                        const team = teams.find(t => t.id === teamIdList[0]);
+                                                        const findTeamById = (list, id) => {
+                                                            for (const t of list) {
+                                                                if (t.id === id) return t;
+                                                                if (t.children) {
+                                                                    const found = findTeamById(t.children, id);
+                                                                    if (found) return found;
+                                                                }
+                                                            }
+                                                            return null;
+                                                        };
+                                                        const team = findTeamById(teams, teamIdList[0]);
+                                                        console.log('🏷️ [TeamBadge] Looking for team:', teamIdList[0], 'found:', team?.name || 'NOT FOUND');
                                                         if (team) {
                                                             return (
                                                                 <div className="team-badge" title={`Takım: ${team.name}`}>
@@ -2181,7 +2279,7 @@ const Inbox = () => {
                                                             );
                                                         }
                                                     }
-                                                } catch (e) { }
+                                                } catch (e) { console.error('TeamBadge parse error:', e); }
                                                 return null;
                                             })()}
                                             {/* Atanan Kişi Badge */}
@@ -2325,9 +2423,23 @@ const Inbox = () => {
                                                             onChange={(e) => handleAssignTeam(selectedItem.id, e.target.value)}
                                                         >
                                                             <option value="">Takım Seç</option>
-                                                            {teams.map(t => (
-                                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                                            ))}
+                                                            {(() => {
+                                                                const renderTeamOptions = (teamList, depth = 0) => {
+                                                                    const options = [];
+                                                                    for (const t of teamList) {
+                                                                        const prefix = depth > 0 ? '↳'.repeat(depth) + ' ' : '';
+                                                                        const suffix = t.children && t.children.length > 0 && depth === 0 ? ' (Ana Takım)' : '';
+                                                                        options.push(
+                                                                            <option key={t.id} value={t.id}>{prefix}{t.name}{suffix}</option>
+                                                                        );
+                                                                        if (t.children && t.children.length > 0) {
+                                                                            options.push(...renderTeamOptions(t.children, depth + 1));
+                                                                        }
+                                                                    }
+                                                                    return options;
+                                                                };
+                                                                return renderTeamOptions(teams);
+                                                            })()}
                                                         </select>
                                                     </div>
                                                     {/* Sonra Agent Seçimi (opsiyonel) */}
@@ -2342,10 +2454,29 @@ const Inbox = () => {
                                                             {(() => {
                                                                 // Seçili takımın ID'sini al
                                                                 const selectedTeamId = selectedItem.teamIds ? JSON.parse(selectedItem.teamIds)[0] : null;
-                                                                // Seçili takımı bul
-                                                                const selectedTeam = teams.find(t => t.id === selectedTeamId);
-                                                                // Takımdaki agent'ları filtrele
-                                                                const teamMemberIds = selectedTeam?.members?.map(m => m.userId) || [];
+                                                                // Recursive team finder
+                                                                const findTeamById = (list, id) => {
+                                                                    for (const t of list) {
+                                                                        if (t.id === id) return t;
+                                                                        if (t.children) {
+                                                                            const found = findTeamById(t.children, id);
+                                                                            if (found) return found;
+                                                                        }
+                                                                    }
+                                                                    return null;
+                                                                };
+                                                                const selectedTeam = findTeamById(teams, selectedTeamId);
+                                                                // Takımdaki agent'ları filtrele (ana takım + tüm alt takımlar)
+                                                                const collectMemberIds = (team) => {
+                                                                    let ids = team?.members?.map(m => m.userId) || [];
+                                                                    if (team?.children) {
+                                                                        for (const child of team.children) {
+                                                                            ids = [...ids, ...collectMemberIds(child)];
+                                                                        }
+                                                                    }
+                                                                    return ids;
+                                                                };
+                                                                let teamMemberIds = collectMemberIds(selectedTeam);
 
                                                                 // Eğer takım seçili değilse tüm agent'ları göster, seçiliyse sadece takımdakileri
                                                                 const filteredMembers = selectedTeamId
@@ -2353,7 +2484,7 @@ const Inbox = () => {
                                                                     : members;
 
                                                                 return filteredMembers.map(m => (
-                                                                    <option key={m.id} value={m.user.id}>{m.user.name}</option>
+                                                                    <option key={m.id} value={m.user.id}>{(onlineUsers.get(m.user.id)?.isOnline || m.user?.isOnline) ? '🟢' : '⚪'} {m.user.name}</option>
                                                                 ));
                                                             })()}
                                                         </select>
@@ -2820,9 +2951,23 @@ const Inbox = () => {
                                                         <Users size={14} />
                                                         <select defaultValue="">
                                                             <option value="">Takım Seç</option>
-                                                            {teams.map(t => (
-                                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                                            ))}
+                                                            {(() => {
+                                                                const renderTeamOptions = (teamList, depth = 0) => {
+                                                                    const options = [];
+                                                                    for (const t of teamList) {
+                                                                        const prefix = depth > 0 ? '↳'.repeat(depth) + ' ' : '';
+                                                                        const suffix = t.children && t.children.length > 0 && depth === 0 ? ' (Ana Takım)' : '';
+                                                                        options.push(
+                                                                            <option key={t.id} value={t.id}>{prefix}{t.name}{suffix}</option>
+                                                                        );
+                                                                        if (t.children && t.children.length > 0) {
+                                                                            options.push(...renderTeamOptions(t.children, depth + 1));
+                                                                        }
+                                                                    }
+                                                                    return options;
+                                                                };
+                                                                return renderTeamOptions(teams);
+                                                            })()}
                                                         </select>
                                                     </div>
                                                     {/* Agent Selection */}
@@ -2831,7 +2976,7 @@ const Inbox = () => {
                                                         <select defaultValue="">
                                                             <option value="">Agent Seç</option>
                                                             {members.map(m => (
-                                                                <option key={m.id} value={m.user.id}>{m.user.name}</option>
+                                                                <option key={m.id} value={m.user.id}>{(onlineUsers.get(m.user.id)?.isOnline || m.user?.isOnline) ? '🟢' : '⚪'} {m.user.name}</option>
                                                             ))}
                                                         </select>
                                                     </div>

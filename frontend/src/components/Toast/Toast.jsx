@@ -1,5 +1,5 @@
-import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { X, CheckCircle, AlertCircle, Info, UserPlus } from 'lucide-react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
+import { X, CheckCircle, AlertCircle, Info, UserPlus, MessageSquare, Bell } from 'lucide-react';
 import './Toast.css';
 
 // Toast Context
@@ -53,6 +53,74 @@ export const ToastProvider = ({ children }) => {
         return addToast({ type: 'assignment', title, message, duration: 8000, ...options });
     }, [addToast]);
 
+    // Listen for real-time new_message events and show toast
+    const addToastRef = useRef(addToast);
+    addToastRef.current = addToast;
+
+    useEffect(() => {
+        const handleNewMessage = (event) => {
+            const data = event.detail;
+            // Only show toast for incoming contact messages
+            if (!data?.message?.isFromContact) return;
+
+            const senderName = data.contactName || data.message?.contactName || 'Yeni Mesaj';
+            const messageText = data.message?.content || '';
+            const preview = messageText.length > 60 ? messageText.substring(0, 60) + '...' : messageText;
+
+            const channelLabels = {
+                'FACEBOOK': 'Facebook',
+                'INSTAGRAM': 'Instagram',
+                'WHATSAPP': 'WhatsApp',
+                'WIDGET': 'Widget',
+                'LEAD': 'Lead',
+                'EMAIL': 'E-posta'
+            };
+            const channelLabel = channelLabels[data.channel] || data.channel || '';
+
+            addToastRef.current({
+                type: 'message',
+                title: `📨 ${senderName}`,
+                message: `${channelLabel}: ${preview}`,
+                duration: 5000
+            });
+        };
+
+        window.addEventListener('websocket:new_message', handleNewMessage);
+        return () => window.removeEventListener('websocket:new_message', handleNewMessage);
+    }, []);
+
+    // Listen for real-time reminder notifications and show toast popup
+    useEffect(() => {
+        const handleNewNotification = (event) => {
+            const data = event.detail;
+            if (!data?.notification) return;
+
+            const notif = data.notification;
+            // Only show popup for REMINDER type
+            if (notif.type !== 'REMINDER') return;
+
+            // Parse data for conversationId
+            let conversationId = null;
+            try {
+                const parsed = notif.data ? JSON.parse(notif.data) : null;
+                conversationId = parsed?.conversationId;
+            } catch (e) { /* ignore */ }
+
+            addToastRef.current({
+                type: 'reminder',
+                title: notif.title || '⏰ Hatırlatıcı',
+                message: notif.body || 'Hatırlatıcı zamanı geldi!',
+                duration: 8000,
+                onClick: conversationId ? () => {
+                    window.location.href = `/inbox?conversation=${conversationId}`;
+                } : undefined
+            });
+        };
+
+        window.addEventListener('websocket:new_notification', handleNewNotification);
+        return () => window.removeEventListener('websocket:new_notification', handleNewNotification);
+    }, []);
+
     return (
         <ToastContext.Provider value={{ addToast, removeToast, showSuccess, showError, showInfo, showAssignment }}>
             {children}
@@ -98,13 +166,17 @@ const ToastItem = ({ toast, onClose }) => {
                 return <AlertCircle size={20} />;
             case 'assignment':
                 return <UserPlus size={20} />;
+            case 'message':
+                return <MessageSquare size={20} />;
+            case 'reminder':
+                return <Bell size={20} />;
             default:
                 return <Info size={20} />;
         }
     };
 
     return (
-        <div 
+        <div
             className={`toast-item toast-${toast.type} ${isExiting ? 'toast-exit' : ''} ${toast.onClick ? 'toast-clickable' : ''}`}
             onClick={toast.onClick ? handleClick : undefined}
         >

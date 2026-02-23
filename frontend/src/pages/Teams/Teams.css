@@ -402,3 +402,127 @@
     color: #ef4444;
     font-weight: 500;
 }
+
+/* ========== SUB-TEAM HIERARCHY ========== */
+.team-card-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.expand-btn {
+    background: #f3f4f6;
+    border: none;
+    color: #6b7280;
+    padding: 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.expand-btn:hover {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.sub-teams-container {
+    margin-left: 28px;
+    margin-top: 8px;
+    padding-left: 16px;
+    border-left: 2px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.team-card-child {
+    background: #fafbfc;
+    border: 1px solid #eef0f2;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: none;
+}
+
+.team-card-child:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.team-card-child .team-info h3 {
+    font-size: 15px;
+}
+
+.sub-team-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: #f0fdf4;
+    color: #16a34a;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 12px;
+}
+
+.sub-team-info-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #0369a1;
+}
+
+/* ========== DRAG AND DROP ========== */
+.drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #d1d5db;
+    cursor: grab;
+    padding: 2px;
+    border-radius: 4px;
+    transition: color 0.2s;
+}
+
+.drag-handle:hover {
+    color: #9ca3af;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.team-card-wrapper.dragging {
+    opacity: 0.4;
+    transform: scale(0.98);
+}
+
+.team-card-wrapper.drag-over>.team-card,
+.team-card-wrapper.drag-over>.team-card-child {
+    border: 2px dashed #ef4444;
+    background: #fef2f2;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+    transition: all 0.15s ease;
+}
+
+.teams-grid.drag-over-root {
+    background: #f0fdf4;
+    border: 2px dashed #22c55e;
+    border-radius: 12px;
+    padding: 22px;
+    transition: all 0.15s ease;
+}
+
+/* Draggable card cursor */
+.team-card-wrapper[draggable="true"] {
+    transition: opacity 0.2s, transform 0.2s;
+}

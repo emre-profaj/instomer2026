@@ -102,7 +102,7 @@ const ChangePasswordModal = ({ memberName, onSubmit, onClose }) => {
 };
 
 const Users = () => {
-    const { currentWorkspace, user } = useAuth();
+    const { currentWorkspace, user, onlineUsers } = useAuth();
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -216,8 +216,14 @@ const Users = () => {
                                                 ) : (
                                                     <span>{member.user.name.charAt(0).toUpperCase()}</span>
                                                 )}
+                                                <span className={`member-online-dot ${(onlineUsers.get(member.userId)?.isOnline || member.user?.isOnline) ? 'online' : 'offline'}`} />
                                             </div>
-                                            <span>{member.user.name}</span>
+                                            <div className="member-name-status">
+                                                <span>{member.user.name}</span>
+                                                <span className={`member-status-text ${(onlineUsers.get(member.userId)?.isOnline || member.user?.isOnline) ? 'online' : 'offline'}`}>
+                                                    {(onlineUsers.get(member.userId)?.isOnline || member.user?.isOnline) ? 'Online' : 'Offline'}
+                                                </span>
+                                            </div>
                                         </div>
                                     </td>
                                     <td>{member.user.email}</td>

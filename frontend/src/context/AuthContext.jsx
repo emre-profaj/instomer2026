@@ -17,6 +17,7 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [currentWorkspace, setCurrentWorkspace] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [onlineUsers, setOnlineUsers] = useState(new Map());
 
     useEffect(() => {
         const initializeAuth = async () => {
@@ -50,7 +51,7 @@ export const AuthProvider = ({ children }) => {
 
     // WebSocket connection - Global level with workspace room support
     const socketRef = useRef(null);
-    
+
     useEffect(() => {
         if (!user) return; // Only connect if user is logged in
 
@@ -59,12 +60,17 @@ export const AuthProvider = ({ children }) => {
 
         console.log('🔌 [AuthContext] Connecting to WebSocket:', SOCKET_URL);
         const socket = io(SOCKET_URL, {
-            transports: ['polling', 'websocket']
+            transports: ['websocket', 'polling']
         });
         socketRef.current = socket;
 
         socket.on('connect', () => {
             console.log('✅ [AuthContext] WebSocket connected:', socket.id);
+            // Join user room for presence tracking
+            if (user?.id) {
+                socket.emit('join_user', user.id);
+                console.log(`👤 [AuthContext] Joined user room: ${user.id}`);
+            }
             // Join current workspace room if available
             if (currentWorkspace?.id) {
                 socket.emit('join_workspace', currentWorkspace.id);
@@ -96,6 +102,22 @@ export const AuthProvider = ({ children }) => {
             window.dispatchEvent(new CustomEvent('websocket:contact_updated', { detail: data }));
         });
 
+        socket.on('new_notification', (data) => {
+            console.log('🔔 [AuthContext] New notification:', data);
+            window.dispatchEvent(new CustomEvent('websocket:new_notification', { detail: data }));
+        });
+
+        // Online/offline status tracking
+        socket.on('user_status_changed', (data) => {
+            console.log(`${data.isOnline ? '🟢' : '🔴'} [AuthContext] User status changed:`, data.userId, data.isOnline ? 'ONLINE' : 'OFFLINE');
+            setOnlineUsers(prev => {
+                const next = new Map(prev);
+                next.set(data.userId, { isOnline: data.isOnline, lastSeenAt: data.lastSeenAt });
+                return next;
+            });
+            window.dispatchEvent(new CustomEvent('websocket:user_status_changed', { detail: data }));
+        });
+
         socket.on('disconnect', () => {
             console.log('❌ [AuthContext] WebSocket disconnected');
         });
@@ -110,7 +132,7 @@ export const AuthProvider = ({ children }) => {
             socketRef.current = null;
         };
     }, [user]);
-    
+
     // Join new workspace room when workspace changes
     useEffect(() => {
         if (socketRef.current?.connected && currentWorkspace?.id) {
@@ -123,7 +145,7 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const loadUnreadCount = async () => {
             if (!currentWorkspace?.id) return;
-            
+
             try {
                 const response = await conversationAPI.getUnreadCount(currentWorkspace.id);
                 setUnreadCount(response.data.unreadCount || 0);
@@ -213,7 +235,7 @@ export const AuthProvider = ({ children }) => {
 
     const switchWorkspace = async (workspaceOrId) => {
         let workspace = workspaceOrId;
-        
+
         // If only ID is passed, fetch the full workspace data
         if (typeof workspaceOrId === 'string') {
             try {
@@ -224,7 +246,7 @@ export const AuthProvider = ({ children }) => {
                 return;
             }
         }
-        
+
         if (workspace) {
             setCurrentWorkspace(workspace);
             localStorage.setItem('currentWorkspace', JSON.stringify(workspace));
@@ -277,6 +299,7 @@ export const AuthProvider = ({ children }) => {
         refreshWorkspace,
         unreadCount,
         setUnreadCount,
+        onlineUsers,
         isAuthenticated: !!user
     };
 

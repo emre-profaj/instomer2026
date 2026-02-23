@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { aiAPI, workspaceAPI } from '../../services/api';
-import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge } from 'lucide-react';
+import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import BotRoutingSettings from '../../components/Settings/BotRoutingSettings';
 import './Assistants.css';
 
 // Sub-component for managing documents
@@ -510,12 +511,85 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
     );
 };
 
+// Sub-component for Bot Routing Tab Item
+const BotRoutingCard = ({ bot, workspaceId, onRefresh }) => {
+    const [routingConfig, setRoutingConfig] = useState(() => {
+        let questions = [];
+        let rules = [];
+        try { questions = JSON.parse(bot.routingQuestions || '[]'); } catch (e) { }
+        try { rules = JSON.parse(bot.routingRules || '[]'); } catch (e) { }
+        return {
+            routingEnabled: bot.routingEnabled || false,
+            routingQuestions: questions,
+            routingDefaultTeamId: bot.routingDefaultTeamId || '',
+            routingDefaultUserId: bot.routingDefaultUserId || '',
+            routingConditionalEnabled: bot.routingConditionalEnabled || false,
+            routingRules: rules
+        };
+    });
+    const [saving, setSaving] = useState(false);
+
+    const handleSaveRouting = async () => {
+        try {
+            setSaving(true);
+            await aiAPI.updateBot(workspaceId, bot.id, {
+                routingEnabled: routingConfig.routingEnabled,
+                routingQuestions: routingConfig.routingEnabled ? JSON.stringify(routingConfig.routingQuestions) : null,
+                routingDefaultTeamId: routingConfig.routingEnabled ? routingConfig.routingDefaultTeamId || null : null,
+                routingDefaultUserId: routingConfig.routingEnabled ? routingConfig.routingDefaultUserId || null : null,
+                routingConditionalEnabled: routingConfig.routingConditionalEnabled,
+                routingRules: routingConfig.routingConditionalEnabled ? JSON.stringify(routingConfig.routingRules) : null
+            });
+            alert('Yönlendirme ayarları kaydedildi!');
+            if (onRefresh) onRefresh();
+        } catch (err) {
+            console.error('Routing save error:', err);
+            alert('Hata oluştu.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="routing-card">
+            <div className="routing-card-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Bot size={20} color="#6366f1" />
+                    <div>
+                        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '600' }}>{bot.name}</h4>
+                        <span className="bot-role-badge">{bot.role}</span>
+                    </div>
+                </div>
+                {routingConfig.routingEnabled && (
+                    <span className="status-badge active" style={{ fontSize: '11px' }}>Aktif</span>
+                )}
+            </div>
+            <BotRoutingSettings
+                routingConfig={routingConfig}
+                onChange={setRoutingConfig}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
+                <button
+                    className="btn-modern btn-primary"
+                    onClick={handleSaveRouting}
+                    disabled={saving}
+                    style={{ fontSize: '13px', padding: '8px 16px' }}
+                >
+                    <Save size={14} />
+                    {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 const Assistants = () => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
 
     const [bots, setBots] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('assistants');
 
     // Bot form state
     const [showAddBot, setShowAddBot] = useState(false);
@@ -606,168 +680,215 @@ const Assistants = () => {
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
                     {!showAddBot && (
-                        <button
-                            className="btn-modern btn-primary"
-                            onClick={() => {
-                                setShowAddBot(true);
-                            }}
-                        >
-                            <Plus size={18} />
-                            Yeni Asistan Ekle
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            {activeTab === 'assistants' && (
+                                <button
+                                    className="btn-modern btn-primary"
+                                    onClick={() => setShowAddBot(true)}
+                                >
+                                    <Plus size={18} />
+                                    Yeni Asistan Ekle
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* AI Usage Limit Card */}
-            <div className="ai-usage-card-wrapper">
-                {aiUsageLoading ? (
-                    <div className="ai-usage-card loading">
-                        <div className="usage-loading">Kullanım bilgisi yükleniyor...</div>
+            {/* Tab Navigation */}
+            <div className="assistants-tabs">
+                <button
+                    className={`tab-btn ${activeTab === 'assistants' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('assistants')}
+                >
+                    <Bot size={16} /> Asistanlar
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'routing' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('routing')}
+                >
+                    <GitBranch size={16} /> Yönlendirme
+                </button>
+            </div>
+
+            {activeTab === 'assistants' && (
+                <>
+                    {/* AI Usage Limit Card */}
+                    <div className="ai-usage-card-wrapper">
+                        {aiUsageLoading ? (
+                            <div className="ai-usage-card loading">
+                                <div className="usage-loading">Kullanım bilgisi yükleniyor...</div>
+                            </div>
+                        ) : aiUsage ? (
+                            <div className={`ai-usage-card ${aiUsage.percentage >= 100 ? 'exceeded' : aiUsage.percentage >= 80 ? 'warning' : ''}`}>
+                                <div className="usage-card-header">
+                                    <div className="usage-card-icon">
+                                        <Gauge size={20} />
+                                    </div>
+                                    <div className="usage-card-title">
+                                        <h4>Günlük AI Kullanımı</h4>
+                                        <span className={`usage-plan-tag ${aiUsage.subscription?.toLowerCase()}`}>
+                                            {aiUsage.subscriptionName}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="usage-card-stats">
+                                    <div className="usage-stat">
+                                        <span className="stat-value">{aiUsage.currentCount}</span>
+                                        <span className="stat-label">Kullanılan</span>
+                                    </div>
+                                    <div className="usage-stat divider">/</div>
+                                    <div className="usage-stat">
+                                        <span className="stat-value">{aiUsage.limit}</span>
+                                        <span className="stat-label">Limit</span>
+                                    </div>
+                                    <div className="usage-stat remaining">
+                                        <span className="stat-value">{aiUsage.remaining}</span>
+                                        <span className="stat-label">Kalan</span>
+                                    </div>
+                                </div>
+
+                                <div className="usage-progress-bar">
+                                    <div
+                                        className="usage-progress-fill"
+                                        style={{ width: `${Math.min(aiUsage.percentage, 100)}%` }}
+                                    />
+                                </div>
+
+                                {aiUsage.percentage >= 100 && (
+                                    <div className="usage-alert exceeded">
+                                        <AlertCircle size={16} />
+                                        <span>Günlük limit doldu! AI bot yanıt vermeyecek.</span>
+                                    </div>
+                                )}
+                                {aiUsage.percentage >= 80 && aiUsage.percentage < 100 && (
+                                    <div className="usage-alert warning">
+                                        <AlertCircle size={16} />
+                                        <span>Limite yaklaşıyorsunuz (%{aiUsage.percentage})</span>
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
                     </div>
-                ) : aiUsage ? (
-                    <div className={`ai-usage-card ${aiUsage.percentage >= 100 ? 'exceeded' : aiUsage.percentage >= 80 ? 'warning' : ''}`}>
-                        <div className="usage-card-header">
-                            <div className="usage-card-icon">
-                                <Gauge size={20} />
-                            </div>
-                            <div className="usage-card-title">
-                                <h4>Günlük AI Kullanımı</h4>
-                                <span className={`usage-plan-tag ${aiUsage.subscription?.toLowerCase()}`}>
-                                    {aiUsage.subscriptionName}
-                                </span>
-                            </div>
-                        </div>
 
-                        <div className="usage-card-stats">
-                            <div className="usage-stat">
-                                <span className="stat-value">{aiUsage.currentCount}</span>
-                                <span className="stat-label">Kullanılan</span>
-                            </div>
-                            <div className="usage-stat divider">/</div>
-                            <div className="usage-stat">
-                                <span className="stat-value">{aiUsage.limit}</span>
-                                <span className="stat-label">Limit</span>
-                            </div>
-                            <div className="usage-stat remaining">
-                                <span className="stat-value">{aiUsage.remaining}</span>
-                                <span className="stat-label">Kalan</span>
-                            </div>
-                        </div>
+                    <div className="assistants-info-box">
+                        <p>💡 Botları Channels sayfasından ilgili kanallara (WhatsApp, Facebook, Instagram, E-posta, Widget) atayabilirsiniz.</p>
+                    </div>
 
-                        <div className="usage-progress-bar">
-                            <div
-                                className="usage-progress-fill"
-                                style={{ width: `${Math.min(aiUsage.percentage, 100)}%` }}
-                            />
-                        </div>
+                    <div className="assistants-content">
+                        {/* Add Bot Form Overlay */}
+                        {showAddBot && (
+                            <div className="add-bot-form">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                                    <h3 style={{ fontSize: '20px', fontWeight: '600' }}>Yeni Asistan Oluştur</h3>
+                                    <button onClick={() => setShowAddBot(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                        <X size={24} color="#6b7280" />
+                                    </button>
+                                </div>
 
-                        {aiUsage.percentage >= 100 && (
-                            <div className="usage-alert exceeded">
-                                <AlertCircle size={16} />
-                                <span>Günlük limit doldu! AI bot yanıt vermeyecek.</span>
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label className="form-label">Asistan Adı</label>
+                                    <input
+                                        type="text"
+                                        className="input-modern"
+                                        value={newBotName}
+                                        onChange={(e) => setNewBotName(e.target.value)}
+                                        placeholder="Örn: Satış Temsilcisi Ali"
+                                    />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label className="form-label">Rolü</label>
+                                    <select
+                                        className="input-modern"
+                                        value={newBotRole}
+                                        onChange={(e) => setNewBotRole(e.target.value)}
+                                    >
+                                        <option value="Teknik Servis">Teknik Servis</option>
+                                        <option value="Satış">Satış</option>
+                                        <option value="Bilgi">Bilgi / Info</option>
+                                        <option value="Diğer">Diğer</option>
+                                    </select>
+                                </div>
+                                <div className="form-group" style={{ marginBottom: '24px' }}>
+                                    <label className="form-label">Sistem Talimatı</label>
+                                    <textarea
+                                        className="input-modern"
+                                        rows="4"
+                                        value={newBotPrompt}
+                                        onChange={(e) => setNewBotPrompt(e.target.value)}
+                                        placeholder="Örn: Sen nazik bir satış temsilcisisin. İnsanlarla konuşurken emojiler kullan..."
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                                    <button className="btn-modern btn-outline-danger" style={{ border: '1px solid #d1d5db', color: '#374151' }} onClick={() => setShowAddBot(false)}>
+                                        İptal
+                                    </button>
+                                    <button className="btn-modern btn-primary" onClick={handleCreateBot}>
+                                        Asistanı Oluştur
+                                    </button>
+                                </div>
                             </div>
                         )}
-                        {aiUsage.percentage >= 80 && aiUsage.percentage < 100 && (
-                            <div className="usage-alert warning">
-                                <AlertCircle size={16} />
-                                <span>Limite yaklaşıyorsunuz (%{aiUsage.percentage})</span>
+
+                        {/* Bots Grid */}
+                        {loading && !bots.length ? (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Yükleniyor...</div>
+                        ) : bots.length === 0 && !showAddBot ? (
+                            <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
+                                <Bot size={48} color="#9ca3af" style={{ marginBottom: '16px' }} />
+                                <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Henüz Asistan Yok</h3>
+                                <p className="text-muted" style={{ marginBottom: '24px' }}>İlk yapay zeka asistanınızı oluşturarak başlayın.</p>
+                                <button className="btn-modern btn-primary" onClick={() => setShowAddBot(true)}>
+                                    <Plus size={18} /> İlk Asistanı Ekle
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="bots-grid">
+                                {bots.map(bot => (
+                                    <BotItem
+                                        key={bot.id}
+                                        bot={bot}
+                                        workspaceId={workspaceId}
+                                        onDelete={handleDeleteBot}
+                                        onRefresh={loadBots}
+                                    />
+                                ))}
                             </div>
                         )}
                     </div>
-                ) : null}
-            </div>
+                </>
+            )}
 
-            <div className="assistants-info-box">
-                <p>💡 Botları Channels sayfasından ilgili kanallara (WhatsApp, Facebook, Instagram, E-posta, Widget) atayabilirsiniz.</p>
-            </div>
-
-            <div className="assistants-content">
-                {/* Add Bot Form Overlay */}
-                {showAddBot && (
-                    <div className="add-bot-form">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '20px', fontWeight: '600' }}>Yeni Asistan Oluştur</h3>
-                            <button onClick={() => setShowAddBot(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                <X size={24} color="#6b7280" />
-                            </button>
-                        </div>
-
-                        <div className="form-group" style={{ marginBottom: '16px' }}>
-                            <label className="form-label">Asistan Adı</label>
-                            <input
-                                type="text"
-                                className="input-modern"
-                                value={newBotName}
-                                onChange={(e) => setNewBotName(e.target.value)}
-                                placeholder="Örn: Satış Temsilcisi Ali"
-                            />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: '16px' }}>
-                            <label className="form-label">Rolü</label>
-                            <select
-                                className="input-modern"
-                                value={newBotRole}
-                                onChange={(e) => setNewBotRole(e.target.value)}
-                            >
-                                <option value="Teknik Servis">Teknik Servis</option>
-                                <option value="Satış">Satış</option>
-                                <option value="Bilgi">Bilgi / Info</option>
-                                <option value="Diğer">Diğer</option>
-                            </select>
-                        </div>
-                        <div className="form-group" style={{ marginBottom: '24px' }}>
-                            <label className="form-label">Sistem Talimatı</label>
-                            <textarea
-                                className="input-modern"
-                                rows="4"
-                                value={newBotPrompt}
-                                onChange={(e) => setNewBotPrompt(e.target.value)}
-                                placeholder="Örn: Sen nazik bir satış temsilcisisin. İnsanlarla konuşurken emojiler kullan..."
-                            />
-                        </div>
-
-
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                            <button className="btn-modern btn-outline-danger" style={{ border: '1px solid #d1d5db', color: '#374151' }} onClick={() => setShowAddBot(false)}>
-                                İptal
-                            </button>
-                            <button className="btn-modern btn-primary" onClick={handleCreateBot}>
-                                Asistanı Oluştur
-                            </button>
-                        </div>
+            {/* Routing Tab */}
+            {activeTab === 'routing' && (
+                <div className="routing-tab-content">
+                    <div className="assistants-info-box">
+                        <p>🔄 Her bot için yönlendirme ayarlarını ayrı ayrı yapılandırabilirsiniz. Bot müşteriden bilgi topladıktan sonra belirlenen takıma otomatik atama yapar.</p>
                     </div>
-                )}
+                    {bots.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
+                            <GitBranch size={48} color="#9ca3af" style={{ marginBottom: '16px' }} />
+                            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Henüz Asistan Yok</h3>
+                            <p className="text-muted">Yönlendirme yapılandırmak için önce bir asistan oluşturun.</p>
+                        </div>
+                    ) : (
+                        <div className="routing-cards-grid">
+                            {bots.map(bot => (
+                                <BotRoutingCard
+                                    key={bot.id}
+                                    bot={bot}
+                                    workspaceId={workspaceId}
+                                    onRefresh={loadBots}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
-                {/* Bots Grid */}
-                {loading && !bots.length ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Yükleniyor...</div>
-                ) : bots.length === 0 && !showAddBot ? (
-                    <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
-                        <Bot size={48} color="#9ca3af" style={{ marginBottom: '16px' }} />
-                        <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Henüz Asistan Yok</h3>
-                        <p className="text-muted" style={{ marginBottom: '24px' }}>İlk yapay zeka asistanınızı oluşturarak başlayın.</p>
-                        <button className="btn-modern btn-primary" onClick={() => setShowAddBot(true)}>
-                            <Plus size={18} /> İlk Asistanı Ekle
-                        </button>
-                    </div>
-                ) : (
-                    <div className="bots-grid">
-                        {bots.map(bot => (
-                            <BotItem
-                                key={bot.id}
-                                bot={bot}
-                                workspaceId={workspaceId}
-                                onDelete={handleDeleteBot}
-                                onRefresh={loadBots}
-                            />
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {/* Spacer to ensure bottom margin */}
+            {/* Spacer */}
             <div style={{ height: '100px', width: '100%' }}></div>
         </div>
     );

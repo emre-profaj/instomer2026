@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { teamAPI, workspaceAPI } from '../../services/api';
-import { Plus, Users, Edit2, Trash2, X, UserPlus } from 'lucide-react';
+import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical } from 'lucide-react';
 import './Teams.css';
 
 const Teams = () => {
@@ -11,10 +11,17 @@ const Teams = () => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
     const [selectedTeam, setSelectedTeam] = useState(null);
+    const [expandedTeams, setExpandedTeams] = useState({});
+
+    // Drag and Drop States
+    const [draggedTeam, setDraggedTeam] = useState(null);
+    const [dragOverTeamId, setDragOverTeamId] = useState(null);
+    const [isDragOverRoot, setIsDragOverRoot] = useState(false);
 
     // Modal Form States
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
+    const [parentIdForCreate, setParentIdForCreate] = useState(null);
 
     // Member Management States
     const [workspaceMembers, setWorkspaceMembers] = useState([]);
@@ -59,16 +66,21 @@ const Teams = () => {
                     description: teamDescription
                 });
                 if (response.data && response.data.team) {
-                    setTeams(teams.map(t => t.id === selectedTeam.id ? response.data.team : t));
+                    loadTeams(); // Reload to get hierarchy
                 }
             } else {
                 // Create
                 const response = await teamAPI.create(currentWorkspace.id, {
                     name: teamName,
-                    description: teamDescription
+                    description: teamDescription,
+                    parentId: parentIdForCreate || null
                 });
                 if (response.data && response.data.team) {
-                    setTeams([...teams, response.data.team]);
+                    loadTeams(); // Reload to get hierarchy
+                    // Auto-expand parent if creating sub-team
+                    if (parentIdForCreate) {
+                        setExpandedTeams(prev => ({ ...prev, [parentIdForCreate]: true }));
+                    }
                 }
             }
             closeCreateModal();
@@ -78,25 +90,27 @@ const Teams = () => {
     };
 
     const handleDeleteTeam = async (teamId) => {
-        if (window.confirm('Bu takımı silmek istediğinize emin misiniz?')) {
+        if (window.confirm('Bu takımı ve alt takımlarını silmek istediğinize emin misiniz?')) {
             try {
                 await teamAPI.delete(currentWorkspace.id, teamId);
-                setTeams(teams.filter(t => t.id !== teamId));
+                loadTeams();
             } catch (error) {
                 console.error('Error deleting team:', error);
             }
         }
     };
 
-    const openCreateModal = (team = null) => {
+    const openCreateModal = (team = null, parentId = null) => {
         if (team) {
             setSelectedTeam(team);
             setTeamName(team.name);
             setTeamDescription(team.description || '');
+            setParentIdForCreate(null);
         } else {
             setSelectedTeam(null);
             setTeamName('');
             setTeamDescription('');
+            setParentIdForCreate(parentId);
         }
         setIsCreateModalOpen(true);
     };
@@ -106,17 +120,20 @@ const Teams = () => {
         setSelectedTeam(null);
         setTeamName('');
         setTeamDescription('');
+        setParentIdForCreate(null);
+    };
+
+    const toggleExpand = (teamId) => {
+        setExpandedTeams(prev => ({ ...prev, [teamId]: !prev[teamId] }));
     };
 
     // Members Management
     const openMembersModal = async (team) => {
         setSelectedTeam(team);
         try {
-            // Optimistically set members from the team object if available, or fetch fresh
             if (team.members) {
                 setTeamMembers(team.members);
             }
-            // Fetch fresh members to be sure
             const response = await teamAPI.getMembers(currentWorkspace.id, team.id);
             setTeamMembers(response.data.members);
             setIsMembersModalOpen(true);
@@ -129,21 +146,13 @@ const Teams = () => {
         if (!selectedMemberToAdd || !selectedTeam) return;
         try {
             const data = { userId: selectedMemberToAdd };
-            
+
             await teamAPI.addMember(currentWorkspace.id, selectedTeam.id, data);
-            // Refresh members list
             const response = await teamAPI.getMembers(currentWorkspace.id, selectedTeam.id);
             const newMembers = response.data.members;
             setTeamMembers(newMembers);
             setSelectedMemberToAdd('');
-
-            // Update team members in main list locally
-            setTeams(teams.map(t => {
-                if (t.id === selectedTeam.id) {
-                    return { ...t, members: newMembers };
-                }
-                return t;
-            }));
+            loadTeams();
         } catch (error) {
             console.error('Error adding member:', error);
             alert('Üye eklenirken bir hata oluştu.');
@@ -154,20 +163,11 @@ const Teams = () => {
         if (!selectedTeam) return;
         try {
             const memberId = member.userId;
-            
             await teamAPI.removeMember(currentWorkspace.id, selectedTeam.id, memberId, 'user');
-            // Refresh members list
             const response = await teamAPI.getMembers(currentWorkspace.id, selectedTeam.id);
             const newMembers = response.data.members;
             setTeamMembers(newMembers);
-
-            // Update team members in main list locally
-            setTeams(teams.map(t => {
-                if (t.id === selectedTeam.id) {
-                    return { ...t, members: newMembers };
-                }
-                return t;
-            }));
+            loadTeams();
         } catch (error) {
             console.error('Error removing member:', error);
         }
@@ -176,6 +176,203 @@ const Teams = () => {
     const getAvailableMembers = () => {
         const teamUserIds = teamMembers.filter(m => m.userId).map(m => m.userId);
         return workspaceMembers.filter(m => !teamUserIds.includes(m.userId));
+    };
+
+    // Drag and Drop Handlers
+    const isDescendantOf = (teamId, potentialParentId) => {
+        // Prevent circular references: check if potentialParentId is a descendant of teamId
+        const findTeam = (teams, id) => {
+            for (const t of teams) {
+                if (t.id === id) return t;
+                if (t.children) {
+                    const found = findTeam(t.children, id);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+        const team = findTeam(teams, teamId);
+        if (!team || !team.children) return false;
+        const checkChildren = (children) => {
+            for (const child of children) {
+                if (child.id === potentialParentId) return true;
+                if (child.children && checkChildren(child.children)) return true;
+            }
+            return false;
+        };
+        return checkChildren(team.children);
+    };
+
+    const handleDragStart = (e, team) => {
+        setDraggedTeam(team);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', team.id);
+        // Add a slight delay to allow the drag image to render
+        setTimeout(() => {
+            e.target.closest('.team-card-wrapper').classList.add('dragging');
+        }, 0);
+    };
+
+    const handleDragEnd = (e) => {
+        setDraggedTeam(null);
+        setDragOverTeamId(null);
+        setIsDragOverRoot(false);
+        document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+    };
+
+    const handleDragOver = (e, targetTeamId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!draggedTeam || draggedTeam.id === targetTeamId) return;
+        if (isDescendantOf(draggedTeam.id, targetTeamId)) return;
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverTeamId(targetTeamId);
+        setIsDragOverRoot(false);
+    };
+
+    const handleDragLeave = (e, targetTeamId) => {
+        // Only clear if we're leaving the actual target, not entering a child
+        const relatedTarget = e.relatedTarget;
+        const currentTarget = e.currentTarget;
+        if (currentTarget.contains(relatedTarget)) return;
+        if (dragOverTeamId === targetTeamId) {
+            setDragOverTeamId(null);
+        }
+    };
+
+    const handleDrop = async (e, targetTeamId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverTeamId(null);
+        setIsDragOverRoot(false);
+
+        if (!draggedTeam || draggedTeam.id === targetTeamId) return;
+        if (isDescendantOf(draggedTeam.id, targetTeamId)) return;
+        // Don't drop on itself or if already a child of target
+        if (draggedTeam.parentId === targetTeamId) return;
+
+        try {
+            await teamAPI.update(currentWorkspace.id, draggedTeam.id, { parentId: targetTeamId });
+            loadTeams();
+            // Auto-expand the target team so the moved team is visible
+            setExpandedTeams(prev => ({ ...prev, [targetTeamId]: true }));
+        } catch (error) {
+            console.error('Error moving team:', error);
+            alert('Takım taşınırken bir hata oluştu.');
+        }
+        setDraggedTeam(null);
+    };
+
+    const handleRootDragOver = (e) => {
+        e.preventDefault();
+        if (!draggedTeam || !draggedTeam.parentId) return;
+        e.dataTransfer.dropEffect = 'move';
+        setIsDragOverRoot(true);
+        setDragOverTeamId(null);
+    };
+
+    const handleRootDragLeave = (e) => {
+        const relatedTarget = e.relatedTarget;
+        const currentTarget = e.currentTarget;
+        if (currentTarget.contains(relatedTarget)) return;
+        setIsDragOverRoot(false);
+    };
+
+    const handleRootDrop = async (e) => {
+        e.preventDefault();
+        setIsDragOverRoot(false);
+        setDragOverTeamId(null);
+
+        if (!draggedTeam || !draggedTeam.parentId) return;
+
+        try {
+            await teamAPI.update(currentWorkspace.id, draggedTeam.id, { parentId: null });
+            loadTeams();
+        } catch (error) {
+            console.error('Error moving team to root:', error);
+            alert('Takım taşınırken bir hata oluştu.');
+        }
+        setDraggedTeam(null);
+    };
+
+    // Render a team card (used for both parent and child)
+    const renderTeamCard = (team, isChild = false) => {
+        const hasChildren = team.children && team.children.length > 0;
+        const isExpanded = expandedTeams[team.id];
+
+        return (
+            <div
+                key={team.id}
+                className={`team-card-wrapper ${isChild ? 'sub-team' : ''} ${dragOverTeamId === team.id ? 'drag-over' : ''}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, team)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleDragOver(e, team.id)}
+                onDragLeave={(e) => handleDragLeave(e, team.id)}
+                onDrop={(e) => handleDrop(e, team.id)}
+            >
+                <div className={`team-card ${isChild ? 'team-card-child' : ''}`}>
+                    <div className="team-card-header">
+                        <div className="team-info">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className="drag-handle" title="Sürükle & Bırak">
+                                    <GripVertical size={14} />
+                                </span>
+                                {hasChildren && (
+                                    <button
+                                        className="expand-btn"
+                                        onClick={() => toggleExpand(team.id)}
+                                        title={isExpanded ? 'Daralt' : 'Genişlet'}
+                                    >
+                                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    </button>
+                                )}
+                                {isChild && <GitBranch size={14} color="#9ca3af" />}
+                                <h3>{team.name}</h3>
+                            </div>
+                            <p className="team-description">{team.description || 'Açıklama yok'}</p>
+                        </div>
+                        <div className="team-actions">
+                            <button
+                                className="icon-btn"
+                                onClick={() => openCreateModal(null, team.id)}
+                                title="Alt Takım Ekle"
+                            >
+                                <Plus size={16} />
+                            </button>
+                            <button className="icon-btn" onClick={() => openCreateModal(team)} title="Düzenle">
+                                <Edit2 size={16} />
+                            </button>
+                            <button className="icon-btn danger" onClick={() => handleDeleteTeam(team.id)} title="Sil">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="team-stats">
+                        <Users size={16} />
+                        <span>{team.members?.filter(m => m.userId).length || 0} Kullanıcı</span>
+                        {hasChildren && (
+                            <span className="sub-team-count">
+                                <GitBranch size={13} />
+                                {team.children.length} alt takım
+                            </span>
+                        )}
+                    </div>
+
+                    <button className="manage-members-btn" onClick={() => openMembersModal(team)}>
+                        Üyeleri Yönet
+                    </button>
+                </div>
+
+                {/* Sub-teams */}
+                {hasChildren && isExpanded && (
+                    <div className="sub-teams-container">
+                        {team.children.map(child => renderTeamCard(child, true))}
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -191,34 +388,13 @@ const Teams = () => {
             {loading ? (
                 <div>Yükleniyor...</div>
             ) : (
-                <div className="teams-grid">
-                    {teams.map(team => (
-                        <div key={team.id} className="team-card">
-                            <div className="team-card-header">
-                                <div className="team-info">
-                                    <h3>{team.name}</h3>
-                                    <p className="team-description">{team.description || 'Açıklama yok'}</p>
-                                </div>
-                                <div className="team-actions">
-                                    <button className="icon-btn" onClick={() => openCreateModal(team)} title="Düzenle">
-                                        <Edit2 size={16} />
-                                    </button>
-                                    <button className="icon-btn danger" onClick={() => handleDeleteTeam(team.id)} title="Sil">
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="team-stats">
-                                <Users size={16} />
-                                <span>{team.members?.filter(m => m.userId).length || 0} Kullanıcı</span>
-                            </div>
-
-                            <button className="manage-members-btn" onClick={() => openMembersModal(team)}>
-                                Üyeleri Yönet
-                            </button>
-                        </div>
-                    ))}
+                <div
+                    className={`teams-grid ${isDragOverRoot ? 'drag-over-root' : ''}`}
+                    onDragOver={handleRootDragOver}
+                    onDragLeave={handleRootDragLeave}
+                    onDrop={handleRootDrop}
+                >
+                    {teams.map(team => renderTeamCard(team))}
                     {teams.length === 0 && (
                         <div className="no-teams">
                             Henüz hiç takım oluşturulmamış.
@@ -232,11 +408,35 @@ const Teams = () => {
                 <div className="teams-modal-overlay" onClick={closeCreateModal}>
                     <div className="teams-modal-content" onClick={e => e.stopPropagation()}>
                         <div className="teams-modal-header">
-                            <h3>{selectedTeam ? 'Takımı Düzenle' : 'Yeni Takım Oluştur'}</h3>
+                            <h3>
+                                {selectedTeam ? 'Takımı Düzenle' : parentIdForCreate ? 'Alt Takım Oluştur' : 'Yeni Takım Oluştur'}
+                            </h3>
                             <button className="teams-close-modal-btn" onClick={closeCreateModal}>
                                 <X size={20} />
                             </button>
                         </div>
+
+                        {parentIdForCreate && (
+                            <div className="sub-team-info-badge">
+                                <GitBranch size={14} />
+                                <span>
+                                    <strong>{(() => {
+                                        const findTeam = (list, id) => {
+                                            for (const t of list) {
+                                                if (t.id === id) return t;
+                                                if (t.children) {
+                                                    const found = findTeam(t.children, id);
+                                                    if (found) return found;
+                                                }
+                                            }
+                                            return null;
+                                        };
+                                        return findTeam(teams, parentIdForCreate)?.name;
+                                    })()}</strong> takımının altına eklenecek
+                                </span>
+                            </div>
+                        )}
+
                         <form onSubmit={handleCreateTeam}>
                             <div className="form-group">
                                 <label>Takım Adı</label>
@@ -245,7 +445,7 @@ const Teams = () => {
                                     className="form-input"
                                     value={teamName}
                                     onChange={(e) => setTeamName(e.target.value)}
-                                    placeholder="Örn: Destek Ekibi"
+                                    placeholder={parentIdForCreate ? "Örn: İstanbul Satış" : "Örn: Destek Ekibi"}
                                     required
                                 />
                             </div>

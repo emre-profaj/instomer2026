@@ -145,6 +145,7 @@ const Settings = () => {
                     <Bot size={16} />
                     AI Entegre
                 </button>
+
             </div>
 
             <div className="settings-content">
@@ -269,6 +270,8 @@ const Settings = () => {
                 {activeTab === 'ai' && (
                     <AIIntegrationSettings workspaceId={currentWorkspace.id} />
                 )}
+
+
 
             </div>
 
