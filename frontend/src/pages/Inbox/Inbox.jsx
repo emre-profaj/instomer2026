@@ -178,15 +178,17 @@ const Inbox = () => {
         // Stage presets based on funnel name keywords
         const getDefaultStagesForFunnel = (name) => {
             const n = (name || '').toLowerCase();
-            if (n.includes('iş baş') || n.includes('is bas') || n.includes('kariyer') || n.includes('cv') || n.includes('insan')) {
+            if (n.includes('iş baş') || n.includes('is bas') || n.includes('kariyer') || n.includes('cv') || n.includes('insan') || n.includes('başvuru')) {
                 return [
-                    { value: 'CV_RECEIVED', label: 'CV Alındı', color: '#3b82f6' },
-                    { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#8b5cf6' },
+                    { value: 'APPLICATION_RECEIVED', label: 'Başvuru Alındı', color: '#3b82f6' },
+                    { value: 'UNDER_REVIEW', label: 'Değerlendirmede', color: '#8b5cf6' },
+                    { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#06b6d4' },
                     { value: 'INTERVIEW_SCHEDULED', label: 'Mülakat Planlandı', color: '#f59e0b' },
                     { value: 'INTERVIEWED', label: 'Mülakat Yapıldı', color: '#f97316' },
-                    { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#06b6d4' },
+                    { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#0ea5e9' },
                     { value: 'HIRED', label: 'İşe Alındı', color: '#10b981' },
                     { value: 'REJECTED', label: 'Reddedildi', color: '#ef4444' },
+                    { value: 'ON_HOLD', label: 'Beklemede', color: '#6b7280' },
                 ];
             }
             if (n.includes('destek') || n.includes('şikayet') || n.includes('sikayet') || n.includes('support') || n.includes('ticket')) {
@@ -199,8 +201,21 @@ const Inbox = () => {
                     { value: 'CLOSED', label: 'Kapatıldı', color: '#6b7280' },
                 ];
             }
-            // Default: Sales/Opportunity funnel
-            return CUSTOMER_STATUS_OPTIONS;
+            // Default: Sales/Opportunity funnel — with Bilgi Verildi added
+            return [
+                { value: 'NEW_APPLICATION', label: 'Yeni Başvuru', color: '#3b82f6' },
+                { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#06b6d4' },
+                { value: 'OPPORTUNITY', label: 'Fırsat', color: '#f59e0b' },
+                { value: 'HOT_OPPORTUNITY', label: 'Sıcak Fırsat', color: '#ef4444' },
+                { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b' },
+                { value: 'CALLBACK', label: 'Tekrar Ara', color: '#0ea5e9' },
+                { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#8b5cf6' },
+                { value: 'NEGOTIATION', label: 'Pazarlık', color: '#f97316' },
+                { value: 'CONTRACT', label: 'Sözleşme', color: '#06b6d4' },
+                { value: 'SALE_COMPLETED', label: 'Satış', color: '#10b981' },
+                { value: 'LOST', label: 'Kayıp', color: '#1f2937' },
+                { value: 'NOT_INTERESTED', label: 'İlgisiz', color: '#9ca3af' },
+            ];
         };
 
         funnelAPI.getAll(currentWorkspace.id).then(res => {
