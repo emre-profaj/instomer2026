@@ -174,11 +174,46 @@ const Inbox = () => {
     const [funnelOptions, setFunnelOptions] = useState(FUNNEL_TYPE_OPTIONS_DEFAULT);
     useEffect(() => {
         if (!currentWorkspace) return;
+
+        // Stage presets based on funnel name keywords
+        const getDefaultStagesForFunnel = (name) => {
+            const n = (name || '').toLowerCase();
+            if (n.includes('iş baş') || n.includes('is bas') || n.includes('kariyer') || n.includes('cv') || n.includes('insan')) {
+                return [
+                    { value: 'CV_RECEIVED', label: 'CV Alındı', color: '#3b82f6' },
+                    { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#8b5cf6' },
+                    { value: 'INTERVIEW_SCHEDULED', label: 'Mülakat Planlandı', color: '#f59e0b' },
+                    { value: 'INTERVIEWED', label: 'Mülakat Yapıldı', color: '#f97316' },
+                    { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#06b6d4' },
+                    { value: 'HIRED', label: 'İşe Alındı', color: '#10b981' },
+                    { value: 'REJECTED', label: 'Reddedildi', color: '#ef4444' },
+                ];
+            }
+            if (n.includes('destek') || n.includes('şikayet') || n.includes('sikayet') || n.includes('support') || n.includes('ticket')) {
+                return [
+                    { value: 'NEW_TICKET', label: 'Yeni Talep', color: '#3b82f6' },
+                    { value: 'IN_PROGRESS', label: 'İşleniyor', color: '#f59e0b' },
+                    { value: 'WAITING_CUSTOMER', label: 'Müşteri Bekleniyor', color: '#8b5cf6' },
+                    { value: 'ESCALATED', label: 'Eskalasyon', color: '#ef4444' },
+                    { value: 'RESOLVED', label: 'Çözüldü', color: '#10b981' },
+                    { value: 'CLOSED', label: 'Kapatıldı', color: '#6b7280' },
+                ];
+            }
+            // Default: Sales/Opportunity funnel
+            return CUSTOMER_STATUS_OPTIONS;
+        };
+
         funnelAPI.getAll(currentWorkspace.id).then(res => {
             const list = res.data.funnels || [];
             setFunnelOptions([
                 { value: '', label: 'Funnel Seç', color: '#9ca3af', stages: null },
-                ...list.map(f => ({ value: f.id, label: f.name, color: f.color, icon: f.icon, stages: f.stages || null }))
+                ...list.map(f => ({
+                    value: f.id,
+                    label: f.name,
+                    color: f.color,
+                    icon: f.icon,
+                    stages: (f.stages && f.stages.length > 0) ? f.stages : getDefaultStagesForFunnel(f.name)
+                }))
             ]);
         }).catch(() => {});
     }, [currentWorkspace]);
