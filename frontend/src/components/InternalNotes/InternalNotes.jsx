@@ -3,6 +3,7 @@ import { conversationAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { Trash2, User } from 'lucide-react';
 import './InternalNotes.css';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 
 const InternalNotes = ({ conversationId }) => {
     const { currentWorkspace, user: currentUser } = useAuth();
@@ -10,6 +11,7 @@ const InternalNotes = ({ conversationId }) => {
     const [newNote, setNewNote] = useState('');
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
         if (conversationId && currentWorkspace) {
@@ -53,14 +55,22 @@ const InternalNotes = ({ conversationId }) => {
     };
 
     const handleDeleteNote = async (noteId) => {
-        if (!window.confirm('Bu notu silmek istediğinize emin misiniz?')) return;
-
-        try {
-            await conversationAPI.deleteNote(currentWorkspace.id, conversationId, noteId);
-            setNotes(notes.filter(n => n.id !== noteId));
-        } catch (error) {
-            console.error('Error deleting note:', error);
-        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Not Sil',
+            message: 'Bu notu silmek istediğinize emin misiniz?',
+            confirmText: 'Evet, Sil',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await conversationAPI.deleteNote(currentWorkspace.id, conversationId, noteId);
+                    setNotes(notes.filter(n => n.id !== noteId));
+                } catch (error) {
+                    console.error('Error deleting note:', error);
+                }
+            }
+        });
     };
 
     if (loading) return <div className="notes-loading">Notlar yükleniyor...</div>;
@@ -115,6 +125,16 @@ const InternalNotes = ({ conversationId }) => {
                     {sending ? 'Ekleniyor...' : 'Not Ekle'}
                 </button>
             </form>
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                type={confirmModal.type}
+            />
         </div>
     );
 };

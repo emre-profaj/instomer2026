@@ -1,5 +1,5 @@
 import express from 'express';
-import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation } from '../controllers/contact.controller.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts } from '../controllers/contact.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -18,6 +18,9 @@ router.get('/:workspaceId', requireWorkspaceAccess, getContacts);
 
 // Create contact manually
 router.post('/:workspaceId', requireWorkspaceAccess, createContact);
+
+// Bulk import contacts
+router.post('/:workspaceId/import', requireWorkspaceAccess, bulkImportContacts);
 
 // Get contact details
 router.get('/:workspaceId/:id', requireWorkspaceAccess, getContactById);

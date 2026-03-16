@@ -4,11 +4,13 @@ import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle
 import { useAuth } from '../../context/AuthContext';
 import BotRoutingSettings from '../../components/Settings/BotRoutingSettings';
 import './Assistants.css';
+import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 // Sub-component for managing documents
 const BotDocumentManager = ({ workspaceId, botId }) => {
     const [documents, setDocuments] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
         if (workspaceId && botId) {
@@ -47,14 +49,23 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
     };
 
     const handleDelete = async (docId) => {
-        if (!window.confirm('Bu dokümanı silmek istediğinize emin misiniz?')) return;
-        try {
-            await aiAPI.deleteDocument(workspaceId, botId, docId);
-            loadDocuments();
-        } catch (error) {
-            console.error('Delete error:', error);
-            alert('Silinemedi.');
-        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Doküman Sil',
+            message: 'Bu dokümanı silmek istediğinize emin misiniz?',
+            confirmText: 'Evet, Sil',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await aiAPI.deleteDocument(workspaceId, botId, docId);
+                    loadDocuments();
+                } catch (error) {
+                    console.error('Delete error:', error);
+                    alert('Silinemedi.');
+                }
+            }
+        });
     };
 
     return (
@@ -93,6 +104,16 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
                     />
                 </label>
             </div>
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                type={confirmModal.type}
+            />
         </div>
     );
 };
@@ -659,14 +680,25 @@ const Assistants = () => {
         }
     };
 
+    const [confirmModalAssist, setConfirmModalAssist] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
+
     const handleDeleteBot = async (botId) => {
-        if (!confirm('Silmek istediğinize emin misiniz?')) return;
-        try {
-            await aiAPI.deleteBot(workspaceId, botId);
-            loadBots();
-        } catch (error) {
-            console.error('Error deleting bot:', error);
-        }
+        setConfirmModalAssist({
+            isOpen: true,
+            title: 'Asistan Sil',
+            message: 'Bu asistanı silmek istediğinize emin misiniz?',
+            confirmText: 'Evet, Sil',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmModalAssist(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await aiAPI.deleteBot(workspaceId, botId);
+                    loadBots();
+                } catch (error) {
+                    console.error('Error deleting bot:', error);
+                }
+            }
+        });
     };
 
     if (!currentWorkspace) return <div className="page-container">Lütfen bir workspace seçin.</div>;
@@ -890,6 +922,16 @@ const Assistants = () => {
 
             {/* Spacer */}
             <div style={{ height: '100px', width: '100%' }}></div>
+
+            <ConfirmModal
+                isOpen={confirmModalAssist.isOpen}
+                title={confirmModalAssist.title}
+                message={confirmModalAssist.message}
+                confirmText={confirmModalAssist.confirmText}
+                onConfirm={confirmModalAssist.onConfirm}
+                onCancel={() => setConfirmModalAssist(prev => ({ ...prev, isOpen: false }))}
+                type={confirmModalAssist.type}
+            />
         </div>
     );
 };

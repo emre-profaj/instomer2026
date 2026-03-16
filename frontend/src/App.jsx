@@ -21,12 +21,14 @@ import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import Emails from './pages/Emails/Emails';
 import Analytics from './pages/Analytics/Analytics';
 import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
+import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
 import Calendar from './pages/Calendar/Calendar';
 import Automations from './pages/Automations/Automations';
 import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
 import Invoices from './pages/Sales/Invoices';
+import Pipeline from './pages/Pipeline/Pipeline';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -76,17 +78,19 @@ function App() {
               <Route path="channels" element={<Channels />} />
 
               <Route path="users" element={<Users />} />
-              <Route path="teams" element={<Teams />} />
+              <Route path="teams" element={<Navigate to="/users" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="agent-performance" element={<AgentPerformance />} />
+              <Route path="ai-call-analytics" element={<AICallAnalytics />} />
               <Route path="calendar" element={<Calendar />} />
               <Route path="automations" element={<Automations />} />
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />
               <Route path="orders" element={<Orders />} />
               <Route path="invoices" element={<Invoices />} />
+              <Route path="pipeline" element={<Pipeline />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

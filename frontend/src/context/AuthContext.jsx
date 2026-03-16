@@ -4,6 +4,13 @@ import { io } from 'socket.io-client';
 
 const AuthContext = createContext(null);
 
+// Helper to get the active storage
+const getStorage = () => {
+    // Check if 'rememberMe' flag was set
+    const remember = localStorage.getItem('rememberMe');
+    return remember === 'true' ? localStorage : sessionStorage;
+};
+
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
@@ -21,8 +28,8 @@ export const AuthProvider = ({ children }) => {
 
     useEffect(() => {
         const initializeAuth = async () => {
-            const token = localStorage.getItem('token');
-            const savedWorkspace = localStorage.getItem('currentWorkspace');
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            const savedWorkspace = localStorage.getItem('currentWorkspace') || sessionStorage.getItem('currentWorkspace');
 
             if (token) {
                 try {
@@ -31,7 +38,7 @@ export const AuthProvider = ({ children }) => {
                     const freshUser = response.data.user;
 
                     setUser(freshUser);
-                    localStorage.setItem('user', JSON.stringify(freshUser));
+                    getStorage().setItem('user', JSON.stringify(freshUser));
 
                     if (savedWorkspace) {
                         setCurrentWorkspace(JSON.parse(savedWorkspace));
@@ -40,7 +47,26 @@ export const AuthProvider = ({ children }) => {
                     }
                 } catch (error) {
                     console.error('Auth initialization error:', error);
-                    logout();
+                    // 401 → interceptor handles redirect, don't double-handle
+                    // Only logout for 403 (explicitly forbidden — user/token truly invalid)
+                    if (error.response?.status === 403) {
+                        logout();
+                    } else if (error.response?.status !== 401) {
+                        // Transient error (429, 500, network error) — use cached user data
+                        // This prevents logout during PM2 restart or rate limiting
+                        const cachedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+                        if (cachedUser) {
+                            try {
+                                setUser(JSON.parse(cachedUser));
+                                console.warn('⚠️ Using cached user data due to transient error');
+                                if (savedWorkspace) {
+                                    setCurrentWorkspace(JSON.parse(savedWorkspace));
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse cached user:', e);
+                            }
+                        }
+                    }
                 }
             }
             setLoading(false);
@@ -167,7 +193,7 @@ export const AuthProvider = ({ children }) => {
                 // Automatically select first workspace (user's own workspace)
                 const workspace = workspaces[0];
                 setCurrentWorkspace(workspace);
-                localStorage.setItem('currentWorkspace', JSON.stringify(workspace));
+                getStorage().setItem('currentWorkspace', JSON.stringify(workspace));
             }
         } catch (error) {
             console.error('Error loading workspace:', error);
@@ -176,17 +202,26 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (credentials) => {
         try {
-            const response = await authAPI.login(credentials);
+            const { rememberMe, ...loginData } = credentials;
+            const response = await authAPI.login(loginData);
             const { user, token, workspace } = response.data;
 
-            localStorage.setItem('token', token);
-            localStorage.setItem('user', JSON.stringify(user));
+            // Store rememberMe preference
+            if (rememberMe) {
+                localStorage.setItem('rememberMe', 'true');
+            } else {
+                localStorage.removeItem('rememberMe');
+            }
+
+            const storage = rememberMe ? localStorage : sessionStorage;
+            storage.setItem('token', token);
+            storage.setItem('user', JSON.stringify(user));
             setUser(user);
 
             // Automatically set workspace if returned
             if (workspace) {
                 setCurrentWorkspace(workspace);
-                localStorage.setItem('currentWorkspace', JSON.stringify(workspace));
+                storage.setItem('currentWorkspace', JSON.stringify(workspace));
             } else {
                 // Load workspace if not returned
                 await loadUserWorkspace();
@@ -229,6 +264,10 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         localStorage.removeItem('currentWorkspace');
+        localStorage.removeItem('rememberMe');
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('currentWorkspace');
         setUser(null);
         setCurrentWorkspace(null);
     };
@@ -249,7 +288,7 @@ export const AuthProvider = ({ children }) => {
 
         if (workspace) {
             setCurrentWorkspace(workspace);
-            localStorage.setItem('currentWorkspace', JSON.stringify(workspace));
+            getStorage().setItem('currentWorkspace', JSON.stringify(workspace));
             console.log('🔄 [AuthContext] Switched to workspace:', workspace.name);
         }
     };
@@ -260,7 +299,7 @@ export const AuthProvider = ({ children }) => {
             const userRes = await authAPI.getCurrentUser();
             const freshUser = userRes.data.user;
             setUser(freshUser);
-            localStorage.setItem('user', JSON.stringify(freshUser));
+            getStorage().setItem('user', JSON.stringify(freshUser));
 
             const response = await workspaceAPI.getAll();
             const workspaces = response.data.workspaces;
@@ -279,7 +318,7 @@ export const AuthProvider = ({ children }) => {
                 }
 
                 setCurrentWorkspace(matchingWorkspace);
-                localStorage.setItem('currentWorkspace', JSON.stringify(matchingWorkspace));
+                getStorage().setItem('currentWorkspace', JSON.stringify(matchingWorkspace));
                 console.log('✅ Auth & Workspace refreshed:', matchingWorkspace.name);
                 return matchingWorkspace;
             }

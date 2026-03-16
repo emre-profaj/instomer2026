@@ -5,10 +5,16 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// JWT Strategy
+// JWT Strategy — read secret lazily so dotenv has time to load
 const jwtOptions = {
     jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-    secretOrKey: process.env.JWT_SECRET
+    secretOrKeyProvider: (request, rawJwtToken, done) => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) {
+            console.error('❌ [Passport] JWT_SECRET is undefined! dotenv may not have loaded.');
+        }
+        done(null, secret);
+    }
 };
 
 passport.use(
@@ -81,18 +87,18 @@ passport.use(
 
                             if (currentUser) {
                                 console.log('✅ [OAuth] Linking Facebook to existing user:', currentUser.email);
-                                
+
                                 // Check if this Facebook account is already linked to another user
                                 const existingFacebookUser = await prisma.user.findUnique({
                                     where: { facebookId: profile.id }
                                 });
-                                
+
                                 if (existingFacebookUser && existingFacebookUser.id !== currentUser.id) {
                                     // Facebook is linked to another user - just update the access token for current user
                                     // This allows multiple CRM users to use the same Facebook admin account
                                     console.log('⚠️ [OAuth] Facebook already linked to:', existingFacebookUser.email);
                                     console.log('📝 [OAuth] Just updating access token for current user (shared Facebook admin account)');
-                                    
+
                                     user = await prisma.user.update({
                                         where: { id: currentUser.id },
                                         data: {
@@ -113,7 +119,7 @@ passport.use(
                                         }
                                     });
                                 }
-                                
+
                                 console.log('✅ [OAuth] Successfully updated Facebook token for:', user.email);
                                 return done(null, user);
                             } else {

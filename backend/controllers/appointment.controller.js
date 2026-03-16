@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
 
 const prisma = new PrismaClient();
 
@@ -132,7 +133,7 @@ export const createAppointment = async (req, res) => {
                 assignedToId,
                 contactId,
                 contactName,
-                contactPhone,
+                contactPhone: normalizePhone(contactPhone),
                 contactEmail,
                 color: color || '#3b82f6',
                 notes,
@@ -178,7 +179,7 @@ export const updateAppointment = async (req, res) => {
         if (assignedToId !== undefined) updateData.assignedToId = assignedToId;
         if (contactId !== undefined) updateData.contactId = contactId;
         if (contactName !== undefined) updateData.contactName = contactName;
-        if (contactPhone !== undefined) updateData.contactPhone = contactPhone;
+        if (contactPhone !== undefined) updateData.contactPhone = normalizePhone(contactPhone);
         if (contactEmail !== undefined) updateData.contactEmail = contactEmail;
         if (status !== undefined) updateData.status = status;
         if (color !== undefined) updateData.color = color;

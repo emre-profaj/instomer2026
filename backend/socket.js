@@ -1,8 +1,15 @@
 import { Server } from 'socket.io';
+import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
 let io;
 const isDev = process.env.NODE_ENV !== 'production';
 const log = (...args) => isDev && console.log(...args);
+
+// Track online users: userId -> Set<socketId>
+const onlineUsers = new Map();
+// Track socket -> userId mapping for disconnect cleanup
+const socketToUser = new Map();
 
 // Allowed origins for Socket.io
 const allowedOrigins = [
@@ -35,18 +42,42 @@ export const initializeSocket = (server) => {
             methods: ['GET', 'POST'],
             credentials: true
         },
-        transports: ['polling', 'websocket']
+        transports: ['websocket', 'polling']
     });
 
     io.on('connection', (socket) => {
         log('✅ Client connected:', socket.id);
 
-        // Join user room for personal notifications
-        socket.on('join_user', (userId) => {
+        // Join user room for personal notifications + track online status
+        socket.on('join_user', async (userId) => {
             if (userId) {
                 const roomName = `user:${userId}`;
                 socket.join(roomName);
+                socketToUser.set(socket.id, userId);
                 log(`👤 Socket ${socket.id} joined user room: ${roomName}`);
+
+                // Track online status
+                if (!onlineUsers.has(userId)) {
+                    onlineUsers.set(userId, new Set());
+                }
+                const wasOffline = onlineUsers.get(userId).size === 0;
+                onlineUsers.get(userId).add(socket.id);
+
+                // If user just came online, update DB and broadcast
+                if (wasOffline) {
+                    try {
+                        await prisma.user.update({
+                            where: { id: userId },
+                            data: { isOnline: true }
+                        });
+                        log(`🟢 User ${userId} is now ONLINE`);
+
+                        // Broadcast to all workspaces the user belongs to
+                        await broadcastUserStatus(userId, true);
+                    } catch (err) {
+                        console.error('Error updating user online status:', err);
+                    }
+                }
             }
         });
 
@@ -79,19 +110,86 @@ export const initializeSocket = (server) => {
             }
         });
 
-        socket.on('disconnect', () => {
+        socket.on('disconnect', async () => {
             log('❌ Client disconnected:', socket.id);
+
+            const userId = socketToUser.get(socket.id);
+            if (userId) {
+                socketToUser.delete(socket.id);
+
+                // Remove this socket from user's set
+                const userSockets = onlineUsers.get(userId);
+                if (userSockets) {
+                    userSockets.delete(socket.id);
+
+                    // If no more sockets, user is offline
+                    if (userSockets.size === 0) {
+                        onlineUsers.delete(userId);
+
+                        try {
+                            await prisma.user.update({
+                                where: { id: userId },
+                                data: {
+                                    isOnline: false,
+                                    lastSeenAt: new Date()
+                                }
+                            });
+                            log(`🔴 User ${userId} is now OFFLINE`);
+
+                            // Broadcast to all workspaces the user belongs to
+                            await broadcastUserStatus(userId, false);
+                        } catch (err) {
+                            console.error('Error updating user offline status:', err);
+                        }
+                    }
+                }
+            }
         });
+    });
+
+    // On server start, reset all users to offline
+    prisma.user.updateMany({
+        data: { isOnline: false }
+    }).then(() => {
+        log('🔄 All users reset to offline on server start');
+    }).catch(err => {
+        console.error('Error resetting online statuses:', err);
     });
 
     return io;
 };
+
+// Broadcast user status change to all workspaces the user belongs to
+async function broadcastUserStatus(userId, isOnline) {
+    try {
+        const memberships = await prisma.workspaceMember.findMany({
+            where: { userId },
+            select: { workspaceId: true }
+        });
+
+        const statusData = { userId, isOnline, lastSeenAt: new Date().toISOString() };
+
+        memberships.forEach(({ workspaceId }) => {
+            const roomName = `workspace:${workspaceId}`;
+            const legacyRoomName = `workspace_${workspaceId}`;
+            io.to(roomName).to(legacyRoomName).emit('user_status_changed', statusData);
+            log(`📡 Broadcasted status change for user ${userId} (online=${isOnline}) to workspace ${workspaceId}`);
+        });
+    } catch (err) {
+        console.error('Error broadcasting user status:', err);
+    }
+}
 
 export const getIO = () => {
     if (!io) {
         throw new Error('Socket.io not initialized!');
     }
     return io;
+};
+
+// Get list of currently online user IDs
+export const getOnlineUserIds = () => {
+    return Array.from(onlineUsers.keys());
 };
 
 // Helper function to emit to a specific workspace

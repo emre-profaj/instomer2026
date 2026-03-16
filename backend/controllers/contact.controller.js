@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { getIO, emitToWorkspace } from '../socket.js';
+import { emitToWorkspace } from '../socket.js';
+import { executeHotOpportunityEmailRule } from './rules.controller.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
 
 const prisma = new PrismaClient();
 
@@ -7,10 +9,10 @@ const prisma = new PrismaClient();
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, showArchived, limit = 50, offset = 0 } = req.query;
+        const { search, status, source, category, tag, importGroup, callStatus, showArchived, limit = 50, offset = 0 } = req.query;
         const { role } = req.workspaceMember;
 
-        console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
+        console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
 
         // Build base conversation filter for this workspace
         let conversationFilter = { workspaceId: workspaceId };
@@ -35,23 +37,30 @@ export const getContacts = async (req, res) => {
             console.log(`   AGENT filter applied - User: ${req.user.id}, Teams: ${myTeamIds.length}`);
         }
 
-        // Build where clause - show contacts that either:
-        // 1. Have conversations in this workspace (filtered by role)
-        // 2. OR belong to this workspace directly (workspaceId field)
-        let where = {
-            OR: [
-                // Contacts with conversations in this workspace
-                {
-                    conversations: {
-                        some: conversationFilter
-                    }
-                },
-                // Contacts directly assigned to this workspace
-                {
-                    workspaceId: workspaceId
+        // Build where clause based on role
+        let where;
+        if (role === 'AGENT') {
+            // AGENT: only see contacts that have conversations assigned to them or their teams
+            where = {
+                conversations: {
+                    some: conversationFilter
                 }
-            ]
-        };
+            };
+        } else {
+            // ADMIN/OWNER: see all contacts - either via conversations or directly assigned to workspace
+            where = {
+                OR: [
+                    {
+                        conversations: {
+                            some: conversationFilter
+                        }
+                    },
+                    {
+                        workspaceId: workspaceId
+                    }
+                ]
+            };
+        }
 
         // If source filter is MANUAL, only show contacts without conversations
         if (source === 'MANUAL') {
@@ -83,6 +92,26 @@ export const getContacts = async (req, res) => {
             };
         }
 
+        // Add tag filter if provided
+        if (tag && tag !== 'ALL') {
+            where = {
+                AND: [
+                    where,
+                    { tags: { contains: tag } }
+                ]
+            };
+        }
+
+        // Add importGroup filter if provided
+        if (importGroup && importGroup !== 'ALL') {
+            where = {
+                AND: [
+                    where,
+                    { importGroup: importGroup }
+                ]
+            };
+        }
+
         // Add search filter if provided
         if (search) {
             where = {
@@ -107,6 +136,60 @@ export const getContacts = async (req, res) => {
                     { isArchived: false }
                 ]
             };
+        }
+
+        // Filter by AI call status (join with retellCall table)
+        if (callStatus && callStatus !== 'ALL') {
+            let callWhere = { workspaceId };
+
+            if (callStatus === 'not_connected') {
+                callWhere.status = 'not_connected';
+            } else if (callStatus === 'ended') {
+                callWhere.status = 'ended';
+            } else if (callStatus === 'positive') {
+                callWhere.sentiment = 'Positive';
+            } else if (callStatus === 'negative') {
+                callWhere.sentiment = 'Negative';
+            } else if (callStatus === 'no_call') {
+                // Contacts with NO calls at all - handled below
+                callWhere = null;
+            }
+
+            if (callStatus === 'no_call') {
+                // Get all contacts that have at least one call
+                const calledContacts = await prisma.retellCall.findMany({
+                    where: { workspaceId, contactId: { not: null } },
+                    select: { contactId: true },
+                    distinct: ['contactId']
+                });
+                const calledIds = calledContacts.map(c => c.contactId).filter(Boolean);
+                where = {
+                    AND: [
+                        where,
+                        { id: { notIn: calledIds } }
+                    ]
+                };
+            } else {
+                const matchingCalls = await prisma.retellCall.findMany({
+                    where: callWhere,
+                    select: { contactId: true },
+                    distinct: ['contactId']
+                });
+                const matchedIds = matchingCalls.map(c => c.contactId).filter(Boolean);
+
+                if (matchedIds.length === 0) {
+                    // No contacts match - return empty
+                    return res.json({ contacts: [], total: 0, allImportGroups: [], allTags: [] });
+                }
+
+                where = {
+                    AND: [
+                        where,
+                        { id: { in: matchedIds } }
+                    ]
+                };
+            }
+            console.log(`   CallStatus filter '${callStatus}' applied`);
         }
 
         // Helper function to add source field and message dates
@@ -195,7 +278,7 @@ export const getContacts = async (req, res) => {
                 );
             } else {
                 filteredContacts = allContactsWithSource.filter(c =>
-                    c.source === source || c.channels.includes(source)
+                    c.source === source
                 );
             }
 
@@ -243,7 +326,33 @@ export const getContacts = async (req, res) => {
             console.log(`✅ [Get Contacts] No source filter -> ${totalCount} total, showing ${finalContacts.length}`);
         }
 
-        res.json({ contacts: finalContacts, total: totalCount });
+        // Fetch all distinct import groups
+        const allContactsForGroups = await prisma.contact.findMany({
+            where: { workspaceId, isArchived: false, importGroup: { not: null } },
+            select: { importGroup: true },
+            distinct: ['importGroup']
+        });
+        const allImportGroups = allContactsForGroups
+            .map(c => c.importGroup)
+            .filter(Boolean)
+            .sort();
+
+        // Fetch all distinct tags (filtered)
+        const allContactsForTags = await prisma.contact.findMany({
+            where: { workspaceId, isArchived: false },
+            select: { tags: true }
+        });
+        const allTags = new Set();
+        allContactsForTags.forEach(c => {
+            try {
+                const tags = JSON.parse(c.tags || '[]');
+                tags.forEach(t => {
+                    if (t && !t.startsWith('v_') && t.length > 2) allTags.add(t);
+                });
+            } catch { }
+        });
+
+        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort() });
     } catch (error) {
         console.error('Get contacts error:', error);
         res.status(500).json({ error: 'Failed to fetch contacts' });
@@ -297,7 +406,7 @@ export const updateContact = async (req, res) => {
         const updateData = {};
         if (name !== undefined) updateData.name = name;
         if (fullName !== undefined) updateData.fullName = fullName;
-        if (phone !== undefined) updateData.phone = phone;
+        if (phone !== undefined) updateData.phone = normalizePhone(phone);
         if (email !== undefined) updateData.email = email;
         if (company !== undefined) updateData.company = company;
         if (notes !== undefined) updateData.notes = notes;
@@ -310,18 +419,19 @@ export const updateContact = async (req, res) => {
         // Handle phones and emails arrays
         const { phones, emails } = req.body;
         if (phones !== undefined) {
-            updateData.phones = typeof phones === 'string' ? phones : JSON.stringify(phones);
+            const phonesArr = typeof phones === 'string' ? JSON.parse(phones) : phones;
+            updateData.phones = JSON.stringify(phonesArr.map(p => normalizePhone(p)));
         }
         if (emails !== undefined) {
             updateData.emails = typeof emails === 'string' ? emails : JSON.stringify(emails);
         }
 
-        // Auto-upgrade status to HOT_OPPORTUNITY if phone is being added and current status is NEW
+        // Auto-upgrade status to OPPORTUNITY if phone is being added and current status is NEW
         const newPhone = phone !== undefined ? phone : existing.phone;
         const currentStatus = status !== undefined ? status : existing.status;
         if (newPhone && newPhone.trim() && currentStatus === 'NEW' && status === undefined) {
-            updateData.status = 'HOT_OPPORTUNITY';
-            console.log(`📱 [Contact] Auto-upgrading status to HOT_OPPORTUNITY (phone added): ${id}`);
+            updateData.status = 'OPPORTUNITY';
+            console.log(`📱 [Contact] Auto-upgrading status to OPPORTUNITY (phone added): ${id}`);
         }
 
         const contact = await prisma.contact.update({
@@ -347,6 +457,17 @@ export const updateContact = async (req, res) => {
             }
         }
 
+        // 🔥 Rule 3: HOT_OPPORT_EMAIL - trigger email to team if category became HOT_OPPORTUNITY
+        if (category === 'HOT_OPPORTUNITY' && existing.category !== 'HOT_OPPORTUNITY') {
+            const contactWorkspaceId = workspaceId ||
+                (await prisma.conversation.findFirst({ where: { contactId: id }, select: { workspaceId: true } }))?.workspaceId;
+            if (contactWorkspaceId) {
+                executeHotOpportunityEmailRule(contactWorkspaceId, id).catch(e =>
+                    console.error('❌ [RULE:HOT_OPPORT_EMAIL] async error:', e.message)
+                );
+            }
+        }
+
         res.json({ contact });
     } catch (error) {
         console.error('Update contact error:', error);
@@ -358,7 +479,8 @@ export const updateContact = async (req, res) => {
 export const createContact = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone, email, notes, company } = req.body;
+        const { name, phone: rawPhone, email, notes, company } = req.body;
+        const phone = normalizePhone(rawPhone);
 
         // Validation
         if (!name || (!phone && !email)) {
@@ -384,8 +506,8 @@ export const createContact = async (req, res) => {
             });
         }
 
-        // Determine initial status - HOT_OPPORTUNITY if phone exists, otherwise NEW
-        const initialStatus = phone && phone.trim() ? 'HOT_OPPORTUNITY' : 'NEW';
+        // Determine initial status - OPPORTUNITY if phone exists, otherwise NEW
+        const initialStatus = phone && phone.trim() ? 'OPPORTUNITY' : 'NEW';
 
         // Handle phones and emails arrays
         const { phones, emails } = req.body;
@@ -397,7 +519,7 @@ export const createContact = async (req, res) => {
                 name,
                 phone,
                 email,
-                phones: phones ? JSON.stringify(phones) : '[]',
+                phones: phones ? JSON.stringify(phones.map(p => normalizePhone(p))) : '[]',
                 emails: emails ? JSON.stringify(emails) : '[]',
                 company,
                 status: initialStatus,
@@ -418,6 +540,105 @@ export const createContact = async (req, res) => {
     } catch (error) {
         console.error('Create contact error:', error);
         res.status(500).json({ error: 'Müşteri oluşturulurken hata oluştu' });
+    }
+};
+
+// Bulk import contacts (Excel import)
+export const bulkImportContacts = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { contacts, tag } = req.body;
+
+        if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+            return res.status(400).json({ error: 'İçe aktarılacak kişi bulunamadı' });
+        }
+
+        let imported = 0;
+        let skipped = 0;
+        const errors = [];
+
+        for (const row of contacts) {
+            try {
+                const name = (row.name || '').trim();
+                const phone = normalizePhone(row.phone);
+                const email = (row.email || '').trim();
+                const notes = (row.notes || '').trim();
+
+                if (!name || (!phone && !email)) {
+                    skipped++;
+                    continue;
+                }
+
+                // Check duplicate by phone or email
+                const orConditions = [];
+                if (phone) orConditions.push({ phone });
+                if (email) orConditions.push({ email });
+
+                const existing = await prisma.contact.findFirst({
+                    where: {
+                        workspaceId,
+                        OR: orConditions
+                    }
+                });
+
+                if (existing) {
+                    // If existing, set importGroup if not already set
+                    if (tag && !existing.importGroup) {
+                        await prisma.contact.update({
+                            where: { id: existing.id },
+                            data: { importGroup: tag }
+                        });
+                    }
+                    skipped++;
+                    continue;
+                }
+
+                const initialStatus = phone && phone.trim() ? 'OPPORTUNITY' : 'NEW';
+
+                // Build notes as JSON array
+                let notesJson = null;
+                if (notes) {
+                    notesJson = JSON.stringify([{
+                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                        text: notes,
+                        createdAt: new Date().toISOString(),
+                        createdBy: 'Excel İçe Aktarma'
+                    }]);
+                }
+
+                await prisma.contact.create({
+                    data: {
+                        workspaceId,
+                        name,
+                        phone: phone || null,
+                        email: email || null,
+                        notes: notesJson,
+                        importGroup: tag || null,
+                        status: initialStatus,
+                        source: 'IMPORT'
+                    }
+                });
+
+                imported++;
+            } catch (rowErr) {
+                errors.push(rowErr.message);
+            }
+        }
+
+        console.log(`📥 [Import] ${imported} imported, ${skipped} skipped for workspace ${workspaceId}`);
+
+        // Emit socket event
+        emitToWorkspace(workspaceId, 'contact_updated', {
+            workspaceId,
+            action: 'bulk_import',
+            imported,
+            skipped
+        });
+
+        res.json({ imported, skipped, errors: errors.slice(0, 5), total: contacts.length });
+    } catch (error) {
+        console.error('Bulk import error:', error);
+        res.status(500).json({ error: 'İçe aktarma sırasında hata oluştu' });
     }
 };
 

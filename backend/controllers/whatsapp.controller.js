@@ -1,7 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const MEDIA_DIR = path.join(__dirname, '..', 'uploads', 'media');
 
 const prisma = new PrismaClient();
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
@@ -301,8 +309,8 @@ export const handleEmbeddedSignup = async (req, res) => {
 
         console.log('📱 [Embedded Signup] Found WABAs:', wabaIds);
 
-        // Step 3: Get phone numbers for each WABA and save them
-        let savedNumbers = [];
+        // Step 3: Discover phone numbers for each WABA (don't save yet — let user choose)
+        let availableNumbers = [];
         for (const wabaId of wabaIds) {
             try {
                 const wabaResponse = await axios.get(
@@ -320,44 +328,31 @@ export const handleEmbeddedSignup = async (req, res) => {
 
                 console.log(`📱 [Embedded Signup] WABA ${wabaId}: ${wabaName}, ${phoneNumbers.length} phone(s)`);
 
-                // Save each phone number
                 for (const phone of phoneNumbers) {
-                    const phoneNumberId = phone.id;
-                    const displayPhoneNumber = phone.display_phone_number || 'Unknown';
-                    const verifiedName = phone.verified_name || wabaName;
-
-                    // Check if already exists
-                    const existingNumber = await prisma.whatsappPhoneNumber.findUnique({
-                        where: { phoneNumberId }
+                    // Check if already connected to another workspace
+                    const existing = await prisma.whatsappPhoneNumber.findUnique({
+                        where: { phoneNumberId: phone.id }
                     });
 
-                    let savedNumber;
-                    if (existingNumber) {
-                        savedNumber = await prisma.whatsappPhoneNumber.update({
-                            where: { phoneNumberId },
-                            data: {
-                                wabaId,
-                                name: verifiedName,
-                                displayPhoneNumber,
-                                accessToken,
-                                workspaceId
-                            }
+                    if (existing && existing.workspaceId !== workspaceId) {
+                        // Update token for other workspace's number (don't steal it)
+                        await prisma.whatsappPhoneNumber.update({
+                            where: { phoneNumberId: phone.id },
+                            data: { accessToken }
                         });
-                        console.log(`📱 [Embedded Signup] Updated: ${displayPhoneNumber}`);
-                    } else {
-                        savedNumber = await prisma.whatsappPhoneNumber.create({
-                            data: {
-                                phoneNumberId,
-                                wabaId,
-                                name: verifiedName,
-                                displayPhoneNumber,
-                                accessToken,
-                                workspaceId
-                            }
-                        });
-                        console.log(`📱 [Embedded Signup] Created: ${displayPhoneNumber}`);
+                        console.log(`🔄 [Embedded Signup] Token updated for ${phone.display_phone_number} (other workspace, skipping)`);
+                        continue;
                     }
-                    savedNumbers.push(savedNumber);
+
+                    availableNumbers.push({
+                        id: phone.id,
+                        display_phone_number: phone.display_phone_number || 'Unknown',
+                        verified_name: phone.verified_name || wabaName,
+                        waba_id: wabaId,
+                        waba_name: wabaName,
+                        quality_rating: phone.quality_rating,
+                        already_connected: !!existing
+                    });
                 }
 
                 // Subscribe WABA to webhooks
@@ -377,16 +372,20 @@ export const handleEmbeddedSignup = async (req, res) => {
             }
         }
 
-        if (savedNumbers.length === 0) {
-            return res.status(400).json({ error: 'No phone numbers were saved' });
+        // Store the access token on the user for the subsequent connect call
+        if (req.user?.id) {
+            await prisma.user.update({
+                where: { id: req.user.id },
+                data: { facebookAccessToken: accessToken }
+            });
         }
 
-        console.log(`✅ [Embedded Signup] Complete! Saved ${savedNumbers.length} phone number(s)`);
+        console.log(`✅ [Embedded Signup] Discovery complete! Found ${availableNumbers.length} available number(s)`);
 
         res.json({
             success: true,
-            phoneNumbers: savedNumbers,
-            message: `WhatsApp connected successfully! ${savedNumbers.length} number(s) added.`
+            availableNumbers,
+            message: `${availableNumbers.length} numara bulundu. Bağlamak istediğinizi seçin.`
         });
 
     } catch (error) {
@@ -823,8 +822,20 @@ export const webhookHandler = async (req, res) => {
                 }
 
                 let msg_body = '';
+                let mediaUrl = null;
+                let mediaType = null;
+
                 if (message.type === 'text') {
                     msg_body = message.text?.body || '';
+                } else if (['image', 'video', 'audio', 'document', 'sticker'].includes(message.type)) {
+                    mediaType = message.type;
+                    const mediaObj = message[message.type];
+                    msg_body = mediaObj?.caption || `📎 ${message.type === 'image' ? 'Fotoğraf' : message.type === 'video' ? 'Video' : message.type === 'audio' ? 'Ses' : message.type === 'document' ? 'Dosya' : 'Sticker'}`;
+
+                    // Media URL will be fetched after waNumber is available (needs accessToken)
+                    if (mediaObj?.id) {
+                        mediaUrl = mediaObj.id; // Store media ID temporarily, will be resolved below
+                    }
                 } else {
                     msg_body = `[${message.type} message]`;
                 }
@@ -835,9 +846,76 @@ export const webhookHandler = async (req, res) => {
                 });
 
                 if (waNumber) {
-                    // Find or create contact
+                    // Download media and save locally
+                    if (mediaUrl && mediaType) {
+                        try {
+                            // Ensure media directory exists
+                            if (!fs.existsSync(MEDIA_DIR)) {
+                                fs.mkdirSync(MEDIA_DIR, { recursive: true });
+                            }
+
+                            // Step 1: Get download URL from WhatsApp
+                            const mediaResponse = await fetch(
+                                `https://graph.facebook.com/v21.0/${mediaUrl}`,
+                                { headers: { Authorization: `Bearer ${waNumber.accessToken}` } }
+                            );
+                            const mediaData = await mediaResponse.json();
+
+                            if (mediaData?.url) {
+                                // Step 2: Download the actual media binary
+                                const downloadResponse = await fetch(mediaData.url, {
+                                    headers: { Authorization: `Bearer ${waNumber.accessToken}` }
+                                });
+
+                                if (downloadResponse.ok) {
+                                    const contentType = downloadResponse.headers.get('content-type') || '';
+                                    const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? '.jpg'
+                                        : contentType.includes('png') ? '.png'
+                                            : contentType.includes('webp') ? '.webp'
+                                                : contentType.includes('mp4') ? '.mp4'
+                                                    : contentType.includes('ogg') || contentType.includes('opus') ? '.ogg'
+                                                        : contentType.includes('pdf') ? '.pdf'
+                                                            : contentType.includes('audio') ? '.mp3'
+                                                                : '.bin';
+
+                                    const fileName = `${Date.now()}_${wamid.replace(/[^a-zA-Z0-9]/g, '')}${ext}`;
+                                    const filePath = path.join(MEDIA_DIR, fileName);
+
+                                    const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+                                    fs.writeFileSync(filePath, buffer);
+
+                                    mediaUrl = `/api/uploads/media/${fileName}`;
+                                    console.log(`📸 [WA] Media saved: ${mediaUrl} (${(buffer.length / 1024).toFixed(1)}KB)`);
+                                } else {
+                                    console.warn(`⚠️ [WA] Media download failed: ${downloadResponse.status}`);
+                                    mediaUrl = null;
+                                }
+                            } else {
+                                console.warn('⚠️ [WA] No URL in media response:', JSON.stringify(mediaData).substring(0, 200));
+                                mediaUrl = null;
+                            }
+                        } catch (mediaErr) {
+                            console.error('❌ [WA] Failed to download media:', mediaErr.message);
+                            mediaUrl = null;
+                        }
+                    }
+
+                    // Find or create contact - search multiple phone formats
+                    const normalizedFrom = normalizePhone(from);
+                    const phoneVariants = [...new Set([from, normalizedFrom])];
+                    // Add common Turkish variants
+                    if (from.startsWith('90') && from.length === 12) {
+                        phoneVariants.push('+' + from, '0' + from.slice(2));
+                    }
+                    if (normalizedFrom.startsWith('+90')) {
+                        phoneVariants.push(normalizedFrom.slice(1), '0' + normalizedFrom.slice(3));
+                    }
+
                     let contact = await prisma.contact.findFirst({
-                        where: { phone: from }
+                        where: {
+                            workspaceId: waNumber.workspaceId,
+                            OR: phoneVariants.map(p => ({ phone: p }))
+                        }
                     });
 
                     if (!contact) {
@@ -849,14 +927,14 @@ export const webhookHandler = async (req, res) => {
                             data: {
                                 workspaceId: waNumber.workspaceId,
                                 name: contactName,
-                                phone: from,
+                                phone: normalizedFrom,
                                 avatar: avatarUrl,
                                 tags: '["whatsapp"]',
-                                status: 'HOT_OPPORTUNITY', // Telefon var = Potansiyel müşteri
+                                status: 'OPPORTUNITY',
                                 source: 'WHATSAPP'
                             }
                         });
-                        console.log(`👤 [WA Contact] Created as HOT_OPPORTUNITY: ${contactName} (${from})`);
+                        console.log(`👤 [WA Contact] Created as OPPORTUNITY: ${contactName} (${from})`);
                     } else {
                         // Contact exists - check if it has a placeholder name (phone number or social label)
                         const currentName = contact.name || '';
@@ -876,8 +954,8 @@ export const webhookHandler = async (req, res) => {
                                 avatar: contact.avatar || newAvatarUrl
                             };
                             if (shouldUpgradeStatus) {
-                                updateData.status = 'HOT_OPPORTUNITY';
-                                console.log(`📱 [WA] Upgrading status to HOT_OPPORTUNITY: ${contact.id}`);
+                                updateData.status = 'OPPORTUNITY';
+                                console.log(`📱 [WA] Upgrading status to OPPORTUNITY: ${contact.id}`);
                             }
                             contact = await prisma.contact.update({
                                 where: { id: contact.id },
@@ -888,7 +966,7 @@ export const webhookHandler = async (req, res) => {
                             // Contact has name but no avatar or needs status upgrade
                             const updateData = {};
                             if (!contact.avatar) updateData.avatar = getAvatarFallback(contact.name);
-                            if (shouldUpgradeStatus) updateData.status = 'HOT_OPPORTUNITY';
+                            if (shouldUpgradeStatus) updateData.status = 'OPPORTUNITY';
 
                             if (Object.keys(updateData).length > 0) {
                                 contact = await prisma.contact.update({
@@ -899,7 +977,6 @@ export const webhookHandler = async (req, res) => {
                         }
                     }
 
-                    // Find or create conversation - always use existing conversation for same contact+channel
                     let conversation = await prisma.conversation.findFirst({
                         where: {
                             contactId: contact.id,
@@ -907,6 +984,18 @@ export const webhookHandler = async (req, res) => {
                         },
                         orderBy: { lastMessageAt: 'desc' }
                     });
+
+                    // Fallback: find any open conversation for this contact (e.g., LEAD)
+                    if (!conversation) {
+                        conversation = await prisma.conversation.findFirst({
+                            where: {
+                                contactId: contact.id,
+                                workspaceId: waNumber.workspaceId,
+                                status: 'OPEN'
+                            },
+                            orderBy: { lastMessageAt: 'desc' }
+                        });
+                    }
 
                     let isNewConversation = false;
                     if (!conversation) {
@@ -982,7 +1071,9 @@ export const webhookHandler = async (req, res) => {
                             conversationId: conversation.id,
                             isFromContact: true,
                             messageType: 'WHATSAPP',
-                            facebookMessageId: wamid
+                            facebookMessageId: wamid,
+                            mediaUrl: mediaUrl || null,
+                            mediaType: mediaType || null
                         }
                     });
 
@@ -1009,6 +1100,40 @@ export const webhookHandler = async (req, res) => {
                         contact: contact,
                         channel: 'WHATSAPP'
                     });
+
+                    // --- CHAT CALL DETECTION (beni ara / saat X'de ara) ---
+                    if (msg_body && message.type === 'text') {
+                        try {
+                            const { detectCallRequestInMessage, triggerAutoCall } = await import('./retell.controller.js');
+                            const callIntent = detectCallRequestInMessage(msg_body);
+                            if (callIntent) {
+                                if (callIntent.type === 'immediate') {
+                                    console.log(`📞 [WA] Chat call request detected (immediate) for ${from}`);
+                                    triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'CHAT_REQUEST').catch(e =>
+                                        console.error('⚠️ [WA] Chat immediate call error:', e.message)
+                                    );
+                                } else if (callIntent.type === 'scheduled') {
+                                    console.log(`📞 [WA] Chat call request detected (scheduled at ${callIntent.scheduledAt}) for ${from}`);
+                                    // Stagger within workspace
+                                    const nearby = await prisma.scheduledCall.count({
+                                        where: { workspaceId: waNumber.workspaceId, status: 'PENDING', scheduledAt: { gte: callIntent.scheduledAt, lt: new Date(callIntent.scheduledAt.getTime() + 60 * 60 * 1000) } }
+                                    });
+                                    const finalAt = new Date(callIntent.scheduledAt.getTime() + nearby * 60 * 1000);
+                                    await prisma.scheduledCall.create({
+                                        data: { workspaceId: waNumber.workspaceId, toNumber: from, contactId: contact?.id || null, contactName: contact?.name || from, scheduledAt: finalAt, status: 'PENDING' }
+                                    });
+                                    console.log(`📅 [WA] Scheduled call created at ${finalAt.toLocaleString('tr-TR')}`);
+                                }
+                            } else {
+                                // Fallback: original auto-call trigger (form-based, dedup handled inside)
+                                const { triggerAutoCall } = await import('./retell.controller.js');
+                                triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'WHATSAPP');
+                            }
+                        } catch (autoCallErr) {
+                            console.error('⚠️ [WA] Call trigger error:', autoCallErr.message);
+                        }
+                    }
+
 
                     // --- AI AUTO REPLY START ---
                     try {
@@ -1124,6 +1249,23 @@ export const webhookHandler = async (req, res) => {
                         console.error('❌ AI Auto-Extract (WhatsApp) call failed:', extractError);
                     }
                     // --- AUTO EXTRACT END ---
+
+                    // --- AUTOMATION RULES START ---
+                    if (msg_body && message.type === 'text') {
+                        try {
+                            const { executePhoneCaptureRule, executeHotKeywordRule } = await import('./rules.controller.js');
+                            // Run rules async (non-blocking)
+                            executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
+                                console.error('❌ [RULE:PHONE_CAPTURE] async error:', e.message)
+                            );
+                            executeHotKeywordRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
+                                console.error('❌ [RULE:HOT_KEYWORD] async error:', e.message)
+                            );
+                        } catch (ruleErr) {
+                            console.error('❌ [RULES] Import error:', ruleErr.message);
+                        }
+                    }
+                    // --- AUTOMATION RULES END ---
                 }
             }
             res.sendStatus(200);

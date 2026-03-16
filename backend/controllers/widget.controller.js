@@ -3,6 +3,7 @@ import { getAutoReply } from './ai.controller.js';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting } from '../services/conversationRouting.service.js';
 import { executeWebFormAutomation } from './automation.controller.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
 
 const prisma = new PrismaClient();
 
@@ -149,7 +150,7 @@ export const updateWidgetSettings = async (req, res) => {
 // Handle public chat from widget
 export const handleWidgetChat = async (req, res) => {
     try {
-        const { workspaceId, visitorId, message } = req.body;
+        const { workspaceId, widgetId, visitorId, message } = req.body;
 
         if (!message || !workspaceId) {
             return res.status(400).json({ error: 'Eksik bilgi.' });
@@ -187,9 +188,18 @@ export const handleWidgetChat = async (req, res) => {
         let isNewConversation = false;
         if (!conversation) {
             // Get widget settings for assignedBotId
-            const settings = await prisma.webWidget.findFirst({
-                where: { workspaceId }
-            });
+            // If widgetId is provided, use that specific widget; otherwise fallback to first
+            let widgetSettings = null;
+            if (widgetId) {
+                widgetSettings = await prisma.webWidget.findUnique({
+                    where: { id: widgetId }
+                });
+            }
+            if (!widgetSettings) {
+                widgetSettings = await prisma.webWidget.findFirst({
+                    where: { workspaceId }
+                });
+            }
 
             conversation = await prisma.conversation.create({
                 data: {
@@ -197,7 +207,7 @@ export const handleWidgetChat = async (req, res) => {
                     workspaceId,
                     status: 'OPEN',
                     channel: 'WIDGET',
-                    assignedBotId: settings?.assignedBotId
+                    assignedBotId: widgetSettings?.assignedBotId
                 },
                 include: {
                     contact: true
@@ -226,6 +236,28 @@ export const handleWidgetChat = async (req, res) => {
                 console.log(`🤖 [Widget] Web form automation triggered for contact ${contact.id}`);
             } catch (automationError) {
                 console.error('❌ [Widget] Automation trigger error:', automationError);
+            }
+        } else {
+            // Existing conversation - sync bot assignment from widget settings
+            let widgetSettings = null;
+            if (widgetId) {
+                widgetSettings = await prisma.webWidget.findUnique({ where: { id: widgetId } });
+            }
+            if (!widgetSettings) {
+                widgetSettings = await prisma.webWidget.findFirst({ where: { workspaceId } });
+            }
+            const widgetBotId = widgetSettings?.assignedBotId || null;
+            // Update if bot changed or if botEnabled was false
+            if (widgetBotId !== conversation.assignedBotId || conversation.botEnabled === false) {
+                conversation = await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: {
+                        assignedBotId: widgetBotId,
+                        botEnabled: widgetBotId ? true : conversation.botEnabled
+                    },
+                    include: { contact: true }
+                });
+                console.log(`🤖 [Widget] Synced bot ${widgetBotId} to existing conversation ${conversation.id}`);
             }
         }
 
@@ -336,10 +368,7 @@ export const handlePrechat = async (req, res) => {
         console.log(`📝 [Widget Prechat] Received form: ${name}, ${phone}, ${subject || 'Konu yok'}`);
 
         // Normalize phone number
-        let normalizedPhone = phone.replace(/[\s\-\(\)]/g, '');
-        if (normalizedPhone.startsWith('+90')) {
-            normalizedPhone = '0' + normalizedPhone.slice(3);
-        }
+        const normalizedPhone = normalizePhone(phone);
 
         // 1. Find existing contact by phone OR visitorId, or create new one
         let contact = await prisma.contact.findFirst({
@@ -479,6 +508,16 @@ export const handlePrechat = async (req, res) => {
             });
         } catch (socketError) {
             console.error('❌ [Widget Prechat] Socket emit error:', socketError);
+        }
+
+        // --- AUTO CALL TRIGGER ---
+        if (normalizedPhone) {
+            try {
+                const { triggerAutoCall } = await import('./retell.controller.js');
+                triggerAutoCall(workspaceId, normalizedPhone, contact?.id, name, 'WIDGET');
+            } catch (autoCallErr) {
+                console.error('⚠️ [Widget Prechat] AutoCall trigger error:', autoCallErr.message);
+            }
         }
 
         res.json({

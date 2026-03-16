@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History } from 'lucide-react';
+import RetellSettings from '../../components/Settings/RetellSettings';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
 import './Channels.css';
 
@@ -28,6 +29,7 @@ const Channels = () => {
     const [formWebhooks, setFormWebhooks] = useState([]);
     const [webWidgets, setWebWidgets] = useState([]);
     const [aiBots, setAiBots] = useState([]);
+    const [retellSettings, setRetellSettings] = useState(null);
     const [assigningBot, setAssigningBot] = useState(null);
 
     // Routing states
@@ -43,6 +45,7 @@ const Channels = () => {
     // Modals
     const [showFormModal, setShowFormModal] = useState(false);
     const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+    const [showRetellModal, setShowRetellModal] = useState(false);
     const [showWidgetModal, setShowWidgetModal] = useState(false);
     const [widgetModalMode, setWidgetModalMode] = useState('create');
     const [selectedWidget, setSelectedWidget] = useState(null);
@@ -92,7 +95,7 @@ const Channels = () => {
     const loadAllChannels = async () => {
         setLoading(true);
         try {
-            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes] = await Promise.all([
+            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes] = await Promise.all([
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
@@ -100,7 +103,8 @@ const Channels = () => {
                 teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
                 channelRoutingAPI.getAll(currentWorkspace.id).catch(() => ({ data: { routings: [] } })),
                 whatsappAPI.getPhoneNumbers(currentWorkspace.id).catch(() => ({ data: { phoneNumbers: [] } })),
-                webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } }))
+                webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } })),
+                retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } }))
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -118,6 +122,7 @@ const Channels = () => {
             setChannelRoutings(routingsRes.data.routings || []);
             setWhatsappNumbers(whatsappRes.data.phoneNumbers || []);
             setWebWidgets(widgetsRes.data.widgets || []);
+            setRetellSettings(retellRes.data.isConfigured ? retellRes.data : null);
         } catch (error) {
             console.error('Error loading channels:', error);
         } finally {
@@ -298,6 +303,8 @@ const Channels = () => {
                 await whatsappAPI.updateBot(id, data);
             } else if (type === 'email') {
                 await emailAPI.updateBot(id, data);
+            } else if (type === 'webwidget') {
+                await webWidgetAPI.updateBot(id, botId);
             }
             loadAllChannels();
         } catch (error) {
@@ -683,6 +690,23 @@ const Channels = () => {
             });
         });
 
+        // Retell Setting
+        if (retellSettings && retellSettings.isConfigured) {
+            channels.push({
+                id: 'retell',
+                type: 'retell',
+                routingChannel: 'RETELL', // Just in case, though it has no routing UI yet
+                icon: Phone,
+                color: '#0d9488',
+                bgColor: '#f0fdfa',
+                name: 'AI Call – Sesli Arama',
+                subtitle: retellSettings.retellFromNumber || 'Yapılandırıldı',
+                data: retellSettings,
+                hasRouting: false,
+                hasChatBot: false
+            });
+        }
+
         return channels;
     };
 
@@ -710,6 +734,10 @@ const Channels = () => {
                     <button className="quick-add-btn whatsapp" onClick={() => setShowWhatsAppModal(true)}>
                         <MessageCircle size={16} />
                         WhatsApp
+                    </button>
+                    <button className="quick-add-btn retell" onClick={() => setShowRetellModal(true)}>
+                        <Phone size={16} />
+                        Sesli Arama
                     </button>
                     <button className="quick-add-btn email" onClick={handleEmailConnect}>
                         <Mail size={16} />
@@ -792,38 +820,49 @@ const Channels = () => {
                                                     <Settings size={14} />
                                                 </button>
                                             )}
-                                            <button
-                                                className="channel-delete-btn"
-                                                style={{
-                                                    width: '28px',
-                                                    height: '28px',
-                                                    border: 'none',
-                                                    background: '#fef2f2',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }}
-                                                onClick={() => {
-                                                    if (channel.type === 'facebook') {
-                                                        handleDisconnectPage(channel.id, 'facebook');
-                                                    } else if (channel.type === 'instagram') {
-                                                        handleDisconnectPage(channel.pageId, 'instagram');
-                                                    } else if (channel.type === 'email') {
-                                                        handleDeleteEmail(channel.id);
-                                                    } else if (channel.type === 'webform') {
-                                                        handleDeleteFormWebhook(channel.id);
-                                                    } else if (channel.type === 'whatsapp') {
-                                                        handleDeleteWhatsapp(channel.id);
-                                                    } else if (channel.type === 'webwidget') {
-                                                        handleDeleteWebWidget(channel.id);
-                                                    }
-                                                }}
-                                                title="Kaldır"
-                                            >
-                                                <Trash2 size={14} color="#ef4444" />
-                                            </button>
+                                            {channel.type === 'retell' && (
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    onClick={() => setShowRetellModal(true)}
+                                                    title="Ayarlar"
+                                                >
+                                                    <Settings size={14} />
+                                                </button>
+                                            )}
+                                            {channel.type !== 'retell' && (
+                                                <button
+                                                    className="channel-delete-btn"
+                                                    style={{
+                                                        width: '28px',
+                                                        height: '28px',
+                                                        border: 'none',
+                                                        background: '#fef2f2',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                    onClick={() => {
+                                                        if (channel.type === 'facebook') {
+                                                            handleDisconnectPage(channel.id, 'facebook');
+                                                        } else if (channel.type === 'instagram') {
+                                                            handleDisconnectPage(channel.pageId, 'instagram');
+                                                        } else if (channel.type === 'email') {
+                                                            handleDeleteEmail(channel.id);
+                                                        } else if (channel.type === 'webform') {
+                                                            handleDeleteFormWebhook(channel.id);
+                                                        } else if (channel.type === 'whatsapp') {
+                                                            handleDeleteWhatsapp(channel.id);
+                                                        } else if (channel.type === 'webwidget') {
+                                                            handleDeleteWebWidget(channel.id);
+                                                        }
+                                                    }}
+                                                    title="Kaldır"
+                                                >
+                                                    <Trash2 size={14} color="#ef4444" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1092,6 +1131,26 @@ const Channels = () => {
                                     loadAllChannels(); // Refresh channels list
                                 }}
                             />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Retell Modal */}
+            {showRetellModal && (
+                <div className="modal-overlay" onClick={() => setShowRetellModal(false)}>
+                    <div className="modal-content modal-xl" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Sesli Arama (AI Call)</h2>
+                            <button className="btn-icon" onClick={() => setShowRetellModal(false)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
+                                AI destekli sesli arama entegrasyonu. AI Call Dashboard'dan API key alın.
+                            </p>
+                            <RetellSettings onSave={() => loadAllChannels()} />
                         </div>
                     </div>
                 </div>

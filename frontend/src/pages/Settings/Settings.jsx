@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, facebookAPI, companyAPI } from '../../services/api';
 import AIIntegrationSettings from '../../components/Settings/AIIntegrationSettings';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
-import { Trash2, Shield, Bot, AlertCircle, Plus, Building2 } from 'lucide-react';
+import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, Phone } from 'lucide-react';
 import './Settings.css';
 
 const Settings = () => {
@@ -145,7 +145,6 @@ const Settings = () => {
                     <Bot size={16} />
                     AI Entegre
                 </button>
-
             </div>
 
             <div className="settings-content">
@@ -265,13 +264,9 @@ const Settings = () => {
                     </div>
                 )}
 
-
-
                 {activeTab === 'ai' && (
-                    <AIIntegrationSettings workspaceId={currentWorkspace.id} />
+                    <AIIntegrationSettings />
                 )}
-
-
 
             </div>
 

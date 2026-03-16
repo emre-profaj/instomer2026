@@ -11,7 +11,8 @@ import {
     X,
     ChevronDown,
     Building2,
-    Settings
+    Settings,
+    Search
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -22,6 +23,7 @@ const AdminLayout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [workspaces, setWorkspaces] = useState([]);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [wsSearch, setWsSearch] = useState('');
     const dropdownRef = useRef(null);
 
     useEffect(() => {
@@ -125,12 +127,24 @@ const AdminLayout = () => {
                     {isDropdownOpen && (
                         <div className="workspace-dropdown">
                             <div className="dropdown-label">İŞLETMELER ({workspaces.length})</div>
+                            <div className="dropdown-search">
+                                <Search size={14} />
+                                <input
+                                    type="text"
+                                    placeholder="Workspace ara..."
+                                    value={wsSearch}
+                                    onChange={(e) => setWsSearch(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            </div>
                             <div className="dropdown-list">
                                 <button className="dropdown-item system" onClick={handleAdminHome}>
                                     <div className="item-avatar">SA</div>
                                     <div className="item-name">Sistem Yönetimi</div>
                                 </button>
-                                {workspaces.map(ws => (
+                                {workspaces.filter(ws =>
+                                    !wsSearch || ws.name.toLowerCase().includes(wsSearch.toLowerCase())
+                                ).map(ws => (
                                     <button
                                         key={ws.id}
                                         className={`dropdown-item ${currentWorkspace?.id === ws.id ? 'active' : ''}`}

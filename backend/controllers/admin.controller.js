@@ -291,54 +291,66 @@ export const deleteWorkspaceAdmin = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        await prisma.$transaction(async (prisma) => {
+        const BATCH_SIZE = 500;
+
+        await prisma.$transaction(async (tx) => {
             // 1. Clean up AIBots and their Documents
-            const bots = await prisma.aIBot.findMany({
+            const bots = await tx.aIBot.findMany({
                 where: { workspaceId },
                 select: { id: true }
             });
             if (bots.length > 0) {
                 const botIds = bots.map(b => b.id);
-                // Delete documents first
-                await prisma.aIBotDocument.deleteMany({
+                await tx.aIBotDocument.deleteMany({
                     where: { botId: { in: botIds } }
                 });
-                // Then delete bots
-                await prisma.aIBot.deleteMany({
+                await tx.aIBot.deleteMany({
                     where: { id: { in: botIds } }
                 });
             }
 
-            // 2. Clean up Conversations and Messages
-            const conversations = await prisma.conversation.findMany({
+            // 2. Clean up Conversations and Messages (batch to avoid timeout)
+            const conversations = await tx.conversation.findMany({
                 where: { workspaceId },
                 select: { id: true }
             });
             if (conversations.length > 0) {
                 const conversationIds = conversations.map(c => c.id);
-                // Delete messages first
-                await prisma.message.deleteMany({
-                    where: { conversationId: { in: conversationIds } }
-                });
-                // Then delete conversations
-                await prisma.conversation.deleteMany({
-                    where: { id: { in: conversationIds } }
-                });
+                // Delete messages in batches
+                for (let i = 0; i < conversationIds.length; i += BATCH_SIZE) {
+                    const batch = conversationIds.slice(i, i + BATCH_SIZE);
+                    await tx.message.deleteMany({
+                        where: { conversationId: { in: batch } }
+                    });
+                }
+                // Delete conversations in batches
+                for (let i = 0; i < conversationIds.length; i += BATCH_SIZE) {
+                    const batch = conversationIds.slice(i, i + BATCH_SIZE);
+                    await tx.conversation.deleteMany({
+                        where: { id: { in: batch } }
+                    });
+                }
             }
 
             // 3. Delete Facebook Pages
-            await prisma.facebookPage.deleteMany({ where: { workspaceId } });
+            await tx.facebookPage.deleteMany({ where: { workspaceId } });
 
             // 4. Delete Whatsapp Numbers
-            await prisma.whatsappPhoneNumber.deleteMany({ where: { workspaceId } });
+            await tx.whatsappPhoneNumber.deleteMany({ where: { workspaceId } });
 
-            // 5. Delete Workspace Members
-            await prisma.workspaceMember.deleteMany({ where: { workspaceId } });
+            // 5. Delete Contacts
+            await tx.contact.deleteMany({ where: { workspaceId } });
 
-            // 6. Finally delete the workspace
-            await prisma.workspace.delete({
+            // 6. Delete Workspace Members
+            await tx.workspaceMember.deleteMany({ where: { workspaceId } });
+
+            // 7. Finally delete the workspace
+            await tx.workspace.delete({
                 where: { id: workspaceId }
             });
+        }, {
+            maxWait: 10000,  // max wait to acquire connection (10s)
+            timeout: 120000  // transaction timeout (120s / 2 minutes)
         });
 
         res.json({ message: 'Workspace deleted successfully by admin' });

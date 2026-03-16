@@ -869,3 +869,280 @@
     background: #ef4444;
     color: white;
 }
+
+/* ============================================
+   Kurallar (Rules) Tab
+   ============================================ */
+.rules-section {
+    max-width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.rules-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    padding: 16px 18px;
+    color: #b91c1c;
+}
+
+.rules-intro svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.rules-intro h3 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #991b1b;
+}
+
+.rules-intro p {
+    margin: 0;
+    font-size: 12px;
+    color: #b91c1c;
+    line-height: 1.5;
+}
+
+/* Rule Card */
+.rule-card {
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.rule-card.rule-active {
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.07);
+}
+
+.rule-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.rule-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.rule-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.rule-meta h4 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.rule-meta p {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+    line-height: 1.5;
+}
+
+/* Rule Toggle */
+.rule-toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    background: #e5e7eb;
+    border-radius: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+
+.rule-toggle.rule-toggle-on {
+    background: #ef4444;
+}
+
+.rule-toggle-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.rule-toggle.rule-toggle-on .rule-toggle-knob {
+    transform: translateX(20px);
+}
+
+/* Rule status badges */
+.rule-status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    margin-bottom: 4px;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.badge-active {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+.badge-inactive {
+    background: #f3f4f6;
+    color: #9ca3af;
+}
+
+.badge-saving {
+    background: #fef3c7;
+    color: #d97706;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Rule config section */
+.rule-config {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #f3f4f6;
+}
+
+.config-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.config-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.config-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.config-select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 13px;
+    background: #fff;
+    color: #1f2937;
+    transition: border-color 0.2s;
+}
+
+.config-select:focus {
+    outline: none;
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.config-hint {
+    font-size: 11px;
+    color: #f59e0b;
+    margin: 4px 0 0;
+    line-height: 1.4;
+}
+
+/* Keyword chips */
+.keyword-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+    min-height: 32px;
+}
+
+.keyword-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 20px;
+    font-size: 12px;
+    color: #b91c1c;
+    font-weight: 500;
+}
+
+.chip-remove {
+    background: none;
+    border: none;
+    color: #dc2626;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    margin-left: 2px;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+}
+
+.chip-remove:hover {
+    opacity: 1;
+}
+
+.keyword-add {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.keyword-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 13px;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+
+.keyword-input:focus {
+    outline: none;
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+@media (max-width: 600px) {
+    .config-row {
+        grid-template-columns: 1fr;
+    }
+}

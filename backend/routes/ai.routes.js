@@ -2,8 +2,12 @@ import express from 'express';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import * as aiController from '../controllers/ai.controller.js';
 import * as widgetController from '../controllers/widget.controller.js';
+import * as instoBotController from '../controllers/instoBot.controller.js';
 
 const router = express.Router();
+
+// İnsto Bot
+router.post('/:workspaceId/insto-bot/chat', authenticateJWT, requireWorkspaceAccess, instoBotController.chat);
 
 // Settings
 router.put('/:workspaceId/settings', authenticateJWT, requireWorkspaceAccess, aiController.updateSettings);

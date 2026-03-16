@@ -305,27 +305,25 @@ ${documentContext || "Bilgi bankası boş."}
 6. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
 7. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.`;
 
-        // Merge consecutive messages from same role to satisfy Gemini API requirements
-        const historyParts = [
-            {
-                role: "user",
-                parts: [{ text: fullSystemInstruction }]
-            },
-            {
-                role: "model",
-                parts: [{ text: "Anladım. Sistem talimatlarını ve bilgi bankasını kullanarak müşterilere yardımcı olacağım." }]
-            }
-        ];
+        // Build chat history WITHOUT system instruction embedded.
+        // System instruction goes via systemInstruction param to prevent prompt leakage.
+        const historyParts = [];
 
-        let lastRole = "model"; // Our starting point after the system-ack
+        let lastRole = "model";
 
         for (const msg of validMessages) {
             const currentRole = msg.isFromContact ? "user" : "model";
 
             if (currentRole === lastRole) {
                 // Merge with previous message
-                const lastHistoryItem = historyParts[historyParts.length - 1];
-                lastHistoryItem.parts[0].text += `\n\n[${currentRole === 'user' ? 'Müşteri' : 'Temsilci'} Ek Bilgi]: ${msg.content}`;
+                if (historyParts.length > 0) {
+                    historyParts[historyParts.length - 1].parts[0].text += `\n\n${msg.content}`;
+                } else {
+                    historyParts.push({
+                        role: currentRole,
+                        parts: [{ text: msg.content }]
+                    });
+                }
             } else {
                 // New turn
                 historyParts.push({
@@ -336,24 +334,13 @@ ${documentContext || "Bilgi bankası boş."}
             }
         }
 
-        // Ensure the last message is from the USER so the model can reply
-        // If the last message in history is from 'model', we can't ask the model to reply to itself easily in chat mode
-        // unless we force a user turn.
-
-        if (historyParts.length > 0 && historyParts[historyParts.length - 1].role === "model") {
-            // Force a user prompt if the last message was from the bot/agent
-            historyParts.push({
-                role: "user",
-                parts: [{ text: "Please continue or provide the next logical response." }]
-            });
-        }
-
-        const genAI = new GoogleGenerativeAI(aiApiKey);
-
         // Helper function to try generating content with fallback
         const tryGenerate = async (modelName) => {
             console.log(`🤖 Attempting to generate with model: ${modelName}`);
-            const model = genAI.getGenerativeModel({ model: modelName });
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: fullSystemInstruction
+            });
             const chat = model.startChat({ history: historyParts });
             return await chat.sendMessage("Son mesaja uygun bir yanıt öner.");
         };
@@ -788,6 +775,337 @@ const isBotScheduleActive = (bot) => {
     return true;
 };
 
+// ========== BOT ROUTING HELPERS ==========
+
+// Process the routing question-answer flow
+// Silent routing: analyzes messages in background, extracts routing fields, assigns team when ready
+// NEVER generates responses — always lets normal AI handle customer-facing messages
+const processRoutingFlow = async (conversation, activeBot, userMessage, workspaceId) => {
+    try {
+        let questions = [];
+        try {
+            questions = JSON.parse(activeBot.routingQuestions || '[]');
+        } catch (e) {
+            console.error('Error parsing routingQuestions:', e);
+            return;
+        }
+
+        if (questions.length === 0) return;
+
+        // Get or initialize routing state
+        let routingState = null;
+        try {
+            routingState = conversation.routingState ? JSON.parse(conversation.routingState) : null;
+        } catch (e) {
+            routingState = null;
+        }
+
+        if (!routingState) {
+            routingState = { answers: {}, completed: false };
+        }
+
+        // If routing is already completed, do nothing
+        if (routingState.completed) return;
+
+        // Missing fields
+        const missingFields = questions
+            .filter(q => !routingState.answers[q.fieldName])
+            .map(q => q.fieldName);
+
+        if (missingFields.length === 0) {
+            // All fields already collected, finalize routing
+            await finalizeRouting(conversation, activeBot, routingState, workspaceId);
+            return;
+        }
+
+        // Build conversation history for AI context
+        const chatHistory = (conversation.messages || [])
+            .slice()
+            .reverse()
+            .map(m => `${m.isFromContact ? 'Müşteri' : 'Bot'}: ${m.content}`)
+            .join('\n');
+
+        // Build field descriptions for the AI
+        const fieldDescriptions = questions.map(q =>
+            `- Alan: "${q.fieldName}" | Açıklama: "${q.question}"`
+        ).join('\n');
+
+        // Get API Key
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
+            console.error('❌ [Routing] No AI API key for workspace:', workspaceId);
+            return;
+        }
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+
+        // Simple extraction prompt — only extracts data, NO response generation
+        const analysisPrompt = `Aşağıdaki konuşmadan belirli bilgileri çıkar. SADECE veri çıkar, yanıt üretme.
+
+ÇIKARILMASI GEREKEN BİLGİLER:
+${fieldDescriptions}
+
+KONUŞMA GEÇMİŞİ:
+${chatHistory}
+
+MÜŞTERİNİN SON MESAJI: "${userMessage}"
+
+GÖREV: Müşterinin mesajlarından yukarıdaki alanların değerlerini çıkar.
+Örnek: Müşteri "bornova şubeden bilgi almak istiyorum" diyorsa, sube alanı "bornova" olur.
+Örnek: Müşteri "gaziemir" diyorsa, sube alanı "gaziemir" olur.
+Örnek: Müşteri sadece "selam" veya "merhaba" diyorsa, hiçbir alan çıkarılamaz.
+
+SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
+{"extractedFields": {"alan_adı": "değer"}}
+
+Eğer hiçbir alan tespit edilemiyorsa:
+{"extractedFields": {}}`;
+
+        let result;
+        try {
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            result = await model.generateContent(analysisPrompt);
+        } catch (err) {
+            try {
+                const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                result = await model.generateContent(analysisPrompt);
+            } catch (err2) {
+                console.error('❌ [Routing] AI extraction failed:', err2);
+                return;
+            }
+        }
+
+        const responseText = result.response.text().trim();
+        console.log(`🔍 [Routing] AI extraction result: ${responseText}`);
+
+        // Parse AI response
+        let aiResult;
+        try {
+            const jsonStr = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            aiResult = JSON.parse(jsonStr);
+        } catch (e) {
+            console.error('❌ [Routing] Failed to parse AI extraction as JSON:', e);
+            return;
+        }
+
+        // Merge extracted fields into routing state
+        let newFieldsFound = false;
+        if (aiResult.extractedFields && typeof aiResult.extractedFields === 'object') {
+            for (const [key, value] of Object.entries(aiResult.extractedFields)) {
+                if (value && String(value).trim() && missingFields.includes(key)) {
+                    routingState.answers[key] = String(value).trim().toLowerCase();
+                    newFieldsFound = true;
+                    console.log(`✅ [Routing] Extracted field: ${key} = ${value}`);
+                }
+            }
+        }
+
+        if (!newFieldsFound) {
+            // No new fields found, save state if it was newly created
+            if (!conversation.routingState) {
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { routingState: JSON.stringify(routingState) }
+                });
+            }
+            console.log(`🔄 [Routing] No routing fields detected in message. Waiting for natural mention.`);
+            return;
+        }
+
+        // Check if all fields are now collected
+        const stillMissing = questions.filter(q => !routingState.answers[q.fieldName]);
+
+        if (stillMissing.length === 0) {
+            // All fields collected — route!
+            await finalizeRouting(conversation, activeBot, routingState, workspaceId);
+        } else {
+            // Save partial state, wait for more info
+            await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: { routingState: JSON.stringify(routingState) }
+            });
+            console.log(`🔄 [Routing] Still missing: ${stillMissing.map(q => q.fieldName).join(', ')}. Waiting.`);
+        }
+
+    } catch (error) {
+        console.error('❌ [Routing] Error in processRoutingFlow:', error);
+    }
+};
+
+// Helper: Finalize routing — evaluate rules and assign conversation
+const finalizeRouting = async (conversation, activeBot, routingState, workspaceId) => {
+    routingState.completed = true;
+    await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { routingState: JSON.stringify(routingState) }
+    });
+
+    console.log(`✅ [Routing] All fields collected for ${conversation.id}:`, routingState.answers);
+
+    // Determine target team/user
+    let targetTeamId = activeBot.routingDefaultTeamId;
+    let targetUserId = activeBot.routingDefaultUserId;
+
+    // If conditional routing is enabled, evaluate rules
+    if (activeBot.routingConditionalEnabled) {
+        const ruleResult = evaluateRoutingRules(routingState.answers, activeBot.routingRules);
+        if (ruleResult) {
+            targetTeamId = ruleResult.teamId || targetTeamId;
+            targetUserId = ruleResult.userId || targetUserId;
+            console.log(`📋 [Routing] Conditional rule matched: team=${targetTeamId}, user=${targetUserId}`);
+        } else {
+            console.log(`📋 [Routing] No conditional rule matched, using defaults`);
+        }
+    }
+
+    // Assign conversation to target team/user
+    await assignConversationToTarget(conversation.id, targetTeamId, targetUserId, workspaceId, activeBot.name);
+    console.log(`✅ [Routing] Conversation ${conversation.id} routed successfully`);
+};
+
+// Evaluate conditional routing rules against collected answers
+const evaluateRoutingRules = (answers, rulesJson) => {
+    try {
+        const rules = JSON.parse(rulesJson || '[]');
+        if (rules.length === 0) return null;
+
+        // Sort by priority (lower = higher priority)
+        const sortedRules = [...rules].sort((a, b) => (a.priority || 0) - (b.priority || 0));
+
+        for (const rule of sortedRules) {
+            const answerValue = (answers[rule.field] || '').toLowerCase().trim();
+            const ruleValue = (rule.value || '').toLowerCase().trim();
+
+            let matched = false;
+            switch (rule.operator) {
+                case 'equals':
+                    matched = answerValue === ruleValue;
+                    break;
+                case 'contains':
+                    matched = answerValue.includes(ruleValue);
+                    break;
+                case 'greater_than':
+                    matched = parseFloat(answerValue) > parseFloat(ruleValue);
+                    break;
+                case 'less_than':
+                    matched = parseFloat(answerValue) < parseFloat(ruleValue);
+                    break;
+                case 'not_equals':
+                    matched = answerValue !== ruleValue;
+                    break;
+                default:
+                    matched = answerValue === ruleValue;
+            }
+
+            if (matched) {
+                console.log(`✅ [Routing Rule] Matched: ${rule.field} ${rule.operator} ${rule.value}`);
+                return { teamId: rule.teamId, userId: rule.userId };
+            }
+        }
+
+        return null; // No rule matched
+    } catch (e) {
+        console.error('Error evaluating routing rules:', e);
+        return null;
+    }
+};
+
+// Assign conversation to target team/user and disable bot
+const assignConversationToTarget = async (conversationId, teamId, userId, workspaceId, botName) => {
+    try {
+        const updateData = {
+            botEnabled: true, // Keep bot active until a human agent takes over
+            handoffPending: false
+        };
+
+        if (teamId) {
+            updateData.assignedTeamId = teamId;
+            updateData.teamIds = JSON.stringify([teamId]);
+        }
+
+        console.log(`🔧 [Routing] Updating conversation ${conversationId} with:`, JSON.stringify(updateData));
+
+        const updated = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: updateData,
+            select: { id: true, teamIds: true, assignedTeamId: true }
+        });
+
+        console.log(`✅ [Routing] Conversation ${conversationId} assigned to team=${teamId}, user=${userId}`);
+        console.log(`✅ [Routing] DB result - teamIds: ${updated.teamIds}, assignedTeamId: ${updated.assignedTeamId}`);
+
+        // Get conversation contact info for notification
+        let contactName = 'Müşteri';
+        try {
+            const conv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { contact: { select: { name: true, fullName: true } } }
+            });
+            contactName = conv?.contact?.fullName || conv?.contact?.name || 'Müşteri';
+        } catch (e) { /* ignore */ }
+
+        // Emit socket events to notify team
+        try {
+            const { emitToWorkspace } = await import('../socket.js');
+            emitToWorkspace(workspaceId, 'bot_routing_complete', {
+                conversationId,
+                workspaceId,
+                teamId,
+                userId,
+                message: `Bot ${botName} müşteriyi yönlendirdi.`,
+                botName
+            });
+
+            // Also emit conversation_assigned so Inbox updates team badge in real-time
+            emitToWorkspace(workspaceId, 'conversation_assigned', {
+                conversationId,
+                assignedToId: userId || null,
+                assignedToName: null,
+                botEnabled: true,
+                teamIds: teamId ? JSON.stringify([teamId]) : '[]'
+            });
+        } catch (socketErr) {
+            console.error('Socket emit error for routing:', socketErr);
+        }
+
+        // Create in-app notifications for team members
+        try {
+            const { createTeamNotifications, createNotification } = await import('./notification.controller.js');
+            if (teamId) {
+                // Get team name
+                let teamName = 'Takım';
+                try {
+                    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { name: true } });
+                    teamName = team?.name || 'Takım';
+                } catch (e) { /* ignore */ }
+
+                await createTeamNotifications(
+                    workspaceId,
+                    teamId,
+                    'BOT_ROUTING',
+                    `${contactName} — yeni konuşma`,
+                    `${botName} tarafından ${teamName} takımına yönlendirildi.`,
+                    { conversationId, teamId }
+                );
+            }
+            if (userId) {
+                await createNotification(
+                    workspaceId,
+                    userId,
+                    'CONVERSATION_ASSIGNED',
+                    `${contactName} — konuşma atandı`,
+                    `${botName} tarafından size atandı.`,
+                    { conversationId }
+                );
+            }
+        } catch (notifErr) {
+            console.error('Notification error:', notifErr);
+        }
+    } catch (error) {
+        console.error('❌ [Routing] Error assigning conversation:', error);
+    }
+};
+
 // Helper for Webhooks to get Auto Reply
 // type: 'CHATS' for DM conversations, 'COMMENTS' for post/media comments
 // pageId: required for COMMENTS type to find the assigned comment bot
@@ -858,6 +1176,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     handoffPending: true,
                     botEnabled: true,
                     teamIds: true,
+                    routingState: true,
                     assignedBot: { include: { documents: true } },
                     facebookPage: {
                         include: {
@@ -898,7 +1217,15 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             }
 
             console.log(`🔍 [getAutoReply] Tracing: channel=${channel}, type=${type}, workspaceId=${workspaceId}`);
-            console.log(`   └─ Conversation ID: ${conversationId}`);
+            console.log(`   └─ Conversation ID: ${conversationId}, botEnabled: ${conversation?.botEnabled}`);
+
+            // If bot is disabled for this conversation (human took over), skip
+            // Exception: widget channel always respects conversation's assignedBot
+            if (conversation?.botEnabled === false && channel?.toLowerCase() !== 'widget') {
+                console.log(`⏸️ Bot disabled for conversation ${conversationId} (human took over)`);
+                if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
+                return null;
+            }
 
             // Priority Logic: Conversation > Team > Channel (bot works when assigned)
             if (conversation?.assignedBot) {
@@ -957,6 +1284,15 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
 
         console.log(`✅ Active bot prepared: ${activeBot.name}`);
 
+        // 🔄 BOT ROUTING CHECK - Silent background analysis (never blocks normal AI)
+        if (activeBot.routingEnabled && type === 'CHATS' && conversationId && conversation) {
+            console.log(`🔄 [Routing] Bot ${activeBot.name} has routing enabled, running silent analysis...`);
+            // Run routing analysis in background — extracts fields and routes when ready
+            // Does NOT generate responses, always falls through to normal AI
+            processRoutingFlow(conversation, activeBot, userMessage, workspaceId)
+                .catch(err => console.error('❌ [Routing] Background routing error:', err));
+        }
+
         // 2. Prepare Context (similar to generateResponse)
         let systemPrompt = activeBot.prompt || "You are a helpful assistant.";
 
@@ -982,9 +1318,14 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`⚠️ [AI] No bot documents found for bot: ${activeBot.name}`);
         }
 
+        // Detect language from bot prompt
+        const isEnglish = /\b(english|respond|answer|customer|provide|information|service|assist|help me|inquiry|please)\b/i.test(systemPrompt);
+
         // Add instruction to use knowledge base
         if (documentContext) {
-            systemPrompt += "\n\nÖNEMLİ: Aşağıdaki Bilgi Bankası, Şirket Bilgileri ve Bot Dökümanlarını kullanarak müşteri sorularını yanıtla. Bu bilgiler dışında cevap verme.";
+            systemPrompt += isEnglish
+                ? "\n\nIMPORTANT: Answer customer questions using the Knowledge Base, Company Information and Bot Documents below. Do not answer outside of this information."
+                : "\n\nÖNEMLİ: Aşağıdaki Bilgi Bankası, Şirket Bilgileri ve Bot Dökümanlarını kullanarak müşteri sorularını yanıtla. Bu bilgiler dışında cevap verme.";
             console.log(`📋 [AI] Total document context: ${documentContext.length} chars`);
         } else {
             console.log(`⚠️ [AI] No document context available!`);
@@ -1000,13 +1341,21 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 .filter(msg => msg.content && msg.content.trim().length > 0)
                 .reverse();
 
-        // Get current date and time in Turkish format
+        // Get current date and time
         const now = new Date();
-        const turkishMonths = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-        const turkishDays = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-        const currentDate = `${now.getDate()} ${turkishMonths[now.getMonth()]} ${now.getFullYear()}`;
-        const currentDay = turkishDays[now.getDay()];
         const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        let currentDate, currentDay;
+        if (isEnglish) {
+            const enMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            const enDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            currentDate = `${enMonths[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+            currentDay = enDays[now.getDay()];
+        } else {
+            const turkishMonths = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+            const turkishDays = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+            currentDate = `${now.getDate()} ${turkishMonths[now.getMonth()]} ${now.getFullYear()}`;
+            currentDay = turkishDays[now.getDay()];
+        }
 
         // Build customer info string from contact data
         const contact = conversation?.contact;
@@ -1015,37 +1364,50 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         if (contact) {
             const infoParts = [];
             if (contact.name && contact.name !== 'Web Ziyaretçisi') {
-                infoParts.push(`Müşteri Adı: ${contact.name}`);
+                infoParts.push(`${isEnglish ? 'Customer Name' : 'Müşteri Adı'}: ${contact.name}`);
                 hasContactInfo = true;
             }
             if (contact.phone) {
-                infoParts.push(`Telefon: ${contact.phone}`);
+                infoParts.push(`${isEnglish ? 'Phone' : 'Telefon'}: ${contact.phone}`);
                 hasContactInfo = true;
             }
             if (contact.email) {
-                infoParts.push(`E-posta: ${contact.email}`);
+                infoParts.push(`${isEnglish ? 'Email' : 'E-posta'}: ${contact.email}`);
                 hasContactInfo = true;
             }
             if (infoParts.length > 0) {
                 customerInfo = infoParts.join('\n');
-                customerInfo += '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
+                customerInfo += isEnglish
+                    ? '\n\n⚠️ WARNING: The above information is ALREADY AVAILABLE! Do NOT ask for it again!'
+                    : '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
             } else {
-                customerInfo = 'Müşteri bilgisi mevcut değil.';
+                customerInfo = isEnglish ? 'No customer information available.' : 'Müşteri bilgisi mevcut değil.';
             }
         } else {
-            customerInfo = 'Müşteri bilgisi mevcut değil.';
+            customerInfo = isEnglish ? 'No customer information available.' : 'Müşteri bilgisi mevcut değil.';
         }
 
         // If contact info exists, add prefix to bot prompt to prevent asking
-        let enhancedSystemPrompt = systemPrompt; // Use enriched systemPrompt, not raw activeBot.prompt
+        let enhancedSystemPrompt = systemPrompt;
         if (hasContactInfo) {
-            enhancedSystemPrompt = `⛔ ÖNEMLİ: Müşterinin isim ve telefon bilgisi ZATEN VAR. Bu bilgileri TEKRAR SORMA!\n\n${enhancedSystemPrompt}`;
+            enhancedSystemPrompt = isEnglish
+                ? `⛔ IMPORTANT: Customer's name and phone number are ALREADY KNOWN. Do NOT ask for this information again!\n\n${enhancedSystemPrompt}`
+                : `⛔ ÖNEMLİ: Müşterinin isim ve telefon bilgisi ZATEN VAR. Bu bilgileri TEKRAR SORMA!\n\n${enhancedSystemPrompt}`;
         }
 
         // Build enhanced system instruction with clear structure
         // Add critical warning at the VERY TOP if contact info exists
         const contactWarning = hasContactInfo
-            ? `🚫🚫🚫 EN ÖNEMLİ KURAL 🚫🚫🚫
+            ? (isEnglish
+                ? `🚫🚫🚫 MOST IMPORTANT RULE 🚫🚫🚫
+CUSTOMER'S NAME AND PHONE NUMBER ARE ALREADY KNOWN!
+- Name: ${contact?.name || 'Unknown'}
+- Phone: ${contact?.phone || 'Unknown'}
+DO NOT ASK THE CUSTOMER FOR THIS INFORMATION AGAIN!
+🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫
+
+`
+                : `🚫🚫🚫 EN ÖNEMLİ KURAL 🚫🚫🚫
 MÜŞTERİNİN İSMİ VE TELEFON NUMARASI ZATEN BİLİNİYOR!
 - İsim: ${contact?.name || 'Bilinmiyor'}
 - Telefon: ${contact?.phone || 'Bilinmiyor'}
@@ -1053,10 +1415,36 @@ BU BİLGİLERİ MÜŞTERİDEN TEKRAR İSTEME! GSM, telefon, isim, ad-soyad SORMA
 Bu kuralı ihlal edersen işten atılırsın.
 🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫🚫
 
-`
+`)
             : '';
 
-        const fullSystemInstruction = `${contactWarning}### GÜNCEL TARİH VE SAAT ###
+        const fullSystemInstruction = isEnglish
+            ? `${contactWarning}### CURRENT DATE AND TIME ###
+Today: ${currentDay}, ${currentDate}
+Time: ${currentTime}
+Year: ${now.getFullYear()}
+
+### CUSTOMER INFORMATION ###
+${customerInfo}
+
+### SYSTEM INSTRUCTION ###
+${enhancedSystemPrompt}
+
+### AVAILABLE INFORMATION ###
+${documentContext || "Knowledge base is empty."}
+
+### RESPONSE RULES ###
+1. ONLY respond using the information above.
+2. **IMPORTANT**: If the knowledge base does NOT contain information about the topic asked AND it is not a simple greeting, write [HANDOFF] at the beginning of your response and then say "I'm unable to help with this topic. Would you like me to connect you with a representative? 🤝". Never write [HANDOFF] for greetings or introductions (hi, hello, hey, good morning, etc.) — just greet them warmly.
+3. Keep your responses short, clear and professional.
+4. Respond in English.
+5. Always try to help the customer.
+6. If asked about date or time, use the CURRENT DATE information above, do NOT use your own knowledge.
+7. If you CAN answer the question from the knowledge base, do NOT write [HANDOFF].
+8. If asked for customer name or contact info, use the CUSTOMER INFORMATION section above.
+9. **CRITICAL**: If the CUSTOMER INFORMATION section above has "Customer Name" and/or "Phone" filled in, NEVER ask the customer for name or phone! This info is already available.
+10. **CRITICAL**: If the user EXPLICITLY asks to speak to a representative, agent, or human (e.g. "connect me to an agent", "I want to talk to a person"), you MUST write [HANDOFF] at the beginning of your response.`
+            : `${contactWarning}### GÜNCEL TARİH VE SAAT ###
 Bugün: ${currentDay}, ${currentDate}
 Saat: ${currentTime} (Türkiye Saati)
 Yıl: ${now.getFullYear()}
@@ -1072,35 +1460,36 @@ ${documentContext || "Bilgi bankası boş."}
 
 ### YANITLAMA KURALLARI ###
 1. SADECE yukarıdaki bilgileri kullanarak yanıt ver.
-2. **ÖNEMLİ**: Eğer bilgi bankasında sorulan konuyla ilgili BİLGİ YOKSA, yanıtının başına [HANDOFF] yaz ve ardından "Bu konuda size daha iyi yardımcı olabilecek müşteri temsilcimize aktarıyorum. En kısa sürede size dönüş yapacağız." mesajını ver.
+2. **ÖNEMLİ**: Eğer bilgi bankasında sorulan konuyla ilgili BİLGİ YOKSA VE mesaj sadece selamlama/tanışma değilse, yanıtının başına [HANDOFF] yaz ve ardından "Bu konuda size daha iyi yardımcı olabilecek müşteri temsilcimize aktarıyorum. En kısa sürede size dönüş yapacağız." mesajını ver. Selamlama mesajlarına (selam, merhaba, iyi günler, nasılsınız, vs.) ASLA [HANDOFF] yazma, nazikçe karşıla.
 3. Yanıtların kısa, net ve profesyonel olsun.
 4. Türkçe yanıt ver.
 5. Müşteriye her zaman yardımcı olmaya çalış.
 6. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
 7. Eğer soruya bilgi bankasından cevap verebiliyorsan, [HANDOFF] YAZMA.
 8. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
-9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.`;
+9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
+10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.`;
 
-        const historyParts = [
-            {
-                role: "user",
-                parts: [{ text: fullSystemInstruction }]
-            },
-            {
-                role: "model",
-                parts: [{ text: "Anladım. Sistem talimatlarını ve bilgi bankasını kullanarak müşterilere yardımcı olacağım." }]
-            }
-        ];
+        // Build chat history WITHOUT the system instruction embedded in it.
+        // The system instruction is passed via the systemInstruction parameter instead,
+        // which prevents Gemini from ever echoing it back as a customer-facing reply.
+        const historyParts = [];
 
-        let lastRole = "model"; // Starting point after system-ack
+        let lastRole = "model"; // We build from model perspective after system prompt
 
         for (const msg of validMessages) {
             const currentRole = msg.isFromContact ? "user" : "model";
 
             if (currentRole === lastRole) {
                 // Merge with previous message
-                const lastHistoryItem = historyParts[historyParts.length - 1];
-                lastHistoryItem.parts[0].text += `\n\n[Ek Bilgi]: ${msg.content}`;
+                if (historyParts.length > 0) {
+                    historyParts[historyParts.length - 1].parts[0].text += `\n\n${msg.content}`;
+                } else {
+                    historyParts.push({
+                        role: currentRole,
+                        parts: [{ text: msg.content }]
+                    });
+                }
             } else {
                 // New turn
                 historyParts.push({
@@ -1111,14 +1500,15 @@ ${documentContext || "Bilgi bankası boş."}
             }
         }
 
-        // Ensure last message is from user OR add the new user message
-        if (historyParts[historyParts.length - 1].role === 'model') {
-            historyParts.push({ role: 'user', parts: [{ text: userMessage || 'Hello' }] });
-        } else if (userMessage) {
-            // Append current user message to the last user turn if it's not already there
-            const lastPart = historyParts[historyParts.length - 1].parts[0];
-            if (!lastPart.text.includes(userMessage)) {
-                lastPart.text += `\n\n[Current Message]: ${userMessage}`;
+        // Determine the final message to send (must be from user)
+        let finalUserMessage = userMessage || (isEnglish ? 'Hello' : 'Merhaba');
+
+        // If the last history item is the same as finalUserMessage, pop it to use as trigger
+        if (historyParts.length > 0 && historyParts[historyParts.length - 1].role === 'user') {
+            const lastHistoryMsg = historyParts[historyParts.length - 1].parts[0].text;
+            // If the last user message in history matches current userMessage, pop and use it
+            if (userMessage && lastHistoryMsg.includes(userMessage)) {
+                historyParts.pop();
             }
         }
 
@@ -1133,27 +1523,15 @@ ${documentContext || "Bilgi bankası boş."}
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
 
-        // Fallback Logic
+        // Fallback Logic - system instruction passed via systemInstruction parameter (NEVER as user message)
         const tryGenerate = async (modelName) => {
-            const model = genAI.getGenerativeModel({ model: modelName });
-            // We just send the last part again or a 'continue' prompt? 
-            // Actually startChat + sendMessage is cleaner.
-            // But if history already has the user message at the end, we can send " " or something?
-            // No, standard is: history up to N-1, sendMessage(N)
-            // Simpler: Just put all history in historyParts, and ask for "Generate response"
-
-            // Correct approach: History includes everything EXCEPT the very last user message?
-            // No, the gemini SDK `sendMessage` ADDS the new message to history.
-            // If we pre-fill history with the new message, we can't easily trigger generation.
-            // So let's pop the last user message if it exists and use it as trigger.
-
-            let lastMsg = "Merhabalar";
-            if (historyParts[historyParts.length - 1].role === 'user') {
-                lastMsg = historyParts.pop().parts[0].text;
-            }
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: fullSystemInstruction
+            });
 
             const chat = model.startChat({ history: historyParts });
-            return await chat.sendMessage(lastMsg);
+            return await chat.sendMessage(finalUserMessage);
         };
 
         let result;
@@ -1176,33 +1554,148 @@ ${documentContext || "Bilgi bankası boş."}
         const confirmPhrases = ['evet', 'tamam', 'olur', 'lütfen', 'yönlendir', 'aktarın', 'görüşmek istiyorum', 'temsilci', 'yes', 'ok'];
         const declinePhrases = ['hayır', 'yok', 'istemiyorum', 'gerek yok', 'no', 'olmaz'];
 
-        // Check if conversation has pending handoff request
-        if (type === 'CHATS' && conversationId && conversation?.handoffPending) {
-            if (confirmPhrases.some(phrase => userMessageLower.includes(phrase))) {
-                console.log(`✅ [HANDOFF] User confirmed handoff for conversation: ${conversationId}`);
+        // 🚨 DIRECT TRANSFER REQUEST - User explicitly asks for a representative
+        const directTransferPhrases = [
+            'temsilciye bağla', 'temsilcime bağla', 'müşteri temsilcisi', 'temsilci istiyorum',
+            'gerçek kişi', 'gerçek biriyle', 'canlı destek', 'yetkili ile görüşmek',
+            'yetkiliyle görüşmek', 'yetkiliye bağla', 'operatöre bağla', 'insanla konuşmak',
+            'talk to a human', 'speak to an agent', 'connect me to', 'real person',
+            'temsilcinize bağla', 'temsilciye aktarın', 'temsilciye aktar'
+        ];
+        const isDirectTransferRequest = !conversation?.handoffPending && directTransferPhrases.some(phrase => userMessageLower.includes(phrase));
 
-                // Disable bot and proceed with handoff
+        if (isDirectTransferRequest && type === 'CHATS' && conversationId) {
+            console.log(`🔄 [HANDOFF] Direct transfer request detected from user: "${userMessage}"`);
+
+            // 🔍 Find online agents
+            const onlineMembers = await prisma.workspaceMember.findMany({
+                where: { workspaceId, user: { isOnline: true } },
+                include: { user: { select: { id: true, name: true } } }
+            });
+            const onlineAgents = onlineMembers.filter(m => m.user);
+
+            if (onlineAgents.length > 0) {
+                const assignedAgent = onlineAgents[0];
+                console.log(`🎯 [HANDOFF] Direct routing to: ${assignedAgent.user.name}`);
+
+                await incrementAiUsage(workspaceId);
+                releaseAiReplyLock(conversationId);
+
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: { botEnabled: false, handoffPending: false }
+                    data: { botEnabled: false, handoffPending: false, assignedToId: assignedAgent.user.id }
                 });
 
-                // Emit socket event to notify team
                 try {
                     const { emitToWorkspace } = await import('../socket.js');
                     emitToWorkspace(workspaceId, 'bot_handoff', {
-                        conversationId,
-                        workspaceId,
-                        message: 'Müşteri takıma yönlendirilmeyi onayladı.',
+                        conversationId, workspaceId,
+                        assignedToId: assignedAgent.user.id,
+                        assignedToName: assignedAgent.user.name,
+                        message: `Müşteri ${assignedAgent.user.name.trim().split(' ')[0]} adlı temsilciye yönlendirildi.`,
+                        botName: activeBot.name
+                    });
+                    emitToWorkspace(workspaceId, 'conversation_updated', {
+                        conversationId, assignedToId: assignedAgent.user.id
+                    });
+                } catch (socketErr) {
+                    console.error('Socket emit error for handoff:', socketErr);
+                }
+
+                return `Sizi müşteri temsilcimiz ${assignedAgent.user.name.trim().split(' ')[0]} ile bağlıyorum. Kısa süre içinde size yardımcı olacaktır. 🙏`;
+            } else {
+                console.log(`⚠️ [HANDOFF] No online agents for direct transfer. Bot will continue responding.`);
+
+                try {
+                    const { emitToWorkspace } = await import('../socket.js');
+                    emitToWorkspace(workspaceId, 'bot_handoff', {
+                        conversationId, workspaceId,
+                        message: 'Müşteri temsilciye yönlendirilmek istiyor ama şu anda online temsilci yok.',
                         botName: activeBot.name
                     });
                 } catch (socketErr) {
                     console.error('Socket emit error for handoff:', socketErr);
                 }
 
-                await incrementAiUsage(workspaceId);
-                releaseAiReplyLock(conversationId);
-                return "Sizi müşteri temsilcimize aktarıyorum. En kısa sürede size dönüş yapacağız. 🙏";
+                // Don't return early — let AI continue responding below
+            }
+        }
+
+        // Check if conversation has pending handoff request
+        if (type === 'CHATS' && conversationId && conversation?.handoffPending) {
+            if (confirmPhrases.some(phrase => userMessageLower.includes(phrase))) {
+                console.log(`✅ [HANDOFF] User confirmed handoff for conversation: ${conversationId}`);
+
+                // 🔍 Find online agents in this workspace FIRST
+                const onlineMembers = await prisma.workspaceMember.findMany({
+                    where: {
+                        workspaceId,
+                        user: { isOnline: true }
+                    },
+                    include: {
+                        user: { select: { id: true, name: true } }
+                    }
+                });
+
+                // Filter out bots — only real users
+                const onlineAgents = onlineMembers.filter(m => m.user);
+
+                if (onlineAgents.length > 0) {
+                    // Agent found — NOW disable bot and assign
+                    const assignedAgent = onlineAgents[0];
+                    console.log(`🎯 [HANDOFF] Assigning to online agent: ${assignedAgent.user.name} (${assignedAgent.user.id})`);
+
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { botEnabled: false, handoffPending: false, assignedToId: assignedAgent.user.id }
+                    });
+
+                    // Emit socket event to notify team
+                    try {
+                        const { emitToWorkspace } = await import('../socket.js');
+                        emitToWorkspace(workspaceId, 'bot_handoff', {
+                            conversationId,
+                            workspaceId,
+                            assignedToId: assignedAgent.user.id,
+                            assignedToName: assignedAgent.user.name,
+                            message: `Müşteri ${assignedAgent.user.name.trim().split(' ')[0]} adlı temsilciye yönlendirildi.`,
+                            botName: activeBot.name
+                        });
+                        emitToWorkspace(workspaceId, 'conversation_updated', {
+                            conversationId,
+                            assignedToId: assignedAgent.user.id
+                        });
+                    } catch (socketErr) {
+                        console.error('Socket emit error for handoff:', socketErr);
+                    }
+
+                    await incrementAiUsage(workspaceId);
+                    releaseAiReplyLock(conversationId);
+                    return `Sizi müşteri temsilcimiz ${assignedAgent.user.name.trim().split(' ')[0]} ile bağlıyorum. Kısa süre içinde size yardımcı olacaktır. 🙏`;
+                } else {
+                    // No agent available — keep bot ACTIVE, only clear handoffPending
+                    console.log(`⚠️ [HANDOFF] No online agents found in workspace: ${workspaceId}. Bot will continue responding.`);
+
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { handoffPending: false }
+                    });
+
+                    // Emit socket event anyway so team sees it when they come online
+                    try {
+                        const { emitToWorkspace } = await import('../socket.js');
+                        emitToWorkspace(workspaceId, 'bot_handoff', {
+                            conversationId,
+                            workspaceId,
+                            message: 'Müşteri temsilciye yönlendirilmek istiyor ama şu anda online temsilci yok.',
+                            botName: activeBot.name
+                        });
+                    } catch (socketErr) {
+                        console.error('Socket emit error for handoff:', socketErr);
+                    }
+
+                    // Don't return early — let AI continue responding below
+                }
             } else if (declinePhrases.some(phrase => userMessageLower.includes(phrase))) {
                 console.log(`❌ [HANDOFF] User declined handoff for conversation: ${conversationId}`);
 
@@ -1214,29 +1707,78 @@ ${documentContext || "Bilgi bankası boş."}
 
                 await incrementAiUsage(workspaceId);
                 releaseAiReplyLock(conversationId);
-                return "Anladım, size başka bir konuda yardımcı olabilir miyim?";
+                return isEnglish
+                    ? "I understand, can I help you with anything else?"
+                    : "Anladım, size başka bir konuda yardımcı olabilir miyim?";
             }
         }
 
-        // 🚨 HANDOFF DETECTION - Bot can't answer, ask for confirmation first
+        // 🚨 HANDOFF DETECTION - Only explicit [HANDOFF] tag triggers routing (removed implicit phrase detection to avoid false positives)
         if (responseText.includes('[HANDOFF]') && type === 'CHATS' && conversationId) {
-            console.log(`🔄 [HANDOFF] Bot couldn't answer, asking for confirmation: ${conversationId}`);
+            console.log(`🔄 [HANDOFF] Bot indicated it can't answer: ${conversationId}`);
 
-            // Mark conversation as having pending handoff
-            await prisma.conversation.update({
-                where: { id: conversationId },
-                data: { handoffPending: true }
+            // Strip [HANDOFF] tag from the bot's own response before returning it
+            const cleanedResponse = responseText.replace(/\[HANDOFF\]/gi, '').trim();
+
+            // 🔍 Find online agents in this workspace
+            const onlineMembers = await prisma.workspaceMember.findMany({
+                where: {
+                    workspaceId,
+                    user: { isOnline: true }
+                },
+                include: {
+                    user: { select: { id: true, name: true } }
+                }
             });
-            console.log(`⏳ [HANDOFF] Pending handoff set for conversation: ${conversationId}`);
+            const onlineAgents = onlineMembers.filter(m => m.user);
 
             // 📊 AI Kullanım sayacını artır
             await incrementAiUsage(workspaceId);
-
-            // Release lock before return
             releaseAiReplyLock(conversationId);
 
-            // Ask user if they want to be redirected
-            return "Bu konuda size yardımcı olamadım. Sizi müşteri temsilcimize aktarmamı ister misiniz? 🤝";
+            if (onlineAgents.length > 0) {
+                const assignedAgent = onlineAgents[0];
+                console.log(`🎯 [HANDOFF] Routing to online agent: ${assignedAgent.user.name}`);
+
+                // Disable bot and assign to agent in background
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { botEnabled: false, handoffPending: false, assignedToId: assignedAgent.user.id }
+                });
+
+                try {
+                    const { emitToWorkspace } = await import('../socket.js');
+                    emitToWorkspace(workspaceId, 'bot_handoff', {
+                        conversationId, workspaceId,
+                        assignedToId: assignedAgent.user.id,
+                        assignedToName: assignedAgent.user.name,
+                        message: `Müşteri ${assignedAgent.user.name.trim().split(' ')[0]} adlı temsilciye yönlendirildi.`,
+                        botName: activeBot.name
+                    });
+                    emitToWorkspace(workspaceId, 'conversation_updated', {
+                        conversationId,
+                        assignedToId: assignedAgent.user.id
+                    });
+                } catch (socketErr) {
+                    console.error('Socket emit error for handoff:', socketErr);
+                }
+            } else {
+                // No agent available
+                console.log(`⚠️ [HANDOFF] No online agents, bot will continue responding.`);
+                try {
+                    const { emitToWorkspace } = await import('../socket.js');
+                    emitToWorkspace(workspaceId, 'bot_handoff', {
+                        conversationId, workspaceId,
+                        message: 'Müşteri temsilciye yönlendirilmek istiyor ama şu anda online temsilci yok.',
+                        botName: activeBot.name
+                    });
+                } catch (socketErr) {
+                    console.error('Socket emit error for handoff:', socketErr);
+                }
+            }
+
+            // Always return the bot's own response (with [HANDOFF] tag removed)
+            return cleanedResponse || null;
         }
 
         // 📊 AI Kullanım sayacını artır (başarılı cevap sonrası)
@@ -1298,7 +1840,10 @@ export const createBot = async (req, res) => {
             // Scheduler fields
             schedulerEnabled, scheduleStartTime, scheduleEndTime, scheduleStartDate, scheduleEndDate, scheduleDays,
             // Auto-reply delay fields
-            autoReplyDelayEnabled, autoReplyDelaySeconds, autoReplyDelayMessage
+            autoReplyDelayEnabled, autoReplyDelaySeconds, autoReplyDelayMessage,
+            // Routing fields
+            routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
+            routingConditionalEnabled, routingRules
         } = req.body;
 
         const bot = await prisma.aIBot.create({
@@ -1322,7 +1867,14 @@ export const createBot = async (req, res) => {
                 // Auto-reply delay
                 autoReplyDelayEnabled: !!autoReplyDelayEnabled,
                 autoReplyDelaySeconds: autoReplyDelaySeconds !== undefined ? parseInt(autoReplyDelaySeconds) || 30 : 30,
-                autoReplyDelayMessage: autoReplyDelayMessage || null
+                autoReplyDelayMessage: autoReplyDelayMessage || null,
+                // Routing
+                routingEnabled: !!routingEnabled,
+                routingQuestions: routingQuestions || null,
+                routingDefaultTeamId: routingDefaultTeamId || null,
+                routingDefaultUserId: routingDefaultUserId || null,
+                routingConditionalEnabled: !!routingConditionalEnabled,
+                routingRules: routingRules || null
             }
         });
         res.status(201).json({ bot });
@@ -1432,12 +1984,19 @@ export const getBots = async (req, res) => {
                     team: r.team?.name,
                     type: 'Yönlendirme'
                 })),
-                webWidget: botRoutings.filter(r => r.channel === 'WEB_WIDGET').map(r => ({
-                    id: r.id,
-                    name: 'Web Widget',
-                    team: r.team?.name,
-                    type: 'Yönlendirme'
-                })),
+                webWidget: [
+                    ...botRoutings.filter(r => r.channel === 'WEB_WIDGET').map(r => ({
+                        id: r.id,
+                        name: 'Web Widget',
+                        team: r.team?.name,
+                        type: 'Yönlendirme'
+                    })),
+                    ...bot.webWidgets.map(w => ({
+                        id: w.id,
+                        name: w.title || 'Web Widget',
+                        type: 'Kanal'
+                    }))
+                ],
                 form: botRoutings.filter(r => r.channel === 'FORM').map(r => ({
                     id: r.id,
                     name: 'Web Form',
@@ -1527,7 +2086,10 @@ export const updateBot = async (req, res) => {
             autoReplyDelayEnabled, autoReplyDelaySeconds, autoReplyDelayMessage,
             // Follow-up fields
             inactivityWarningEnabled, inactivityWarningSeconds, inactivityWarningMessage,
-            dailyReminderEnabled, dailyReminderHours, dailyReminderMessage
+            dailyReminderEnabled, dailyReminderHours, dailyReminderMessage,
+            // Routing fields
+            routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
+            routingConditionalEnabled, routingRules
         } = req.body;
 
         // Verify bot belongs to this workspace
@@ -1565,7 +2127,14 @@ export const updateBot = async (req, res) => {
                 // Daily reminder
                 dailyReminderEnabled: !!dailyReminderEnabled,
                 dailyReminderHours: dailyReminderHours !== undefined ? parseInt(dailyReminderHours) || 24 : 24,
-                dailyReminderMessage: dailyReminderMessage || null
+                dailyReminderMessage: dailyReminderMessage || null,
+                // Routing
+                routingEnabled: !!routingEnabled,
+                routingQuestions: routingQuestions || null,
+                routingDefaultTeamId: routingDefaultTeamId || null,
+                routingDefaultUserId: routingDefaultUserId || null,
+                routingConditionalEnabled: !!routingConditionalEnabled,
+                routingRules: routingRules || null
             }
         });
         res.json({ bot });
@@ -1794,7 +2363,9 @@ JSON:`;
             // Must have at least 10 digits
             const digitsOnly = cleanPhone.replace(/\D/g, '');
             if (digitsOnly.length >= 10) {
-                updateData.phone = cleanPhone;
+                // Import and apply phone normalization
+                const { normalizePhone } = await import('../utils/phoneNormalizer.js');
+                updateData.phone = normalizePhone(cleanPhone);
                 console.log(`📞 [AI Auto-Extract] Valid phone extracted: ${cleanPhone}`);
             } else {
                 console.log(`⚠️ [AI Auto-Extract] Invalid phone "${extracted.phone}" - not enough digits`);
@@ -1814,10 +2385,10 @@ JSON:`;
         }
 
         if (Object.keys(updateData).length > 0) {
-            // Auto-upgrade status to HOT_OPPORTUNITY if phone is being added and current status is NEW
+            // Auto-upgrade status to OPPORTUNITY if phone is being added and current status is NEW
             if (updateData.phone && conversation.contact.status === 'NEW') {
-                updateData.status = 'HOT_OPPORTUNITY';
-                console.log(`📱 [AI Auto-Extract] Auto-upgrading status to HOT_OPPORTUNITY (phone extracted)`);
+                updateData.status = 'OPPORTUNITY';
+                console.log(`📱 [AI Auto-Extract] Auto-upgrading status to OPPORTUNITY (phone extracted)`);
             }
 
             console.log(`💾 [AI Auto-Extract] Saving new info for contact ${conversation.contact.id}:`, updateData);

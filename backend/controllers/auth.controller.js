@@ -1,10 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import { generateToken } from '../middleware/auth.middleware.js';
-
-const prisma = new PrismaClient();
 
 // Helper function to create slug from name
 const createSlug = (name) => {
@@ -179,8 +177,14 @@ export const login = async (req, res) => {
             token
         });
     } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
+        console.error('Login error:', error.message, error.code || '');
+
+        // Return more specific error for connection issues
+        if (error.code === 'P2024' || error.code === 'P1001' || error.code === 'P1002') {
+            return res.status(503).json({ error: 'Veritabanı bağlantı hatası, lütfen tekrar deneyin.' });
+        }
+
+        res.status(500).json({ error: 'Sunucu hatası, lütfen tekrar deneyin.' });
     }
 };
 
@@ -219,6 +223,21 @@ export const facebookCallback = async (req, res) => {
 
             if (workspaceMember) {
                 console.log('✅ Using workspace from state:', workspaceMember.workspace.name);
+            }
+
+            // SUPER_ADMIN can access any workspace without membership
+            if (!workspaceMember && user.role === 'SUPER_ADMIN') {
+                const targetWorkspace = await prisma.workspace.findUnique({
+                    where: { id: targetWorkspaceId }
+                });
+                if (targetWorkspace) {
+                    console.log('✅ SUPER_ADMIN accessing workspace directly:', targetWorkspace.name);
+                    workspaceMember = {
+                        workspace: targetWorkspace,
+                        userId: user.id,
+                        role: 'OWNER'
+                    };
+                }
             }
         }
 

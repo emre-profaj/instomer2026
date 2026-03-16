@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { automationAPI, contactAPI, whatsappAPI } from '../../services/api';
+import { automationAPI, rulesAPI, teamAPI, emailAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, ArrowRight, Search, X,
-    Smartphone
+    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp
 } from 'lucide-react';
 import './Automations.css';
 
@@ -67,6 +67,15 @@ const Automations = () => {
     // Email channels for SEND_EMAIL action
     const [emailChannels, setEmailChannels] = useState([]);
 
+    // --- Rules (Kurallar) state ---
+    const [rules, setRules] = useState([]);
+    const [teams, setTeams] = useState([]);
+    const [rulesLoading, setRulesLoading] = useState(false);
+    const [rulesSaving, setRulesSaving] = useState({});
+    // Keyword editing
+    const [newKeyword, setNewKeyword] = useState('');
+    const [expandedRules, setExpandedRules] = useState({ HOT_KEYWORD: true, HOT_OPPORT_EMAIL: true });
+
     useEffect(() => {
         if (currentWorkspace?.id) {
             loadData();
@@ -76,16 +85,18 @@ const Automations = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [templatesRes, automationsRes, emailRes] = await Promise.all([
+            const [templatesRes, automationsRes, emailRes, rulesRes, teamsRes] = await Promise.all([
                 automationAPI.getTemplates(currentWorkspace.id),
                 automationAPI.getAutomations(currentWorkspace.id),
-                fetch(`/api/email/${currentWorkspace.id}`, {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-                }).then(r => r.json()).catch(() => ({ emailChannels: [] }))
+                emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
+                rulesAPI.getAll(currentWorkspace.id).catch(() => ({ data: { rules: [] } })),
+                teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } }))
             ]);
             setTemplates(templatesRes.data.templates || []);
             setAutomations(automationsRes.data.automations || []);
-            setEmailChannels(emailRes.emailChannels || []);
+            setEmailChannels(emailRes.data?.emailChannels || []);
+            setRules(rulesRes.data.rules || []);
+            setTeams(teamsRes.data.teams || []);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -352,6 +363,54 @@ const Automations = () => {
         }
     };
 
+    // ============================================
+    // Rules helpers
+    // ============================================
+    const getRule = (ruleType) => rules.find(r => r.ruleType === ruleType) || { isActive: false, config: {} };
+
+    const saveRule = async (ruleType, updates) => {
+        setRulesSaving(s => ({ ...s, [ruleType]: true }));
+        try {
+            const current = getRule(ruleType);
+            const payload = { ...updates };
+            const res = await rulesAPI.upsert(currentWorkspace.id, ruleType, payload);
+            setRules(prev => prev.map(r => r.ruleType === ruleType ? res.data.rule : r)
+                .concat(prev.some(r => r.ruleType === ruleType) ? [] : [res.data.rule]));
+        } catch (err) {
+            alert(err.response?.data?.error || 'Kural kaydedilemedi');
+        } finally {
+            setRulesSaving(s => ({ ...s, [ruleType]: false }));
+        }
+    };
+
+    const toggleRule = (ruleType) => {
+        const current = getRule(ruleType);
+        saveRule(ruleType, { isActive: !current.isActive, config: current.config });
+    };
+
+    const addKeyword = () => {
+        const kw = newKeyword.trim().toLowerCase();
+        if (!kw) return;
+        const rule = getRule('HOT_KEYWORD');
+        const keywords = rule.config?.keywords || [];
+        if (keywords.includes(kw)) { setNewKeyword(''); return; }
+        const updatedConfig = { ...rule.config, keywords: [...keywords, kw] };
+        saveRule('HOT_KEYWORD', { isActive: rule.isActive, config: updatedConfig });
+        setNewKeyword('');
+    };
+
+    const removeKeyword = (kw) => {
+        const rule = getRule('HOT_KEYWORD');
+        const keywords = (rule.config?.keywords || []).filter(k => k !== kw);
+        saveRule('HOT_KEYWORD', { isActive: rule.isActive, config: { ...rule.config, keywords } });
+    };
+
+    const updateRule3Config = (field, value) => {
+        const rule = getRule('HOT_OPPORT_EMAIL');
+        const updatedConfig = { ...rule.config, [field]: value };
+        saveRule('HOT_OPPORT_EMAIL', { isActive: rule.isActive, config: updatedConfig });
+    };
+
     if (loading) {
         return (
             <div className="automations-page">
@@ -408,6 +467,15 @@ const Automations = () => {
                     <Zap size={18} />
                     Otomasyonlar ({automations.length})
                 </button>
+                <button
+                    className={`tab-btn ${activeTab === 'rules' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('rules')}
+                >
+                    <Shield size={18} />
+                    Kurallar
+                </button>
+
+
             </div>
 
             {/* Content */}
@@ -528,469 +596,618 @@ const Automations = () => {
                         )}
                     </div>
                 )}
-            </div>
 
-            {/* Template Modal */}
-            {showTemplateModal && (
-                <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>{editingTemplate ? 'Şablon Düzenle' : 'Şablon Ekle'}</h2>
-                            <button className="modal-close" onClick={() => setShowTemplateModal(false)}>×</button>
+                {/* Kurallar Tab */}
+                {activeTab === 'rules' && (
+                    <div className="rules-section">
+                        <div className="rules-intro">
+                            <Shield size={20} />
+                            <div>
+                                <h3>Otomatik Lead Kuralları</h3>
+                                <p>Aşağıdaki kurallar, gelen sohbetleri analiz ederek kontak etiketlerini otomatik olarak güncelleyen ve ekip bildirimleri gönderen çalışma alanı bazında yapılandırılabilir kurallardır. Açtığınız sadece bu çalışma alanını etkiler.</p>
+                            </div>
                         </div>
-                        <div className="modal-body">
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Şablon ID *</label>
+
+                        {/* Rule 1: Phone Capture */}
+                        <div className={`rule-card ${getRule('PHONE_CAPTURE').isActive ? 'rule-active' : ''}`}>
+                            <div className="rule-header">
+                                <div className="rule-icon">📱</div>
+                                <div className="rule-meta">
+                                    <h4>Telefon Numarası Algılama → Fırsat</h4>
+                                    <p>Gelen herhangi bir mesajda (WhatsApp, Instagram, Facebook, Web Widget) Türkiye telefon numarası tespit edilirse kontak otomatik olarak <strong>"Fırsat"</strong> etiketini alır ve kategorisi güncellenir.</p>
+                                </div>
+                                <div
+                                    className={`rule-toggle ${getRule('PHONE_CAPTURE').isActive ? 'rule-toggle-on' : ''}`}
+                                    onClick={() => toggleRule('PHONE_CAPTURE')}
+                                    title={getRule('PHONE_CAPTURE').isActive ? 'Kuralı Kapat' : 'Kuralı Aç'}
+                                >
+                                    <div className="rule-toggle-knob" />
+                                </div>
+                            </div>
+                            <div className="rule-status-badge">
+                                {getRule('PHONE_CAPTURE').isActive
+                                    ? <span className="badge badge-active"><CheckCircle size={12} /> Aktif</span>
+                                    : <span className="badge badge-inactive"><XCircle size={12} /> Pasif</span>}
+                                {rulesSaving['PHONE_CAPTURE'] && <span className="badge badge-saving">Kaydediliyor...</span>}
+                            </div>
+                        </div>
+
+                        {/* Rule 2: Hot Keyword */}
+                        <div className={`rule-card ${getRule('HOT_KEYWORD').isActive ? 'rule-active' : ''}`}>
+                            <div className="rule-header">
+                                <div className="rule-icon">🔥</div>
+                                <div className="rule-meta">
+                                    <h4>Sıcak Anahtar Kelime → Sıcak Fırsat</h4>
+                                    <p>Gelen herhangi bir mesajda (WhatsApp, Instagram, Facebook, Web Widget) aşağıdaki kelimelerden biri geçerse kontak <strong>"Sıcak Fırsat"</strong> etiketini alır.</p>
+                                </div>
+                                <div
+                                    className={`rule-toggle ${getRule('HOT_KEYWORD').isActive ? 'rule-toggle-on' : ''}`}
+                                    onClick={() => toggleRule('HOT_KEYWORD')}
+                                    title={getRule('HOT_KEYWORD').isActive ? 'Kuralı Kapat' : 'Kuralı Aç'}
+                                >
+                                    <div className="rule-toggle-knob" />
+                                </div>
+                            </div>
+                            <div className="rule-status-badge">
+                                {getRule('HOT_KEYWORD').isActive
+                                    ? <span className="badge badge-active"><CheckCircle size={12} /> Aktif</span>
+                                    : <span className="badge badge-inactive"><XCircle size={12} /> Pasif</span>}
+                                {rulesSaving['HOT_KEYWORD'] && <span className="badge badge-saving">Kaydediliyor...</span>}
+                            </div>
+
+                            {/* Keyword editor */}
+                            <div className="rule-config">
+                                <label className="config-label"><Tag size={13} /> Anahtar Kelimeler</label>
+                                <div className="keyword-chips">
+                                    {(getRule('HOT_KEYWORD').config?.keywords || []).map(kw => (
+                                        <span key={kw} className="keyword-chip">
+                                            {kw}
+                                            <button className="chip-remove" onClick={() => removeKeyword(kw)}>×</button>
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="keyword-add">
                                     <input
                                         type="text"
-                                        value={templateForm.templateId}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, templateId: e.target.value })}
-                                        placeholder="Meta'dan alınan şablon ID"
+                                        value={newKeyword}
+                                        onChange={e => setNewKeyword(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }}
+                                        placeholder="Anahtar kelime ekle..."
+                                        className="keyword-input"
                                     />
+                                    <button className="btn btn-secondary btn-sm" onClick={addKeyword}>Ekle</button>
                                 </div>
-                                <div className="form-group">
-                                    <label>Şablon Adı *</label>
-                                    <input
-                                        type="text"
-                                        value={templateForm.name}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
-                                        placeholder="örn: lead_welcome"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Dil</label>
-                                    <select
-                                        value={templateForm.language}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, language: e.target.value })}
-                                    >
-                                        <option value="tr">Türkçe</option>
-                                        <option value="en">English</option>
-                                        <option value="en_US">English (US)</option>
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>Kategori</label>
-                                    <select
-                                        value={templateForm.category}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, category: e.target.value })}
-                                    >
-                                        <option value="MARKETING">Marketing</option>
-                                        <option value="UTILITY">Utility</option>
-                                        <option value="AUTHENTICATION">Authentication</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* Header Type Selection */}
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Header Tipi</label>
-                                    <select
-                                        value={templateForm.headerType}
-                                        onChange={(e) => setTemplateForm({ ...templateForm, headerType: e.target.value })}
-                                    >
-                                        <option value="">Yok (Sadece Metin)</option>
-                                        <option value="IMAGE">🖼️ Resim</option>
-                                        <option value="VIDEO">🎬 Video</option>
-                                        <option value="DOCUMENT">📄 Döküman</option>
-                                    </select>
-                                </div>
-                                {templateForm.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && (
-                                    <div className="form-group">
-                                        <label>Varsayılan Medya URL (Opsiyonel)</label>
-                                        <input
-                                            type="url"
-                                            value={templateForm.headerContent}
-                                            onChange={(e) => setTemplateForm({ ...templateForm, headerContent: e.target.value })}
-                                            placeholder="https://example.com/media.jpg"
-                                        />
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="form-group">
-                                <label>Şablon Metni *</label>
-                                <textarea
-                                    value={templateForm.bodyText}
-                                    onChange={(e) => setTemplateForm({ ...templateForm, bodyText: e.target.value })}
-                                    placeholder="Merhaba {{1}}, talebiniz için teşekkürler. Size en kısa sürede dönüş yapacağız."
-                                    rows={4}
-                                />
-                                <div className="form-hint">Değişkenler için {`{{1}}`}, {`{{2}}`} gibi yer tutucular kullanın</div>
-                            </div>
-
-                            <div className="form-group">
-                                <label>Footer (Opsiyonel)</label>
-                                <input
-                                    type="text"
-                                    value={templateForm.footerText}
-                                    onChange={(e) => setTemplateForm({ ...templateForm, footerText: e.target.value })}
-                                    placeholder="örn: Yanıt vermek için EVET yazın"
-                                />
                             </div>
                         </div>
-                        <div className="modal-footer">
-                            <button className="btn btn-secondary" onClick={() => setShowTemplateModal(false)}>
-                                İptal
-                            </button>
-                            <button className="btn btn-primary" onClick={handleSaveTemplate}>
-                                {editingTemplate ? 'Güncelle' : 'Kaydet'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
-            {/* Automation Modal */}
-            {showAutomationModal && (
-                <div className="modal-overlay" onClick={() => setShowAutomationModal(false)}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                            <h2>{editingAutomation ? 'Otomasyon Düzenle' : 'Otomasyon Oluştur'}</h2>
-                            <button className="modal-close" onClick={() => setShowAutomationModal(false)}>×</button>
-                        </div>
-                        <div className="modal-body">
-                            <div className="form-group">
-                                <label>Otomasyon Adı *</label>
-                                <input
-                                    type="text"
-                                    value={automationForm.name}
-                                    onChange={(e) => setAutomationForm({ ...automationForm, name: e.target.value })}
-                                    placeholder="örn: Lead Karşılama Mesajı"
-                                />
-                            </div>
-
-                            <div className="form-group">
-                                <label>Açıklama</label>
-                                <textarea
-                                    value={automationForm.description}
-                                    onChange={(e) => setAutomationForm({ ...automationForm, description: e.target.value })}
-                                    placeholder="Bu otomasyon ne yapar?"
-                                    rows={2}
-                                />
-                            </div>
-
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Tetikleyici</label>
-                                    <select
-                                        value={automationForm.trigger}
-                                        onChange={(e) => setAutomationForm({ ...automationForm, trigger: e.target.value })}
-                                    >
-                                        <option value="NEW_LEAD">🎯 Yeni Lead Geldiğinde</option>
-                                        <option value="NEW_MESSAGE">💬 Yeni Mesaj Geldiğinde</option>
-                                        <option value="NEW_CONVERSATION">📱 Yeni Sohbet Başladığında</option>
-                                        <option value="NEW_WEBFORM">📋 Yeni Web Form Geldiğinde</option>
-                                    </select>
+                        {/* Rule 3: Hot Opportunity Email */}
+                        <div className={`rule-card ${getRule('HOT_OPPORT_EMAIL').isActive ? 'rule-active' : ''}`}>
+                            <div className="rule-header">
+                                <div className="rule-icon">📧</div>
+                                <div className="rule-meta">
+                                    <h4>Sıcak Fırsat → Ekibe E-posta Bildirimi</h4>
+                                    <p>Bir kontak <strong>"Sıcak Fırsat"</strong> kategorisine geçtiğinde seçilen takmın tüm üyelerine e-posta bildirimi gönderilir.</p>
                                 </div>
-                                <div className="form-group">
-                                    <label>Kanal</label>
-                                    <select
-                                        value={automationForm.triggerChannel}
-                                        onChange={(e) => setAutomationForm({ ...automationForm, triggerChannel: e.target.value })}
-                                    >
-                                        <option value="ALL">Tümü</option>
-                                        <option value="WHATSAPP">WhatsApp</option>
-                                        <option value="FACEBOOK">Facebook</option>
-                                        <option value="INSTAGRAM">Instagram</option>
-                                    </select>
+                                <div
+                                    className={`rule-toggle ${getRule('HOT_OPPORT_EMAIL').isActive ? 'rule-toggle-on' : ''}`}
+                                    onClick={() => toggleRule('HOT_OPPORT_EMAIL')}
+                                    title={getRule('HOT_OPPORT_EMAIL').isActive ? 'Kuralı Kapat' : 'Kuralı Aç'}
+                                >
+                                    <div className="rule-toggle-knob" />
                                 </div>
                             </div>
-
-                            {/* Aksiyonlar - Tam Genişlik */}
-                            <div className="form-group full-width">
-                                <label>Aksiyonlar</label>
-                                <div className="action-cards">
-                                    <label className={`action-card ${automationForm.selectedActions?.includes('SEND_TEMPLATE') ? 'selected' : ''}`}>
-                                        <input
-                                            type="checkbox"
-                                            checked={automationForm.selectedActions?.includes('SEND_TEMPLATE')}
-                                            onChange={(e) => {
-                                                const actions = automationForm.selectedActions || [];
-                                                if (e.target.checked) {
-                                                    setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_TEMPLATE'] });
-                                                } else {
-                                                    setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_TEMPLATE') });
-                                                }
-                                            }}
-                                        />
-                                        <span className="action-icon">📨</span>
-                                        <span className="action-label">WhatsApp Şablon</span>
-                                    </label>
-                                    <label className={`action-card ${automationForm.selectedActions?.includes('SEND_MESSAGE') ? 'selected' : ''}`}>
-                                        <input
-                                            type="checkbox"
-                                            checked={automationForm.selectedActions?.includes('SEND_MESSAGE')}
-                                            onChange={(e) => {
-                                                const actions = automationForm.selectedActions || [];
-                                                if (e.target.checked) {
-                                                    setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_MESSAGE'] });
-                                                } else {
-                                                    setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_MESSAGE') });
-                                                }
-                                            }}
-                                        />
-                                        <span className="action-icon">💬</span>
-                                        <span className="action-label">Mesaj Gönder</span>
-                                    </label>
-                                    <label className={`action-card ${automationForm.selectedActions?.includes('SEND_EMAIL') ? 'selected' : ''}`}>
-                                        <input
-                                            type="checkbox"
-                                            checked={automationForm.selectedActions?.includes('SEND_EMAIL')}
-                                            onChange={(e) => {
-                                                const actions = automationForm.selectedActions || [];
-                                                if (e.target.checked) {
-                                                    setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_EMAIL'] });
-                                                } else {
-                                                    setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_EMAIL') });
-                                                }
-                                            }}
-                                        />
-                                        <span className="action-icon">📧</span>
-                                        <span className="action-label">E-posta Gönder</span>
-                                    </label>
-                                </div>
-                                {automationForm.selectedActions?.length > 1 && (
-                                    <div className="action-logic-row">
-                                        <span className="logic-label">Çoklu aksiyon:</span>
-                                        <div className="action-logic-toggle compact">
-                                            <button
-                                                type="button"
-                                                className={`logic-btn ${automationForm.actionLogic === 'AND' ? 'active' : ''}`}
-                                                onClick={() => setAutomationForm({ ...automationForm, actionLogic: 'AND' })}
-                                            >
-                                                Hepsini çalıştır
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className={`logic-btn ${automationForm.actionLogic === 'OR' ? 'active' : ''}`}
-                                                onClick={() => setAutomationForm({ ...automationForm, actionLogic: 'OR' })}
-                                            >
-                                                İlkini çalıştır
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
+                            <div className="rule-status-badge">
+                                {getRule('HOT_OPPORT_EMAIL').isActive
+                                    ? <span className="badge badge-active"><CheckCircle size={12} /> Aktif</span>
+                                    : <span className="badge badge-inactive"><XCircle size={12} /> Pasif</span>}
+                                {rulesSaving['HOT_OPPORT_EMAIL'] && <span className="badge badge-saving">Kaydediliyor...</span>}
                             </div>
 
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label>Gecikme (dakika)</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        value={automationForm.delayMinutes}
-                                        onChange={(e) => setAutomationForm({ ...automationForm, delayMinutes: parseInt(e.target.value) || 0 })}
-                                    />
-                                </div>
-                            </div>
-
-                            {automationForm.selectedActions?.includes('SEND_TEMPLATE') && (
-                                <div className="form-group">
-                                    <label>Gönderilecek Şablon</label>
-                                    <select
-                                        value={automationForm.templateId}
-                                        onChange={(e) => setAutomationForm({ ...automationForm, templateId: e.target.value })}
-                                    >
-                                        <option value="">Şablon seçin...</option>
-                                        {templates.filter(t => t.status === 'APPROVED').map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {automationForm.selectedActions?.includes('SEND_MESSAGE') && (
-                                <div className="form-group">
-                                    <label>Mesaj İçeriği</label>
-                                    <textarea
-                                        value={automationForm.messageContent}
-                                        onChange={(e) => setAutomationForm({ ...automationForm, messageContent: e.target.value })}
-                                        placeholder="Gönderilecek mesaj..."
-                                        rows={3}
-                                    />
-                                </div>
-                            )}
-
-                            {automationForm.selectedActions?.includes('SEND_EMAIL') && (
-                                <>
-                                    <div className="form-group">
-                                        <label>E-posta Kanalı *</label>
+                            <div className="rule-config">
+                                <div className="config-row">
+                                    <div className="config-group">
+                                        <label className="config-label">👥 Bildirim Gönderilecek Takım</label>
                                         <select
-                                            value={automationForm.emailChannelId}
-                                            onChange={(e) => setAutomationForm({ ...automationForm, emailChannelId: e.target.value })}
+                                            className="config-select"
+                                            value={getRule('HOT_OPPORT_EMAIL').config?.teamId || ''}
+                                            onChange={e => updateRule3Config('teamId', e.target.value || null)}
+                                        >
+                                            <option value="">Takım seçin...</option>
+                                            {teams.map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                        {teams.length === 0 && (
+                                            <p className="config-hint">⚠️ Henüz takım oluşturulmamış. Önce Ayarlar &gt; Takımlar bölümünden takım oluşturun.</p>
+                                        )}
+                                    </div>
+                                    <div className="config-group">
+                                        <label className="config-label">📧 Gönderen E-posta Kanalı</label>
+                                        <select
+                                            className="config-select"
+                                            value={getRule('HOT_OPPORT_EMAIL').config?.emailChannelId || ''}
+                                            onChange={e => updateRule3Config('emailChannelId', e.target.value || null)}
                                         >
                                             <option value="">E-posta kanalı seçin...</option>
-                                            {emailChannels.map(ch => (
-                                                <option key={ch.id} value={ch.id}>{ch.email}</option>
+                                            {emailChannels.map(c => (
+                                                <option key={c.id} value={c.id}>{c.email}</option>
                                             ))}
+                                        </select>
+                                        {emailChannels.length === 0 && (
+                                            <p className="config-hint">⚠️ Bağlı e-posta kanalı yok. Ayarlar &gt; E-posta bölümünden bağlayın.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+
+
+
+
+                {/* Template Modal */}
+                {showTemplateModal && (
+                    <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
+                        <div className="modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>{editingTemplate ? 'Şablon Düzenle' : 'Şablon Ekle'}</h2>
+                                <button className="modal-close" onClick={() => setShowTemplateModal(false)}>×</button>
+                            </div>
+                            <div className="modal-body">
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Şablon ID *</label>
+                                        <input
+                                            type="text"
+                                            value={templateForm.templateId}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, templateId: e.target.value })}
+                                            placeholder="Meta'dan alınan şablon ID"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Şablon Adı *</label>
+                                        <input
+                                            type="text"
+                                            value={templateForm.name}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                                            placeholder="örn: lead_welcome"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Dil</label>
+                                        <select
+                                            value={templateForm.language}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, language: e.target.value })}
+                                        >
+                                            <option value="tr">Türkçe</option>
+                                            <option value="en">English</option>
+                                            <option value="en_US">English (US)</option>
                                         </select>
                                     </div>
                                     <div className="form-group">
-                                        <label>E-posta Konusu</label>
-                                        <input
-                                            type="text"
-                                            value={automationForm.emailSubject}
-                                            onChange={(e) => setAutomationForm({ ...automationForm, emailSubject: e.target.value })}
-                                            placeholder="Merhaba {{name}}"
-                                        />
-                                        <div className="form-hint">Dinamik değişkenler: {'{{name}}'}, {'{{phone}}'}, {'{{email}}'}</div>
+                                        <label>Kategori</label>
+                                        <select
+                                            value={templateForm.category}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, category: e.target.value })}
+                                        >
+                                            <option value="MARKETING">Marketing</option>
+                                            <option value="UTILITY">Utility</option>
+                                            <option value="AUTHENTICATION">Authentication</option>
+                                        </select>
                                     </div>
-                                    <div className="form-group">
-                                        <label>E-posta İçeriği</label>
-                                        <textarea
-                                            value={automationForm.emailBody}
-                                            onChange={(e) => setAutomationForm({ ...automationForm, emailBody: e.target.value })}
-                                            placeholder="Merhaba {{name}}, talebiniz alınmıştır..."
-                                            rows={5}
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label className="checkbox-label">
-                                            <input
-                                                type="checkbox"
-                                                checked={automationForm.emailIsHtml}
-                                                onChange={(e) => setAutomationForm({ ...automationForm, emailIsHtml: e.target.checked })}
-                                            />
-                                            HTML olarak gönder
-                                        </label>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                        <div className="modal-footer">
-                            <button className="btn btn-secondary" onClick={() => setShowAutomationModal(false)}>
-                                İptal
-                            </button>
-                            <button className="btn btn-primary" onClick={handleSaveAutomation}>
-                                {editingAutomation ? 'Güncelle' : 'Kaydet'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )
-            }
-
-            {/* Send Template Modal */}
-            {
-                showSendModal && sendingTemplate && (
-                    <div className="modal-overlay" onClick={() => setShowSendModal(false)}>
-                        <div className="modal send-template-modal" onClick={(e) => e.stopPropagation()}>
-                            <div className="modal-header">
-                                <h2>📨 Şablon Gönder: {sendingTemplate.name}</h2>
-                                <button className="modal-close" onClick={() => setShowSendModal(false)}>×</button>
-                            </div>
-                            <div className="modal-body">
-                                {/* Template Preview */}
-                                <div className="template-body" style={{ marginBottom: '20px' }}>
-                                    <p>{sendingTemplate.bodyText}</p>
                                 </div>
 
-                                {/* Selected Contact */}
-                                {selectedContact ? (
-                                    <div className="selected-contact">
-                                        <div>
-                                            <strong>{selectedContact.name}</strong>
-                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{selectedContact.phone}</div>
-                                        </div>
-                                        <button className="remove-btn" onClick={() => setSelectedContact(null)}>
-                                            <X size={18} />
-                                        </button>
+                                {/* Header Type Selection */}
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Header Tipi</label>
+                                        <select
+                                            value={templateForm.headerType}
+                                            onChange={(e) => setTemplateForm({ ...templateForm, headerType: e.target.value })}
+                                        >
+                                            <option value="">Yok (Sadece Metin)</option>
+                                            <option value="IMAGE">🖼️ Resim</option>
+                                            <option value="VIDEO">🎬 Video</option>
+                                            <option value="DOCUMENT">📄 Döküman</option>
+                                        </select>
                                     </div>
-                                ) : (
-                                    <>
-                                        {/* Contact Search */}
-                                        <div className="form-group contact-search">
-                                            <label>Kişi Ara</label>
-                                            <div style={{ position: 'relative' }}>
-                                                <input
-                                                    type="text"
-                                                    value={contactSearch}
-                                                    onChange={(e) => handleContactSearch(e.target.value)}
-                                                    placeholder="İsim veya telefon ile ara..."
-                                                />
-                                                {contactResults.length > 0 && (
-                                                    <div className="contact-results">
-                                                        {contactResults.map(contact => (
-                                                            <div
-                                                                key={contact.id}
-                                                                className="contact-result-item"
-                                                                onClick={() => {
-                                                                    setSelectedContact(contact);
-                                                                    setContactSearch('');
-                                                                    setContactResults([]);
-                                                                }}
-                                                            >
-                                                                <span>{contact.name}</span>
-                                                                <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{contact.phone}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
+                                    {templateForm.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && (
+                                        <div className="form-group">
+                                            <label>Varsayılan Medya URL (Opsiyonel)</label>
+                                            <input
+                                                type="url"
+                                                value={templateForm.headerContent}
+                                                onChange={(e) => setTemplateForm({ ...templateForm, headerContent: e.target.value })}
+                                                placeholder="https://example.com/media.jpg"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Şablon Metni *</label>
+                                    <textarea
+                                        value={templateForm.bodyText}
+                                        onChange={(e) => setTemplateForm({ ...templateForm, bodyText: e.target.value })}
+                                        placeholder="Merhaba {{1}}, talebiniz için teşekkürler. Size en kısa sürede dönüş yapacağız."
+                                        rows={4}
+                                    />
+                                    <div className="form-hint">Değişkenler için {`{{1}}`}, {`{{2}}`} gibi yer tutucular kullanın</div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Footer (Opsiyonel)</label>
+                                    <input
+                                        type="text"
+                                        value={templateForm.footerText}
+                                        onChange={(e) => setTemplateForm({ ...templateForm, footerText: e.target.value })}
+                                        placeholder="örn: Yanıt vermek için EVET yazın"
+                                    />
+                                </div>
+                            </div>
+                            <div className="modal-footer">
+                                <button className="btn btn-secondary" onClick={() => setShowTemplateModal(false)}>
+                                    İptal
+                                </button>
+                                <button className="btn btn-primary" onClick={handleSaveTemplate}>
+                                    {editingTemplate ? 'Güncelle' : 'Kaydet'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Automation Modal */}
+                {showAutomationModal && (
+                    <div className="modal-overlay" onClick={() => setShowAutomationModal(false)}>
+                        <div className="modal" onClick={(e) => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>{editingAutomation ? 'Otomasyon Düzenle' : 'Otomasyon Oluştur'}</h2>
+                                <button className="modal-close" onClick={() => setShowAutomationModal(false)}>×</button>
+                            </div>
+                            <div className="modal-body">
+                                <div className="form-group">
+                                    <label>Otomasyon Adı *</label>
+                                    <input
+                                        type="text"
+                                        value={automationForm.name}
+                                        onChange={(e) => setAutomationForm({ ...automationForm, name: e.target.value })}
+                                        placeholder="örn: Lead Karşılama Mesajı"
+                                    />
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Açıklama</label>
+                                    <textarea
+                                        value={automationForm.description}
+                                        onChange={(e) => setAutomationForm({ ...automationForm, description: e.target.value })}
+                                        placeholder="Bu otomasyon ne yapar?"
+                                        rows={2}
+                                    />
+                                </div>
+
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Tetikleyici</label>
+                                        <select
+                                            value={automationForm.trigger}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, trigger: e.target.value })}
+                                        >
+                                            <option value="NEW_LEAD">🎯 Yeni Lead Geldiğinde</option>
+                                            <option value="NEW_MESSAGE">💬 Yeni Mesaj Geldiğinde</option>
+                                            <option value="NEW_CONVERSATION">📱 Yeni Sohbet Başladığında</option>
+                                            <option value="NEW_WEBFORM">📋 Yeni Web Form Geldiğinde</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Kanal</label>
+                                        <select
+                                            value={automationForm.triggerChannel}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, triggerChannel: e.target.value })}
+                                        >
+                                            <option value="ALL">Tümü</option>
+                                            <option value="WHATSAPP">WhatsApp</option>
+                                            <option value="FACEBOOK">Facebook</option>
+                                            <option value="INSTAGRAM">Instagram</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Aksiyonlar - Tam Genişlik */}
+                                <div className="form-group full-width">
+                                    <label>Aksiyonlar</label>
+                                    <div className="action-cards">
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('SEND_TEMPLATE') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('SEND_TEMPLATE')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_TEMPLATE'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_TEMPLATE') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">📨</span>
+                                            <span className="action-label">WhatsApp Şablon</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('SEND_MESSAGE') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('SEND_MESSAGE')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_MESSAGE'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_MESSAGE') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">💬</span>
+                                            <span className="action-label">Mesaj Gönder</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('SEND_EMAIL') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('SEND_EMAIL')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_EMAIL'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_EMAIL') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">📧</span>
+                                            <span className="action-label">E-posta Gönder</span>
+                                        </label>
+                                    </div>
+                                    {automationForm.selectedActions?.length > 1 && (
+                                        <div className="action-logic-row">
+                                            <span className="logic-label">Çoklu aksiyon:</span>
+                                            <div className="action-logic-toggle compact">
+                                                <button
+                                                    type="button"
+                                                    className={`logic-btn ${automationForm.actionLogic === 'AND' ? 'active' : ''}`}
+                                                    onClick={() => setAutomationForm({ ...automationForm, actionLogic: 'AND' })}
+                                                >
+                                                    Hepsini çalıştır
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`logic-btn ${automationForm.actionLogic === 'OR' ? 'active' : ''}`}
+                                                    onClick={() => setAutomationForm({ ...automationForm, actionLogic: 'OR' })}
+                                                >
+                                                    İlkini çalıştır
+                                                </button>
                                             </div>
                                         </div>
+                                    )}
+                                </div>
 
-                                        <div style={{ textAlign: 'center', color: '#94a3b8', margin: '16px 0' }}>veya</div>
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Gecikme (dakika)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={automationForm.delayMinutes}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, delayMinutes: parseInt(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                </div>
 
-                                        {/* Direct Phone Number */}
+                                {automationForm.selectedActions?.includes('SEND_TEMPLATE') && (
+                                    <div className="form-group">
+                                        <label>Gönderilecek Şablon</label>
+                                        <select
+                                            value={automationForm.templateId}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, templateId: e.target.value })}
+                                        >
+                                            <option value="">Şablon seçin...</option>
+                                            {templates.filter(t => t.status === 'APPROVED').map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('SEND_MESSAGE') && (
+                                    <div className="form-group">
+                                        <label>Mesaj İçeriği</label>
+                                        <textarea
+                                            value={automationForm.messageContent}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, messageContent: e.target.value })}
+                                            placeholder="Gönderilecek mesaj..."
+                                            rows={3}
+                                        />
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('SEND_EMAIL') && (
+                                    <>
                                         <div className="form-group">
-                                            <label>Telefon Numarası</label>
+                                            <label>E-posta Kanalı *</label>
+                                            <select
+                                                value={automationForm.emailChannelId}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, emailChannelId: e.target.value })}
+                                            >
+                                                <option value="">E-posta kanalı seçin...</option>
+                                                {emailChannels.map(ch => (
+                                                    <option key={ch.id} value={ch.id}>{ch.email}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="form-group">
+                                            <label>E-posta Konusu</label>
                                             <input
                                                 type="text"
-                                                value={phoneNumber}
-                                                onChange={(e) => setPhoneNumber(e.target.value)}
-                                                placeholder="905551234567"
+                                                value={automationForm.emailSubject}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, emailSubject: e.target.value })}
+                                                placeholder="Merhaba {{name}}"
                                             />
-                                            <div className="form-hint">Ülke kodu ile birlikte girin (+ işareti olmadan)</div>
+                                            <div className="form-hint">Dinamik değişkenler: {'{{name}}'}, {'{{phone}}'}, {'{{email}}'}</div>
+                                        </div>
+                                        <div className="form-group">
+                                            <label>E-posta İçeriği</label>
+                                            <textarea
+                                                value={automationForm.emailBody}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, emailBody: e.target.value })}
+                                                placeholder="Merhaba {{name}}, talebiniz alınmıştır..."
+                                                rows={5}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="checkbox-label">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={automationForm.emailIsHtml}
+                                                    onChange={(e) => setAutomationForm({ ...automationForm, emailIsHtml: e.target.checked })}
+                                                />
+                                                HTML olarak gönder
+                                            </label>
                                         </div>
                                     </>
                                 )}
-
-                                {/* Template Variables */}
-                                {templateVariables.length > 0 && (
-                                    <div className="variables-section">
-                                        <h4>Değişkenler</h4>
-                                        {templateVariables.map((v, idx) => (
-                                            <div key={idx} className="variable-input">
-                                                <label>{v.placeholder}</label>
-                                                <input
-                                                    type="text"
-                                                    value={v.value}
-                                                    onChange={(e) => {
-                                                        const newVars = [...templateVariables];
-                                                        newVars[idx].value = e.target.value;
-                                                        setTemplateVariables(newVars);
-                                                    }}
-                                                    placeholder={`Değer ${idx + 1}`}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
                             <div className="modal-footer">
-                                <button className="btn btn-secondary" onClick={() => setShowSendModal(false)}>
+                                <button className="btn btn-secondary" onClick={() => setShowAutomationModal(false)}>
                                     İptal
                                 </button>
-                                <button
-                                    className="btn btn-success"
-                                    onClick={handleSendTemplate}
-                                    disabled={sending || (!selectedContact && !phoneNumber)}
-                                >
-                                    {sending ? 'Gönderiliyor...' : 'Gönder'}
+                                <button className="btn btn-primary" onClick={handleSaveAutomation}>
+                                    {editingAutomation ? 'Güncelle' : 'Kaydet'}
                                 </button>
                             </div>
                         </div>
                     </div>
                 )
-            }
-        </div >
+                }
+
+                {/* Send Template Modal */}
+                {
+                    showSendModal && sendingTemplate && (
+                        <div className="modal-overlay" onClick={() => setShowSendModal(false)}>
+                            <div className="modal send-template-modal" onClick={(e) => e.stopPropagation()}>
+                                <div className="modal-header">
+                                    <h2>📨 Şablon Gönder: {sendingTemplate.name}</h2>
+                                    <button className="modal-close" onClick={() => setShowSendModal(false)}>×</button>
+                                </div>
+                                <div className="modal-body">
+                                    {/* Template Preview */}
+                                    <div className="template-body" style={{ marginBottom: '20px' }}>
+                                        <p>{sendingTemplate.bodyText}</p>
+                                    </div>
+
+                                    {/* Selected Contact */}
+                                    {selectedContact ? (
+                                        <div className="selected-contact">
+                                            <div>
+                                                <strong>{selectedContact.name}</strong>
+                                                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{selectedContact.phone}</div>
+                                            </div>
+                                            <button className="remove-btn" onClick={() => setSelectedContact(null)}>
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Contact Search */}
+                                            <div className="form-group contact-search">
+                                                <label>Kişi Ara</label>
+                                                <div style={{ position: 'relative' }}>
+                                                    <input
+                                                        type="text"
+                                                        value={contactSearch}
+                                                        onChange={(e) => handleContactSearch(e.target.value)}
+                                                        placeholder="İsim veya telefon ile ara..."
+                                                    />
+                                                    {contactResults.length > 0 && (
+                                                        <div className="contact-results">
+                                                            {contactResults.map(contact => (
+                                                                <div
+                                                                    key={contact.id}
+                                                                    className="contact-result-item"
+                                                                    onClick={() => {
+                                                                        setSelectedContact(contact);
+                                                                        setContactSearch('');
+                                                                        setContactResults([]);
+                                                                    }}
+                                                                >
+                                                                    <span>{contact.name}</span>
+                                                                    <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{contact.phone}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ textAlign: 'center', color: '#94a3b8', margin: '16px 0' }}>veya</div>
+
+                                            {/* Direct Phone Number */}
+                                            <div className="form-group">
+                                                <label>Telefon Numarası</label>
+                                                <input
+                                                    type="text"
+                                                    value={phoneNumber}
+                                                    onChange={(e) => setPhoneNumber(e.target.value)}
+                                                    placeholder="905551234567"
+                                                />
+                                                <div className="form-hint">Ülke kodu ile birlikte girin (+ işareti olmadan)</div>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* Template Variables */}
+                                    {templateVariables.length > 0 && (
+                                        <div className="variables-section">
+                                            <h4>Değişkenler</h4>
+                                            {templateVariables.map((v, idx) => (
+                                                <div key={idx} className="variable-input">
+                                                    <label>{v.placeholder}</label>
+                                                    <input
+                                                        type="text"
+                                                        value={v.value}
+                                                        onChange={(e) => {
+                                                            const newVars = [...templateVariables];
+                                                            newVars[idx].value = e.target.value;
+                                                            setTemplateVariables(newVars);
+                                                        }}
+                                                        placeholder={`Değer ${idx + 1}`}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="modal-footer">
+                                    <button className="btn btn-secondary" onClick={() => setShowSendModal(false)}>
+                                        İptal
+                                    </button>
+                                    <button
+                                        className="btn btn-success"
+                                        onClick={handleSendTemplate}
+                                        disabled={sending || (!selectedContact && !phoneNumber)}
+                                    >
+                                        {sending ? 'Gönderiliyor...' : 'Gönder'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                }
+            </div>
+        </div>
     );
 };
 
 export default Automations;
-

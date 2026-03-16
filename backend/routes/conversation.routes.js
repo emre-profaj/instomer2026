@@ -20,7 +20,9 @@ import {
     getPendingTransfers,
     createManualConversation,
     toggleBotEnabled,
-    getBotStatus
+    getBotStatus,
+    updateTopic,
+    updateFunnel
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -101,5 +103,11 @@ router.post('/:workspaceId/:conversationId/transfer', requireWorkspaceAccess, tr
 // Bot toggle for conversation
 router.get('/:workspaceId/:conversationId/bot-status', requireWorkspaceAccess, getBotStatus);
 router.put('/:workspaceId/:conversationId/bot-toggle', requireWorkspaceAccess, toggleBotEnabled);
+
+// Update aiTopic
+router.patch('/:workspaceId/:conversationId/topic', requireWorkspaceAccess, updateTopic);
+
+// Update funnelType
+router.patch('/:workspaceId/:conversationId/funnel', requireWorkspaceAccess, updateFunnel);
 
 export default router;

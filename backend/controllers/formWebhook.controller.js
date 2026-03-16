@@ -249,10 +249,10 @@ export const handleFormSubmission = async (req, res) => {
                 if (name && !contact.name) updateData.name = name;
                 if (company && !contact.company) updateData.company = company;
 
-                // Telefon varsa ve status NEW ise HOT_OPPORTUNITY yap
+                // Telefon varsa ve status NEW ise OPPORTUNITY yap
                 if (phone && phone.trim() && contact.status === 'NEW') {
-                    updateData.status = 'HOT_OPPORTUNITY';
-                    console.log(`📱 Contact will be upgraded to HOT_OPPORTUNITY: ${contact.id}`);
+                    updateData.status = 'OPPORTUNITY';
+                    console.log(`📱 Contact will be upgraded to OPPORTUNITY: ${contact.id}`);
                 }
 
                 if (Object.keys(updateData).length > 0) {
@@ -267,8 +267,8 @@ export const handleFormSubmission = async (req, res) => {
 
         // If no contact found, create a new one
         if (!contact) {
-            // Telefon varsa HOT_OPPORTUNITY, yoksa NEW
-            const initialStatus = phone && phone.trim() ? 'HOT_OPPORTUNITY' : 'NEW';
+            // Telefon varsa OPPORTUNITY, yoksa NEW
+            const initialStatus = phone && phone.trim() ? 'OPPORTUNITY' : 'NEW';
 
             contact = await prisma.contact.create({
                 data: {
@@ -463,6 +463,16 @@ export const handleFormSubmission = async (req, res) => {
             }
         } else {
             console.log(`ℹ️ [FormWebhook] Skipping automation - contact has no phone number`);
+        }
+
+        // --- AUTO CALL TRIGGER ---
+        if (phone) {
+            try {
+                const { triggerAutoCall } = await import('./retell.controller.js');
+                triggerAutoCall(webhook.workspaceId, phone, contact?.id, name || 'Form Gönderen', 'FORM', messageContent);
+            } catch (autoCallErr) {
+                console.error('⚠️ [FormWebhook] AutoCall trigger error:', autoCallErr.message);
+            }
         }
 
         res.json({

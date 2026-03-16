@@ -10,7 +10,7 @@ const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 export const getConversations = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { status, assignedToId, teamId, channel, page = 1, limit = 20 } = req.query;
+        const { status, assignedToId, teamId, channel, contactId, page = 1, limit = 20 } = req.query;
 
         const { role } = req.workspaceMember; // Available from requireWorkspaceAccess middleware
 
@@ -31,7 +31,8 @@ export const getConversations = async (req, res) => {
             ...(channel === 'WIDGET' && {
                 channel: 'WIDGET'
             }),
-            ...(status && { status })
+            ...(status && { status }),
+            ...(contactId && { contactId })
         };
 
         // Handle teamId if explicitly provided
@@ -142,9 +143,13 @@ export const getConversations = async (req, res) => {
                     select: {
                         id: true,
                         name: true,
+                        fullName: true,
                         avatar: true,
                         email: true,
+                        phone: true,
                         facebookId: true,
+                        instagramUsername: true,
+                        company: true,
                         status: true
                     }
                 },
@@ -226,7 +231,7 @@ export const getUnreadCount = async (req, res) => {
         const { role } = req.workspaceMember;
 
         // Only count direct message channels (not WIDGET, EMAIL, LEAD, etc.)
-        const messageChannels = ['FACEBOOK', 'INSTAGRAM', 'WHATSAPP'];
+        const messageChannels = ['FACEBOOK', 'INSTAGRAM', 'WHATSAPP', 'PHONE'];
 
         let where = {
             workspaceId,
@@ -786,27 +791,54 @@ export const assignConversation = async (req, res) => {
         });
         console.log(`📡 [Assign] Emitted conversation_assigned to workspace ${workspaceId}`);
 
-        // Atanan kişiye özel bildirim (browser notification gösterilecek)
-        if (conversation.assignedToId) {
+        // Atanan kişiye özel bildirim (browser notification + in-app notification)
+        if (conversation.assignedToId && conversation.assignedToId !== req.user.id) {
+            const contactName = conversation.contact?.name || conversation.contact?.fullName || 'Müşteri';
+
             emitToUser(conversation.assignedToId, 'conversation_assigned_to_you', {
                 conversationId,
                 workspaceId,
                 contact: conversation.contact,
                 assignedBy: req.user.name,
-                message: `${req.user.name} size bir konuşma atadı: ${conversation.contact?.name || conversation.contact?.fullName || 'Müşteri'}`
+                message: `${req.user.name} size bir konuşma atadı: ${contactName}`
             });
+
+            // Create in-app notification
+            try {
+                const { createNotification } = await import('./notification.controller.js');
+                await createNotification(
+                    workspaceId,
+                    conversation.assignedToId,
+                    'CONVERSATION_ASSIGNED',
+                    `${contactName} — konuşma atandı`,
+                    `${req.user.name} tarafından size atandı.`,
+                    { conversationId }
+                );
+            } catch (notifErr) {
+                console.error('Notification error:', notifErr);
+            }
+
             console.log(`📬 [Assign] Notification sent to user ${conversation.assignedToId}`);
         }
 
         // Takım atandıysa, takım üyelerine bildirim gönder
         if (updateData.teamIds && updateData.teamIds !== '[]') {
             const teamIds = JSON.parse(updateData.teamIds);
-            for (const teamId of teamIds) {
+            for (const tId of teamIds) {
+                // Takım bilgisi al
+                let teamName = 'Takım';
+                try {
+                    const team = await prisma.team.findUnique({ where: { id: tId }, select: { name: true } });
+                    teamName = team?.name || 'Takım';
+                } catch (e) { /* ignore */ }
+
                 // Takım üyelerini bul
                 const teamMembers = await prisma.teamMember.findMany({
-                    where: { teamId },
+                    where: { teamId: tId },
                     include: { user: { select: { id: true, name: true } } }
                 });
+
+                const contactName = conversation.contact?.name || conversation.contact?.fullName || 'Müşteri';
 
                 // Her takım üyesine bildirim gönder (atayan kişi hariç)
                 for (const member of teamMembers) {
@@ -816,8 +848,24 @@ export const assignConversation = async (req, res) => {
                             workspaceId,
                             contact: conversation.contact,
                             assignedBy: req.user.name,
-                            message: `${req.user.name} takımınıza bir konuşma atadı: ${conversation.contact?.name || conversation.contact?.fullName || 'Müşteri'}`
+                            message: `${req.user.name} takımınıza bir konuşma atadı: ${contactName}`
                         });
+
+                        // Create in-app notification
+                        try {
+                            const { createNotification } = await import('./notification.controller.js');
+                            await createNotification(
+                                workspaceId,
+                                member.userId,
+                                'CONVERSATION_ASSIGNED',
+                                `${contactName} — takıma atandı`,
+                                `${req.user.name} tarafından ${teamName} takımına atandı.`,
+                                { conversationId, teamId: tId }
+                            );
+                        } catch (notifErr) {
+                            console.error('Notification error:', notifErr);
+                        }
+
                         console.log(`📬 [Assign] Team notification sent to user ${member.userId}`);
                     }
                 }
@@ -1631,5 +1679,47 @@ export const getBotStatus = async (req, res) => {
     } catch (error) {
         console.error('Get bot status error:', error);
         res.status(500).json({ error: 'Bot durumu alınamadı' });
+    }
+};
+
+// Update aiTopic for a conversation
+export const updateTopic = async (req, res) => {
+    try {
+        const { workspaceId, conversationId } = req.params;
+        const { aiTopic } = req.body;
+
+        const existing = await prisma.conversation.findFirst({ where: { id: conversationId, workspaceId } });
+        if (!existing) return res.status(404).json({ error: 'Conversation not found' });
+
+        const conversation = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { aiTopic: aiTopic || null }
+        });
+
+        res.json({ success: true, aiTopic: conversation.aiTopic });
+    } catch (error) {
+        console.error('Update topic error:', error);
+        res.status(500).json({ error: 'Konu başlığı güncellenemedi' });
+    }
+};
+
+// Update funnelType for a conversation
+export const updateFunnel = async (req, res) => {
+    try {
+        const { workspaceId, conversationId } = req.params;
+        const { funnelType } = req.body;
+
+        const existing = await prisma.conversation.findFirst({ where: { id: conversationId, workspaceId } });
+        if (!existing) return res.status(404).json({ error: 'Conversation not found' });
+
+        const conversation = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { funnelType: funnelType || null }
+        });
+
+        res.json({ success: true, funnelType: conversation.funnelType });
+    } catch (error) {
+        console.error('Update funnel error:', error);
+        res.status(500).json({ error: 'Funnel güncellenemedi' });
     }
 };

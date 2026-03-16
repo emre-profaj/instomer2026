@@ -26,6 +26,8 @@ model User {
   role                  String                 @default("USER")
   facebookId            String?                @unique
   facebookAccessToken   String?
+  isOnline              Boolean                @default(false)
+  lastSeenAt            DateTime?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   transfersTo           ConversationTransfer[] @relation("TransfersTo")
@@ -38,6 +40,7 @@ model User {
   workspaceMembers      WorkspaceMember[]
   ownedCompanies        Company[]              @relation("CompanyOwner")
   assignedDeals         Deal[]                 @relation("DealAssignee")
+  notifications         Notification[]
 
   @@map("users")
 }
@@ -112,6 +115,22 @@ model Workspace {
   formSubmissions      FormSubmission[]
   invitations          Invitation[]
   deals                Deal[]
+  retellCalls          RetellCall[]
+  quickReplies         QuickReply[]
+  scheduledCalls       ScheduledCall[]
+  workspaceRules       WorkspaceRule[]
+
+  // Retell AI Voice
+  retellApiKey     String?
+  retellAgentId    String?
+  retellFromNumber String?
+
+  // Retell Auto-Call Settings
+  retellAutoCallEnabled   Boolean  @default(false)
+  retellAutoCallTriggers  Json?    // { onNewLead, onWhatsApp, onMessenger, onWebForm, onMissedChat }
+  retellAutoCallDelay     Int      @default(30)  // seconds to wait before calling
+  retellAutoCallSchedule  Json?    // { start: "09:00", end: "18:00", days: [1,2,3,4,5] }
+
 
   @@index([companyId])
   @@map("workspaces")
@@ -183,6 +202,14 @@ model AIBot {
   teams                 Team[]
   teamMemberships       TeamMember[]
   workspace             Workspace             @relation(fields: [workspaceId], references: [id])
+
+  // Routing Configuration
+  routingEnabled            Boolean  @default(false)
+  routingQuestions          String?  // JSON: [{ id, question, fieldName, fieldType, required }]
+  routingDefaultTeamId      String?  // Varsayılan takım
+  routingDefaultUserId      String?  // Varsayılan kişi
+  routingConditionalEnabled Boolean  @default(false)
+  routingRules              String?  // JSON: [{ id, field, operator, value, teamId, userId, priority }]
 
   @@index([workspaceId])
   @@map("ai_bots")
@@ -274,6 +301,7 @@ model Contact {
   deals             Deal[]
   company           String?
   notes             String?
+  importGroup       String?
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -304,7 +332,10 @@ model Conversation {
   assignedTeamId        String? // Team assigned to this conversation
   aiTopic               String? // AI-generated conversation topic
   aiSummary             String? // AI-generated conversation summary
+  funnelType            String? // Funnel category (e.g., SATIS, DESTEK, SIKAYET)
   handoffPending        Boolean                @default(false) // Bot awaiting user confirmation for handoff
+
+  routingState          String? // JSON: { currentQuestionIndex, answers: { fieldName: value }, completed }
   // Follow-up tracking
   lastBotMessageAt      DateTime? // When bot last sent a message
   inactivityWarningSent Boolean                @default(false) // 40s inactivity warning sent?
@@ -348,6 +379,8 @@ model Message {
   id                String       @id @default(uuid())
   content           String
   messageType       String       @default("TEXT")
+  mediaUrl          String?
+  mediaType         String?      // image, video, audio, document, sticker
   conversationId    String
   senderId          String?
   isFromContact     Boolean      @default(true)
@@ -466,6 +499,9 @@ model Team {
   color           String                 @default("#3b82f6")
   assignedBotId   String?
   assignedBot     AIBot?                 @relation(fields: [assignedBotId], references: [id])
+  parentId        String?
+  parent          Team?                  @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children        Team[]                 @relation("TeamHierarchy")
   createdAt       DateTime               @default(now())
   transfers       ConversationTransfer[]
   members         TeamMember[]
@@ -473,6 +509,7 @@ model Team {
   channelRoutings ChannelRouting[]
 
   @@index([workspaceId])
+  @@index([parentId])
   @@map("teams")
 }
 
@@ -649,6 +686,22 @@ model Automation {
   @@map("automations")
 }
 
+// Workspace-level Automation Rules (Kurallar)
+model WorkspaceRule {
+  id          String    @id @default(uuid())
+  workspaceId String
+  ruleType    String    // PHONE_CAPTURE | HOT_KEYWORD | HOT_OPPORT_EMAIL
+  isActive    Boolean   @default(false)
+  config      String    @default("{}") // JSON: { keywords:[], teamId, emailChannelId }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, ruleType])
+  @@index([workspaceId])
+  @@map("workspace_rules")
+}
+
 model FormWebhook {
   id           String           @id @default(uuid())
   workspaceId  String
@@ -772,4 +825,97 @@ model Deal {
   @@index([stage])
   @@index([status])
   @@map("deals")
+}
+
+
+
+
+
+model Notification {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  type        String   // CONVERSATION_ASSIGNED, TEAM_ASSIGNED, BOT_ROUTING, NEW_MESSAGE
+  title       String
+  body        String
+  data        String?  // JSON - conversationId, teamId, etc.
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([workspaceId, userId])
+  @@map("notifications")
+}
+
+model RetellCall {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  contactId      String?
+  conversationId String?
+  callId         String   @unique
+  agentId        String?
+  fromNumber     String
+  toNumber       String
+  direction      String   @default("outbound")
+  status         String   @default("registered")
+  duration       Int?
+  transcript     String?  @db.Text
+  recordingUrl   String?
+  summary        String?
+  sentiment      String?
+  callSuccessful Boolean?
+  cost           Float?
+  endedReason    String?
+  metadata       String?  @db.Text
+  createdById    String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([contactId])
+  @@index([callId])
+  @@map("retell_calls")
+}
+
+// Quick Reply Templates (Hazır Mesajlar)
+model QuickReply {
+  id          String   @id @default(uuid())
+  workspaceId String
+  title       String
+  content     String
+  shortcut    String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("quick_replies")
+}
+
+// Scheduled AI Calls
+model ScheduledCall {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  contactId     String?
+  contactName   String?
+  toNumber      String
+  scheduledAt   DateTime
+  status        String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED
+  retellCallId  String?
+  errorMessage  String?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@map("scheduled_calls")
 }

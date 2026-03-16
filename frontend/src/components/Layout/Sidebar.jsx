@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, Settings, MessageCircle, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Users, Globe, Contact, Inbox, Database, Mail, BarChart3, Target, UserCheck, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt } from 'lucide-react';
+import { MessageSquare, Settings, MessageCircle, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Users, Globe, Contact, Inbox, Database, Mail, BarChart3, Target, UserCheck, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -12,6 +12,7 @@ const Sidebar = () => {
     const { currentWorkspace, user, logout, switchWorkspace, unreadCount } = useAuth();
     const [workspaces, setWorkspaces] = useState([]);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [wsSearch, setWsSearch] = useState('');
     const [isSettingsOpen, setIsSettingsOpen] = useState(false); // Settings submenu
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false); // Analytics submenu
     const [isSalesOpen, setIsSalesOpen] = useState(false); // Sales submenu
@@ -24,15 +25,16 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: 'Inbox' },
         { path: '/customers', icon: Contact, label: 'Kişiler' },
+        { path: '/pipeline', icon: Kanban, label: 'Pipeline' },
         { path: '/calendar', icon: Calendar, label: 'Takvim' },
-        { path: '/users', icon: Users, label: 'Kullanıcılar' },
-        { path: '/teams', icon: Users, label: 'Takımlar' }
+        { path: '/users', icon: Layers, label: 'Kullanıcı & Takım' }
     ];
 
     // Analytics submenu items
     const analyticsSubItems = [
         { path: '/analytics', icon: BarChart3, label: 'Genel Analizler' },
-        { path: '/agent-performance', icon: Activity, label: 'Agent Performansları' }
+        { path: '/agent-performance', icon: Activity, label: 'Agent Performansları' },
+        { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' }
     ];
 
     // Settings submenu items
@@ -185,8 +187,20 @@ const Sidebar = () => {
                             </>
                         )}
                         <div className="dropdown-label">İŞLETMELER ({workspaces.length})</div>
+                        <div className="dropdown-search">
+                            <Search size={14} />
+                            <input
+                                type="text"
+                                placeholder="Workspace ara..."
+                                value={wsSearch}
+                                onChange={(e) => setWsSearch(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
                         <div className="dropdown-list">
-                            {workspaces.map(ws => (
+                            {workspaces.filter(ws =>
+                                !wsSearch || ws.name.toLowerCase().includes(wsSearch.toLowerCase())
+                            ).map(ws => (
                                 <button
                                     key={ws.id}
                                     className={`dropdown-item ${currentWorkspace?.id === ws.id ? 'active' : ''}`}
@@ -230,7 +244,7 @@ const Sidebar = () => {
                             <div className="nav-category">
                                 <button
                                     className={`nav-category-header ${salesSubItems.some(item => location.pathname === item.path) ? 'active' : ''}`}
-                                    onClick={() => setIsSalesOpen(!isSalesOpen)}
+                                    onClick={() => { setIsSalesOpen(v => !v); setIsAnalyticsOpen(false); setIsSettingsOpen(false); }}
                                     title="Satışlar"
                                 >
                                     <FileText size={20} className="nav-icon" />
@@ -263,7 +277,7 @@ const Sidebar = () => {
                             <div className="nav-category">
                                 <button
                                     className={`nav-category-header ${analyticsSubItems.some(item => location.pathname === item.path) ? 'active' : ''}`}
-                                    onClick={() => setIsAnalyticsOpen(!isAnalyticsOpen)}
+                                    onClick={() => { setIsAnalyticsOpen(v => !v); setIsSalesOpen(false); setIsSettingsOpen(false); }}
                                     title="Analizler"
                                 >
                                     <BarChart3 size={20} className="nav-icon" />
@@ -296,7 +310,7 @@ const Sidebar = () => {
                             <div className="nav-category">
                                 <button
                                     className={`nav-category-header ${settingsSubItems.some(item => location.pathname === item.path) ? 'active' : ''}`}
-                                    onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                    onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsAnalyticsOpen(false); }}
                                     title="Ayarlar"
                                 >
                                     <Settings size={20} className="nav-icon" />

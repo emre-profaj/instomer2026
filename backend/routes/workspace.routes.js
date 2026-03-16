@@ -8,6 +8,7 @@ import {
     updateMemberRole,
     removeMember,
     changeMemberPassword,
+    updateMemberInfo,
     getWorkspaceMembers,
     deleteWorkspace,
     getCompanyInfo,
@@ -87,6 +88,13 @@ router.put(
         body('newPassword').isLength({ min: 6 }).withMessage('Şifre en az 6 karakter olmalıdır')
     ],
     changeMemberPassword
+);
+
+// Update member info (name, email)
+router.patch(
+    '/:workspaceId/members/:userId/info',
+    requireWorkspaceAccess,
+    updateMemberInfo
 );
 
 // Company info routes

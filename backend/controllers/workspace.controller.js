@@ -213,7 +213,9 @@ export const getWorkspaceMembers = async (req, res) => {
                         id: true,
                         name: true,
                         email: true,
-                        avatar: true
+                        avatar: true,
+                        isOnline: true,
+                        lastSeenAt: true
                     }
                 }
             }
@@ -436,6 +438,52 @@ export const changeMemberPassword = async (req, res) => {
     } catch (error) {
         console.error('Change member password error:', error);
         res.status(500).json({ error: 'Şifre değiştirilemedi' });
+    }
+};
+
+// Update member info (name, email) — Owner/Admin only
+export const updateMemberInfo = async (req, res) => {
+    try {
+        const { workspaceId, userId } = req.params;
+        const { name, email } = req.body;
+
+        if (!['OWNER', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
+            return res.status(403).json({ error: 'Yetkiniz yok' });
+        }
+
+        // Verify member belongs to this workspace
+        const member = await prisma.workspaceMember.findUnique({
+            where: { userId_workspaceId: { userId, workspaceId } }
+        });
+        if (!member) {
+            return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
+        }
+
+        // If email is changing, check uniqueness
+        if (email) {
+            const existing = await prisma.user.findFirst({
+                where: { email, NOT: { id: userId } }
+            });
+            if (existing) {
+                return res.status(400).json({ error: 'Bu e-posta başka bir hesapta kullanılıyor' });
+            }
+        }
+
+        const updateData = {};
+        if (name) updateData.name = name;
+        if (email) updateData.email = email;
+
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: updateData,
+            select: { id: true, name: true, email: true, avatar: true, isOnline: true }
+        });
+
+        console.log(`✏️ Member info updated for ${updatedUser.email} by ${req.user.email}`);
+        res.json({ user: updatedUser });
+    } catch (error) {
+        console.error('Update member info error:', error);
+        res.status(500).json({ error: 'Kullanıcı güncellenemedi' });
     }
 };
 

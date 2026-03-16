@@ -640,6 +640,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        widgetId,
                         workspaceId,
                         visitorId,
                         message: text
@@ -650,6 +651,8 @@
                 typingIndicator.style.display = 'none';
                 if (data.reply) {
                     addMessage(data.reply, 'bot');
+                } else {
+                    addMessage('Mesajınız alındı. Kısa süre içinde size geri döneceğiz. 🙏', 'bot');
                 }
             } catch (err) {
                 console.error('Widget send error:', err);

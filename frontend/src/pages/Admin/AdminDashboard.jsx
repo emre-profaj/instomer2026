@@ -30,6 +30,7 @@ const AdminDashboard = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [wsSearchTerm, setWsSearchTerm] = useState('');
 
     // Move workspace to company modal
     const [isMoveWorkspaceModalOpen, setIsMoveWorkspaceModalOpen] = useState(false);
@@ -396,11 +397,11 @@ const AdminDashboard = () => {
         return <div className="loading">Yükleniyor...</div>;
     }
 
-    // Filter companies by search term
     const searchFiltered = companies.filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.owner?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.owner?.email?.toLowerCase().includes(searchTerm.toLowerCase())
+        c.owner?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.workspaces?.some(ws => ws.name.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     // ========== WORKSPACE DETAIL VIEW ==========
@@ -776,8 +777,22 @@ const AdminDashboard = () => {
                     )}
                 </div>
 
+                {selectedCompany.workspaces?.length > 3 && (
+                    <div className="search-bar" style={{ marginBottom: '16px' }}>
+                        <Search size={18} />
+                        <input
+                            type="text"
+                            placeholder="Workspace ara..."
+                            value={wsSearchTerm}
+                            onChange={(e) => setWsSearchTerm(e.target.value)}
+                        />
+                    </div>
+                )}
+
                 <div className="workspaces-grid">
-                    {selectedCompany.workspaces?.map(ws => (
+                    {(selectedCompany.workspaces || []).filter(ws =>
+                        !wsSearchTerm || ws.name.toLowerCase().includes(wsSearchTerm.toLowerCase())
+                    ).map(ws => (
                         <div key={ws.id} className="workspace-card">
                             <div className="workspace-card-header">
                                 <Database size={24} />
@@ -959,7 +974,7 @@ const AdminDashboard = () => {
                 <Search size={18} />
                 <input
                     type="text"
-                    placeholder="Firma veya sahip ara..."
+                    placeholder="Firma, workspace veya sahip ara..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -990,35 +1005,42 @@ const AdminDashboard = () => {
                         </div>
 
                         {/* Workspaces Preview */}
-                        {company.workspaces && company.workspaces.length > 0 && (
-                            <div className="workspaces-preview">
-                                <div
-                                    className="preview-header"
-                                    onClick={() => setExpandedCompanies(prev => ({
-                                        ...prev,
-                                        [company.id]: !prev[company.id]
-                                    }))}
-                                >
-                                    {expandedCompanies[company.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                    <span>Workspaceler ({company.workspaces.length})</span>
-                                </div>
-                                {expandedCompanies[company.id] && (
-                                    <div className="preview-list">
-                                        {company.workspaces.map(ws => (
-                                            <div key={ws.id} className="preview-item">
-                                                <span>{ws.name}</span>
-                                                <button
-                                                    className="btn-mini"
-                                                    onClick={() => handleSwitchToWorkspace(ws)}
-                                                >
-                                                    <ExternalLink size={12} />
-                                                </button>
-                                            </div>
-                                        ))}
+                        {company.workspaces && company.workspaces.length > 0 && (() => {
+                            const wsMatch = searchTerm && company.workspaces.some(ws => ws.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                            const isExpanded = expandedCompanies[company.id] || wsMatch;
+                            const filteredWs = searchTerm
+                                ? company.workspaces.filter(ws => ws.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                : company.workspaces;
+                            return (
+                                <div className="workspaces-preview">
+                                    <div
+                                        className="preview-header"
+                                        onClick={() => setExpandedCompanies(prev => ({
+                                            ...prev,
+                                            [company.id]: !prev[company.id]
+                                        }))}
+                                    >
+                                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                        <span>Workspaceler ({company.workspaces.length})</span>
                                     </div>
-                                )}
-                            </div>
-                        )}
+                                    {isExpanded && (
+                                        <div className="preview-list">
+                                            {filteredWs.map(ws => (
+                                                <div key={ws.id} className="preview-item">
+                                                    <span>{ws.name}</span>
+                                                    <button
+                                                        className="btn-mini"
+                                                        onClick={() => handleSwitchToWorkspace(ws)}
+                                                    >
+                                                        <ExternalLink size={12} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         <div className="company-card-actions">
                             <button
@@ -1047,238 +1069,246 @@ const AdminDashboard = () => {
             </div>
 
             {/* Firmaya Atanmamış Workspaceler */}
-            {unassignedWorkspaces.length > 0 && (
-                <div className="unassigned-workspaces-section">
-                    <div className="section-header">
-                        <h2>
-                            <Database size={20} />
-                            Firmaya Atanmamış Workspaceler ({unassignedWorkspaces.length})
-                        </h2>
-                    </div>
-                    <p className="section-description">
-                        Bu workspace'ler henüz bir firmaya atanmamış. Bir firmaya taşımak için "Firmaya Taşı" butonunu kullanın.
-                    </p>
-                    <div className="unassigned-workspaces-grid">
-                        {unassignedWorkspaces.map(ws => (
-                            <div key={ws.id} className="unassigned-workspace-card">
-                                <div className="workspace-card-header">
-                                    <Database size={24} />
-                                    <h3>{ws.name}</h3>
-                                </div>
-                                <div className="workspace-card-stats">
-                                    <div className="mini-stat">
-                                        <Users size={14} />
-                                        <span>{ws._count?.members || 0} üye</span>
+            {
+                unassignedWorkspaces.length > 0 && (
+                    <div className="unassigned-workspaces-section">
+                        <div className="section-header">
+                            <h2>
+                                <Database size={20} />
+                                Firmaya Atanmamış Workspaceler ({unassignedWorkspaces.length})
+                            </h2>
+                        </div>
+                        <p className="section-description">
+                            Bu workspace'ler henüz bir firmaya atanmamış. Bir firmaya taşımak için "Firmaya Taşı" butonunu kullanın.
+                        </p>
+                        <div className="unassigned-workspaces-grid">
+                            {unassignedWorkspaces.filter(ws =>
+                                !searchTerm || ws.name.toLowerCase().includes(searchTerm.toLowerCase())
+                            ).map(ws => (
+                                <div key={ws.id} className="unassigned-workspace-card">
+                                    <div className="workspace-card-header">
+                                        <Database size={24} />
+                                        <h3>{ws.name}</h3>
                                     </div>
-                                    <div className="mini-stat">
-                                        <MessageSquare size={14} />
-                                        <span>{ws._count?.conversations || 0} sohbet</span>
+                                    <div className="workspace-card-stats">
+                                        <div className="mini-stat">
+                                            <Users size={14} />
+                                            <span>{ws._count?.members || 0} üye</span>
+                                        </div>
+                                        <div className="mini-stat">
+                                            <MessageSquare size={14} />
+                                            <span>{ws._count?.conversations || 0} sohbet</span>
+                                        </div>
+                                    </div>
+                                    <div className="workspace-card-actions">
+                                        <button
+                                            className="btn-sm btn-primary"
+                                            onClick={() => {
+                                                setSelectedWorkspaceToMove(ws);
+                                                setIsMoveWorkspaceModalOpen(true);
+                                            }}
+                                        >
+                                            <Briefcase size={14} />
+                                            Firmaya Taşı
+                                        </button>
+                                        <button
+                                            className="btn-sm btn-success"
+                                            onClick={() => handleSwitchToWorkspace(ws)}
+                                        >
+                                            <ExternalLink size={14} />
+                                            Geç
+                                        </button>
+                                        <button
+                                            className="btn-sm btn-secondary"
+                                            onClick={() => navigate(`/admin/workspace/${ws.id}`)}
+                                        >
+                                            Detay
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="workspace-card-actions">
-                                    <button
-                                        className="btn-sm btn-primary"
-                                        onClick={() => {
-                                            setSelectedWorkspaceToMove(ws);
-                                            setIsMoveWorkspaceModalOpen(true);
-                                        }}
-                                    >
-                                        <Briefcase size={14} />
-                                        Firmaya Taşı
-                                    </button>
-                                    <button
-                                        className="btn-sm btn-success"
-                                        onClick={() => handleSwitchToWorkspace(ws)}
-                                    >
-                                        <ExternalLink size={14} />
-                                        Geç
-                                    </button>
-                                    <button
-                                        className="btn-sm btn-secondary"
-                                        onClick={() => navigate(`/admin/workspace/${ws.id}`)}
-                                    >
-                                        Detay
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Move Workspace to Company Modal */}
-            {isMoveWorkspaceModalOpen && selectedWorkspaceToMove && (
-                <div className="modal-overlay" onClick={() => setIsMoveWorkspaceModalOpen(false)}>
-                    <div className="modal" onClick={e => e.stopPropagation()}>
-                        <h2>Workspace'i Firmaya Taşı</h2>
-                        <p className="modal-description">
-                            <strong>"{selectedWorkspaceToMove.name}"</strong> workspace'ini hangi firmaya taşımak istiyorsunuz?
-                        </p>
-                        <div className="form-group">
-                            <label>Hedef Firma</label>
-                            <select
-                                value={targetCompanyId}
-                                onChange={(e) => setTargetCompanyId(e.target.value)}
-                                required
-                            >
-                                <option value="">Firma Seçin...</option>
-                                {companies.map(c => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.name} ({c._count?.workspaces || 0}/{c.maxWorkspaces} workspace)
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                        {companies.length === 0 && (
-                            <div className="warning-message">
-                                Henüz firma yok. Önce bir firma oluşturun.
-                            </div>
-                        )}
-                        <div className="modal-actions">
-                            <button type="button" className="btn-secondary" onClick={() => setIsMoveWorkspaceModalOpen(false)}>
-                                İptal
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-primary"
-                                disabled={!targetCompanyId}
-                                onClick={handleMoveWorkspaceToCompany}
-                            >
-                                Taşı
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Create Company Modal */}
-            {isCreateCompanyModalOpen && (
-                <div className="modal-overlay" onClick={() => setIsCreateCompanyModalOpen(false)}>
-                    <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-                        <h2>Yeni Firma Oluştur</h2>
-                        {createCompanyError && <div className="error-message">{createCompanyError}</div>}
-                        <form onSubmit={handleCreateCompany}>
+            {
+                isMoveWorkspaceModalOpen && selectedWorkspaceToMove && (
+                    <div className="modal-overlay" onClick={() => setIsMoveWorkspaceModalOpen(false)}>
+                        <div className="modal" onClick={e => e.stopPropagation()}>
+                            <h2>Workspace'i Firmaya Taşı</h2>
+                            <p className="modal-description">
+                                <strong>"{selectedWorkspaceToMove.name}"</strong> workspace'ini hangi firmaya taşımak istiyorsunuz?
+                            </p>
                             <div className="form-group">
-                                <label>Firma Adı</label>
-                                <input
-                                    type="text"
-                                    value={createCompanyForm.name}
-                                    onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, name: e.target.value })}
+                                <label>Hedef Firma</label>
+                                <select
+                                    value={targetCompanyId}
+                                    onChange={(e) => setTargetCompanyId(e.target.value)}
                                     required
-                                />
+                                >
+                                    <option value="">Firma Seçin...</option>
+                                    {companies.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} ({c._count?.workspaces || 0}/{c.maxWorkspaces} workspace)
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
-
-                            {/* Firma Sahibi Seçimi */}
-                            <div className="form-group">
-                                <label>Firma Sahibi (Owner)</label>
-                                <div className="owner-selection-tabs">
-                                    <button
-                                        type="button"
-                                        className={`tab-btn ${!createCompanyForm.createNewUser ? 'active' : ''}`}
-                                        onClick={() => setCreateCompanyForm({ ...createCompanyForm, createNewUser: false })}
-                                    >
-                                        Mevcut Kullanıcı Seç
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className={`tab-btn ${createCompanyForm.createNewUser ? 'active' : ''}`}
-                                        onClick={() => setCreateCompanyForm({ ...createCompanyForm, createNewUser: true, ownerId: '' })}
-                                    >
-                                        Yeni Kullanıcı Oluştur
-                                    </button>
-                                </div>
-                            </div>
-
-                            {!createCompanyForm.createNewUser ? (
-                                <div className="form-group">
-                                    <select
-                                        value={createCompanyForm.ownerId}
-                                        onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, ownerId: e.target.value })}
-                                    >
-                                        <option value="">Kullanıcı Seçin...</option>
-                                        {users.map(u => (
-                                            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            ) : (
-                                <div className="new-user-form">
-                                    <div className="form-group">
-                                        <label>Ad Soyad</label>
-                                        <input
-                                            type="text"
-                                            value={createCompanyForm.newUserName}
-                                            onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, newUserName: e.target.value })}
-                                            placeholder="Kullanıcı adı"
-                                            required={createCompanyForm.createNewUser}
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>E-posta</label>
-                                        <input
-                                            type="email"
-                                            value={createCompanyForm.newUserEmail}
-                                            onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, newUserEmail: e.target.value })}
-                                            placeholder="ornek@email.com"
-                                            required={createCompanyForm.createNewUser}
-                                        />
-                                    </div>
-                                    <div className="form-group">
-                                        <label>Şifre</label>
-                                        <input
-                                            type="password"
-                                            value={createCompanyForm.newUserPassword}
-                                            onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, newUserPassword: e.target.value })}
-                                            placeholder="Şifre"
-                                            required={createCompanyForm.createNewUser}
-                                        />
-                                    </div>
+                            {companies.length === 0 && (
+                                <div className="warning-message">
+                                    Henüz firma yok. Önce bir firma oluşturun.
                                 </div>
                             )}
+                            <div className="modal-actions">
+                                <button type="button" className="btn-secondary" onClick={() => setIsMoveWorkspaceModalOpen(false)}>
+                                    İptal
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    disabled={!targetCompanyId}
+                                    onClick={handleMoveWorkspaceToCompany}
+                                >
+                                    Taşı
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
 
-                            <div className="form-row">
+            {/* Create Company Modal */}
+            {
+                isCreateCompanyModalOpen && (
+                    <div className="modal-overlay" onClick={() => setIsCreateCompanyModalOpen(false)}>
+                        <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+                            <h2>Yeni Firma Oluştur</h2>
+                            {createCompanyError && <div className="error-message">{createCompanyError}</div>}
+                            <form onSubmit={handleCreateCompany}>
                                 <div className="form-group">
-                                    <label>Workspace Limiti</label>
+                                    <label>Firma Adı</label>
                                     <input
-                                        type="number"
-                                        min="1"
-                                        value={createCompanyForm.maxWorkspaces}
-                                        onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, maxWorkspaces: parseInt(e.target.value) })}
+                                        type="text"
+                                        value={createCompanyForm.name}
+                                        onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, name: e.target.value })}
                                         required
                                     />
                                 </div>
+
+                                {/* Firma Sahibi Seçimi */}
                                 <div className="form-group">
-                                    <label>AI Abonelik Paketi</label>
-                                    <select
-                                        value={createCompanyForm.aiSubscriptionType}
-                                        onChange={(e) => {
-                                            const type = e.target.value;
-                                            const limits = { FREE: 50, BASIC: 200, PRO: 1000, UNLIMITED: 999999 };
-                                            setCreateCompanyForm({
-                                                ...createCompanyForm,
-                                                aiSubscriptionType: type,
-                                                dailyAiChatLimit: limits[type] || 50
-                                            });
-                                        }}
-                                    >
-                                        <option value="FREE">FREE (50/gün)</option>
-                                        <option value="BASIC">BASIC (200/gün)</option>
-                                        <option value="PRO">PRO (1000/gün)</option>
-                                        <option value="UNLIMITED">UNLIMITED (Sınırsız)</option>
-                                    </select>
+                                    <label>Firma Sahibi (Owner)</label>
+                                    <div className="owner-selection-tabs">
+                                        <button
+                                            type="button"
+                                            className={`tab-btn ${!createCompanyForm.createNewUser ? 'active' : ''}`}
+                                            onClick={() => setCreateCompanyForm({ ...createCompanyForm, createNewUser: false })}
+                                        >
+                                            Mevcut Kullanıcı Seç
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`tab-btn ${createCompanyForm.createNewUser ? 'active' : ''}`}
+                                            onClick={() => setCreateCompanyForm({ ...createCompanyForm, createNewUser: true, ownerId: '' })}
+                                        >
+                                            Yeni Kullanıcı Oluştur
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="modal-actions">
-                                <button type="button" className="btn-secondary" onClick={() => setIsCreateCompanyModalOpen(false)}>
-                                    İptal
-                                </button>
-                                <button type="submit" className="btn-primary">Oluştur</button>
-                            </div>
-                        </form>
+
+                                {!createCompanyForm.createNewUser ? (
+                                    <div className="form-group">
+                                        <select
+                                            value={createCompanyForm.ownerId}
+                                            onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, ownerId: e.target.value })}
+                                        >
+                                            <option value="">Kullanıcı Seçin...</option>
+                                            {users.map(u => (
+                                                <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div className="new-user-form">
+                                        <div className="form-group">
+                                            <label>Ad Soyad</label>
+                                            <input
+                                                type="text"
+                                                value={createCompanyForm.newUserName}
+                                                onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, newUserName: e.target.value })}
+                                                placeholder="Kullanıcı adı"
+                                                required={createCompanyForm.createNewUser}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>E-posta</label>
+                                            <input
+                                                type="email"
+                                                value={createCompanyForm.newUserEmail}
+                                                onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, newUserEmail: e.target.value })}
+                                                placeholder="ornek@email.com"
+                                                required={createCompanyForm.createNewUser}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Şifre</label>
+                                            <input
+                                                type="password"
+                                                value={createCompanyForm.newUserPassword}
+                                                onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, newUserPassword: e.target.value })}
+                                                placeholder="Şifre"
+                                                required={createCompanyForm.createNewUser}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="form-row">
+                                    <div className="form-group">
+                                        <label>Workspace Limiti</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={createCompanyForm.maxWorkspaces}
+                                            onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, maxWorkspaces: parseInt(e.target.value) })}
+                                            required
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>AI Abonelik Paketi</label>
+                                        <select
+                                            value={createCompanyForm.aiSubscriptionType}
+                                            onChange={(e) => {
+                                                const type = e.target.value;
+                                                const limits = { FREE: 50, BASIC: 200, PRO: 1000, UNLIMITED: 999999 };
+                                                setCreateCompanyForm({
+                                                    ...createCompanyForm,
+                                                    aiSubscriptionType: type,
+                                                    dailyAiChatLimit: limits[type] || 50
+                                                });
+                                            }}
+                                        >
+                                            <option value="FREE">FREE (50/gün)</option>
+                                            <option value="BASIC">BASIC (200/gün)</option>
+                                            <option value="PRO">PRO (1000/gün)</option>
+                                            <option value="UNLIMITED">UNLIMITED (Sınırsız)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="modal-actions">
+                                    <button type="button" className="btn-secondary" onClick={() => setIsCreateCompanyModalOpen(false)}>
+                                        İptal
+                                    </button>
+                                    <button type="submit" className="btn-primary">Oluştur</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 

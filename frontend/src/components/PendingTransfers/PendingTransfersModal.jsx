@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { conversationAPI } from '../../services/api';
 import { X, Check, ArrowRight } from 'lucide-react';
 import './PendingTransfersModal.css';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 
 const PendingTransfersModal = ({ isOpen, onClose, onTransferProcessed }) => {
     const [transfers, setTransfers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
         if (isOpen) {
@@ -39,15 +41,24 @@ const PendingTransfersModal = ({ isOpen, onClose, onTransferProcessed }) => {
     };
 
     const handleReject = async (transferId) => {
-        if (!window.confirm('Bu transferi reddetmek istediğinize emin misiniz?')) return;
-        try {
-            await conversationAPI.rejectTransfer(transferId);
-            setTransfers(transfers.filter(t => t.id !== transferId));
-            if (transfers.length === 1) onClose();
-        } catch (error) {
-            console.error('Error rejecting transfer:', error);
-            alert('Transfer reddedilirken hata oluştu.');
-        }
+        setConfirmModal({
+            isOpen: true,
+            title: 'Transfer Reddet',
+            message: 'Bu transferi reddetmek istediğinize emin misiniz?',
+            confirmText: 'Evet, Reddet',
+            type: 'warning',
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await conversationAPI.rejectTransfer(transferId);
+                    setTransfers(transfers.filter(t => t.id !== transferId));
+                    if (transfers.length === 1) onClose();
+                } catch (error) {
+                    console.error('Error rejecting transfer:', error);
+                    alert('Transfer reddedilirken hata oluştu.');
+                }
+            }
+        });
     };
 
     if (!isOpen) return null;
@@ -111,6 +122,16 @@ const PendingTransfersModal = ({ isOpen, onClose, onTransferProcessed }) => {
                     )}
                 </div>
             </div>
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                type={confirmModal.type}
+            />
         </div>
     );
 };

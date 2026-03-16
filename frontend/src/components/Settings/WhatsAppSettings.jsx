@@ -77,9 +77,21 @@ const WhatsAppSettings = ({ workspaceId, aiBots, assigningBot, onAssignBot, onCl
                     phoneNumber: '',
                     workspaceId: workspaceId
                 }).then(result => {
-                    console.log('📱 [WhatsApp] Success:', result.data);
-                    alert('WhatsApp başarıyla bağlandı!');
-                    loadPhoneNumbers();
+                    console.log('📱 [WhatsApp] Discovery result:', result.data);
+                    const numbers = result.data.availableNumbers || [];
+                    if (numbers.length === 0) {
+                        alert('Bu portföyde bağlanabilecek numara bulunamadı.');
+                    } else {
+                        // Show selection modal with discovered numbers
+                        setCandidates(numbers.map(n => ({
+                            id: n.id,
+                            display_phone_number: n.display_phone_number,
+                            waba_id: n.waba_id,
+                            waba_name: n.waba_name,
+                            business_name: n.verified_name
+                        })));
+                        setShowCandidatesModal(true);
+                    }
                 }).catch(error => {
                     console.error('📱 [WhatsApp] Error:', error);
                     alert('Bağlantı başarısız: ' + (error.response?.data?.error || error.message));

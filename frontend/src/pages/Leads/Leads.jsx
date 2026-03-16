@@ -21,6 +21,7 @@ import {
     ExternalLink
 } from 'lucide-react';
 import './Leads.css';
+import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 // Lead durumu seçenekleri
 const LEAD_STATUS_OPTIONS = [
@@ -46,6 +47,7 @@ const Leads = () => {
     const [stats, setStats] = useState(null);
     const [pages, setPages] = useState([]);
     const [selectedPage, setSelectedPage] = useState('');
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
         if (currentWorkspace) {
@@ -120,18 +122,27 @@ const Leads = () => {
     };
 
     const handleDelete = async (leadId) => {
-        if (!window.confirm('Bu lead\'i silmek istediğinize emin misiniz?')) return;
-        try {
-            await leadsAPI.delete(leadId);
-            if (selectedLead?.id === leadId) {
-                setSelectedLead(null);
+        setConfirmModal({
+            isOpen: true,
+            title: 'Lead Sil',
+            message: 'Bu lead\'i silmek istediğinize emin misiniz?',
+            confirmText: 'Evet, Sil',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await leadsAPI.delete(leadId);
+                    if (selectedLead?.id === leadId) {
+                        setSelectedLead(null);
+                    }
+                    loadLeads();
+                    loadStats();
+                } catch (error) {
+                    console.error('Error deleting lead:', error);
+                    alert('Lead silinemedi');
+                }
             }
-            loadLeads();
-            loadStats();
-        } catch (error) {
-            console.error('Error deleting lead:', error);
-            alert('Lead silinemedi');
-        }
+        });
     };
 
     const formatDate = (dateString) => {
@@ -150,7 +161,7 @@ const Leads = () => {
         const date = new Date(dateString);
         const now = new Date();
         const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays === 0) {
             return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         } else if (diffDays === 1) {
@@ -198,7 +209,7 @@ const Leads = () => {
                             <Facebook size={20} className="header-icon" />
                             Leads
                         </h2>
-                        <button 
+                        <button
                             className="sync-btn-small"
                             onClick={handleSync}
                             disabled={syncing}
@@ -298,11 +309,11 @@ const Leads = () => {
                                         {lead.phone || lead.email || 'İletişim bilgisi yok'}
                                     </div>
                                     <div className="lead-item-footer">
-                                        <span 
+                                        <span
                                             className="lead-item-status"
-                                            style={{ 
+                                            style={{
                                                 backgroundColor: getStatusInfo(lead.status).bg,
-                                                color: getStatusInfo(lead.status).color 
+                                                color: getStatusInfo(lead.status).color
                                             }}
                                         >
                                             {getStatusInfo(lead.status).label}
@@ -353,8 +364,8 @@ const Leads = () => {
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                                     ))}
                                 </select>
-                                <button 
-                                    className="btn-icon-delete" 
+                                <button
+                                    className="btn-icon-delete"
                                     onClick={() => handleDelete(selectedLead.id)}
                                     title="Sil"
                                 >
@@ -489,6 +500,16 @@ const Leads = () => {
                     </div>
                 )}
             </div>
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                type={confirmModal.type}
+            />
         </div>
     );
 };

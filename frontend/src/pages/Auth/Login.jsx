@@ -9,6 +9,7 @@ const Login = () => {
     const { login, isAuthenticated, user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [rememberMe, setRememberMe] = useState(true);
     const [animationStage, setAnimationStage] = useState('loading'); // loading -> assembled -> form-visible
 
     const [formData, setFormData] = useState({
@@ -55,7 +56,7 @@ const Login = () => {
         setLoading(true);
         setError('');
 
-        const result = await login({ email: formData.email, password: formData.password });
+        const result = await login({ email: formData.email, password: formData.password, rememberMe });
 
         if (result.success) {
             // Check if user is SUPER_ADMIN and redirect accordingly
@@ -123,6 +124,18 @@ const Login = () => {
                             onChange={handleChange}
                             required
                         />
+                    </div>
+
+                    <div className="remember-me-row">
+                        <label className="remember-me-label">
+                            <input
+                                type="checkbox"
+                                checked={rememberMe}
+                                onChange={(e) => setRememberMe(e.target.checked)}
+                                className="remember-me-checkbox"
+                            />
+                            Beni Hatırla
+                        </label>
                     </div>
 
                     <button

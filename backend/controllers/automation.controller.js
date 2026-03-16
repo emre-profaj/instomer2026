@@ -1228,14 +1228,27 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
 
         console.log(`✅ Automation template sent to ${contact.phone}:`, response.data);
 
-        // Create conversation and message
+        // Find existing conversation - prefer WHATSAPP, then any OPEN conversation (e.g., LEAD)
         let conversation = await prisma.conversation.findFirst({
             where: {
                 contactId: contact.id,
                 workspaceId,
                 channel: 'WHATSAPP'
-            }
+            },
+            orderBy: { lastMessageAt: 'desc' }
         });
+
+        if (!conversation) {
+            // Check for any other open conversation (e.g., LEAD) to prevent duplicates
+            conversation = await prisma.conversation.findFirst({
+                where: {
+                    contactId: contact.id,
+                    workspaceId,
+                    status: 'OPEN'
+                },
+                orderBy: { lastMessageAt: 'desc' }
+            });
+        }
 
         if (!conversation) {
             conversation = await prisma.conversation.create({

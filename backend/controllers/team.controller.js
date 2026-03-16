@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 // Create a new team
 export const createTeam = async (req, res) => {
     try {
-        const { name, description, color } = req.body;
+        const { name, description, color, parentId } = req.body;
         const { workspaceId } = req.params;
 
         console.log(`[Team] Creating team in workspace ${workspaceId} by user ${req.user?.id}`, req.body);
@@ -20,6 +20,7 @@ export const createTeam = async (req, res) => {
             description,
             workspaceId,
             assignedBotId: req.body.assignedBotId || null,
+            parentId: parentId || null,
             members: {
                 create: {
                     userId: req.user.id,
@@ -58,7 +59,7 @@ export const getTeams = async (req, res) => {
         const { workspaceId } = req.params;
 
         const teams = await prisma.team.findMany({
-            where: { workspaceId },
+            where: { workspaceId, parentId: null },
             include: {
                 _count: { select: { members: true } },
                 assignedBot: true,
@@ -67,6 +68,45 @@ export const getTeams = async (req, res) => {
                         user: { select: { id: true, name: true, avatar: true } },
                         bot: { select: { id: true, name: true, isActive: true } }
                     }
+                },
+                children: {
+                    include: {
+                        _count: { select: { members: true } },
+                        assignedBot: true,
+                        members: {
+                            include: {
+                                user: { select: { id: true, name: true, avatar: true } },
+                                bot: { select: { id: true, name: true, isActive: true } }
+                            }
+                        },
+                        children: {
+                            include: {
+                                _count: { select: { members: true } },
+                                assignedBot: true,
+                                members: {
+                                    include: {
+                                        user: { select: { id: true, name: true, avatar: true } },
+                                        bot: { select: { id: true, name: true, isActive: true } }
+                                    }
+                                },
+                                children: {
+                                    include: {
+                                        _count: { select: { members: true } },
+                                        assignedBot: true,
+                                        members: {
+                                            include: {
+                                                user: { select: { id: true, name: true, avatar: true } },
+                                                bot: { select: { id: true, name: true, isActive: true } }
+                                            }
+                                        }
+                                    },
+                                    orderBy: { createdAt: 'asc' }
+                                }
+                            },
+                            orderBy: { createdAt: 'asc' }
+                        }
+                    },
+                    orderBy: { createdAt: 'asc' }
                 }
             },
             orderBy: { createdAt: 'desc' }
@@ -143,7 +183,7 @@ export const removeTeamMember = async (req, res) => {
 
         // Find the member first
         const findWhere = { teamId };
-        
+
         if (type === 'bot') {
             findWhere.botId = memberId;
         } else {
@@ -187,7 +227,8 @@ export const updateTeam = async (req, res) => {
                 ...(name && { name }),
                 ...(description !== undefined && { description }),
                 ...(color && { color }),
-                ...(req.body.hasOwnProperty('assignedBotId') && { assignedBotId: req.body.assignedBotId })
+                ...(req.body.hasOwnProperty('assignedBotId') && { assignedBotId: req.body.assignedBotId }),
+                ...(req.body.hasOwnProperty('parentId') && { parentId: req.body.parentId || null })
             },
             include: {
                 _count: { select: { members: true } },

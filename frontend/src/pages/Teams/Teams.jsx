@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { teamAPI, workspaceAPI } from '../../services/api';
-import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical } from 'lucide-react';
+import { teamAPI, workspaceAPI, aiAPI } from '../../services/api';
+import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical, Bot } from 'lucide-react';
 import './Teams.css';
+import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 const Teams = () => {
     const { currentWorkspace, user } = useAuth();
@@ -12,6 +13,7 @@ const Teams = () => {
     const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
     const [selectedTeam, setSelectedTeam] = useState(null);
     const [expandedTeams, setExpandedTeams] = useState({});
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     // Drag and Drop States
     const [draggedTeam, setDraggedTeam] = useState(null);
@@ -28,10 +30,15 @@ const Teams = () => {
     const [teamMembers, setTeamMembers] = useState([]);
     const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
 
+    // Bot (AI Assistant) states
+    const [bots, setBots] = useState([]);
+    const [selectedBotToAdd, setSelectedBotToAdd] = useState('');
+
     useEffect(() => {
         if (currentWorkspace) {
             loadTeams();
             loadWorkspaceMembers();
+            loadBots();
         }
     }, [currentWorkspace]);
 
@@ -53,6 +60,15 @@ const Teams = () => {
             setWorkspaceMembers(response.data.members);
         } catch (error) {
             console.error('Error loading members:', error);
+        }
+    };
+
+    const loadBots = async () => {
+        try {
+            const response = await aiAPI.getBots(currentWorkspace.id);
+            setBots(response.data.bots || []);
+        } catch (error) {
+            console.error('Error loading bots:', error);
         }
     };
 
@@ -90,14 +106,22 @@ const Teams = () => {
     };
 
     const handleDeleteTeam = async (teamId) => {
-        if (window.confirm('Bu takımı ve alt takımlarını silmek istediğinize emin misiniz?')) {
-            try {
-                await teamAPI.delete(currentWorkspace.id, teamId);
-                loadTeams();
-            } catch (error) {
-                console.error('Error deleting team:', error);
+        setConfirmModal({
+            isOpen: true,
+            title: 'Takım Sil',
+            message: 'Bu takımı ve alt takımlarını silmek istediğinize emin misiniz?',
+            confirmText: 'Evet, Sil',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await teamAPI.delete(currentWorkspace.id, teamId);
+                    loadTeams();
+                } catch (error) {
+                    console.error('Error deleting team:', error);
+                }
             }
-        }
+        });
     };
 
     const openCreateModal = (team = null, parentId = null) => {
@@ -176,6 +200,37 @@ const Teams = () => {
     const getAvailableMembers = () => {
         const teamUserIds = teamMembers.filter(m => m.userId).map(m => m.userId);
         return workspaceMembers.filter(m => !teamUserIds.includes(m.userId));
+    };
+
+    const getAvailableBots = () => {
+        const teamBotIds = teamMembers.filter(m => m.botId).map(m => m.botId);
+        return bots.filter(b => !teamBotIds.includes(b.id));
+    };
+
+    const handleAddBot = async () => {
+        if (!selectedBotToAdd || !selectedTeam) return;
+        try {
+            await teamAPI.addMember(currentWorkspace.id, selectedTeam.id, { botId: selectedBotToAdd });
+            const response = await teamAPI.getMembers(currentWorkspace.id, selectedTeam.id);
+            setTeamMembers(response.data.members);
+            setSelectedBotToAdd('');
+            loadTeams();
+        } catch (error) {
+            console.error('Error adding bot:', error);
+            alert('Bot eklenirken bir hata oluştu.');
+        }
+    };
+
+    const handleRemoveBot = async (botId) => {
+        if (!selectedTeam) return;
+        try {
+            await teamAPI.removeMember(currentWorkspace.id, selectedTeam.id, botId, 'bot');
+            const response = await teamAPI.getMembers(currentWorkspace.id, selectedTeam.id);
+            setTeamMembers(response.data.members);
+            loadTeams();
+        } catch (error) {
+            console.error('Error removing bot:', error);
+        }
     };
 
     // Drag and Drop Handlers
@@ -479,7 +534,9 @@ const Teams = () => {
                             </button>
                         </div>
 
+                        {/* Kullanıcı Ekle */}
                         <div className="add-member-section">
+                            <div className="members-section-label"><Users size={13} /> Kullanıcı Ekle</div>
                             <div className="member-select-row">
                                 <select
                                     className="member-select"
@@ -501,33 +558,68 @@ const Teams = () => {
                             </div>
                         </div>
 
+                        {/* AI Asistan Ekle */}
+                        <div className="add-member-section add-bot-section">
+                            <div className="members-section-label bot-label"><Bot size={13} /> AI Asistan Ekle</div>
+                            <div className="member-select-row">
+                                <select
+                                    className="member-select"
+                                    value={selectedBotToAdd}
+                                    onChange={(e) => setSelectedBotToAdd(e.target.value)}
+                                >
+                                    <option value="">Asistan Seçin...</option>
+                                    {getAvailableBots().map(b => (
+                                        <option key={b.id} value={b.id}>{b.name}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    className="btn-primary bot-add-btn"
+                                    onClick={handleAddBot}
+                                    disabled={!selectedBotToAdd}
+                                >
+                                    Ekle
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="members-list">
-                            {teamMembers.filter(m => m.userId).length > 0 ? (
-                                teamMembers.filter(m => m.userId).map(member => (
-                                    <div key={member.id} className="member-item">
-                                        <div className="member-info">
-                                            <div className="member-avatar">
-                                                <span style={{ color: '#ffffff' }}>{member.user?.name?.charAt(0).toUpperCase() || '?'}</span>
-                                            </div>
-                                            <div className="member-details">
-                                                <span className="member-name">
-                                                    {member.user?.name}
-                                                </span>
-                                                <span className="member-type-badge">
-                                                    Kullanıcı
-                                                </span>
-                                            </div>
+                            {/* Kullanıcı üyeleri */}
+                            {teamMembers.filter(m => m.userId).map(member => (
+                                <div key={member.id} className="member-item">
+                                    <div className="member-info">
+                                        <div className="member-avatar">
+                                            <span style={{ color: '#ffffff' }}>{member.user?.name?.charAt(0).toUpperCase() || '?'}</span>
                                         </div>
-                                        <button
-                                            className="icon-btn danger"
-                                            onClick={() => handleRemoveMember(member)}
-                                            title="Çıkar"
-                                        >
-                                            <X size={16} />
-                                        </button>
+                                        <div className="member-details">
+                                            <span className="member-name">{member.user?.name}</span>
+                                            <span className="member-type-badge">Kullanıcı</span>
+                                        </div>
                                     </div>
-                                ))
-                            ) : (
+                                    <button className="icon-btn danger" onClick={() => handleRemoveMember(member)} title="Çıkar">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            ))}
+
+                            {/* Bot üyeleri */}
+                            {teamMembers.filter(m => m.botId).map(member => (
+                                <div key={member.id} className="member-item bot-member-item">
+                                    <div className="member-info">
+                                        <div className="member-avatar bot-avatar">
+                                            <Bot size={16} color="#fff" />
+                                        </div>
+                                        <div className="member-details">
+                                            <span className="member-name">{member.bot?.name}</span>
+                                            <span className="member-type-badge bot-badge">AI Asistan</span>
+                                        </div>
+                                    </div>
+                                    <button className="icon-btn danger" onClick={() => handleRemoveBot(member.botId)} title="Çıkar">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            ))}
+
+                            {teamMembers.filter(m => m.userId || m.botId).length === 0 && (
                                 <div style={{ textAlign: 'center', color: '#9ca3af', padding: '20px' }}>
                                     Bu takımda henüz üye yok.
                                 </div>
@@ -536,6 +628,15 @@ const Teams = () => {
                     </div>
                 </div>
             )}
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                confirmText={confirmModal.confirmText}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                type={confirmModal.type}
+            />
         </div>
     );
 };

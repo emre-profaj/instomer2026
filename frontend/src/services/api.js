@@ -12,7 +12,7 @@ const api = axios.create({
 // Add token to requests
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -23,15 +23,64 @@ api.interceptors.request.use(
     }
 );
 
+// Guard against multiple simultaneous 401 redirects
+let isRedirectingToLogin = false;
+
 // Handle response errors
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
-        if (error.response?.status === 401) {
+    async (error) => {
+        const originalRequest = error.config;
+
+        // Handle network errors (server down/restarting) — retry once after delay
+        if (!error.response && !originalRequest._networkRetried) {
+            originalRequest._networkRetried = true;
+            console.warn('⚠️ Network error — server may be restarting. Retrying in 3s...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            try {
+                return await api(originalRequest);
+            } catch (retryError) {
+                // Still failing — let it propagate silently, don't redirect
+                return Promise.reject(retryError);
+            }
+        }
+
+        // Handle 401 Unauthorized - retry once before giving up (handles restart transients)
+        if (error.response?.status === 401 && !originalRequest._retried) {
+            originalRequest._retried = true;
+            // Wait 2 seconds and retry — server may be restarting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+                return await api(originalRequest);
+            } catch (retryError) {
+                // Retry also failed — token is genuinely invalid
+                if (retryError.response?.status === 401 && !isRedirectingToLogin) {
+                    isRedirectingToLogin = true;
+                    localStorage.removeItem('token');
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('currentWorkspace');
+                    window.location.replace('/login');
+                }
+                return Promise.reject(retryError);
+            }
+        }
+
+        // Already retried 401, prevent duplicate redirects
+        if (error.response?.status === 401 && !isRedirectingToLogin) {
+            isRedirectingToLogin = true;
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            window.location.href = '/login';
+            localStorage.removeItem('currentWorkspace');
+            window.location.replace('/login');
+            return Promise.reject(error);
         }
+
+        // Handle 429 Too Many Requests - rate limiting
+        if (error.response?.status === 429) {
+            console.warn('⚠️ Rate limited (429). Too many requests.');
+            // Don't retry automatically - just let it fail gracefully
+        }
+
         return Promise.reject(error);
     }
 );
@@ -92,6 +141,8 @@ export const workspaceAPI = {
         api.delete(`/workspaces/${workspaceId}/members/${userId}`),
     changeMemberPassword: (workspaceId, userId, newPassword) =>
         api.put(`/workspaces/${workspaceId}/members/${userId}/password`, { newPassword }),
+    updateMemberInfo: (workspaceId, userId, data) =>
+        api.patch(`/workspaces/${workspaceId}/members/${userId}/info`, data),
     delete: (workspaceId) => api.delete(`/workspaces/${workspaceId}`),
     // Company Info
     getCompanyInfo: (workspaceId) => api.get(`/workspaces/${workspaceId}/company`),
@@ -138,7 +189,7 @@ export const facebookAPI = {
     // Sync historical conversations with SSE progress
     syncHistoricalConversations: (workspaceId, data, onProgress) => {
         return new Promise((resolve, reject) => {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 
             fetch(`${api.defaults.baseURL}/facebook/sync-history/${workspaceId}`, {
                 method: 'POST',
@@ -235,7 +286,15 @@ export const conversationAPI = {
     toggleBot: (workspaceId, conversationId, botEnabled) => api.put(`/conversations/${workspaceId}/${conversationId}/bot-toggle`, { botEnabled }),
 
     // Take Over - Agent kendi kendine üstlenir
-    takeOver: (workspaceId, conversationId) => api.post(`/conversations/${workspaceId}/${conversationId}/take-over`)
+    takeOver: (workspaceId, conversationId) => api.post(`/conversations/${workspaceId}/${conversationId}/take-over`),
+
+    // Update aiTopic
+    updateTopic: (workspaceId, conversationId, aiTopic) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/topic`, { aiTopic }),
+
+    // Update funnelType
+    updateFunnel: (workspaceId, conversationId, funnelType) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/funnel`, { funnelType })
 };
 
 // AI API
@@ -263,7 +322,10 @@ export const aiAPI = {
 
     // Widget
     getWidgetSettings: (workspaceId) => api.get(`/ai/${workspaceId}/widget`),
-    updateWidgetSettings: (workspaceId, data) => api.put(`/ai/${workspaceId}/widget`, data)
+    updateWidgetSettings: (workspaceId, data) => api.put(`/ai/${workspaceId}/widget`, data),
+
+    // İnsto Bot
+    instoBotChat: (workspaceId, message, history) => api.post(`/ai/${workspaceId}/insto-bot/chat`, { message, history })
 };
 
 export const whatsappAPI = {
@@ -319,7 +381,8 @@ export const contactAPI = {
     unblock: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/unblock`),
     archive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/archive`),
     unarchive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/unarchive`),
-    addNote: (workspaceId, id, note) => api.post(`/contacts/${workspaceId}/${id}/note`, { note })
+    addNote: (workspaceId, id, note) => api.post(`/contacts/${workspaceId}/${id}/note`, { note }),
+    bulkImport: (workspaceId, data) => api.post(`/contacts/${workspaceId}/import`, data)
 };
 
 export const leadsAPI = {
@@ -419,6 +482,7 @@ export const webWidgetAPI = {
     getById: (id) => api.get(`/webwidgets/${id}`),
     create: (data) => api.post('/webwidgets', data),
     update: (id, data) => api.put(`/webwidgets/${id}`, data),
+    updateBot: (id, botId) => api.put(`/webwidgets/${id}`, { assignedBotId: botId || null }),
     delete: (id) => api.delete(`/webwidgets/${id}`)
 };
 
@@ -448,4 +512,38 @@ export const notificationAPI = {
     markAsRead: (workspaceId, notificationId) => api.put(`/notifications/${workspaceId}/${notificationId}/read`),
     markAllAsRead: (workspaceId) => api.put(`/notifications/${workspaceId}/read-all`),
     deleteAll: (workspaceId) => api.delete(`/notifications/${workspaceId}/delete-all`)
+};
+
+export const retellAPI = {
+    getSettings: (workspaceId) => api.get(`/retell/${workspaceId}/settings`),
+    saveSettings: (workspaceId, data) => api.put(`/retell/${workspaceId}/settings`, data),
+    getAgents: (workspaceId) => api.get(`/retell/${workspaceId}/agents`),
+    makeCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/call`, data),
+    getCallHistory: (workspaceId, params = {}) => {
+        const query = new URLSearchParams(params).toString();
+        return api.get(`/retell/${workspaceId}/calls${query ? `?${query}` : ''}`);
+    },
+    scheduleCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/schedule-call`, data),
+    getScheduledCalls: (workspaceId) => api.get(`/retell/${workspaceId}/scheduled-calls`),
+    cancelScheduledCall: (workspaceId, id) => api.delete(`/retell/${workspaceId}/scheduled-calls/${id}`),
+    getAnalytics: (workspaceId, params = {}) => {
+        const query = new URLSearchParams(params).toString();
+        return api.get(`/retell/${workspaceId}/analytics${query ? `?${query}` : ''}`);
+    },
+    bulkRetryCall: (workspaceId, callIds) => api.post(`/retell/${workspaceId}/bulk-retry`, { callIds }),
+    syncCalls: (workspaceId) => api.post(`/retell/${workspaceId}/sync-calls`)
+};
+
+// Quick Reply (Hazır Mesaj) API
+export const quickReplyAPI = {
+    getAll: (workspaceId) => api.get(`/workspaces/${workspaceId}/quick-replies`),
+    create: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/quick-replies`, data),
+    update: (workspaceId, id, data) => api.put(`/workspaces/${workspaceId}/quick-replies/${id}`, data),
+    delete: (workspaceId, id) => api.delete(`/workspaces/${workspaceId}/quick-replies/${id}`)
+};
+
+// Workspace Automation Rules (Kurallar)
+export const rulesAPI = {
+    getAll: (workspaceId) => api.get(`/rules/${workspaceId}/rules`),
+    upsert: (workspaceId, ruleType, data) => api.put(`/rules/${workspaceId}/rules/${ruleType}`, data)
 };

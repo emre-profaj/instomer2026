@@ -159,6 +159,14 @@
     margin-left: auto;
 }
 
+/* İçe Aktar button sits right before Dışa Aktar — no separate auto margin */
+.import-csv-btn {
+    margin-left: auto;
+}
+.import-csv-btn + .export-csv-btn {
+    margin-left: 0;
+}
+
 .export-csv-btn:hover {
     background: #dc2626;
     transform: translateY(-1px);
@@ -168,6 +176,15 @@
 .export-csv-btn:active {
     transform: translateY(0);
 }
+
+/* Right-aligned group (archive toggle + add button) in header */
+.header-right-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
 
 .source-filter-tabs {
     display: flex;
@@ -1063,7 +1080,7 @@
 }
 
 /* Floating Bulk Bar */
-.floating-bulk-bar {
+.customers-floating-bulk-bar {
     position: fixed;
     bottom: 24px;
     left: 50%;
@@ -1071,62 +1088,64 @@
     z-index: 100;
 }
 
-.bulk-bar-content {
+.customers-bulk-bar-content {
     display: inline-flex;
     align-items: center;
-    gap: 20px;
+    gap: 16px;
     padding: 14px 24px;
-    background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
     border-radius: 12px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15);
 }
 
-.bulk-bar-left {
+.customers-bulk-bar-left {
     display: flex;
     align-items: center;
     gap: 12px;
 }
 
-.bulk-close-btn {
+.customers-bulk-close-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border: none;
-    background: rgba(255, 255, 255, 0.1);
-    color: #9ca3af;
+    background: #fee2e2;
+    color: #ef4444;
     cursor: pointer;
     border-radius: 8px;
     transition: all 0.2s;
 }
 
-.bulk-close-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
+.customers-bulk-close-btn:hover {
+    background: #fca5a5;
+    color: #b91c1c;
 }
 
-.bulk-count {
-    font-size: 14px;
-    color: #e5e7eb;
+.customers-bulk-count {
+    font-size: 15px;
+    color: #4b5563;
 }
 
-.bulk-count strong {
-    color: white;
+.customers-bulk-count strong {
+    color: #111827;
     font-weight: 700;
+    font-size: 16px;
 }
 
-.bulk-bar-actions {
+.customers-bulk-bar-actions {
     display: flex;
     align-items: center;
     gap: 10px;
 }
 
-.bulk-select-all-btn {
+.customers-bulk-select-all-btn {
     padding: 8px 16px;
-    background: rgba(255, 255, 255, 0.1);
-    color: #e5e7eb;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: white;
+    color: #4b5563;
+    border: 1px solid #d1d5db;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 500;
@@ -1134,19 +1153,19 @@
     transition: all 0.2s;
 }
 
-.bulk-select-all-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    color: white;
+.customers-bulk-select-all-btn:hover {
+    background: #f3f4f6;
+    color: #111827;
 }
 
-.bulk-delete-btn {
+.customers-bulk-delete-btn {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 8px 18px;
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: white;
-    border: none;
+    background: white;
+    color: #ef4444;
+    border: 1px solid #fca5a5;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 600;
@@ -1154,13 +1173,120 @@
     transition: all 0.2s;
 }
 
-.bulk-delete-btn:hover {
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
+.customers-bulk-delete-btn:hover {
+    background: #fef2f2;
+    border-color: #ef4444;
 }
 
-.bulk-delete-btn:disabled {
+.customers-bulk-delete-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+/* Bulk Action Buttons */
+.customers-bulk-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.customers-bulk-wa-btn {
+    background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+}
+
+.customers-bulk-wa-btn:hover {
+    box-shadow: 0 4px 12px rgba(37, 211, 102, 0.5);
+}
+
+.customers-bulk-email-btn {
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+}
+
+.customers-bulk-email-btn:hover {
+    box-shadow: 0 4px 12px rgba(248, 113, 113, 0.5);
+}
+
+.customers-bulk-call-btn {
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+}
+
+.customers-bulk-call-btn:hover {
+    box-shadow: 0 4px 12px rgba(248, 113, 113, 0.5);
+}
+
+/* Bulk Modal */
+.bulk-modal {
+    max-width: 520px;
+}
+
+/* Progress Bar */
+.customers-bulk-progress {
+    margin: 16px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.customers-bulk-progress span {
+    font-size: 13px;
+    color: #6b7280;
+    text-align: center;
+}
+
+.customers-bulk-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.customers-bulk-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #059669);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Bulk Call List */
+.customers-bulk-call-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.customers-bulk-call-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 14px;
+}
+
+.customers-bulk-call-item:last-child {
+    border-bottom: none;
+}
+
+/* Spin Animation for Loader */
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 /* Modal Styles */

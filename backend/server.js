@@ -1,15 +1,24 @@
+import dotenv from 'dotenv';
+import { fileURLToPath as _fileURLToPath } from 'url';
+import { dirname as _dirname, join as _join } from 'path';
+
+// PM2 restart'ta CWD farklı olabilir, bu yüzden .env'ye açık path veriyoruz
+const __envDir = _dirname(_fileURLToPath(import.meta.url));
+dotenv.config({ path: _join(__envDir, '.env') });
+console.log(`🔑 [Startup] JWT_SECRET loaded: ${process.env.JWT_SECRET ? 'YES (' + process.env.JWT_SECRET.substring(0, 6) + '...)' : '❌ NO!'}`);
+
 import './polyfill.js';
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import passport from 'passport';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Node.js 25+ compatibility fix for pdf-parse
+import { processScheduledCalls } from './controllers/retell.controller.js';
 if (typeof global.DOMMatrix === 'undefined') {
   global.DOMMatrix = class DOMMatrix { };
 }
@@ -35,13 +44,16 @@ import channelRoutingRoutes from './routes/channelRouting.routes.js';
 import companyRoutes from './routes/company.routes.js';
 import webwidgetRoutes from './routes/webwidget.routes.js';
 
+import notificationRoutes from './routes/notification.routes.js';
+import retellRoutes from './routes/retell.routes.js';
+import quickReplyRoutes from './routes/quickReply.routes.js';
+import rulesRoutes from './routes/rules.routes.js';
+
 // Import passport config
 import './config/passport.js';
 
 // Import socket config
 import { initializeSocket } from './socket.js';
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,9 +84,11 @@ app.use(helmet({
 }));
 
 // Rate Limiting - Brute Force koruması
+const isDev = process.env.NODE_ENV !== 'production';
+
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 dakika
-  max: 1000, // 15 dakikada max 1000 istek (genel)
+  max: isDev ? 0 : 5000, // Development: sınırsız, Production: 15 dakikada max 5000 istek
   message: { error: 'Çok fazla istek gönderildi, lütfen daha sonra tekrar deneyin.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -87,7 +101,7 @@ const generalLimiter = rateLimit({
 // Login için daha sıkı rate limiting
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 dakika
-  max: 10, // 15 dakikada max 10 login denemesi
+  max: isDev ? 0 : 50, // Development: sınırsız, Production: 15 dakikada max 50 login denemesi
   message: { error: 'Çok fazla giriş denemesi, lütfen 15 dakika sonra tekrar deneyin.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -153,6 +167,11 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/webwidgets', webwidgetRoutes);
 app.use('/api/workspaces', dealRoutes);
 
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/retell', retellRoutes);
+app.use('/api', quickReplyRoutes);
+app.use('/api/rules', rulesRoutes);
+
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
   const buildPath = path.join(__dirname, '../frontend/dist');
@@ -203,6 +222,11 @@ httpServer.listen(PORT, () => {
 
   // Start email polling after server starts
   startEmailPolling();
+
+  // Start scheduled call checker (every 60 seconds)
+  setInterval(processScheduledCalls, 60 * 1000);
+  console.log('📅 Scheduled call checker started (60s interval)');
+
 });
 
 // Email Polling System - checks for new emails every 2 minutes
@@ -289,3 +313,75 @@ setTimeout(() => {
     }
   }, REMINDER_CHECK_INTERVAL);
 }, 45000);
+
+// Appointment Reminder Notification Processor
+// Checks every 60 seconds for due appointments and creates notifications
+const APPOINTMENT_REMINDER_INTERVAL = 60 * 1000; // 1 dakika
+
+setTimeout(async () => {
+  const { PrismaClient } = await import('@prisma/client');
+  const { createNotification } = await import('./controllers/notification.controller.js');
+  const prismaReminder = new PrismaClient();
+
+  console.log('🔔 [Reminder] Starting appointment reminder processor (every 60 seconds)');
+
+  async function processAppointmentReminders() {
+    try {
+      const now = new Date();
+
+      // Find due appointments: startTime has passed, not yet notified, status SCHEDULED
+      const dueAppointments = await prismaReminder.appointment.findMany({
+        where: {
+          startTime: { lte: now },
+          reminderSent: false,
+          status: 'SCHEDULED'
+        },
+        take: 50
+      });
+
+      if (dueAppointments.length === 0) return;
+
+      console.log(`🔔 [Reminder] Found ${dueAppointments.length} due appointment(s)`);
+
+      for (const apt of dueAppointments) {
+        try {
+          // Extract conversationId from notes if available
+          const conversationIdMatch = apt.notes?.match(/Conversation ID: (.+)/);
+          const conversationId = conversationIdMatch ? conversationIdMatch[1].trim() : null;
+
+          // Create notification for the assigned user
+          await createNotification(
+            apt.workspaceId,
+            apt.assignedToId,
+            'REMINDER',
+            `⏰ Hatırlatıcı: ${apt.title}`,
+            apt.description || `${apt.contactName || 'Müşteri'} için hatırlatıcı zamanı geldi.`,
+            conversationId ? { conversationId, appointmentId: apt.id } : { appointmentId: apt.id }
+          );
+
+          // Mark as sent
+          await prismaReminder.appointment.update({
+            where: { id: apt.id },
+            data: { reminderSent: true }
+          });
+
+          console.log(`🔔 [Reminder] Notification sent for appointment: ${apt.title} -> user ${apt.assignedToId}`);
+        } catch (aptError) {
+          console.error(`❌ [Reminder] Error processing appointment ${apt.id}:`, aptError.message);
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Reminder] Processor error:', error.message);
+    }
+  }
+
+  processAppointmentReminders(); // Initial check
+  setInterval(processAppointmentReminders, APPOINTMENT_REMINDER_INTERVAL);
+}, 50000); // Start 50s after server launch
+
+// Scheduled calls cron: check every 60s for due auto-calls (persistent across restarts)
+setTimeout(() => {
+  console.log('📅 [ScheduledCall] Starting scheduled call processor (every 60 seconds)');
+  processScheduledCalls(); // Initial check on startup (picks up any missed calls)
+  setInterval(processScheduledCalls, 60 * 1000);
+}, 10000); // Start 10s after server launch

@@ -108,6 +108,15 @@ export const updateWidget = async (req, res) => {
         const { id } = req.params;
         const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled } = req.body;
 
+        // If a bot is being assigned, automatically activate it
+        if (assignedBotId) {
+            await prisma.aIBot.update({
+                where: { id: assignedBotId },
+                data: { isActive: true }
+            }).catch(() => { });
+            console.log(`✅ Bot ${assignedBotId} automatically activated (assigned to Widget ${id})`);
+        }
+
         const widget = await prisma.webWidget.update({
             where: { id },
             data: {

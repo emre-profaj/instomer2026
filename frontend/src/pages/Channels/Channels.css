@@ -620,6 +620,11 @@
     width: 100%;
 }
 
+.modal-xl {
+    max-width: 1000px !important;
+    width: 100% !important;
+}
+
 .page-selection-list {
     display: flex;
     flex-direction: column;
@@ -1032,6 +1037,16 @@
 
 .quick-add-btn.webform:hover {
     background: #8B5CF6;
+    color: white;
+}
+
+.quick-add-btn.retell {
+    color: #0d9488;
+    border-color: #0d9488;
+}
+
+.quick-add-btn.retell:hover {
+    background: #0d9488;
     color: white;
 }
 

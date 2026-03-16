@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { appointmentAPI } from '../../services/api';
+import { appointmentAPI, retellAPI } from '../../services/api';
 import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2
@@ -20,9 +20,11 @@ const Calendar = () => {
     const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'day'
     const [appointments, setAppointments] = useState([]);
     const [upcomingAppointments, setUpcomingAppointments] = useState([]);
+    const [scheduledCalls, setScheduledCalls] = useState([]);
     const [agents, setAgents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedAgent, setSelectedAgent] = useState('');
+    const [cancellingCallId, setCancellingCallId] = useState(null);
 
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,6 +56,7 @@ const Calendar = () => {
             loadAppointments();
             loadAgents();
             loadUpcomingAppointments();
+            loadScheduledCalls();
         }
     }, [currentWorkspace, currentDate, selectedAgent]);
 
@@ -133,6 +136,28 @@ const Calendar = () => {
             setUpcomingAppointments(upcoming);
         } catch (error) {
             console.error('Load upcoming appointments error:', error);
+        }
+    };
+
+    const loadScheduledCalls = async () => {
+        try {
+            const response = await retellAPI.getScheduledCalls(currentWorkspace.id);
+            setScheduledCalls((response.data.scheduledCalls || []).filter(sc => sc.status === 'PENDING'));
+        } catch (e) {
+            console.error('Load scheduled calls error:', e);
+        }
+    };
+
+    const handleCancelScheduledCall = async (sc) => {
+        if (!confirm(`${sc.contactName || sc.toNumber} için planlanmış aramayı iptal etmek istiyor musunuz?`)) return;
+        try {
+            setCancellingCallId(sc.id);
+            await retellAPI.cancelScheduledCall(currentWorkspace.id, sc.id);
+            setScheduledCalls(prev => prev.filter(c => c.id !== sc.id));
+        } catch (e) {
+            alert('İptal edilemedi');
+        } finally {
+            setCancellingCallId(null);
         }
     };
 
@@ -218,6 +243,13 @@ const Calendar = () => {
             return aptDate.toDateString() === date.toDateString();
         });
     };
+
+    const getScheduledCallsForDay = (date) => {
+        return scheduledCalls.filter(sc => {
+            return new Date(sc.scheduledAt).toDateString() === date.toDateString();
+        });
+    };
+
 
     const openCreateModal = (date = null) => {
         const now = date || new Date();
@@ -368,13 +400,14 @@ const Calendar = () => {
                     </label>
                 </div>
                 <div className="upcoming-list">
-                    {filteredUpcomingAppointments.length === 0 ? (
+                    {filteredUpcomingAppointments.length === 0 && scheduledCalls.length === 0 ? (
                         <div className="upcoming-empty">
                             <CalendarIcon size={32} />
                             <p>Yaklaşan randevu yok</p>
                         </div>
                     ) : (
-                        filteredUpcomingAppointments.map(apt => (
+                        <>
+                        {filteredUpcomingAppointments.map(apt => (
                             <div
                                 key={apt.id}
                                 className={`upcoming-item ${apt.isCompleted ? 'completed' : ''}`}
@@ -409,9 +442,32 @@ const Calendar = () => {
                                     style={{ backgroundColor: apt.color || '#3b82f6' }}
                                 />
                             </div>
-                        ))
+                        ))}
+                        {scheduledCalls.slice(0, 8).map(sc => (
+                            <div
+                                key={sc.id}
+                                className="upcoming-item"
+                                onClick={() => handleCancelScheduledCall(sc)}
+                                title="İptal etmek için tıkla"
+                            >
+                                <div className="upcoming-date-badge">
+                                    <span className="upcoming-day">{formatUpcomingDate(sc.scheduledAt)}</span>
+                                    <span className="upcoming-time">{formatTime(sc.scheduledAt)}</span>
+                                </div>
+                                <div className="upcoming-info" style={{ minWidth: 0 }}>
+                                    <h4 style={{ color: '#ea580c' }}>📞 Oto. Arama</h4>
+                                    <span style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block' }}>
+                                        {sc.contactName || sc.toNumber}
+                                    </span>
+                                </div>
+                                <div className="upcoming-color-bar" style={{ backgroundColor: '#f97316' }} />
+                            </div>
+
+                        ))}
+                        </>
                     )}
                 </div>
+
             </div>
 
             {/* Main Calendar */}
@@ -531,6 +587,19 @@ const Calendar = () => {
                                             +{getAppointmentsForDay(day.date).length - 3} daha
                                         </div>
                                     )}
+                                    {/* Scheduled Auto-Calls */}
+                                    {getScheduledCallsForDay(day.date).map(sc => (
+                                        <div
+                                            key={sc.id}
+                                            className="appointment-pill"
+                                            style={{ backgroundColor: '#f97316', cursor: 'pointer' }}
+                                            title={`Planlanmış Arama: ${sc.contactName || sc.toNumber}\nSaat: ${new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}\nİptal etmek için tıkla`}
+                                            onClick={(e) => { e.stopPropagation(); handleCancelScheduledCall(sc); }}
+                                        >
+                                            <span className="apt-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="apt-title">{sc.contactName || sc.toNumber}</span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         ))}

@@ -1092,8 +1092,15 @@ async function processWebhookAsync(body) {
             console.log(`📩 [Webhook] Object: ${body.object}, Sender: ${senderId}, Recipient: ${recipientId}, Entry ID: ${entry.id}, Messaging Recipient: ${messagingEvent.recipient?.id}`);
 
             // Determine if this is an outgoing message (sent by business)
-            const isOutgoingMessage = message?.is_echo ||
-                (body.object === 'instagram' && senderId === entry.id);
+            // For Facebook: is_echo flag is reliable
+            // For Instagram: is_echo is NOT supported in Business API, so we check senderId === entry.id
+            // BUT: if message has is_echo = false explicitly, trust it (customer message)
+            // ALSO: if senderId === entry.id but recipient.id === entry.id too, that's a self-message edge case - treat as outgoing
+            const isExplicitEcho = message?.is_echo === true;
+            const isInstagramOutgoing = body.object === 'instagram' &&
+                senderId === entry.id &&
+                messagingEvent.recipient?.id !== entry.id; // recipient must be different (the customer)
+            const isOutgoingMessage = isExplicitEcho || isInstagramOutgoing;
 
             if (isOutgoingMessage) {
                 console.log('📤 [Webhook] Outgoing message detected - will save as sent message');
@@ -1593,6 +1600,61 @@ async function processWebhookAsync(body) {
                         console.error('❌ Error emitting WebSocket event:', error);
                     }
 
+                    // --- AUTOMATION RULES + AUTO-CALL (run before AI reply to avoid being skipped by continue) ---
+                    if (!isOutgoingMessage && message?.text) {
+                        // Automation rules: phone capture (awaited so status is updated before auto-call)
+                        try {
+                            const { executePhoneCaptureRule, executeHotKeywordRule } = await import('./rules.controller.js');
+                            // IMPORTANT: await phone capture so contact.status is updated before auto-call status check
+                            await executePhoneCaptureRule(facebookPage.workspaceId, conversation.id, message.text);
+                            executeHotKeywordRule(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
+                                console.error('❌ [RULE:HOT_KEYWORD] FB/IG async error:', e.message)
+                            );
+                        } catch (ruleErr) {
+                            console.error('❌ [RULES] FB/IG error:', ruleErr.message);
+                        }
+
+                        // --- CHAT CALL DETECTION (beni ara / saat X'de ara) ---
+                        try {
+                            const { detectCallRequestInMessage, triggerAutoCall } = await import('./retell.controller.js');
+                            const callIntent = detectCallRequestInMessage(message.text);
+                            if (callIntent && contact?.phone) {
+                                if (callIntent.type === 'immediate') {
+                                    console.log(`📞 [FB] Chat call request (immediate) for ${contact.phone}`);
+                                    triggerAutoCall(facebookPage.workspaceId, contact.phone, contact?.id, contact?.name || 'Müşteri', 'CHAT_REQUEST').catch(e =>
+                                        console.error('⚠️ [FB] Chat immediate call error:', e.message)
+                                    );
+                                } else if (callIntent.type === 'scheduled') {
+                                    const nearby = await prisma.scheduledCall.count({
+                                        where: { workspaceId: facebookPage.workspaceId, status: 'PENDING', scheduledAt: { gte: callIntent.scheduledAt, lt: new Date(callIntent.scheduledAt.getTime() + 60 * 60 * 1000) } }
+                                    });
+                                    const finalAt = new Date(callIntent.scheduledAt.getTime() + nearby * 60 * 1000);
+                                    await prisma.scheduledCall.create({
+                                        data: { workspaceId: facebookPage.workspaceId, toNumber: contact.phone, contactId: contact.id, contactName: contact.name, scheduledAt: finalAt, status: 'PENDING' }
+                                    });
+                                    console.log(`📅 [FB] Scheduled call created at ${finalAt.toLocaleString('tr-TR')}`);
+                                }
+                            } else {
+                                // Fallback: original phone-number extraction based auto-call
+                                const phoneRegex = /(?:\+90|0090|90)?[\s\-\.(]?(?:5\d{2})[\s\-\.\)]{0,2}\d{3}[\s\-\.]{0,2}\d{2}[\s\-\.]{0,2}\d{2}/g;
+                                const matches = message.text.match(phoneRegex);
+                                if (matches && matches.length > 0) {
+                                    const rawPhone = matches[0];
+                                    const digits = rawPhone.replace(/\D/g, '');
+                                    const normalizedPhone = digits.startsWith('90') ? '+' + digits :
+                                        digits.startsWith('0') ? '+90' + digits.slice(1) : '+90' + digits;
+                                    const triggerChan = isInstagram ? 'INSTAGRAM' : 'FACEBOOK';
+                                    triggerAutoCall(facebookPage.workspaceId, normalizedPhone, contact?.id, contact?.name || 'Müşteri', triggerChan)
+                                        .catch(e => console.error('❌ [AutoCall] FB/IG phone trigger error:', e.message));
+                                }
+                            }
+                        } catch (acErr) {
+                            console.error('❌ [AutoCall] FB/IG detection error:', acErr.message);
+                        }
+
+                    }
+                    // --- AUTOMATION RULES + AUTO-CALL END ---
+
                     // --- AI AUTO REPLY START ---
                     // ONLY for incoming messages (from contact)
                     if (!isOutgoingMessage) {
@@ -1765,8 +1827,8 @@ async function processWebhookAsync(body) {
                         } catch (extractError) {
                             console.error('❌ AI Auto-Extract call failed:', extractError);
                         }
+                        // --- AUTO EXTRACT END ---
                     } // End of !isOutgoingMessage check
-                    // --- AUTO EXTRACT END ---
                 }
             } // End of for (const facebookPage of allConnectedPages)
         }
@@ -2237,7 +2299,7 @@ export const getPostComments = async (req, res) => {
                 {
                     params: {
                         access_token: page.pageAccessToken,
-                        fields: 'id,text,username,timestamp,replies{id,text,username,timestamp}'
+                        fields: 'id,text,username,timestamp,from{id,username},replies{id,text,username,timestamp,from{id,username}}'
                     }
                 }
             );
@@ -2246,13 +2308,23 @@ export const getPostComments = async (req, res) => {
             comments = (response.data.data || []).map(c => ({
                 id: c.id,
                 message: c.text,
-                from: { name: c.username, id: c.username },
+                from: {
+                    name: c.from?.username || c.username,
+                    id: c.from?.id || c.username,
+                    username: c.from?.username || c.username,
+                    profile_picture_url: c.from?.profile_picture_url || null
+                },
                 created_time: c.timestamp,
                 comments: c.replies ? {
                     data: c.replies.data.map(r => ({
                         id: r.id,
                         message: r.text,
-                        from: { name: r.username, id: r.username },
+                        from: {
+                            name: r.from?.username || r.username,
+                            id: r.from?.id || r.username,
+                            username: r.from?.username || r.username,
+                            profile_picture_url: r.from?.profile_picture_url || null
+                        },
                         created_time: r.timestamp
                     }))
                 } : null
@@ -2261,7 +2333,58 @@ export const getPostComments = async (req, res) => {
             // Filter by page connection date
             comments = comments.filter(c => new Date(c.created_time) >= pageConnectedAt);
 
+            // Batch-fetch profile pictures for unique Instagram commenters
+            // (Same mechanism as DM contacts — use IG user ID with page access token)
+            try {
+                const uniqueUserIds = [...new Set(
+                    comments.flatMap(c => {
+                        const ids = [];
+                        if (c.from?.id && c.from.id !== page.instagramBusinessId) ids.push(c.from.id);
+                        c.comments?.data?.forEach(r => {
+                            if (r.from?.id && r.from.id !== page.instagramBusinessId) ids.push(r.from.id);
+                        });
+                        return ids;
+                    })
+                )].slice(0, 20); // cap at 20 to avoid rate limits
+
+                console.log(`📸 [IG Profiles] Unique commenter IDs found: ${uniqueUserIds.length}`, uniqueUserIds.slice(0, 3));
+
+                if (uniqueUserIds.length > 0) {
+                    const picMap = {};
+                    await Promise.allSettled(
+                        uniqueUserIds.map(async (uid) => {
+                            try {
+                                const res = await axios.get(
+                                    `https://graph.facebook.com/${GRAPH_API_VERSION}/${uid}`,
+                                    { params: { fields: 'username,name,profile_pic', access_token: page.pageAccessToken } }
+                                );
+                                if (res.data?.profile_pic) {
+                                    picMap[uid] = res.data.profile_pic;
+                                }
+                            } catch (_) { /* user may have privacy settings */ }
+                        })
+                    );
+
+                    // Merge profile pictures into comments
+                    comments = comments.map(c => ({
+                        ...c,
+                        from: { ...c.from, profile_picture_url: picMap[c.from?.id] || c.from?.profile_picture_url },
+                        comments: c.comments ? {
+                            data: c.comments.data.map(r => ({
+                                ...r,
+                                from: { ...r.from, profile_picture_url: picMap[r.from?.id] || r.from?.profile_picture_url }
+                            }))
+                        } : null
+                    }));
+
+                    console.log(`📸 [Instagram Comments] Fetched profile pics for ${Object.keys(picMap).length}/${uniqueUserIds.length} users`);
+                }
+            } catch (picErr) {
+                console.warn('[Instagram Comments] Profile picture batch fetch error:', picErr.message);
+            }
+
             console.log(`📸 [Instagram Comments] Fetched ${comments.length} comments since ${pageConnectedAt.toISOString()}`);
+
         } else {
             // Facebook comments
             console.log(`📘 [Facebook Comments] Fetching for post ${postId}`);
@@ -2270,7 +2393,7 @@ export const getPostComments = async (req, res) => {
                 {
                     params: {
                         access_token: page.pageAccessToken,
-                        fields: 'id,from,message,created_time,attachment,comment_count,like_count,user_likes,can_comment,comments{id,from,message,created_time,attachment}',
+                        fields: 'id,from{id,name,picture{url}},message,created_time,attachment,comment_count,like_count,user_likes,can_comment,comments{id,from{id,name,picture{url}},message,created_time,attachment}',
                         since: sinceTimestamp
                     }
                 }
@@ -2673,6 +2796,12 @@ async function handleLeadgenEvent(leadValue, entryId) {
             }
         }
 
+        // Normalize phone number for consistent matching
+        const { normalizePhone } = await import('../utils/phoneNormalizer.js');
+        if (leadPhone) {
+            leadPhone = normalizePhone(leadPhone);
+        }
+
         const leadName = fieldData.full_name || fieldData.name || fieldData.first_name || getField('full_name', 'name', 'first_name', 'isim', 'ad') || 'Facebook Lead';
 
         // 1. Save to FacebookLead table
@@ -2704,13 +2833,24 @@ async function handleLeadgenEvent(leadValue, entryId) {
         });
         console.log(`✅ [LEADGEN] Lead saved to database: ${savedLead.id}`);
 
-        // 2. Create or find Contact
+        // 2. Create or find Contact - search by multiple phone formats
+        const phoneVariants = [];
+        if (leadPhone) {
+            phoneVariants.push({ phone: leadPhone });
+            // Add variants for Turkish numbers
+            if (leadPhone.startsWith('+90')) {
+                phoneVariants.push({ phone: leadPhone.slice(1) });  // 905xx
+                phoneVariants.push({ phone: '0' + leadPhone.slice(3) });  // 05xx
+            }
+        }
+
         let contact = await prisma.contact.findFirst({
             where: {
+                workspaceId: facebookPage.workspaceId,
                 OR: [
                     { facebookId: `lead_${leadData.id}` },
                     ...(leadEmail ? [{ email: leadEmail }] : []),
-                    ...(leadPhone ? [{ phone: leadPhone }] : [])
+                    ...phoneVariants
                 ]
             }
         });
@@ -2723,11 +2863,11 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     email: leadEmail,
                     phone: leadPhone,
                     facebookId: `lead_${leadData.id}`,
-                    status: 'HOT_OPPORTUNITY', // Lead = Potansiyel Müşteri
+                    status: 'OPPORTUNITY', // Lead = Fırsat
                     source: 'FACEBOOK_LEAD'
                 }
             });
-            console.log(`✅ [LEADGEN] Contact created as HOT_OPPORTUNITY: ${contact.id}`);
+            console.log(`✅ [LEADGEN] Contact created as OPPORTUNITY: ${contact.id}`);
         } else {
             // Mevcut contact varsa, bilgileri güncelle ve status'ü HOT_OPPORTUNITY yap
             contact = await prisma.contact.update({
@@ -2736,11 +2876,11 @@ async function handleLeadgenEvent(leadValue, entryId) {
                     name: leadName || contact.name,
                     email: leadEmail || contact.email,
                     phone: leadPhone || contact.phone,
-                    status: 'HOT_OPPORTUNITY', // Lead = Potansiyel Müşteri
+                    status: 'OPPORTUNITY', // Lead = Fırsat
                     source: contact.source === 'MANUAL' ? 'FACEBOOK_LEAD' : contact.source
                 }
             });
-            console.log(`✅ [LEADGEN] Contact updated as HOT_OPPORTUNITY: ${contact.id}`);
+            console.log(`✅ [LEADGEN] Contact updated as OPPORTUNITY: ${contact.id}`);
         }
 
         // 3. Find or Create Conversation for Inbox (prevent duplicates)
@@ -2771,6 +2911,92 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 data: { lastMessageAt: new Date(), status: 'OPEN' }
             });
             console.log(`✅ [LEADGEN] Using existing conversation: ${conversation.id}`);
+        }
+
+        // 3.5. Lead Form Routing - Match lead field values against bot routing rules
+        try {
+            // Find active bot with routing enabled for this workspace
+            const routingBot = await prisma.aIBot.findFirst({
+                where: {
+                    workspaceId: facebookPage.workspaceId,
+                    isActive: true,
+                    routingEnabled: true
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    routingRules: true,
+                    routingQuestions: true
+                }
+            });
+
+            if (routingBot && routingBot.routingRules) {
+                const rules = JSON.parse(routingBot.routingRules || '[]');
+                const allLeadValues = Object.values(fieldData).map(v => String(v).toLowerCase().trim());
+
+                console.log(`🔍 [LEADGEN Routing] Bot: ${routingBot.name}, Rules: ${rules.length}, Lead values: ${JSON.stringify(allLeadValues)}`);
+
+                // Sort by priority (lower = higher priority)
+                const sortedRules = [...rules].sort((a, b) => (a.priority || 0) - (b.priority || 0));
+                let matchedRule = null;
+
+                for (const rule of sortedRules) {
+                    const ruleValue = (rule.value || '').toLowerCase().trim();
+
+                    // Check if ANY lead field value matches the rule value
+                    let matched = false;
+                    for (const leadVal of allLeadValues) {
+                        switch (rule.operator) {
+                            case 'equals':
+                                matched = leadVal === ruleValue;
+                                break;
+                            case 'contains':
+                                matched = leadVal.includes(ruleValue);
+                                break;
+                            case 'not_equals':
+                                matched = leadVal !== ruleValue;
+                                break;
+                            default:
+                                matched = leadVal === ruleValue;
+                        }
+                        if (matched) break;
+                    }
+
+                    if (matched) {
+                        matchedRule = rule;
+                        console.log(`✅ [LEADGEN Routing] Matched rule: "${rule.field} ${rule.operator} ${rule.value}" → team=${rule.teamId}`);
+                        break;
+                    }
+                }
+
+                if (matchedRule && matchedRule.teamId) {
+                    // Assign conversation to matched team
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: {
+                            assignedTeamId: matchedRule.teamId,
+                            teamIds: JSON.stringify([matchedRule.teamId]),
+                            ...(matchedRule.userId ? { assignedToId: matchedRule.userId } : {})
+                        }
+                    });
+                    console.log(`✅ [LEADGEN Routing] Conversation ${conversation.id} assigned to team ${matchedRule.teamId}`);
+
+                    // Emit socket event for real-time team badge update
+                    emitToWorkspace(facebookPage.workspaceId, 'conversation_assigned', {
+                        conversationId: conversation.id,
+                        assignedToId: matchedRule.userId || null,
+                        assignedToName: null,
+                        botEnabled: false,
+                        teamIds: JSON.stringify([matchedRule.teamId])
+                    });
+                } else {
+                    console.log(`ℹ️ [LEADGEN Routing] No routing rule matched for this lead`);
+                }
+            } else {
+                console.log(`ℹ️ [LEADGEN Routing] No active bot with routing enabled found`);
+            }
+        } catch (routingErr) {
+            console.error('⚠️ [LEADGEN Routing] Error:', routingErr.message);
         }
 
         // 4. Create Message with lead info (Clean format)
@@ -2874,6 +3100,16 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('❌ [LEADGEN] Automation error:', automationErr);
         }
         // --- AUTOMATION TRIGGER END ---
+
+        // --- AUTO CALL TRIGGER ---
+        if (leadPhone) {
+            try {
+                const { triggerAutoCall } = await import('./retell.controller.js');
+                triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', messageContent);
+            } catch (autoCallErr) {
+                console.error('⚠️ [LEADGEN] AutoCall trigger error:', autoCallErr.message);
+            }
+        }
 
         console.log('✅ [LEADGEN] Processing complete!');
 

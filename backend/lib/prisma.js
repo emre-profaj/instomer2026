@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// Eagerly establish DB connection pool to prevent cold-start failures
+prisma.$connect().catch(err => console.error('❌ Prisma connection error:', err.message));
+
 // Middleware: Telefon numarası olan contact'ları otomatik olarak HOT_OPPORTUNITY yap
 prisma.$use(async (params, next) => {
     // Contact create veya update işlemlerinde
