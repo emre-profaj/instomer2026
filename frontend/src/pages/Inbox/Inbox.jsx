@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI } from '../../services/api';
+import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI } from '../../services/api';
 import { io } from 'socket.io-client';
 import DOMPurify from 'dompurify';
 import {
@@ -115,15 +115,10 @@ const CUSTOMER_STATUS_OPTIONS = [
 ];
 
 
-// Funnel tipi seçenekleri
-const FUNNEL_TYPE_OPTIONS = [
+// Funnel tipi seçenekleri — dinamik olarak API'den yüklenir (bkz. useFunnels)
+// Bu sabit boş bir fallback'tir; gerçek liste Inbox bileşeni içinde state'e yüklenir.
+const FUNNEL_TYPE_OPTIONS_DEFAULT = [
     { value: '', label: 'Funnel Seç', color: '#9ca3af' },
-    { value: 'SATIS', label: 'Satış', color: '#10b981' },
-    { value: 'DESTEK', label: 'Destek', color: '#3b82f6' },
-    { value: 'SIKAYET', label: 'Şikayet', color: '#ef4444' },
-    { value: 'IS_BASVURUSU', label: 'İş Başvurusu', color: '#f59e0b' },
-    { value: 'BILGI', label: 'Bilgi Talebi', color: '#8b5cf6' },
-    { value: 'DIGER', label: 'Diğer', color: '#6b7280' },
 ];
 
 // Customer category options (synced with Customers page)
@@ -174,6 +169,19 @@ const Inbox = () => {
     const [showAssignedToMe, setShowAssignedToMe] = useState(false); // Filter to show only conversations assigned to me
     const [statusFilter, setStatusFilter] = useState(null); // null = All, 'POTENTIAL' = Only potential customers
     const [dateRange, setDateRange] = useState({ from: null, to: null }); // Date range filter
+
+    // Funnel options — loaded dynamically from API
+    const [funnelOptions, setFunnelOptions] = useState(FUNNEL_TYPE_OPTIONS_DEFAULT);
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        funnelAPI.getAll(currentWorkspace.id).then(res => {
+            const list = res.data.funnels || [];
+            setFunnelOptions([
+                { value: '', label: 'Funnel Seç', color: '#9ca3af' },
+                ...list.map(f => ({ value: f.id, label: f.name, color: f.color, icon: f.icon }))
+            ]);
+        }).catch(() => {});
+    }, [currentWorkspace]);
 
     const [appointments, setAppointments] = useState([]); // For reminder indicators
     const filterDropdownRef = useRef(null);
@@ -2816,7 +2824,7 @@ const Inbox = () => {
                                                 <div className="status-dropdown-compact funnel-dropdown-compact">
                                                     <span
                                                         className="status-dot"
-                                                        style={{ backgroundColor: FUNNEL_TYPE_OPTIONS.find(o => o.value === (selectedItem.funnelType || ''))?.color || '#9ca3af' }}
+                                                        style={{ backgroundColor: funnelOptions.find(o => o.value === (selectedItem.funnelType || ''))?.color || '#9ca3af' }}
                                                     />
                                                     <select
                                                         value={selectedItem.funnelType || ''}
@@ -2828,7 +2836,7 @@ const Inbox = () => {
                                                             } catch (err) { console.error('Funnel update error:', err); }
                                                         }}
                                                     >
-                                                        {FUNNEL_TYPE_OPTIONS.map(opt => (
+                                                        {funnelOptions.map(opt => (
                                                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                                                         ))}
                                                     </select>

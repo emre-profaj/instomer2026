@@ -297,6 +297,14 @@ export const conversationAPI = {
         api.patch(`/conversations/${workspaceId}/${conversationId}/funnel`, { funnelType })
 };
 
+// Funnel API (user-defined pipeline categories)
+export const funnelAPI = {
+    getAll: (workspaceId) => api.get(`/funnels/${workspaceId}`),
+    create: (workspaceId, data) => api.post(`/funnels/${workspaceId}`, data),
+    update: (workspaceId, funnelId, data) => api.put(`/funnels/${workspaceId}/${funnelId}`, data),
+    delete: (workspaceId, funnelId) => api.delete(`/funnels/${workspaceId}/${funnelId}`)
+};
+
 // AI API
 export const aiAPI = {
     updateSettings: (workspaceId, data) => api.put(`/ai/${workspaceId}/settings`, data),

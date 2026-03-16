@@ -119,6 +119,7 @@ model Workspace {
   quickReplies         QuickReply[]
   scheduledCalls       ScheduledCall[]
   workspaceRules       WorkspaceRule[]
+  funnels              Funnel[]
 
   // Retell AI Voice
   retellApiKey     String?
@@ -918,4 +919,19 @@ model ScheduledCall {
   @@index([scheduledAt])
   @@index([status])
   @@map("scheduled_calls")
+}
+
+// Funnel: User-defined pipeline categories
+model Funnel {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  color       String    @default("#3b82f6")
+  icon        String    @default("📁")
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("funnels")
 }

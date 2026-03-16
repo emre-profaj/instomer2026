@@ -48,6 +48,7 @@ import notificationRoutes from './routes/notification.routes.js';
 import retellRoutes from './routes/retell.routes.js';
 import quickReplyRoutes from './routes/quickReply.routes.js';
 import rulesRoutes from './routes/rules.routes.js';
+import funnelRoutes from './routes/funnel.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -171,6 +172,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/retell', retellRoutes);
 app.use('/api', quickReplyRoutes);
 app.use('/api/rules', rulesRoutes);
+app.use('/api/funnels', funnelRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
