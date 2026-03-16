@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, facebookAPI, companyAPI } from '../../services/api';
+import { workspaceAPI, facebookAPI, companyAPI, funnelAPI } from '../../services/api';
 import AIIntegrationSettings from '../../components/Settings/AIIntegrationSettings';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
-import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, Phone } from 'lucide-react';
+import { Trash2, Shield, Bot, AlertCircle, Plus, Building2, Phone, Kanban, Edit2, Check, X, Loader } from 'lucide-react';
 import './Settings.css';
 
 const Settings = () => {
@@ -12,6 +12,15 @@ const Settings = () => {
     const [workspaces, setWorkspaces] = useState([]);
     const [myCompanies, setMyCompanies] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    // Funnel state
+    const [funnels, setFunnels] = useState([]);
+    const [funnelLoading, setFunnelLoading] = useState(false);
+    const [funnelSaving, setFunnelSaving] = useState(false);
+    const [newFunnelName, setNewFunnelName] = useState('');
+    const [newFunnelColor, setNewFunnelColor] = useState('#3b82f6');
+    const [editingFunnel, setEditingFunnel] = useState(null); // { id, name, color }
+    const FUNNEL_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#06b6d4','#ec4899','#14b8a6','#64748b'];
 
     // Create Workspace Modal
     const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
@@ -28,6 +37,9 @@ const Settings = () => {
             if (activeTab === 'workspaces') {
                 loadWorkspaces();
                 loadMyCompanies();
+            }
+            if (activeTab === 'funnels') {
+                loadFunnels();
             }
         }
     }, [currentWorkspace, activeTab]);
@@ -118,6 +130,46 @@ const Settings = () => {
         }
     };
 
+    const loadFunnels = async () => {
+        try {
+            setFunnelLoading(true);
+            const res = await funnelAPI.getAll(currentWorkspace.id);
+            setFunnels(res.data.funnels || []);
+        } catch (err) { console.error('Load funnels error:', err); }
+        finally { setFunnelLoading(false); }
+    };
+
+    const handleCreateFunnel = async () => {
+        if (!newFunnelName.trim()) return;
+        setFunnelSaving(true);
+        try {
+            const res = await funnelAPI.create(currentWorkspace.id, { name: newFunnelName.trim(), color: newFunnelColor });
+            setFunnels(prev => [...prev, res.data.funnel]);
+            setNewFunnelName('');
+            setNewFunnelColor('#3b82f6');
+        } catch (err) { console.error('Create funnel error:', err); }
+        finally { setFunnelSaving(false); }
+    };
+
+    const handleUpdateFunnel = async () => {
+        if (!editingFunnel?.name?.trim()) return;
+        setFunnelSaving(true);
+        try {
+            const res = await funnelAPI.update(currentWorkspace.id, editingFunnel.id, { name: editingFunnel.name, color: editingFunnel.color });
+            setFunnels(prev => prev.map(f => f.id === editingFunnel.id ? res.data.funnel : f));
+            setEditingFunnel(null);
+        } catch (err) { console.error('Update funnel error:', err); }
+        finally { setFunnelSaving(false); }
+    };
+
+    const handleDeleteFunnel = async (funnelId) => {
+        if (!confirm('Bu funnel silinecek. Emin misiniz?')) return;
+        try {
+            await funnelAPI.delete(currentWorkspace.id, funnelId);
+            setFunnels(prev => prev.filter(f => f.id !== funnelId));
+        } catch (err) { console.error('Delete funnel error:', err); }
+    };
+
 
 
     if (!currentWorkspace) {
@@ -144,6 +196,13 @@ const Settings = () => {
                 >
                     <Bot size={16} />
                     AI Entegre
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'funnels' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('funnels')}
+                >
+                    <Kanban size={16} />
+                    Funnellar
                 </button>
             </div>
 
@@ -266,6 +325,123 @@ const Settings = () => {
 
                 {activeTab === 'ai' && (
                     <AIIntegrationSettings />
+                )}
+
+                {activeTab === 'funnels' && (
+                    <div className="settings-section">
+                        <div className="section-header" style={{ marginBottom: '20px' }}>
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Kanban size={20} /> Funnel Yönetimi
+                            </h2>
+                            <p style={{ color: '#6b7280', fontSize: '13px', marginTop: '4px' }}>
+                                Funnellar, sohbetleri kategorize etmenizi ve Pipeline'da Kanban olarak görüntülemenizi sağlar.
+                            </p>
+                        </div>
+
+                        {/* Yeni Funnel Oluştur */}
+                        <div className="card" style={{ padding: '16px', marginBottom: '16px' }}>
+                            <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: '#374151' }}>Yeni Funnel Ekle</h3>
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    style={{ flex: '1', minWidth: '180px' }}
+                                    placeholder="Funnel adı… (ör. Satış, Destek, İş Başvurusu)"
+                                    value={newFunnelName}
+                                    onChange={e => setNewFunnelName(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && handleCreateFunnel()}
+                                />
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    {FUNNEL_COLORS.map(c => (
+                                        <button
+                                            key={c}
+                                            onClick={() => setNewFunnelColor(c)}
+                                            style={{
+                                                width: '24px', height: '24px', borderRadius: '50%',
+                                                background: c, border: newFunnelColor === c ? '2px solid #1e293b' : '2px solid transparent',
+                                                cursor: 'pointer', transition: 'transform 0.1s',
+                                                boxShadow: newFunnelColor === c ? '0 0 0 2px #fff, 0 0 0 4px ' + c : 'none'
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                                <button
+                                    className="btn btn-primary"
+                                    onClick={handleCreateFunnel}
+                                    disabled={funnelSaving || !newFunnelName.trim()}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                                >
+                                    {funnelSaving ? <Loader size={14} style={{ animation: 'spin 0.7s linear infinite' }} /> : <Plus size={14} />}
+                                    Oluştur
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Funnel Listesi */}
+                        <div className="card">
+                            {funnelLoading ? (
+                                <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>Yükleniyor...</div>
+                            ) : funnels.length === 0 ? (
+                                <div style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>
+                                    <Kanban size={32} style={{ marginBottom: '8px', opacity: 0.4 }} />
+                                    <p>Henüz funnel yok. Yukarıdan ilk funnel'ınızı oluşturun.</p>
+                                </div>
+                            ) : (
+                                funnels.map(funnel => (
+                                    <div key={funnel.id} style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px',
+                                        padding: '14px 16px', borderBottom: '1px solid #f1f5f9'
+                                    }}>
+                                        {/* Color dot */}
+                                        <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: funnel.color, flexShrink: 0 }} />
+
+                                        {editingFunnel?.id === funnel.id ? (
+                                            /* Edit mode */
+                                            <>
+                                                <input
+                                                    autoFocus
+                                                    className="form-input"
+                                                    style={{ flex: 1, padding: '5px 10px', fontSize: '13px' }}
+                                                    value={editingFunnel.name}
+                                                    onChange={e => setEditingFunnel(prev => ({ ...prev, name: e.target.value }))}
+                                                    onKeyDown={e => e.key === 'Enter' && handleUpdateFunnel()}
+                                                />
+                                                <div style={{ display: 'flex', gap: '5px' }}>
+                                                    {FUNNEL_COLORS.map(c => (
+                                                        <button key={c} onClick={() => setEditingFunnel(prev => ({ ...prev, color: c }))}
+                                                            style={{ width: '20px', height: '20px', borderRadius: '50%', background: c,
+                                                                border: editingFunnel.color === c ? '2px solid #1e293b' : '2px solid transparent', cursor: 'pointer' }}
+                                                        />
+                                                    ))}
+                                                </div>
+                                                <button className="btn btn-primary btn-sm" onClick={handleUpdateFunnel} disabled={funnelSaving}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <Check size={13} /> Kaydet
+                                                </button>
+                                                <button className="btn btn-secondary btn-sm" onClick={() => setEditingFunnel(null)}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <X size={13} /> İptal
+                                                </button>
+                                            </>
+                                        ) : (
+                                            /* View mode */
+                                            <>
+                                                <span style={{ flex: 1, fontSize: '14px', fontWeight: '500', color: '#1e293b' }}>{funnel.name}</span>
+                                                <span style={{ fontSize: '12px', color: '#94a3b8' }}>#{funnel.id.slice(-6)}</span>
+                                                <button className="btn-icon" onClick={() => setEditingFunnel({ id: funnel.id, name: funnel.name, color: funnel.color })}
+                                                    title="Düzenle" style={{ color: '#6b7280' }}>
+                                                    <Edit2 size={15} />
+                                                </button>
+                                                <button className="btn-icon btn-danger" onClick={() => handleDeleteFunnel(funnel.id)} title="Sil">
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 )}
 
             </div>
