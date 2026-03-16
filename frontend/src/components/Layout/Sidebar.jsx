@@ -43,7 +43,8 @@ const Sidebar = () => {
         { path: '/channels', icon: Radio, label: 'Kanallar' },
         { path: '/assistants', icon: Bot, label: 'AI Asistanlar' },
         { path: '/knowledge-base', icon: Database, label: 'Bilgi Bankası' },
-        { path: '/automations', icon: Zap, label: 'Otomasyonlar' }
+        { path: '/automations', icon: Zap, label: 'Otomasyonlar' },
+        { path: '/funnels', icon: Kanban, label: 'Funnellar' }
     ];
 
     // Sales submenu items

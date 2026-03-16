@@ -29,6 +29,7 @@ import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
 import Invoices from './pages/Sales/Invoices';
 import Pipeline from './pages/Pipeline/Pipeline';
+import Funnels from './pages/Funnels/Funnels';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -91,6 +92,7 @@ function App() {
               <Route path="orders" element={<Orders />} />
               <Route path="invoices" element={<Invoices />} />
               <Route path="pipeline" element={<Pipeline />} />
+              <Route path="funnels" element={<Funnels />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
