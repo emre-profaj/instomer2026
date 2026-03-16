@@ -177,8 +177,8 @@ const Inbox = () => {
         funnelAPI.getAll(currentWorkspace.id).then(res => {
             const list = res.data.funnels || [];
             setFunnelOptions([
-                { value: '', label: 'Funnel Seç', color: '#9ca3af' },
-                ...list.map(f => ({ value: f.id, label: f.name, color: f.color, icon: f.icon }))
+                { value: '', label: 'Funnel Seç', color: '#9ca3af', stages: null },
+                ...list.map(f => ({ value: f.id, label: f.name, color: f.color, icon: f.icon, stages: f.stages || null }))
             ]);
         }).catch(() => {});
     }, [currentWorkspace]);
@@ -2819,29 +2819,7 @@ const Inbox = () => {
                                                     }}
                                                 />
                                             )}
-                                            {/* Funnel Tipi Seçici */}
-                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
-                                                <div className="status-dropdown-compact funnel-dropdown-compact">
-                                                    <span
-                                                        className="status-dot"
-                                                        style={{ backgroundColor: funnelOptions.find(o => o.value === (selectedItem.funnelType || ''))?.color || '#9ca3af' }}
-                                                    />
-                                                    <select
-                                                        value={selectedItem.funnelType || ''}
-                                                        onChange={async (e) => {
-                                                            const val = e.target.value;
-                                                            setSelectedItem(prev => ({ ...prev, funnelType: val }));
-                                                            try {
-                                                                await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, val);
-                                                            } catch (err) { console.error('Funnel update error:', err); }
-                                                        }}
-                                                    >
-                                                        {funnelOptions.map(opt => (
-                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
+
                                             {/* Sohbet Durumu Dropdown - for both MESSAGE and EMAIL */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
                                                 <div className="status-dropdown-compact">
@@ -2958,30 +2936,62 @@ const Inbox = () => {
                                             {/* Üstlen button moved to message input area */}
                                         </div>
 
-                                        {/* Right Group: Müşteri Durumu */}
+                                        {/* Right Group: Funnel Seç + Müşteri Durumu */}
                                         <div className="assignment-right-group">
-                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact && (
-                                                <div className="assignment-item contact-status-item">
-                                                    <span
-                                                        className="status-dot"
-                                                        style={{ backgroundColor: CUSTOMER_STATUS_OPTIONS.find(o => o.value === (selectedItem.contact.status || 'NEW_APPLICATION'))?.color || '#3b82f6' }}
-                                                    />
-                                                    <select
-                                                        value={selectedItem.contact.status || 'NEW_APPLICATION'}
-                                                        onChange={async (e) => {
-                                                            const newStatus = e.target.value;
-                                                            try {
-                                                                await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStatus });
-                                                                setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus } }));
-                                                            } catch (err) { console.error('Status update error:', err); }
-                                                        }}
-                                                    >
-                                                        {CUSTOMER_STATUS_OPTIONS.map(option => (
-                                                            <option key={option.value} value={option.value}>{option.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
+                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact && (() => {
+                                                // Get active funnel's stages, fallback to default CUSTOMER_STATUS_OPTIONS
+                                                const activeFunnel = funnelOptions.find(o => o.value === (selectedItem.funnelType || ''));
+                                                const stageOptions = (activeFunnel && activeFunnel.stages && activeFunnel.stages.length > 0)
+                                                    ? activeFunnel.stages
+                                                    : CUSTOMER_STATUS_OPTIONS;
+                                                const currentStageColor = stageOptions.find(o => o.value === (selectedItem.contact.status || stageOptions[0]?.value))?.color || '#3b82f6';
+                                                return (
+                                                    <>
+                                                        {/* Funnel Seçici — sol */}
+                                                        <div className="status-dropdown-compact funnel-dropdown-compact">
+                                                            <span
+                                                                className="status-dot"
+                                                                style={{ backgroundColor: activeFunnel?.color || '#9ca3af' }}
+                                                            />
+                                                            <select
+                                                                value={selectedItem.funnelType || ''}
+                                                                onChange={async (e) => {
+                                                                    const val = e.target.value;
+                                                                    setSelectedItem(prev => ({ ...prev, funnelType: val }));
+                                                                    try {
+                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, val);
+                                                                    } catch (err) { console.error('Funnel update error:', err); }
+                                                                }}
+                                                            >
+                                                                {funnelOptions.map(opt => (
+                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        {/* Aşama Durumu — sağ (funnel'a göre değişir) */}
+                                                        <div className="assignment-item contact-status-item">
+                                                            <span
+                                                                className="status-dot"
+                                                                style={{ backgroundColor: currentStageColor }}
+                                                            />
+                                                            <select
+                                                                value={selectedItem.contact.status || stageOptions[0]?.value || 'NEW_APPLICATION'}
+                                                                onChange={async (e) => {
+                                                                    const newStatus = e.target.value;
+                                                                    try {
+                                                                        await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStatus });
+                                                                        setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus } }));
+                                                                    } catch (err) { console.error('Status update error:', err); }
+                                                                }}
+                                                            >
+                                                                {stageOptions.map(option => (
+                                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 
