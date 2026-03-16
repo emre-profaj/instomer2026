@@ -928,7 +928,6 @@ model Funnel {
   name        String
   color       String    @default("#3b82f6")
   icon        String    @default("📁")
-  stages      String?   // JSON: [{value, label, color}] - custom stages for this funnel
   order       Int       @default(0)
   createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
