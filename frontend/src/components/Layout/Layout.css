@@ -36,3 +36,16 @@
     height: 100% !important;
     min-height: 100% !important;
 }
+
+/* ── MOBİL LAYOUT ── */
+@media (max-width: 768px) {
+    .main-content {
+        margin-left: 0 !important;
+        /* 100vh kullan — bottom nav position:fixed olduğundan flex yüksekliği etkilenmiyor */
+        height: 100vh;
+    }
+
+    .layout.sidebar-collapsed .main-content {
+        margin-left: 0 !important;
+    }
+}

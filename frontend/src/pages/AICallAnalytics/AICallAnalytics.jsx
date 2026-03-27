@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { retellAPI } from '../../services/api';
@@ -11,6 +12,7 @@ import './AICallAnalytics.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 const AICallAnalytics = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [loading, setLoading] = useState(true);
     const [analytics, setAnalytics] = useState(null);
@@ -218,7 +220,7 @@ const AICallAnalytics = () => {
                 <div className="aicall-header">
                     <div className="aicall-title-row">
                         <h1><PhoneCall size={28} /> AI Call Raporlama</h1>
-                        <p className="aicall-subtitle">Sesli arama performansınızı analiz edin</p>
+                        <p className="aicall-subtitle">{t('aiCallAnalytics.subtitle')}</p>
                     </div>
                     <div className="aicall-filters">
                         <div className="date-filter">
@@ -229,10 +231,10 @@ const AICallAnalytics = () => {
                                 setCustomStartDate('');
                                 setCustomEndDate('');
                             }}>
-                                <option value="7">Son 7 Gün</option>
-                                <option value="30">Son 30 Gün</option>
-                                <option value="90">Son 90 Gün</option>
-                                <option value="">Tümü</option>
+                                <option value="7">{t('analytics.last7Days')}</option>
+                                <option value="30">{t("aiCallAnalytics.last30Days")}</option>
+                                <option value="90">{t("aiCallAnalytics.last90Days")}</option>
+                                <option value="">All</option>
                             </select>
                         </div>
                         <div className="date-filter" style={{ gap: 6 }}>
@@ -264,7 +266,7 @@ const AICallAnalytics = () => {
                 {loading ? (
                     <div className="aicall-loading">
                         <Loader size={24} className="spin" />
-                        <p>Veriler yükleniyor...</p>
+                        <p>{t('aiCallAnalytics.loading')}</p>
                     </div>
                 ) : (
                     <>
@@ -475,8 +477,8 @@ const AICallAnalytics = () => {
                                                 <div className="aicall-th">Tarih</div>
                                                 <div className="aicall-th">Arayan</div>
                                                 <div className="aicall-th">Aranan</div>
-                                                <div className="aicall-th">Süre</div>
-                                                <div className="aicall-th">Durum</div>
+                                                <div className="aicall-th">{t('flowBuilder.duration')}</div>
+                                                <div className="aicall-th">{t('analytics.status')}</div>
                                                 <div className="aicall-th">Duygu</div>
                                                 <div className="aicall-th">Başarılı</div>
                                                 <div className="aicall-th">Maliyet</div>

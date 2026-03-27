@@ -1,6 +1,7 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { aiAPI, workspaceAPI } from '../../services/api';
-import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch } from 'lucide-react';
+import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import BotRoutingSettings from '../../components/Settings/BotRoutingSettings';
 import './Assistants.css';
@@ -8,6 +9,7 @@ import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 // Sub-component for managing documents
 const BotDocumentManager = ({ workspaceId, botId }) => {
+    const { t } = useTranslation();
     const [documents, setDocuments] = useState([]);
     const [uploading, setUploading] = useState(false);
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
@@ -53,7 +55,7 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
             isOpen: true,
             title: 'Doküman Sil',
             message: 'Bu dokümanı silmek istediğinize emin misiniz?',
-            confirmText: 'Evet, Sil',
+            confirmText: t('common.confirm'),
             type: 'danger',
             onConfirm: async () => {
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -70,7 +72,7 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
 
     return (
         <div className="doc-manager">
-            <h5 className="form-label">Bilgi Bankası (PDF/DOCX)</h5>
+            <h5 className="form-label">Knowledge Base (PDF/DOCX)</h5>
 
             {documents.length > 0 ? (
                 <ul className="doc-list">
@@ -120,6 +122,11 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
 
 // Sub-component for individual Bot Item
 const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
+    const { t } = useTranslation();
+    const [name, setName] = useState(bot.name || '');
+    const [role, setRole] = useState(bot.role || '');
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+
     const [prompt, setPrompt] = useState(bot.prompt || '');
     const [updating, setUpdating] = useState(false);
 
@@ -152,6 +159,31 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
     const [dailyReminderHours, setDailyReminderHours] = useState(bot.dailyReminderHours || 24);
     const [dailyReminderMessage, setDailyReminderMessage] = useState(bot.dailyReminderMessage || '');
 
+    useEffect(() => {
+        setName(bot.name || '');
+        setRole(bot.role || '');
+        setPrompt(bot.prompt || '');
+        setSchedulerEnabled(bot.schedulerEnabled || false);
+        setScheduleStartTime(bot.scheduleStartTime || '09:00');
+        setScheduleEndTime(bot.scheduleEndTime || '18:00');
+        setScheduleStartDate(bot.scheduleStartDate ? bot.scheduleStartDate.split('T')[0] : '');
+        setScheduleEndDate(bot.scheduleEndDate ? bot.scheduleEndDate.split('T')[0] : '');
+        try {
+            setScheduleDays(bot.scheduleDays ? JSON.parse(bot.scheduleDays) : []);
+        } catch {
+            setScheduleDays([]);
+        }
+        setAutoReplyDelayEnabled(bot.autoReplyDelayEnabled || false);
+        setAutoReplyDelaySeconds(bot.autoReplyDelaySeconds || 30);
+        setAutoReplyDelayMessage(bot.autoReplyDelayMessage || '');
+        setInactivityWarningEnabled(bot.inactivityWarningEnabled || false);
+        setInactivityWarningSeconds(bot.inactivityWarningSeconds || 40);
+        setInactivityWarningMessage(bot.inactivityWarningMessage || '');
+        setDailyReminderEnabled(bot.dailyReminderEnabled || false);
+        setDailyReminderHours(bot.dailyReminderHours || 24);
+        setDailyReminderMessage(bot.dailyReminderMessage || '');
+    }, [bot]);
+
     const daysOfWeek = [
         { key: 'monday', label: 'Pzt' },
         { key: 'tuesday', label: 'Sal' },
@@ -174,8 +206,8 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
         try {
             setUpdating(true);
             await aiAPI.updateBot(workspaceId, bot.id, {
-                name: bot.name,
-                role: bot.role,
+                name: name,
+                role: role,
                 prompt: prompt,
                 // Scheduler
                 schedulerEnabled,
@@ -215,11 +247,48 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                         <Bot size={24} />
                     </div>
                     <div className="bot-title-group">
-                        <h4>{bot.name}</h4>
-                        <span className="bot-role-badge">{bot.role}</span>
+                        {isEditingTitle ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <input
+                                    type="text"
+                                    className="input-modern"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Bot İsmi"
+                                    style={{ padding: '4px 8px', fontSize: '14px', height: 'auto' }}
+                                    autoFocus
+                                />
+                                <input
+                                    type="text"
+                                    className="input-modern"
+                                    value={role}
+                                    onChange={(e) => setRole(e.target.value)}
+                                    placeholder="Departman/Rol"
+                                    style={{ padding: '2px 8px', fontSize: '12px', height: 'auto' }}
+                                />
+                            </div>
+                        ) : (
+                            <>
+                                <h4>{name}</h4>
+                                <span className="bot-role-badge">{role}</span>
+                            </>
+                        )}
                     </div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        className={`btn-modern ${isEditingTitle ? 'btn-primary' : 'btn-outline-primary'}`}
+                        onClick={() => {
+                            if (isEditingTitle) {
+                                handleUpdate();
+                            }
+                            setIsEditingTitle(!isEditingTitle);
+                        }}
+                        title={isEditingTitle ? "Tamam" : "İsmi Düzenle"}
+                        style={{ padding: '8px' }}
+                    >
+                        {isEditingTitle ? <Save size={18} /> : <Edit2 size={18} />}
+                    </button>
                     <button
                         className="btn-modern btn-outline-danger"
                         onClick={() => onDelete(bot.id)}
@@ -234,7 +303,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
             {/* Bot Assignment Info - Tüm atamalar */}
             {bot.assignments && (
                 <div className="bot-assignments-section">
-                    <label className="form-label" style={{ marginBottom: '10px' }}>📍 Atanan Kanallar</label>
+                    <label className="form-label" style={{ marginBottom: '10px' }}>📍 Atanan Channels</label>
                     <div className="assignments-list">
                         {/* DM Kanalları - Yönlendirme sayfasından */}
                         {bot.assignments.routedChannels?.facebook?.length > 0 && bot.assignments.routedChannels.facebook.map(a => (
@@ -282,7 +351,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
             )}
 
             <div className="form-group" style={{ marginBottom: '20px' }}>
-                <label className="form-label">Sistem Talimatı (Prompt)</label>
+                <label className="form-label">{t('assistants.systemPrompt')}</label>
                 <textarea
                     className="input-modern"
                     rows="4"
@@ -297,7 +366,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                 <div className="section-header-toggle">
                     <div className="section-title-group">
                         <Clock size={18} />
-                        <span>Zamanlayıcı</span>
+                        <span>{t('assistants.scheduler')}</span>
                     </div>
                     <label className="toggle-switch">
                         <input
@@ -310,11 +379,11 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                 </div>
                 {schedulerEnabled && (
                     <div className="section-content">
-                        <p className="section-description">Bot sadece belirlediğiniz zamanlarda otomatik aktif olacaktır.</p>
+                        <p className="section-description">{t('assistants.schedulerDesc')}</p>
 
                         <div className="scheduler-row">
                             <div className="form-group">
-                                <label className="form-label-sm">Başlangıç Saati</label>
+                                <label className="form-label-sm">{t('assistants.startTime')}</label>
                                 <input
                                     type="time"
                                     className="input-modern input-sm"
@@ -355,7 +424,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                         </div>
 
                         <div className="form-group">
-                            <label className="form-label-sm">Aktif Günler</label>
+                            <label className="form-label-sm">Active Günler</label>
                             <div className="days-selector">
                                 {daysOfWeek.map(day => (
                                     <button
@@ -582,7 +651,7 @@ const BotRoutingCard = ({ bot, workspaceId, onRefresh }) => {
                     </div>
                 </div>
                 {routingConfig.routingEnabled && (
-                    <span className="status-badge active" style={{ fontSize: '11px' }}>Aktif</span>
+                    <span className="status-badge active" style={{ fontSize: '11px' }}>Active</span>
                 )}
             </div>
             <BotRoutingSettings
@@ -605,6 +674,7 @@ const BotRoutingCard = ({ bot, workspaceId, onRefresh }) => {
 };
 
 const Assistants = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
 
@@ -687,7 +757,7 @@ const Assistants = () => {
             isOpen: true,
             title: 'Asistan Sil',
             message: 'Bu asistanı silmek istediğinize emin misiniz?',
-            confirmText: 'Evet, Sil',
+            confirmText: t('common.confirm'),
             type: 'danger',
             onConfirm: async () => {
                 setConfirmModalAssist(prev => ({ ...prev, isOpen: false }));
@@ -707,7 +777,7 @@ const Assistants = () => {
         <div className="page-container">
             <div className="page-header">
                 <div>
-                    <h1 className="page-title">AI Asistanlar</h1>
+                    <h1 className="page-title">AI Assistants</h1>
                     <p className="text-muted">Müşterilerinize otomatik yanıt verecek asistanları buradan yönetin.</p>
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -813,14 +883,14 @@ const Assistants = () => {
                         {showAddBot && (
                             <div className="add-bot-form">
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                                    <h3 style={{ fontSize: '20px', fontWeight: '600' }}>Yeni Asistan Oluştur</h3>
+                                    <h3 style={{ fontSize: '20px', fontWeight: '600' }}>New Asistan Create</h3>
                                     <button onClick={() => setShowAddBot(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                         <X size={24} color="#6b7280" />
                                     </button>
                                 </div>
 
                                 <div className="form-group" style={{ marginBottom: '16px' }}>
-                                    <label className="form-label">Asistan Adı</label>
+                                    <label className="form-label">Assistant Name</label>
                                     <input
                                         type="text"
                                         className="input-modern"
@@ -866,7 +936,7 @@ const Assistants = () => {
 
                         {/* Bots Grid */}
                         {loading && !bots.length ? (
-                            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Yükleniyor...</div>
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>
                         ) : bots.length === 0 && !showAddBot ? (
                             <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
                                 <Bot size={48} color="#9ca3af" style={{ marginBottom: '16px' }} />

@@ -10,14 +10,16 @@ import {
     Check, CheckCheck, Phone, Calendar, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Bell, BookOpen, Edit2, Smile
+    UserRoundPlus, CheckCircle2, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
 import { useToast } from '../../components/Toast/Toast';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import { useTranslation } from 'react-i18next';
 import './Inbox.css';
+import PipelineView from '../Pipeline/Pipeline';
 
 // Inbox item types
 const INBOX_TYPES = {
@@ -47,30 +49,217 @@ const isFormMessage = (msg, channel) => {
     return channel === 'FORM' && msg.isFromContact && msg.content?.includes('📋');
 };
 
-// Helper function to render form message as table
-const renderFormMessage = (content) => {
-    const lines = content.split('\n').filter(line => line.trim());
-    const formName = lines[0]?.replace('📋', '').replace(/\*\*/g, '').trim();
+// Helpers to detect field types for icon assignment
+const getFieldIcon = (label) => {
+    const l = label.toLowerCase();
+    if (l.includes('isim') || l.includes('ad') || l.includes('full name') || l.includes('name')) return '👤';
+    if (l.includes('e-posta') || l.includes('email') || l.includes('mail')) return '✉️';
+    if (l.includes('telefon') || l.includes('tel') || l.includes('phone') || l.includes('gsm')) return '📞';
+    return null;
+};
+
+const isPrimaryField = (label) => !!getFieldIcon(label);
+
+const isEmailValue = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val?.trim());
+
+const renderFormMessage = (msg, onSchedule, schedulingId) => {
+    const lines = msg.content.split('\n').filter(line => line.trim());
+    const formName = lines[0]?.replace(/^📋\s*/, '').replace(/\*\*/g, '').trim();
     const dataLines = lines.slice(1).filter(line => line.includes('|'));
 
+    const fields = dataLines.map(line => {
+        const idx = line.indexOf('|');
+        return {
+            label: line.slice(0, idx).trim(),
+            value: line.slice(idx + 1).trim(),
+        };
+    });
+
+    const primaryFields = fields.filter(f => isPrimaryField(f.label));
+    const extraFields   = fields.filter(f => !isPrimaryField(f.label));
+
     return (
-        <div className="form-message-table">
-            <div className="form-message-header">📋 {formName}</div>
-            <table className="form-data-table">
-                <tbody>
-                    {dataLines.map((line, idx) => {
-                        const parts = line.split('|').map(s => s.trim());
-                        const label = parts[0] || '';
-                        const value = parts[1] || '';
-                        return (
-                            <tr key={idx}>
-                                <td className="form-label">{label}</td>
-                                <td className="form-value">{value}</td>
-                            </tr>
-                        );
-                    })}
-                </tbody>
-            </table>
+        <div className="lead-card-modern">
+            {/* Header */}
+            <div className="lead-card-header">
+                <span className="lead-card-header-icon">📋</span>
+                <span className="lead-card-header-label">New Lead Form</span>
+            </div>
+
+            {/* Form name */}
+            {formName && (
+                <div className="lead-card-form-name">
+                    <span className="lead-card-form-name-icon">📄</span>
+                    <span>{formName}</span>
+                </div>
+            )}
+
+            {/* Primary fields */}
+            {primaryFields.length > 0 && (
+                <div className="lead-card-primary-fields">
+                    {primaryFields.map((f, i) => (
+                        <div key={i} className="lead-card-field-row">
+                            <span className="lead-card-field-icon">{getFieldIcon(f.label)}</span>
+                            <span className="lead-card-field-label">{f.label}:</span>
+                            {isEmailValue(f.value) ? (
+                                <a href={`mailto:${f.value}`} className="lead-card-email-link">{f.value}</a>
+                            ) : (
+                                <span className="lead-card-field-value">{f.value}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Extra / EK BİLGİLER */}
+            {extraFields.length > 0 && (
+                <div className="lead-card-extra">
+                    <div className="lead-card-extra-title">
+                        <span className="lead-card-extra-icon">📄</span>
+                        EK BİLGİLER
+                    </div>
+                    {extraFields.map((f, i) => (
+                        <div key={i} className="lead-card-extra-row">
+                            <span className="lead-card-extra-field">{f.label}: <span className="lead-card-extra-value">{f.value}</span></span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Footer */}
+            <div className="lead-card-footer">
+                <span className="lead-card-footer-time">
+                    🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                {parseFormPreferredTime(msg.content) && (
+                    <button
+                        className="lead-card-schedule-btn"
+                        onClick={() => onSchedule(msg)}
+                        disabled={schedulingId === msg.id}
+                    >
+                        📞 {schedulingId === msg.id ? 'Planlanıyor...' : 'Aramayı Planla'}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// Parse emoji-based lead messages (from Meta/Facebook leads)
+const renderLeadMessage = (msg, onSchedule, schedulingId) => {
+    const lines = msg.content.split('\n');
+
+    let formName = '';
+    const primaryFields = [];   // {icon, label, value}
+    const extraFields = [];     // {label, value}
+    let leadDate = '';
+    let inExtra = false;
+
+    for (const raw of lines) {
+        const line = raw.trim();
+        // Skip separator lines
+        if (/^[━─]{4,}/.test(line) || line === '') continue;
+        // Header — skip (we render our own)
+        if (line.includes('YENİ LEAD FORMU') || line.includes('YENİ LEAD')) continue;
+        // Form name
+        if (line.startsWith('📋')) { formName = line.replace(/^📋\s*/, '').trim(); continue; }
+        // Primary fields
+        if (line.startsWith('👤')) {
+            const val = line.replace(/^👤\s*/, '').replace(/^İsim:\s*/, '').trim();
+            primaryFields.push({ icon: '👤', label: 'İsim', value: val });
+            continue;
+        }
+        if (line.startsWith('📧')) {
+            const val = line.replace(/^📧\s*/, '').replace(/^E-posta:\s*/, '').trim();
+            primaryFields.push({ icon: '✉️', label: 'E-posta', value: val });
+            continue;
+        }
+        if (line.startsWith('📞')) {
+            const val = line.replace(/^📞\s*/, '').replace(/^Telefon:\s*/, '').trim();
+            primaryFields.push({ icon: '📞', label: 'Telefon', value: val });
+            continue;
+        }
+        // Ek Bilgiler header
+        if (line.includes('Ek Bilgiler') || line.includes('EK BİLGİLER')) { inExtra = true; continue; }
+        // Extra field lines
+        if (inExtra && (line.startsWith('▸') || line.startsWith('•') || line.startsWith('-'))) {
+            const text = line.replace(/^[▸•\-]\s*/, '').trim();
+            const colonIdx = text.indexOf(':');
+            if (colonIdx > 0) {
+                extraFields.push({ label: text.slice(0, colonIdx).trim(), value: text.slice(colonIdx + 1).trim() });
+            } else {
+                extraFields.push({ label: text, value: '' });
+            }
+            continue;
+        }
+        // Timestamp
+        if (line.startsWith('🕐')) { leadDate = line.replace(/^🕐\s*/, '').trim(); continue; }
+    }
+
+    return (
+        <div className="lead-card-modern">
+            {/* Header */}
+            <div className="lead-card-header">
+                <span className="lead-card-header-icon">📋</span>
+                <span className="lead-card-header-label">New Lead Form</span>
+            </div>
+
+            {/* Form name */}
+            {formName && (
+                <div className="lead-card-form-name">
+                    <span className="lead-card-form-name-icon">📄</span>
+                    <span>{formName}</span>
+                </div>
+            )}
+
+            {/* Primary fields */}
+            {primaryFields.length > 0 && (
+                <div className="lead-card-primary-fields">
+                    {primaryFields.map((f, i) => (
+                        <div key={i} className="lead-card-field-row">
+                            <span className="lead-card-field-icon">{f.icon}</span>
+                            <span className="lead-card-field-label">{f.label}:</span>
+                            {isEmailValue(f.value) ? (
+                                <a href={`mailto:${f.value}`} className="lead-card-email-link">{f.value}</a>
+                            ) : (
+                                <span className="lead-card-field-value">{f.value}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* EK BİLGİLER */}
+            {extraFields.length > 0 && (
+                <div className="lead-card-extra">
+                    <div className="lead-card-extra-title">
+                        <span className="lead-card-extra-icon">📄</span>
+                        EK BİLGİLER
+                    </div>
+                    {extraFields.map((f, i) => (
+                        <div key={i} className="lead-card-extra-row">
+                            <span className="lead-card-extra-field">
+                                {f.label}{f.value ? ': ' : ''}
+                                <span className="lead-card-extra-value">{f.value}</span>
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Footer with date & schedule button */}
+            <div className="lead-card-footer">
+                <span className="lead-card-footer-time"></span>
+                {parseFormPreferredTime(msg.content) && (
+                    <button
+                        className="lead-card-schedule-btn"
+                        onClick={() => onSchedule(msg)}
+                        disabled={schedulingId === msg.id}
+                    >
+                        📞 {schedulingId === msg.id ? 'Planlanıyor...' : 'Aramayı Planla'}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };
@@ -85,11 +274,11 @@ const parseFormPreferredTime = (content) => {
 
 // Lead status options
 const LEAD_STATUS_OPTIONS = [
-    { value: 'NEW', label: 'Yeni', color: '#6b7280', bg: '#f3f4f6' },
-    { value: 'CONTACTED', label: 'İletişime Geçildi', color: '#3b82f6', bg: '#eff6ff' },
-    { value: 'QUALIFIED', label: 'Nitelikli', color: '#8b5cf6', bg: '#f5f3ff' },
-    { value: 'CONVERTED', label: 'Dönüştürüldü', color: '#10b981', bg: '#ecfdf5' },
-    { value: 'LOST', label: 'Kaybedildi', color: '#ef4444', bg: '#fef2f2' }
+    { value: 'NEW', label: 'New', color: '#6b7280', bg: '#f3f4f6' },
+    { value: 'CONTACTED', label: 'Contacted', color: '#3b82f6', bg: '#eff6ff' },
+    { value: 'QUALIFIED', label: 'Qualified', color: '#8b5cf6', bg: '#f5f3ff' },
+    { value: 'CONVERTED', label: 'Converted', color: '#10b981', bg: '#ecfdf5' },
+    { value: 'LOST', label: 'Lost', color: '#ef4444', bg: '#fef2f2' }
 ];
 
 // Conversation status options
@@ -107,6 +296,7 @@ const CUSTOMER_STATUS_OPTIONS = [
     { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b' },
     { value: 'CALLBACK', label: 'Tekrar Ara', color: '#0ea5e9' },
     { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#8b5cf6' },
+    { value: 'APPOINTMENT_SCHEDULED', label: 'Randevu Planlandı', color: '#14b8a6' },
     { value: 'NEGOTIATION', label: 'Pazarlık', color: '#f97316' },
     { value: 'CONTRACT', label: 'Sözleşme', color: '#06b6d4' },
     { value: 'SALE_COMPLETED', label: 'Satış', color: '#10b981' },
@@ -146,11 +336,14 @@ const getConversationStatusInfo = (status) => {
 
 const Inbox = () => {
     const { currentWorkspace, user, setUnreadCount, onlineUsers } = useAuth();
+    const { t } = useTranslation();
     const [searchParams, setSearchParams] = useSearchParams();
+
     const { showAssignment } = useToast();
 
     // Filter states - All channels selected by default (uncheck to hide)
     const allFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes', 'fb_comments', 'ig_comments'];
+    const [viewMode, setViewMode] = useState('chat'); // 'chat' | 'pipeline'
     const [activeFilters, setActiveFilters] = useState(allFilters); // All filters active by default
     const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
@@ -167,8 +360,18 @@ const Inbox = () => {
     });
     const [showOnlyAssigned, setShowOnlyAssigned] = useState(false); // Filter to show only UNassigned conversations
     const [showAssignedToMe, setShowAssignedToMe] = useState(false); // Filter to show only conversations assigned to me
-    const [statusFilter, setStatusFilter] = useState(null); // null = All, 'POTENTIAL' = Only potential customers
-    const [dateRange, setDateRange] = useState({ from: null, to: null }); // Date range filter
+    const [statusFilter, setStatusFilter] = useState(null); // null = All, stage ID = filter by stage
+    const [stageFilterOpen, setStageFilterOpen] = useState(false);
+    const stageFilterRef = useRef(null);
+    const [funnelFilter, setFunnelFilter] = useState(null); // null = All, funnel ID = filter by funnel type
+    const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
+    const funnelFilterRef = useRef(null);
+    const [agentFilter, setAgentFilter] = useState(null); // null = All, user ID = filter by assigned agent
+    const [agentFilterOpen, setAgentFilterOpen] = useState(false);
+    const agentFilterRef = useRef(null);
+    const [quickFilter, setQuickFilter] = useState(null); // 'today' | 'week' | 'month' | 'unread'
+    const [quickFilterOpen, setQuickFilterOpen] = useState(false);
+    const quickFilterRef = useRef(null);
 
     // Funnel options — loaded dynamically from API
     const [funnelOptions, setFunnelOptions] = useState(FUNNEL_TYPE_OPTIONS_DEFAULT);
@@ -180,15 +383,16 @@ const Inbox = () => {
             const n = (name || '').toLowerCase();
             if (n.includes('iş baş') || n.includes('is bas') || n.includes('kariyer') || n.includes('cv') || n.includes('insan') || n.includes('başvuru')) {
                 return [
-                    { value: 'APPLICATION_RECEIVED', label: 'Başvuru Alındı', color: '#3b82f6' },
-                    { value: 'UNDER_REVIEW', label: 'Değerlendirmede', color: '#8b5cf6' },
-                    { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#06b6d4' },
-                    { value: 'INTERVIEW_SCHEDULED', label: 'Mülakat Planlandı', color: '#f59e0b' },
-                    { value: 'INTERVIEWED', label: 'Mülakat Yapıldı', color: '#f97316' },
-                    { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#0ea5e9' },
+                    { value: 'CV_RECEIVED', label: 'CV Alındı', color: '#3b82f6' },
+                    { value: 'CV_REVIEW', label: 'CV İnceleniyor', color: '#06b6d4' },
+                    { value: 'PRE_INTERVIEW', label: 'Ön Görüşme', color: '#8b5cf6' },
+                    { value: 'INTERVIEW', label: 'Mülakat', color: '#f59e0b' },
+                    { value: 'TECHNICAL_EVAL', label: 'Teknik Değerlendirme', color: '#f97316' },
+                    { value: 'REFERENCE_CHECK', label: 'Referans Kontrolü', color: '#ec4899' },
+                    { value: 'OFFER_GIVEN', label: 'Teklif Yapıldı', color: '#0ea5e9' },
                     { value: 'HIRED', label: 'İşe Alındı', color: '#10b981' },
                     { value: 'REJECTED', label: 'Reddedildi', color: '#ef4444' },
-                    { value: 'ON_HOLD', label: 'Beklemede', color: '#6b7280' },
+                    { value: 'WITHDREW', label: 'Vazgeçti', color: '#94a3b8' },
                 ];
             }
             if (n.includes('destek') || n.includes('şikayet') || n.includes('sikayet') || n.includes('support') || n.includes('ticket')) {
@@ -210,6 +414,7 @@ const Inbox = () => {
                 { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b' },
                 { value: 'CALLBACK', label: 'Tekrar Ara', color: '#0ea5e9' },
                 { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#8b5cf6' },
+                { value: 'APPOINTMENT_SCHEDULED', label: 'Randevu Planlandı', color: '#14b8a6' },
                 { value: 'NEGOTIATION', label: 'Pazarlık', color: '#f97316' },
                 { value: 'CONTRACT', label: 'Sözleşme', color: '#06b6d4' },
                 { value: 'SALE_COMPLETED', label: 'Satış', color: '#10b981' },
@@ -227,7 +432,9 @@ const Inbox = () => {
                     label: f.name,
                     color: f.color,
                     icon: f.icon,
-                    stages: (f.stages && f.stages.length > 0) ? f.stages : getDefaultStagesForFunnel(f.name)
+                    stages: (f.stages && f.stages.length > 0)
+                        ? f.stages.map(s => ({ value: s.id, label: s.name, color: s.color }))
+                        : getDefaultStagesForFunnel(f.name)
                 }))
             ]);
         }).catch(() => {});
@@ -267,6 +474,15 @@ const Inbox = () => {
             if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
                 setFilterDropdownOpen(false);
             }
+            if (stageFilterRef.current && !stageFilterRef.current.contains(event.target)) {
+                setStageFilterOpen(false);
+            }
+            if (funnelFilterRef.current && !funnelFilterRef.current.contains(event.target)) {
+                setFunnelFilterOpen(false);
+            }
+            if (agentFilterRef.current && !agentFilterRef.current.contains(event.target)) {
+                setAgentFilterOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -277,10 +493,36 @@ const Inbox = () => {
 
     // Local search filter applied on top of loaded inboxItems
     const displayedItems = useMemo(() => {
-        if (!searchTerm) return inboxItems;
+        let items = inboxItems;
+
+        // Apply quick date/unread filter
+        if (quickFilter) {
+            const now = new Date();
+            items = items.filter(item => {
+                const itemDate = new Date(item.lastMessageAt || item.sortDate || item.createdAt);
+                if (quickFilter === 'today') {
+                    const start = new Date(now); start.setHours(0, 0, 0, 0);
+                    return itemDate >= start;
+                } else if (quickFilter === 'week') {
+                    const start = new Date(now);
+                    start.setDate(now.getDate() - now.getDay());
+                    start.setHours(0, 0, 0, 0);
+                    return itemDate >= start;
+                } else if (quickFilter === 'month') {
+                    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                    return itemDate >= start;
+                } else if (quickFilter === 'unread') {
+                    return item.unreadCount > 0;
+                }
+                return true;
+            });
+        }
+
+        // Apply search term filter
+        if (!searchTerm) return items;
         const term = searchTerm.toLocaleLowerCase('tr-TR');
         const trLower = (str) => (str || '').toLocaleLowerCase('tr-TR');
-        return inboxItems.filter(item => {
+        return items.filter(item => {
             if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
                 return trLower(item.contact?.name).includes(term) ||
                     trLower(item.contact?.fullName).includes(term) ||
@@ -299,9 +541,11 @@ const Inbox = () => {
             }
             return true;
         });
-    }, [inboxItems, searchTerm]);
+    }, [inboxItems, searchTerm, quickFilter]);
+
     const [selectedItem, setSelectedItem] = useState(null);
     const [selectedItemType, setSelectedItemType] = useState(null);
+    const [showContactSidebar, setShowContactSidebar] = useState(() => window.innerWidth > 768);
     const [loading, setLoading] = useState(true);
     const [markingAllRead, setMarkingAllRead] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -389,6 +633,9 @@ const Inbox = () => {
     const [editingQuickReply, setEditingQuickReply] = useState(null);
     const [quickReplyForm, setQuickReplyForm] = useState({ content: '' });
     const [savingQuickReply, setSavingQuickReply] = useState(false);
+    // Topic Dropdown
+    const [topicDropdownOpen, setTopicDropdownOpen] = useState(false);
+    const [topicDropdownPos, setTopicDropdownPos] = useState({ top: 0, left: 0, width: 0 });
     const quickReplyDropdownRef = useRef(null);
 
     const messagesContainerRef = useRef(null);
@@ -436,7 +683,19 @@ const Inbox = () => {
             loadInboxItems();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showOnlyAssigned, showAssignedToMe, statusFilter, dateRange]);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter]);
+
+    // Debounced server-side search: when searchTerm changes, reload from API after 400ms
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        const debounce = setTimeout(() => {
+            setCurrentPage(1);
+            currentPageRef.current = 1;
+            loadInboxItems();
+        }, 400);
+        return () => clearTimeout(debounce);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchTerm]);
 
     // Listen for new conversation created event
     useEffect(() => {
@@ -679,14 +938,7 @@ const Inbox = () => {
                     }
                 }
 
-                // Show browser notification for incoming messages (from contact)
-                if (data.message?.isFromContact && document.hidden) {
-                    notificationService.showNewMessageNotification(
-                        data.message,
-                        { id: data.conversationId, channel: data.channel },
-                        data.contact || { name: 'Yeni Mesaj' }
-                    );
-                }
+                // Browser notifications are now handled globally in ToastProvider (Toast.jsx)
 
                 // === CHAT CALL DETECTION ===
                 // Detects call requests in INCOMING contact messages and schedules via retellAPI
@@ -1055,25 +1307,56 @@ const Inbox = () => {
                     }
                     if (!channelMatch) return false;
 
-                    // Check contact status filter
-                    if (statusFilter && conv.contact?.status !== statusFilter) {
-                        return false;
+                    // Check funnel type filter
+                    if (funnelFilter) {
+                        const convFunnelType = conv.funnelType || '';
+                        if (convFunnelType !== funnelFilter) return false;
                     }
 
-                    // Apply date range filter
-                    if (dateRange.from || dateRange.to) {
-                        const convDate = new Date(conv.lastMessageAt || conv.createdAt);
-
-                        if (dateRange.from) {
-                            const startOfDay = new Date(dateRange.from);
-                            startOfDay.setHours(0, 0, 0, 0);
-                            if (convDate < startOfDay) return false;
+                    // Check agent filter
+                    if (agentFilter) {
+                        if (agentFilter === '__unassigned__') {
+                            if (conv.assignedToId && conv.assignedToId !== '') return false;
+                        } else {
+                            if (conv.assignedToId !== agentFilter) return false;
                         }
+                    }
 
-                        if (dateRange.to) {
-                            const endOfDay = new Date(dateRange.to);
-                            endOfDay.setHours(23, 59, 59, 999);
-                            if (convDate > endOfDay) return false;
+                    // Check funnel stage filter
+                    if (statusFilter) {
+                        let eff = conv._effectiveStageId;
+                        if (eff === undefined) {
+                            // Compute inline for items not enriched (e.g. websocket updates)
+                            const _allStages = funnelOptions.flatMap(f => f.stages || []);
+                            const _stageVals = new Set(_allStages.map(s => s.value));
+                            if (conv.funnelStageId && _stageVals.has(conv.funnelStageId)) {
+                                eff = conv.funnelStageId;
+                            } else if (conv.contact?.status && _stageVals.has(conv.contact.status)) {
+                                eff = conv.contact.status;
+                            } else {
+                                const cf = funnelOptions.find(f => f.value === (conv.funnelType || '') && f.stages);
+                                const ff = funnelOptions.find(f => f.value && f.stages);
+                                eff = cf?.stages?.[0]?.value || ff?.stages?.[0]?.value || null;
+                            }
+                        }
+                        if (eff !== statusFilter) return false;
+                    }
+
+                    // Apply quick filter
+                    if (quickFilter) {
+                        const convDate = new Date(conv.lastMessageAt || conv.createdAt);
+                        const now = new Date();
+                        if (quickFilter === 'today') {
+                            const start = new Date(now); start.setHours(0,0,0,0);
+                            if (convDate < start) return false;
+                        } else if (quickFilter === 'week') {
+                            const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+                            if (convDate < start) return false;
+                        } else if (quickFilter === 'month') {
+                            const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                            if (convDate < start) return false;
+                        } else if (quickFilter === 'unread') {
+                            if (conv.unreadCount === 0 || !conv.unreadCount) return false;
                         }
                     }
 
@@ -1121,7 +1404,7 @@ const Inbox = () => {
         } finally {
             setLoadingMore(false);
         }
-    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, dateRange]);
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -1226,10 +1509,28 @@ const Inbox = () => {
                 const params = { limit: 100, page: pageToLoad };
                 if (assignmentTab === 'MINE') params.assignedToId = 'mine';
                 else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+                if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
 
                 const response = await conversationAPI.getAll(currentWorkspace.id, params);
                 const allConversations = response.data.conversations || [];
                 const pagination = response.data.pagination;
+
+                // Enrich each conversation with _effectiveStageId for consistent filtering
+                const allStages = funnelOptions.flatMap(f => f.stages || []);
+                const allStageValues = new Set(allStages.map(s => s.value));
+                allConversations.forEach(conv => {
+                    if (conv.funnelStageId && allStageValues.has(conv.funnelStageId)) {
+                        conv._effectiveStageId = conv.funnelStageId;
+                    } else if (conv.contact?.status && allStageValues.has(conv.contact.status)) {
+                        // contact.status matches a stage value directly (e.g. UUID set by manual change)
+                        conv._effectiveStageId = conv.contact.status;
+                    } else {
+                        // No valid stage set — use first stage of the conversation's funnel (same as dropdown fallback)
+                        const convFunnel = funnelOptions.find(f => f.value === (conv.funnelType || '') && f.stages);
+                        const firstFunnel = funnelOptions.find(f => f.value && f.stages);
+                        conv._effectiveStageId = convFunnel?.stages?.[0]?.value || firstFunnel?.stages?.[0]?.value || null;
+                    }
+                });
 
                 // Check if there are more pages
                 if (pagination) {
@@ -1289,29 +1590,40 @@ const Inbox = () => {
                     }
 
                     if (channelMatch) {
-                        // Check contact status filter
-                        if (statusFilter && conv.contact?.status !== statusFilter) {
-                            return; // Skip if status doesn't match
+                        // Check funnel type filter
+                        if (funnelFilter && (conv.funnelType || '') !== funnelFilter) {
+                            return; // Skip conversations not matching the selected funnel
                         }
 
-                        // Check date range filter
-                        if (dateRange.from || dateRange.to) {
-                            const convDate = new Date(conv.lastMessageAt || conv.createdAt);
-
-                            if (dateRange.from) {
-                                const startOfDay = new Date(dateRange.from);
-                                startOfDay.setHours(0, 0, 0, 0); // Start of selected day
-                                if (convDate < startOfDay) {
-                                    return; // Skip if before start date
-                                }
+                        // Check agent filter
+                        if (agentFilter) {
+                            if (agentFilter === '__unassigned__') {
+                                if (conv.assignedToId && conv.assignedToId !== '') return;
+                            } else {
+                                if (conv.assignedToId !== agentFilter) return;
                             }
+                        }
 
-                            if (dateRange.to) {
-                                const endOfDay = new Date(dateRange.to);
-                                endOfDay.setHours(23, 59, 59, 999); // End of selected day
-                                if (convDate > endOfDay) {
-                                    return; // Skip if after end date
-                                }
+                        // Check funnel stage filter using enriched _effectiveStageId
+                        if (statusFilter && conv._effectiveStageId !== statusFilter) {
+                            return; // Skip
+                        }
+
+                        // Apply quick filter
+                        if (quickFilter) {
+                            const convDate = new Date(conv.lastMessageAt || conv.createdAt);
+                            const now = new Date();
+                            if (quickFilter === 'today') {
+                                const start = new Date(now); start.setHours(0,0,0,0);
+                                if (convDate < start) return;
+                            } else if (quickFilter === 'week') {
+                                const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+                                if (convDate < start) return;
+                            } else if (quickFilter === 'month') {
+                                const start = new Date(now.getFullYear(), now.getMonth(), 1);
+                                if (convDate < start) return;
+                            } else if (quickFilter === 'unread') {
+                                if (conv.unreadCount === 0 || !conv.unreadCount) return;
                             }
                         }
 
@@ -1399,6 +1711,7 @@ const Inbox = () => {
     const handleSelectItem = async (item) => {
         setSelectedItem(item);
         setSelectedItemType(item.inboxType);
+        setShowContactSidebar(true);
 
         if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
             await loadConversationDetails(item.id);
@@ -1499,12 +1812,24 @@ const Inbox = () => {
         const pref = parseFormPreferredTime(msg.content);
         if (!pref) { alert('Form içinde saat bilgisi bulunamadı.'); return; }
 
-        // Calculate scheduledAt: next occurrence of [startH:startM]
         const now = new Date();
-        const target = new Date();
-        target.setHours(pref.startH, pref.startM, 0, 0);
-        // If this time has passed today, schedule for tomorrow
-        if (target <= now) target.setDate(target.getDate() + 1);
+        const curMin = now.getHours() * 60 + now.getMinutes();
+        const startMin = pref.startH * 60 + pref.startM;
+        const endMin = pref.endH * 60 + pref.endM;
+
+        let target = new Date(now);
+
+        if (curMin < startMin) {
+            // Belirtilen saat gelmediyse bugün o saatte ara
+            target.setHours(pref.startH, pref.startM, 0, 0);
+        } else if (curMin < endMin) {
+            // Şu an belirtilen aralık içindeysek HEMEN ARA
+            target = new Date(now);
+        } else {
+            // Saat geçtiyse YARIN o saatte ara
+            target.setDate(target.getDate() + 1);
+            target.setHours(pref.startH, pref.startM, 0, 0);
+        }
 
         const contactName = selectedItem?.contact?.name || selectedItem?.contact?.phone || 'Lead';
         try {
@@ -1599,7 +1924,7 @@ const Inbox = () => {
             loadComments(selectedPost.id, selectedPost);
         } catch (error) {
             console.error('Error sending comment:', error);
-            alert('Yorum gönderilemedi.');
+            alert('Could not send comment.');
         }
     };
 
@@ -1706,7 +2031,7 @@ const Inbox = () => {
                 variables: variables.length > 0 ? variables : undefined,
                 headerMediaUrl: needsHeaderMedia ? headerMediaUrl : undefined
             });
-            alert('Şablon mesajı gönderildi!');
+            alert('Template message sent!');
             setShowTemplateModal(false);
             setSelectedTemplate(null);
             setHeaderMediaUrl('');
@@ -2090,16 +2415,12 @@ const Inbox = () => {
         if (!date) return '';
         const d = new Date(date);
         const now = new Date();
-        const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+        const isToday = d.toDateString() === now.toDateString();
 
-        if (diffDays === 0) {
+        if (isToday) {
             return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        } else if (diffDays === 1) {
-            return 'Dün';
-        } else if (diffDays < 7) {
-            return d.toLocaleDateString('tr-TR', { weekday: 'short' });
         } else {
-            return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+            return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         }
     };
 
@@ -2168,15 +2489,15 @@ const Inbox = () => {
         return (
             <div className="inbox-empty-state">
                 <InboxIcon size={48} />
-                <p>Lütfen bir workspace seçin</p>
+                <p>{t('common.selectWorkspace')}</p>
             </div>
         );
     }
 
     return (
-        <div className="inbox-page">
+        <div className={`inbox-page${selectedItem ? ' has-selected' : ''}`}>
             {/* Left Panel - Inbox List */}
-            <div className="inbox-list-panel">
+            <div className={`inbox-list-panel${viewMode === 'pipeline' ? ' pipeline-mode' : ''}`}>
                 <div className="inbox-header">
                     <div className="inbox-header-top">
                         <div className="inbox-header-left">
@@ -2190,18 +2511,11 @@ const Inbox = () => {
                                 title="Yeni Görüşme Başlat"
                             >
                                 <Plus size={16} />
-                                <span>Yeni Görüşme</span>
+                                <span>{t('inbox.newConversation')}</span>
                             </button>
                         </div>
                         <div className="inbox-header-actions">
-                            <button
-                                className="inbox-mark-read-btn"
-                                onClick={handleMarkAllAsRead}
-                                disabled={loading || markingAllRead}
-                                title="Tümünü Okundu Yap"
-                            >
-                                <CheckCheck size={16} />
-                            </button>
+
                             <button
                                 className="inbox-refresh-btn"
                                 onClick={() => loadInboxItems()}
@@ -2210,10 +2524,27 @@ const Inbox = () => {
                             >
                                 <RefreshCw size={16} className={loading ? 'spin' : ''} />
                             </button>
+                            <button
+                                className={`inbox-view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
+                                onClick={() => setViewMode(v => v === 'chat' ? 'pipeline' : 'chat')}
+                                title={viewMode === 'chat' ? 'Pipeline Görünümüne Geç' : 'Sohbet Görünümüne Geç'}
+                            >
+                                {viewMode === 'chat'
+                                    ? <KanbanSquare size={16} />
+                                    : <MessageSquareDot size={16} />}
+                            </button>
                         </div>
                     </div>
-                    {/* Filter Row */}
-                    <div className="inbox-filter-row">
+                {/* Pipeline embed — shown when toggled to Pipeline view */}
+                {viewMode === 'pipeline' && (
+                    <div className="inbox-pipeline-embed">
+                        <PipelineView />
+                    </div>
+                )}
+                {/* Filter Row — hidden in pipeline mode via CSS */}
+                <div className={`inbox-filter-row${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
+                    {/* Row 1: Channel filter — full width */}
+                    <div className="inbox-filter-row-top">
                         {/* Filter Dropdown */}
                         <div className="inbox-filter-multiselect" ref={filterDropdownRef}>
                             <button
@@ -2296,7 +2627,7 @@ const Inbox = () => {
                                             onChange={() => toggleFilter('web_form')}
                                         />
                                         <FileText size={18} className="icon-form" />
-                                        <span>Web Formları</span>
+                                        <span>{t('inbox.webForms')}</span>
                                     </label>
                                     <label className="filter-option">
                                         <input
@@ -2351,7 +2682,7 @@ const Inbox = () => {
                                             onChange={() => toggleFilter('fb_comments')}
                                         />
                                         <Facebook size={18} className="icon-facebook" />
-                                        <span>FB Yorumları</span>
+                                        <span>{t('inbox.fbComments')}</span>
                                     </label>
                                     <label className="filter-option">
                                         <input
@@ -2414,31 +2745,144 @@ const Inbox = () => {
                             )}
                         </div>
 
-                        {/* Status Filter Select */}
-                        <div className="inbox-status-filters">
-                            <select
-                                className="status-filter-select"
-                                value={statusFilter || ''}
-                                onChange={(e) => setStatusFilter(e.target.value || null)}
-                            >
-                                <option value="">Tüm Durumlar</option>
-                                <option value="NEW_APPLICATION">Yeni Başvuru</option>
-                                <option value="OPPORTUNITY">Fırsat</option>
-                                <option value="HOT_OPPORTUNITY">Sıcak Fırsat</option>
-                                <option value="COMPLAINT">Şikayet</option>
-                                <option value="INFO_PROVIDED">Bilgi Verildi</option>
-                                <option value="APPOINTMENT_SCHEDULED">Randevu Planlandı</option>
-                                <option value="SALE_COMPLETED">Satış Gerçekleşti</option>
-                                <option value="UNREACHABLE">Ulaşılamadı</option>
-                                <option value="CALLBACK">Tekrar Ara</option>
-                                <option value="SPAM">Spam</option>
-                                <option value="LOST">Kaybedildi</option>
-                            </select>
-                        </div>
+                        {/* Agent Filter — only for owners, side by side with Tümü */}
+                        {isOwner && members.length > 0 && (
+                            <div className="inbox-agent-filter" ref={agentFilterRef}>
+                                <button
+                                    className={`agent-filter-select${agentFilter ? ' active' : ''}`}
+                                    onClick={() => setAgentFilterOpen(prev => !prev)}
+                                >
+                                    {agentFilter
+                                        ? agentFilter === '__unassigned__'
+                                            ? 'Atanmamış'
+                                            : (members.find(m => m.user?.id === agentFilter)?.user?.name || 'Tüm Temsilciler')
+                                        : 'Tüm Temsilciler'
+                                    }
+                                    <ChevronDown size={14} style={{ marginLeft: 4, transform: agentFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                </button>
+                                {agentFilterOpen && (
+                                    <div className="agent-filter-dropdown">
+                                        <button
+                                            className={`agent-filter-item${!agentFilter ? ' selected' : ''}`}
+                                            onClick={() => { setAgentFilter(null); setAgentFilterOpen(false); }}
+                                        >
+                                            Tüm Temsilciler
+                                        </button>
+                                        <button
+                                            className={`agent-filter-item${agentFilter === '__unassigned__' ? ' selected' : ''}`}
+                                            onClick={() => { setAgentFilter('__unassigned__'); setAgentFilterOpen(false); }}
+                                        >
+                                            <span className="agent-filter-dot" style={{ background: '#94a3b8' }} />
+                                            Atanmamış
+                                        </button>
+                                        {members.map(member => (
+                                            <button
+                                                key={member.user?.id}
+                                                className={`agent-filter-item${agentFilter === member.user?.id ? ' selected' : ''}`}
+                                                onClick={() => { setAgentFilter(member.user?.id); setAgentFilterOpen(false); }}
+                                            >
+                                                <span className="agent-filter-dot" style={{ background: '#3b82f6' }} />
+                                                {member.user?.name}
+                                                <span className="agent-filter-role">{member.role === 'OWNER' ? 'Owner' : 'Agent'}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
+                    {/* Row 2: Status + Funnel filters side by side */}
+                    <div className="inbox-filter-row-bottom">
+                        {/* Funnel Type Filter */}
+                        <div className="inbox-funnel-filter" ref={funnelFilterRef}>
+                            <button
+                                className={`funnel-filter-select${funnelFilter ? ' active' : ''}`}
+                                onClick={() => setFunnelFilterOpen(prev => !prev)}
+                            >
+                                {funnelFilter
+                                    ? (funnelOptions.find(f => f.value === funnelFilter)?.label || 'Tüm Funnellar')
+                                    : 'Tüm Funnellar'
+                                }
+                                <ChevronDown size={14} style={{ marginLeft: 4, transform: funnelFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                            </button>
+                            {funnelFilterOpen && (
+                                <div className="funnel-filter-dropdown">
+                                    <button
+                                        className={`funnel-filter-item${!funnelFilter ? ' selected' : ''}`}
+                                        onClick={() => { setFunnelFilter(null); setFunnelFilterOpen(false); setStatusFilter(null); }}
+                                    >
+                                        Tüm Funnellar
+                                    </button>
+                                    {funnelOptions.filter(f => f.value).map(funnel => (
+                                        <button
+                                            key={funnel.value}
+                                            className={`funnel-filter-item${funnelFilter === funnel.value ? ' selected' : ''}`}
+                                            onClick={() => { setFunnelFilter(funnel.value); setFunnelFilterOpen(false); setStatusFilter(null); }}
+                                        >
+                                            <span className="funnel-filter-dot" style={{ background: funnel.color || '#9ca3af' }} />
+                                            {funnel.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Funnel Stage Filter — Hover Submenu Dropdown */}
+                        <div className="inbox-status-filters" ref={stageFilterRef}>
+                            <button
+                                className={`status-filter-select${statusFilter ? ' active' : ''}`}
+                                onClick={() => setStageFilterOpen(prev => !prev)}
+                            >
+                                {(() => {
+                                    if (!statusFilter) return 'Tüm Durumlar';
+                                    for (const f of funnelOptions) {
+                                        if (!f.stages) continue;
+                                        const s = f.stages.find(s => s.value === statusFilter);
+                                        if (s) return s.label;
+                                    }
+                                    return 'Tüm Durumlar';
+                                })()}
+                                <ChevronDown size={14} style={{ marginLeft: 4, transform: stageFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                            </button>
+                            {stageFilterOpen && (
+                                <div className="stage-filter-dropdown">
+                                    <button
+                                        className={`stage-filter-item${!statusFilter ? ' selected' : ''}`}
+                                        onClick={() => { setStatusFilter(null); setStageFilterOpen(false); }}
+                                    >
+                                        Tüm Durumlar
+                                    </button>
+                                    {funnelOptions.filter(f => f.value && f.stages).map(funnel => (
+                                        <div key={funnel.value} className="stage-filter-funnel">
+                                            <div className="stage-filter-funnel-label">
+                                                <span className="stage-filter-dot" style={{ background: funnel.color || '#9ca3af' }} />
+                                                {funnel.label}
+                                                <ChevronDown size={12} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
+                                            </div>
+                                            <div className="stage-filter-submenu">
+                                                {funnel.stages.map(stage => (
+                                                    <button
+                                                        key={stage.value}
+                                                        className={`stage-filter-item${statusFilter === stage.value ? ' selected' : ''}`}
+                                                        onClick={() => { setStatusFilter(stage.value); setStageFilterOpen(false); }}
+                                                    >
+                                                        <span className="stage-filter-dot" style={{ background: stage.color || '#6366f1' }} />
+                                                        {stage.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+
                     {/* Search */}
-                    <div className="inbox-search">
+                    <div className={`inbox-search${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                         <Search size={16} className="search-icon" />
                         <input
                             type="text"
@@ -2584,48 +3028,58 @@ const Inbox = () => {
                             )}
                         </div>
 
-                        {/* Date Range Filter */}
-                        <div className="date-range-filter">
-                            <DatePicker
-                                selected={dateRange.from}
-                                onChange={(date) => setDateRange({ ...dateRange, from: date })}
-                                selectsStart
-                                startDate={dateRange.from}
-                                endDate={dateRange.to}
-                                placeholderText="Başlangıç"
-                                dateFormat="dd/MM/yyyy"
-                                className="date-picker-input"
-                            />
-                            <DatePicker
-                                selected={dateRange.to}
-                                onChange={(date) => setDateRange({ ...dateRange, to: date })}
-                                selectsEnd
-                                startDate={dateRange.from}
-                                endDate={dateRange.to}
-                                minDate={dateRange.from}
-                                placeholderText="Bitiş"
-                                dateFormat="dd/MM/yyyy"
-                                className="date-picker-input"
-                            />
-                            {(dateRange.from || dateRange.to) && (
-                                <button
-                                    className="clear-date-btn"
-                                    onClick={() => setDateRange({ from: null, to: null })}
-                                    title="Tarihleri Temizle"
-                                >
-                                    <X size={14} />
-                                </button>
-                            )}
-                        </div>
+                        {/* Quick Date Filter Dropdown */}
+                        {(() => {
+                            const QF_OPTIONS = [
+                                { key: 'today',  label: t('inbox.today') },
+                                { key: 'week',   label: t('inbox.thisWeek') },
+                                { key: 'month',  label: t('inbox.thisMonth') },
+                                { key: 'unread', label: t('inbox.unread') },
+                            ];
+                            const activeLabel = QF_OPTIONS.find(o => o.key === quickFilter)?.label;
+                            return (
+                                <div className="qf-dropdown-wrapper" ref={quickFilterRef} style={{ position: 'relative' }}>
+                                    <button
+                                        className={`qf-dropdown-btn ${quickFilter ? 'active' : ''}`}
+                                        onClick={() => setQuickFilterOpen(p => !p)}
+                                    >
+                                        <Filter size={13} />
+                                        {activeLabel || t('common.filter')}
+                                        <ChevronDown size={13} style={{ marginLeft: 2, transform: quickFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                    </button>
+                                    {quickFilterOpen && (
+                                        <div className="qf-dropdown-menu">
+                                            {QF_OPTIONS.map(({ key, label }) => (
+                                                <button
+                                                    key={key}
+                                                    className={`qf-menu-item ${quickFilter === key ? 'active' : ''}`}
+                                                    onClick={() => { setQuickFilter(quickFilter === key ? null : key); setQuickFilterOpen(false); }}
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                            {quickFilter && (
+                                                <>
+                                                    <div className="qf-divider" />
+                                                    <button className="qf-menu-item clear" onClick={() => { setQuickFilter(null); setQuickFilterOpen(false); }}>
+                                                        {t('common.clearFilter')}
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
 
                 {/* Inbox Items List */}
-                <div className="inbox-items">
+                <div className={`inbox-items${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                     {loading ? (
                         <div className="inbox-loading">
                             <RefreshCw size={24} className="spin" />
-                            <p>Yükleniyor...</p>
+                            <p>{t('common.loading')}</p>
                         </div>
                     ) : displayedItems.filter(item => {
                         // Hide resolved conversations unless showResolved is true
@@ -2817,7 +3271,7 @@ const Inbox = () => {
             </div>
 
             {/* Middle Panel - Detail View */}
-            <div className="inbox-detail-panel">
+            <div className={`inbox-detail-panel${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                 {selectedItem ? (
                     <>
                         {/* Message/Email Detail View */}
@@ -2826,8 +3280,19 @@ const Inbox = () => {
                                 <div className="detail-header">
                                     {/* Profile Bar */}
                                     <div className="profile-bar">
+                                        <button
+                                            className="mobile-back-btn"
+                                            onClick={() => setSelectedItem(null)}
+                                            title="Geri"
+                                        >
+                                            ←
+                                        </button>
                                         <div className="profile-bar-left">
-                                            <div className="detail-avatar">
+                                            <div
+                                                className="detail-avatar mobile-avatar-trigger"
+                                                onClick={() => setShowContactSidebar(true)}
+                                                title="Profili Görüntüle"
+                                            >
                                                 {selectedItem.contact?.avatar ? (
                                                     <img src={selectedItem.contact.avatar} alt={selectedItem.contact.name} />
                                                 ) : (
@@ -2852,23 +3317,76 @@ const Inbox = () => {
                                         </div>
 
                                         <div className="profile-bar-actions">
-                                            {/* Konu Başlığı Input */}
-                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
-                                                <input
-                                                    className="topic-input-compact"
-                                                    type="text"
-                                                    placeholder="Konu başlığı..."
-                                                    value={selectedItem.aiTopic || ''}
-                                                    onChange={(e) => {
-                                                        setSelectedItem(prev => ({ ...prev, aiTopic: e.target.value }));
-                                                    }}
-                                                    onBlur={async (e) => {
-                                                        try {
-                                                            await conversationAPI.updateTopic(currentWorkspace.id, selectedItem.id, e.target.value);
-                                                        } catch (err) { console.error('Topic update error:', err); }
-                                                    }}
-                                                />
-                                            )}
+                                            {/* Konu Başlığı Input with Fixed Dropdown */}
+                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (() => {
+                                                const contactId = selectedItem.contact?.id;
+                                                const pastTopics = contactId
+                                                    ? [...new Set(
+                                                        inboxItems
+                                                            .filter(it => it.contact?.id === contactId && it.id !== selectedItem.id && it.aiTopic?.trim())
+                                                            .map(it => it.aiTopic.trim())
+                                                      )]
+                                                    : [];
+                                                return (
+                                                    <div className="topic-input-wrapper">
+                                                        <input
+                                                            className="topic-input-compact"
+                                                            type="text"
+                                                            placeholder="Konu başlığı..."
+                                                            value={selectedItem.aiTopic || ''}
+                                                            onChange={(e) => {
+                                                                setSelectedItem(prev => ({ ...prev, aiTopic: e.target.value }));
+                                                            }}
+                                                            onFocus={(e) => {
+                                                                if (pastTopics.length > 0) {
+                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                    setTopicDropdownPos({
+                                                                        top: rect.bottom + window.scrollY + 4,
+                                                                        left: rect.left + window.scrollX,
+                                                                        width: Math.max(rect.width, 220)
+                                                                    });
+                                                                    setTopicDropdownOpen(true);
+                                                                }
+                                                            }}
+                                                            onBlur={async (e) => {
+                                                                setTimeout(() => setTopicDropdownOpen(false), 150);
+                                                                try {
+                                                                    await conversationAPI.updateTopic(currentWorkspace.id, selectedItem.id, e.target.value);
+                                                                } catch (err) { console.error('Topic update error:', err); }
+                                                            }}
+                                                        />
+                                                        {/* Fixed-position dropdown rendered via portal logic */}
+                                                        {topicDropdownOpen && pastTopics.length > 0 && (
+                                                            <div
+                                                                className="topic-dropdown-fixed"
+                                                                style={{
+                                                                    position: 'fixed',
+                                                                    top: topicDropdownPos.top,
+                                                                    left: topicDropdownPos.left,
+                                                                    minWidth: topicDropdownPos.width,
+                                                                }}
+                                                            >
+                                                                {pastTopics.map((topic, i) => (
+                                                                    <div
+                                                                        key={i}
+                                                                        className="topic-dropdown-item"
+                                                                        onMouseDown={async (e) => {
+                                                                            e.preventDefault();
+                                                                            setSelectedItem(prev => ({ ...prev, aiTopic: topic }));
+                                                                            setTopicDropdownOpen(false);
+                                                                            try {
+                                                                                await conversationAPI.updateTopic(currentWorkspace.id, selectedItem.id, topic);
+                                                                            } catch (err) { console.error('Topic update error:', err); }
+                                                                        }}
+                                                                    >
+                                                                        {topic}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
 
                                             {/* Sohbet Durumu Dropdown - for both MESSAGE and EMAIL */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
@@ -3009,7 +3527,7 @@ const Inbox = () => {
                                                                     const val = e.target.value;
                                                                     setSelectedItem(prev => ({ ...prev, funnelType: val }));
                                                                     try {
-                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, val);
+                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelType: val });
                                                                     } catch (err) { console.error('Funnel update error:', err); }
                                                                 }}
                                                             >
@@ -3030,7 +3548,19 @@ const Inbox = () => {
                                                                     const newStatus = e.target.value;
                                                                     try {
                                                                         await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStatus });
-                                                                        setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus } }));
+                                                                        // Also persist the funnelStageId on the conversation so it survives page refresh
+                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelStageId: newStatus });
+                                                                        setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus }, funnelStageId: newStatus }));
+                                                                        // Update sidebar funnel stage tag in real time
+                                                                        const changedStage = stageOptions.find(o => o.value === newStatus);
+                                                                        window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                                            detail: {
+                                                                                conversationId: selectedItem.id,
+                                                                                funnelStageId: newStatus,
+                                                                                stageName: changedStage?.label || changedStage?.name || newStatus,
+                                                                                stageColor: changedStage?.color || '#6366f1'
+                                                                            }
+                                                                        }));
                                                                     } catch (err) { console.error('Status update error:', err); }
                                                                 }}
                                                             >
@@ -3051,6 +3581,7 @@ const Inbox = () => {
                                     {messages.map((msg) => {
                                         // Check if this is a lead form message
                                         const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead');
+                                        const isImportedLead = msg.content?.includes('İçe aktarılan lead bilgileri:');
 
                                         // Check for handoff messages
                                         const isHandoffAsk = !msg.isFromContact && (
@@ -3075,7 +3606,7 @@ const Inbox = () => {
                                             messageClass += 'outgoing';
                                         }
                                         if (msg.messageType === 'CALL_TRANSCRIPT' && !isCallSystem) messageClass += ' call-transcript-bubble';
-                                        if (isLeadMessage) messageClass += ' lead-message';
+                                        if (isLeadMessage || isImportedLead) messageClass += ' lead-message';
 
                                         return (
                                             <div key={msg.id} className={messageClass}>
@@ -3113,23 +3644,56 @@ const Inbox = () => {
                                                             dangerouslySetInnerHTML={{ __html: sanitizeHtml(msg.content) }}
                                                         />
                                                     ) : isFormMessage(msg, selectedItem?.channel) ? (
-                                                        renderFormMessage(msg.content)
+                                                        renderFormMessage(msg, handleScheduleFromForm, schedulingMsgId)
+                                                    ) : isLeadMessage ? (
+                                                        renderLeadMessage(msg, handleScheduleFromForm, schedulingMsgId)
+                                                    ) : isImportedLead ? (
+                                                        (() => {
+                                                            const lines = msg.content.split('\n').filter(l => l.trim());
+                                                            const name = lines.find(l => !l.includes('📞') && !l.includes('✉️') && !l.includes('📝') && !l.includes('📥'))?.trim() || '';
+                                                            const phoneLine = lines.find(l => l.includes('📞'));
+                                                            const emailLine = lines.find(l => l.includes('✉️'));
+                                                            const phone = phoneLine ? phoneLine.replace('📞', '').trim() : '';
+                                                            const email = emailLine ? emailLine.replace('✉️', '').trim() : '';
+                                                            const fields = [];
+                                                            if (name) fields.push({ icon: '👤', label: 'İsim', value: name });
+                                                            if (phone) fields.push({ icon: '📞', label: 'Telefon', value: phone });
+                                                            if (email) fields.push({ icon: '✉️', label: 'E-Posta', value: email });
+                                                            return (
+                                                                <div className="lead-card-modern">
+                                                                    <div className="lead-card-header">
+                                                                        <span className="lead-card-header-icon">📋</span>
+                                                                        <span className="lead-card-header-label">İçe Aktarılan Lead</span>
+                                                                    </div>
+                                                                    <div className="lead-card-form-name">
+                                                                        <span className="lead-card-form-name-icon">📄</span>
+                                                                        <span>Excel / CSV İçe Aktarma</span>
+                                                                    </div>
+                                                                    {fields.length > 0 && (
+                                                                        <div className="lead-card-primary-fields">
+                                                                            {fields.map((f, i) => (
+                                                                                <div key={i} className="lead-card-field-row">
+                                                                                    <span className="lead-card-field-icon">{f.icon}</span>
+                                                                                    <span className="lead-card-field-label">{f.label}:</span>
+                                                                                    {isEmailValue(f.value) ? (
+                                                                                        <a href={`mailto:${f.value}`} className="lead-card-email-link">{f.value}</a>
+                                                                                    ) : (
+                                                                                        <span className="lead-card-field-value">{f.value}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="lead-card-footer">
+                                                                        <span className="lead-card-footer-time">
+                                                                            🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()
                                                     ) : (
                                                         <p>{msg.content}</p>
-                                                    )}
-                                                    {/* Plan Call button: shows on ANY message with time preference */}
-                                                    {(isLeadMessage || isFormMessage(msg, selectedItem?.channel)) && parseFormPreferredTime(msg.content) && (
-                                                        <button
-                                                            onClick={() => handleScheduleFromForm(msg)}
-                                                            disabled={schedulingMsgId === msg.id}
-                                                            style={{
-                                                                marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px',
-                                                                background: '#f97316', color: '#fff', border: 'none', borderRadius: '8px',
-                                                                padding: '6px 14px', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
-                                                            }}
-                                                        >
-                                                            📞 {schedulingMsgId === msg.id ? 'Planlanıyor...' : 'Aramayı Planla'}
-                                                        </button>
                                                     )}
                                                     <div className="message-meta">
                                                         <span className="message-time">{formatTime(msg.createdAt)}</span>
@@ -3874,15 +4438,21 @@ const Inbox = () => {
             </div>
 
             {/* Right Panel - Contact Sidebar (for all types) */}
-            {selectedItem && (selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
-                <div className="inbox-contact-sidebar-wrapper">
-                    <ContactSidebar
-                        conversationId={selectedItem.id}
-                        isOpen={true}
-                        members={members}
-                        onAssign={userId => handleAssignUser(selectedItem.id, userId)}
-                        isOwner={isOwner}
-                    />
+            {selectedItem && showContactSidebar && (selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
+                <div
+                    className="inbox-contact-sidebar-wrapper"
+                    onClick={() => setShowContactSidebar(false)}
+                >
+                    <div onClick={e => e.stopPropagation()}>
+                        <ContactSidebar
+                            conversationId={selectedItem.id}
+                            isOpen={true}
+                            members={members}
+                            onAssign={userId => handleAssignUser(selectedItem.id, userId)}
+                            isOwner={isOwner}
+                            onClose={() => setShowContactSidebar(false)}
+                        />
+                    </div>
                 </div>
             )}
 
@@ -3894,6 +4464,7 @@ const Inbox = () => {
                         members={members}
                         isOwner={isOwner}
                         readOnly={true}
+                        onClose={() => setShowContactSidebar(false)}
                         externalProfile={{
                             name: selectedPost.from?.name || 'Facebook Kullanıcısı',
                             profilePic: selectedPost.from?.id
@@ -4093,7 +4664,7 @@ const Inbox = () => {
                                 </div>
                                 <div className="qr-form-actions">
                                     {editingQuickReply && (
-                                        <button className="btn-cancel" onClick={() => { setEditingQuickReply(null); setQuickReplyForm({ content: '' }); }}>İptal</button>
+                                        <button className="btn-cancel" onClick={() => { setEditingQuickReply(null); setQuickReplyForm({ content: '' }); }}>{t('common.cancel')}</button>
                                     )}
                                     <button
                                         className="btn-submit"
@@ -4120,10 +4691,10 @@ const Inbox = () => {
                                                 <p>{qr.content}</p>
                                             </div>
                                             <div className="qr-list-item-actions">
-                                                <button onClick={() => handleEditQuickReply(qr)} title="Düzenle">
+                                                <button onClick={() => handleEditQuickReply(qr)} title={t('common.edit')}>
                                                     <Edit2 size={14} />
                                                 </button>
-                                                <button onClick={() => handleDeleteQuickReply(qr.id)} title="Sil" className="danger">
+                                                <button onClick={() => handleDeleteQuickReply(qr.id)} title={t('common.delete')} className="danger">
                                                     <Trash2 size={14} />
                                                 </button>
                                             </div>

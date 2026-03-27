@@ -24,6 +24,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding: 12px 14px;
+    padding-bottom: 80px;
 }
 
 /* Profile Header — horizontal centered */
@@ -204,10 +205,9 @@
     border-radius: 10px;
 }
 
-/* Reminder Section specific styling */
 .section-container.reminder-section {
-    background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
-    border: 1px solid #fecaca;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
 }
 
 /* Remove the large top gap from section-header (default for plain sections) */
@@ -739,7 +739,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    background: #ef4444;
+    background: #f87171;
     color: white;
     border: none;
     padding: 6px 12px;
@@ -760,7 +760,7 @@
 }
 
 .ai-action-btn:hover {
-    background: #dc2626;
+    background: #ef4444;
     transform: translateY(-1px);
     box-shadow: 0 6px 8px -1px rgba(239, 68, 68, 0.4);
 }
@@ -1059,10 +1059,10 @@
     gap: 8px;
     width: 100%;
     padding: 12px 16px;
-    background: #fef2f2;
-    border: 1px solid #fecaca;
+    background: #fffafa;
+    border: 1px solid #fee2e2;
     border-radius: 8px;
-    color: #dc2626;
+    color: #ef4444;
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
@@ -1070,8 +1070,8 @@
 }
 
 .block-btn:hover {
-    background: #fee2e2;
-    border-color: #fca5a5;
+    background: #fef2f2;
+    border-color: #fecaca;
 }
 
 .blocked-status {
@@ -1086,9 +1086,9 @@
     justify-content: center;
     gap: 8px;
     padding: 10px 16px;
-    background: #fee2e2;
+    background: #fef2f2;
     border-radius: 8px;
-    color: #dc2626;
+    color: #ef4444;
     font-size: 0.875rem;
     font-weight: 500;
 }
@@ -1190,14 +1190,14 @@
 
 /* Active Deals Section */
 .deals-section {
-    background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
+    background: #fffafa;
     border-radius: 10px;
-    border: 1px solid #fecaca;
+    border: 1px solid #fee2e2;
     overflow-x: hidden;
 }
 
 .deals-section h3 {
-    color: #991b1b !important;
+    color: #ef4444 !important;
 }
 
 .deals-list-container {
@@ -1279,9 +1279,9 @@
 
 /* Notes Section */
 .notes-section {
-    background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
+    background: #fffafa;
     border-radius: 10px;
-    border: 1px solid #fecaca;
+    border: 1px solid #fee2e2;
 }
 
 .notes-input-container {
@@ -1564,7 +1564,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
     border: none;
     color: #fff;
     display: flex;
@@ -2404,7 +2404,7 @@
 
 /* ====== Scheduled Calls List ====== */
 .scheduled-calls-section {
-    padding: 0 8px 8px;
+    padding: 0 0 8px 0;
 }
 
 .scheduled-calls-label {
@@ -2415,7 +2415,7 @@
     font-weight: 700;
     color: #3b82f6;
     letter-spacing: 0.05em;
-    padding: 6px 8px;
+    padding: 6px 0;
     margin-bottom: 4px;
 }
 
@@ -2518,4 +2518,405 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+/* ═══════════════════════════════════════════════════════════════
+   UNIFIED PROFILE CARD (New Design)
+   ═══════════════════════════════════════════════════════════════ */
+.unified-profile-card {
+    position: relative;
+    padding: 12px 0 16px 0;
+    background: transparent;
+}
+
+.unified-close-btn {
+    position: absolute;
+    top: 0;
+    right: -6px;
+    z-index: 1;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.unified-close-btn:hover {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.unified-profile-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+
+.unified-profile-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.unified-profile-top .unified-name-editable,
+.unified-profile-top .unified-name-input {
+    margin: 0;
+}
+
+.unified-avatar-wrapper {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--primary, #ef4444);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.unified-avatar-wrapper img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.unified-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.unified-name-editable {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+    line-height: 1.2;
+    cursor: pointer;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.2s;
+    display: inline-block;
+}
+
+.unified-name-editable:hover {
+    border-color: #cbd5e1;
+}
+
+.unified-name-input {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 4px 8px;
+    width: 100%;
+    outline: none;
+}
+
+.unified-name-input:focus {
+    border-color: var(--primary, #ef4444);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.unified-contact-box {
+    background: transparent;
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    border-radius: 0;
+    padding: 12px 0 0 0;
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.unified-contact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.unified-contact-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #475569;
+}
+
+.unified-contact-item.instagram {
+    color: #E1306C;
+}
+
+.unified-contact-icon {
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+
+.unified-contact-item.instagram .unified-contact-icon {
+    color: #E1306C;
+}
+
+.unified-contact-input {
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    padding: 2px 4px;
+    border-radius: 4px;
+    width: 100%;
+    transition: all 0.2s;
+}
+
+.unified-contact-input:hover, .unified-contact-input:focus {
+    border-color: #e2e8f0;
+    background: #f8fafc;
+    outline: none;
+}
+
+/* Inline Action Buttons (WhatsApp, AI Call, Mail) next to fields */
+.inline-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+}
+
+.inline-action-btn:hover {
+    transform: scale(1.1);
+}
+
+.inline-action-whatsapp {
+    color: #25D366;
+    background: rgba(37, 211, 102, 0.1);
+}
+
+.inline-action-whatsapp:hover {
+    background: rgba(37, 211, 102, 0.15);
+}
+
+.inline-action-call {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.inline-action-call:hover {
+    background: rgba(239, 68, 68, 0.15);
+}
+
+.inline-action-mail {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
+.inline-action-mail:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.unified-add-contact-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #fff;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+}
+
+.unified-add-contact-btn:hover {
+    border-color: #94a3b8;
+    color: #475569;
+    background: #f8fafc;
+}
+
+.unified-add-contact-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 20;
+    min-width: 160px;
+    overflow: hidden;
+}
+
+.unified-add-contact-dropdown button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.unified-add-contact-dropdown button:hover {
+    background: #f1f5f9;
+}
+
+.unified-extra-remove-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.unified-extra-remove-btn:hover {
+    background: #fee2e2;
+    color: #ef4444;
+}
+
+.unified-tags-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.unified-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.unified-tag-blue {
+    background: #eff6ff;
+    color: #3b82f6;
+}
+
+.unified-tag-purple {
+    background: #f3e8ff;
+    color: #a855f7;
+}
+
+.unified-tag-gray {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.unified-tag .remove-tag-btn {
+    opacity: 0;
+    margin-left: 2px;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.unified-tag:hover .remove-tag-btn {
+    opacity: 1;
+}
+
+.unified-tag .remove-tag-btn:hover {
+    background: rgba(0,0,0,0.05);
+}
+
+.unified-category-select {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    font-family: inherit;
+    cursor: pointer;
+    padding-right: 14px;
+    margin-right: -14px;
+    outline: none;
+}
+
+.unified-tag-add-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: transparent;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.unified-tag-add-btn:hover {
+    border-color: #94a3b8;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+.unified-tag-input-wrapper {
+    position: relative;
+}
+
+.unified-tag-input-wrapper input {
+    font-size: 11px;
+    padding: 4px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    outline: none;
+    width: 100px;
+}
+
+.unified-tag-input-wrapper input:focus {
+    border-color: var(--primary, #ef4444);
 }

@@ -292,6 +292,17 @@ textarea.input-modern {
     border-color: #fca5a5;
 }
 
+.btn-outline-primary {
+    background: transparent;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+}
+
+.btn-outline-primary:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
 .btn-toggle {
     font-weight: 600;
     border: 1px solid transparent;

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, teamAPI, aiAPI } from '../../services/api';
@@ -24,10 +25,76 @@ import {
 } from 'lucide-react';
 import './Users.css';
 
+// ─── Working Hours Default ────────────────────────────────
+const DEFAULT_WORKING_HOURS = {
+    monday: { enabled: true, start: '08:00', end: '18:00' },
+    tuesday: { enabled: true, start: '08:00', end: '18:00' },
+    wednesday: { enabled: true, start: '08:00', end: '18:00' },
+    thursday: { enabled: true, start: '08:00', end: '18:00' },
+    friday: { enabled: true, start: '08:00', end: '18:00' },
+    saturday: { enabled: false, start: '08:00', end: '18:00' },
+    sunday: { enabled: false, start: '08:00', end: '18:00' }
+};
+
+const DAY_LABELS = {
+    monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday',
+    thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday'
+};
+
+// ─── Working Hours Component ────────────────────────────────
+const WorkingHoursEditor = ({ workingHours, onChange }) => {
+    const { t } = useTranslation();
+    const hours = { ...DEFAULT_WORKING_HOURS, ...workingHours };
+
+    const updateDay = (day, field, value) => {
+        const updated = { ...hours, [day]: { ...hours[day], [field]: value } };
+        onChange(updated);
+    };
+
+    return (
+        <div className="ut-wh-section">
+            <div className="ut-wh-header">
+                <span className="ut-wh-title">{t('users.workingHoursTitle')}</span>
+            </div>
+            <div className="ut-wh-table">
+                {Object.entries(DAY_LABELS).map(([key, label]) => (
+                    <div key={key} className={`ut-wh-row ${!hours[key]?.enabled ? 'disabled' : ''}`}>
+                        <label className="ut-wh-toggle">
+                            <input
+                                type="checkbox"
+                                checked={hours[key]?.enabled ?? false}
+                                onChange={(e) => updateDay(key, 'enabled', e.target.checked)}
+                            />
+                            <span className="ut-wh-slider" />
+                        </label>
+                        <span className="ut-wh-day">{label}</span>
+                        <div className="ut-wh-times">
+                            <input
+                                type="time"
+                                value={hours[key]?.start || '08:00'}
+                                onChange={(e) => updateDay(key, 'start', e.target.value)}
+                                disabled={!hours[key]?.enabled}
+                            />
+                            <span className="ut-wh-sep">—</span>
+                            <input
+                                type="time"
+                                value={hours[key]?.end || '18:00'}
+                                onChange={(e) => updateDay(key, 'end', e.target.value)}
+                                disabled={!hours[key]?.enabled}
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 // ─── Edit Member Modal ────────────────────────────────
 const EditMemberModal = ({ member, onSubmit, onClose }) => {
     const [name, setName] = useState(member.user?.name || '');
     const [email, setEmail] = useState(member.user?.email || '');
+    const [workingHours, setWorkingHours] = useState(member.user?.workingHours || DEFAULT_WORKING_HOURS);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -37,16 +104,16 @@ const EditMemberModal = ({ member, onSubmit, onClose }) => {
         if (!name.trim()) { setError('Ad Soyad boş olamaz'); return; }
         if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) { setError('Geçerli bir e-posta girin'); return; }
         setLoading(true);
-        try { await onSubmit({ name: name.trim(), email: email.trim() }); onClose(); }
+        try { await onSubmit({ name: name.trim(), email: email.trim(), workingHours }); onClose(); }
         catch (err) { setError(err.response?.data?.error || 'Güncelleme başarısız'); }
         finally { setLoading(false); }
     };
 
     return (
         <div className="ut-modal-overlay" onClick={onClose}>
-            <div className="ut-modal" onClick={e => e.stopPropagation()}>
+            <div className="ut-modal ut-modal-wide" onClick={e => e.stopPropagation()}>
                 <div className="ut-modal-header">
-                    <h3><Edit2 size={16} /> Kullanıcı Düzenle</h3>
+                    <h3><Edit2 size={16} /> Kullanıcı Edit</h3>
                     <button className="ut-modal-close" onClick={onClose}><X size={18} /></button>
                 </div>
                 <form onSubmit={handleSubmit} className="ut-modal-body">
@@ -61,8 +128,11 @@ const EditMemberModal = ({ member, onSubmit, onClose }) => {
                         <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                             placeholder="ornek@mail.com" required />
                     </div>
+
+                    <WorkingHoursEditor workingHours={workingHours} onChange={setWorkingHours} />
+
                     <div className="ut-modal-footer">
-                        <button type="button" className="ut-btn-secondary" onClick={onClose}>İptal</button>
+                        <button type="button" className="ut-btn-secondary" onClick={onClose}>Cancel</button>
                         <button type="submit" className="ut-btn-primary" disabled={loading}>
                             {loading ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
@@ -102,7 +172,7 @@ const ChangePasswordModal = ({ memberName, onSubmit, onClose }) => {
                 <form onSubmit={handleSubmit} className="ut-modal-body">
                     {error && <div className="ut-alert-danger">{error}</div>}
                     <div className="ut-form-group">
-                        <label>Yeni Şifre</label>
+                        <label>New Password</label>
                         <div className="ut-password-wrap">
                             <input type={showPassword ? 'text' : 'password'} value={password}
                                 onChange={e => setPassword(e.target.value)} placeholder="En az 6 karakter" autoFocus required />
@@ -112,12 +182,12 @@ const ChangePasswordModal = ({ memberName, onSubmit, onClose }) => {
                         </div>
                     </div>
                     <div className="ut-form-group">
-                        <label>Şifre Tekrar</label>
+                        <label>Confirm Password</label>
                         <input type={showPassword ? 'text' : 'password'} value={confirmPassword}
                             onChange={e => setConfirmPassword(e.target.value)} placeholder="Şifreyi tekrar girin" required />
                     </div>
                     <div className="ut-modal-footer">
-                        <button type="button" className="ut-btn-secondary" onClick={onClose}>İptal</button>
+                        <button type="button" className="ut-btn-secondary" onClick={onClose}>Cancel</button>
                         <button type="submit" className="ut-btn-primary" disabled={loading}>
                             {loading ? 'Kaydediliyor...' : 'Şifreyi Değiştir'}
                         </button>
@@ -154,17 +224,17 @@ const TeamModal = ({ team, parentName, onSubmit, onClose }) => {
                 )}
                 <form onSubmit={handleSubmit} className="ut-modal-body">
                     <div className="ut-form-group">
-                        <label>Takım Adı</label>
+                        <label>Team Name</label>
                         <input type="text" value={name} onChange={e => setName(e.target.value)}
                             placeholder="Örn: Destek Ekibi" required autoFocus />
                     </div>
                     <div className="ut-form-group">
-                        <label>Açıklama</label>
+                        <label>Description</label>
                         <textarea value={description} onChange={e => setDescription(e.target.value)}
                             placeholder="Takım hakkında kısa bilgi..." rows={3} />
                     </div>
                     <div className="ut-modal-footer">
-                        <button type="button" className="ut-btn-secondary" onClick={onClose}>İptal</button>
+                        <button type="button" className="ut-btn-secondary" onClick={onClose}>Cancel</button>
                         <button type="submit" className="ut-btn-primary" disabled={loading}>
                             {loading ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
@@ -186,6 +256,7 @@ const ROLE_COLORS = {
 
 // ─── Member Chip with hover popup ────────────────────────────
 const MemberChip = ({ member, roleInfo, isOnline, onRemove, email }) => {
+    const { t } = useTranslation();
     const [popupPos, setPopupPos] = useState(null);
     const chipRef = useRef(null);
 
@@ -237,7 +308,7 @@ const MemberChip = ({ member, roleInfo, isOnline, onRemove, email }) => {
             )}
             <span className="ut-chip-avatar">{getInitials(member.user?.name)}</span>
             <span className="ut-chip-name">{member.user?.name || 'Bilinmiyor'}</span>
-            <button className="ut-chip-remove" title="Çıkar" onClick={onRemove}>
+            <button className="ut-chip-remove" title={t('common.remove') || 'Remove'} onClick={onRemove}>
                 <X size={10} />
             </button>
         </div>
@@ -246,6 +317,7 @@ const MemberChip = ({ member, roleInfo, isOnline, onRemove, email }) => {
 
 // ─── Main Component ───────────────────────────────────────────
 const UsersTeams = () => {
+    const { t } = useTranslation();
     const { currentWorkspace, user, onlineUsers } = useAuth();
 
     // Members
@@ -356,9 +428,9 @@ const UsersTeams = () => {
 
     const handleDeleteTeam = (teamId) => {
         setConfirmModal({
-            isOpen: true, title: 'Takım Sil',
-            message: 'Bu takımı ve alt takımlarını silmek istediğinize emin misiniz?',
-            confirmText: 'Evet, Sil', type: 'danger',
+            isOpen: true, title: t('teams.deleteTeam'),
+            message: t('teams.deleteConfirm'),
+            confirmText: t('common.confirm'), type: 'danger',
             onConfirm: async () => {
                 setConfirmModal(p => ({ ...p, isOpen: false }));
                 try { await teamAPI.delete(currentWorkspace.id, teamId); loadTeams(); }
@@ -502,7 +574,7 @@ const UsersTeams = () => {
                                 className="ut-team-drag-handle"
                                 draggable
                                 onDragStart={e => handleTeamDragStart(e, team)}
-                                title="Sürükle & Bırak"
+                                title={t('teams.dragDrop')}
                             >
                                 <GripVertical size={14} />
                             </span>
@@ -519,15 +591,15 @@ const UsersTeams = () => {
                                     {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                                 </button>
                             )}
-                            <button className="ut-icon-btn" title="Alt Takım Ekle"
+                            <button className="ut-icon-btn" title={t('teams.addSubTeam')}
                                 onClick={() => setTeamModal({ show: true, team: null, parentId: team.id, parentName: team.name })}>
                                 <Plus size={14} />
                             </button>
-                            <button className="ut-icon-btn" title="Düzenle"
+                            <button className="ut-icon-btn" title={t('common.edit')}
                                 onClick={() => setTeamModal({ show: true, team, parentId: null, parentName: null })}>
                                 <Edit2 size={14} />
                             </button>
-                            <button className="ut-icon-btn danger" title="Sil"
+                            <button className="ut-icon-btn danger" title={t('common.delete')}
                                 onClick={() => handleDeleteTeam(team.id)}>
                                 <Trash2 size={14} />
                             </button>
@@ -542,7 +614,7 @@ const UsersTeams = () => {
                                 <div key={m.id} className="ut-bot-chip">
                                     <Bot size={10} />
                                     <span className="ut-bot-chip-name">{m.bot?.name}</span>
-                                    <button className="ut-chip-remove" title="Çıkar"
+                                    <button className="ut-chip-remove" title={t('common.remove') || 'Remove'}
                                         onClick={() => handleRemoveBotFromTeam(team.id, m.botId)}>
                                         <X size={9} />
                                     </button>
@@ -589,7 +661,7 @@ const UsersTeams = () => {
         );
     };
 
-    if (!currentWorkspace) return <div className="ut-empty">Lütfen bir workspace seçin</div>;
+    if (!currentWorkspace) return <div className="ut-empty">{t('common.selectWorkspace')}</div>;
 
     return (
         <div className="ut-page">
@@ -598,7 +670,7 @@ const UsersTeams = () => {
                 <div className="ut-header-left">
                     <Layers size={20} className="ut-header-icon" />
                     <div>
-                        <h1 className="ut-page-title">Kullanıcı & Takım</h1>
+                        <h1 className="ut-page-title">Users & Teams</h1>
                         <span className="ut-page-subtitle">Kullanıcıları takımlara sürükleyip bırakarak atayın</span>
                     </div>
                 </div>
@@ -618,17 +690,17 @@ const UsersTeams = () => {
                 <div className="ut-panel ut-users-panel">
                     <div className="ut-panel-header">
                         <UsersIcon size={16} />
-                        <span>Kullanıcılar & Asistanlar</span>
+                        <span>Users & Asistanlar</span>
                         <span className="ut-panel-count">{members.length + bots.length}</span>
                     </div>
                     <div className="ut-panel-body">
                         {membersLoading ? (
-                            <div className="ut-loading"><div className="ut-spinner" /><p>Yükleniyor...</p></div>
+                            <div className="ut-loading"><div className="ut-spinner" /><p>Loading...</p></div>
                         ) : (
                             <>
                                 {/* ── Kullanıcılar ── */}
                                 {members.length > 0 && (
-                                    <div className="ut-panel-section-label"><UserCircle2 size={12} /> Kullanıcılar</div>
+                                    <div className="ut-panel-section-label"><UserCircle2 size={12} /> Users</div>
                                 )}
                                 {members.map(member => {
                                     const roleInfo = ROLE_COLORS[member.role] || ROLE_COLORS.AGENT;
@@ -666,7 +738,7 @@ const UsersTeams = () => {
                                                             <option value="OWNER">Owner</option>
                                                             <option value="AGENT">Agent</option>
                                                         </select>
-                                                        <button className="ut-icon-btn" title="Düzenle"
+                                                        <button className="ut-icon-btn" title={t('common.edit')}
                                                             onClick={() => setEditModal({ show: true, member })}>
                                                             <Edit2 size={13} />
                                                         </button>
@@ -674,7 +746,7 @@ const UsersTeams = () => {
                                                             onClick={() => setPasswordModal({ show: true, userId: member.userId, memberName: member.user?.name })}>
                                                             <Key size={13} />
                                                         </button>
-                                                        <button className="ut-icon-btn danger" title="Çıkar"
+                                                        <button className="ut-icon-btn danger" title={t('common.remove') || 'Remove'}
                                                             onClick={() => handleRemoveMember(member.userId)}>
                                                             <Trash2 size={13} />
                                                         </button>
@@ -687,7 +759,7 @@ const UsersTeams = () => {
 
                                 {/* ── AI Asistanlar ── */}
                                 {bots.length > 0 && (
-                                    <div className="ut-panel-section-label ut-panel-section-bot"><Bot size={12} /> AI Asistanlar</div>
+                                    <div className="ut-panel-section-label ut-panel-section-bot"><Bot size={12} /> AI Assistants</div>
                                 )}
                                 {bots.map(bot => (
                                     <div
@@ -721,12 +793,12 @@ const UsersTeams = () => {
                 <div className="ut-panel ut-teams-panel">
                     <div className="ut-panel-header">
                         <Shield size={16} />
-                        <span>Takımlar</span>
+                        <span>Teams</span>
                         <span className="ut-panel-count">{teams.length}</span>
                     </div>
                 <div className="ut-panel-body ut-teams-grid">
                         {teamsLoading ? (
-                            <div className="ut-loading"><div className="ut-spinner" /><p>Yükleniyor...</p></div>
+                            <div className="ut-loading"><div className="ut-spinner" /><p>Loading...</p></div>
                         ) : teams.length === 0 ? (
                             <div className="ut-teams-empty">
                                 <Shield size={32} />

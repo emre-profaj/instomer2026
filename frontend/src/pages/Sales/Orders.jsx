@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
@@ -5,6 +6,7 @@ import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart } from 'l
 import './Sales.css';
 
 const Orders = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [deals, setDeals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -84,12 +86,12 @@ const Orders = () => {
             fetchStats();
         } catch (error) {
             console.error('Failed to create order:', error);
-            alert('Sipariş oluşturulurken hata oluştu');
+            alert('Error creating order');
         }
     };
 
     const handleConvertToInvoice = async (dealId) => {
-        if (!confirm('Bu siparişi faturaya dönüştürmek istiyor musunuz?')) return;
+        if (!confirm('Are you sure you want to convert this order to invoice?')) return;
         try {
             await dealAPI.convert(currentWorkspace.id, dealId, 'INVOICE');
             fetchDeals();
@@ -97,12 +99,12 @@ const Orders = () => {
             setSelectedDeal(null);
         } catch (error) {
             console.error('Failed to convert deal:', error);
-            alert('Dönüştürme başarısız');
+            alert('Conversion failed');
         }
     };
 
     const handleDeleteDeal = async (dealId) => {
-        if (!confirm('Bu siparişi silmek istiyor musunuz?')) return;
+        if (!confirm('Are you sure you want to delete this order?')) return;
         try {
             await dealAPI.delete(currentWorkspace.id, dealId);
             fetchDeals();
@@ -172,7 +174,7 @@ const Orders = () => {
             {/* Header */}
             <div className="sales-header">
                 <div className="sales-header-left">
-                    <h1>Siparişler</h1>
+                    <h1>{t('sales.orders')}</h1>
                     <span className="sales-count">{orderStats.count} sipariş</span>
                 </div>
                 <div className="sales-header-right">
@@ -191,7 +193,7 @@ const Orders = () => {
                     </div>
                     <div className="stat-info">
                         <span className="stat-value">{orderStats.count}</span>
-                        <span className="stat-label">Toplam Sipariş</span>
+                        <span className="stat-label">{t('analytics.totalOrders')}</span>
                     </div>
                 </div>
                 <div className="stat-card">
@@ -205,7 +207,7 @@ const Orders = () => {
                     <div className="stat-icon conversion"><ArrowRight size={20} /></div>
                     <div className="stat-info">
                         <span className="stat-value">{stats?.conversionRates?.orderToInvoice || 0}%</span>
-                        <span className="stat-label">Faturaya Dönüşüm</span>
+                        <span className="stat-label">{t('sales.invoiceConversion')}</span>
                     </div>
                 </div>
             </div>
@@ -228,11 +230,11 @@ const Orders = () => {
                 {/* Deals List */}
                 <div className="deals-list">
                     {loading ? (
-                        <div className="loading-state">Yükleniyor...</div>
+                        <div className="loading-state">Loading...</div>
                     ) : filteredDeals.length === 0 ? (
                         <div className="empty-state">
                             <ShoppingCart size={48} />
-                            <h3>Henüz sipariş yok</h3>
+                            <h3>{t('sales.noOrders')}</h3>
                             <p>"Yeni Sipariş" butonuna tıklayarak oluşturabilirsiniz</p>
                         </div>
                     ) : (
@@ -271,7 +273,7 @@ const Orders = () => {
 
                         <div className="detail-info">
                             <div className="info-row">
-                                <span className="label">Sipariş No:</span>
+                                <span className="label">{t('sales.orderNo')}</span>
                                 <span className="value">{selectedDeal.orderNumber}</span>
                             </div>
                             {selectedDeal.quoteNumber && (
@@ -281,7 +283,7 @@ const Orders = () => {
                                 </div>
                             )}
                             <div className="info-row">
-                                <span className="label">Müşteri:</span>
+                                <span className="label">{t('sales.customer')}</span>
                                 <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName}</span>
                             </div>
                             <div className="info-row">
@@ -297,14 +299,14 @@ const Orders = () => {
                                 >
                                     <option value="OPEN">Açık</option>
                                     <option value="WON">Tamamlandı</option>
-                                    <option value="LOST">İptal</option>
+                                    <option value="LOST">Cancel</option>
                                 </select>
                             </div>
                         </div>
 
                         {/* Products */}
                         <div className="detail-products">
-                            <h4>Ürünler</h4>
+                            <h4>{t('sales.products')}</h4>
                             <div className="products-table">
                                 {selectedDeal.products?.map((product, i) => (
                                     <div key={i} className="product-row">
@@ -344,7 +346,7 @@ const Orders = () => {
                 <div className="modal-overlay" onClick={() => setShowForm(false)}>
                     <div className="modal-content deal-form" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>Yeni Sipariş Oluştur</h2>
+                            <h2>New Sipariş Create</h2>
                             <button className="btn-icon" onClick={() => setShowForm(false)}>
                                 <X size={20} />
                             </button>
@@ -352,7 +354,7 @@ const Orders = () => {
 
                         <form onSubmit={handleCreateOrder}>
                             <div className="form-group">
-                                <label>Müşteri *</label>
+                                <label>{t('sales.customerLabel')}</label>
                                 <select
                                     value={formData.contactId}
                                     onChange={(e) => setFormData({ ...formData, contactId: e.target.value })}
@@ -395,7 +397,7 @@ const Orders = () => {
 
                             {/* Products */}
                             <div className="form-group products-section">
-                                <label>Ürünler / Hizmetler</label>
+                                <label>{t('sales.productsServices')}</label>
                                 {formData.products.map((product, index) => (
                                     <div key={index} className="product-input-row">
                                         <input

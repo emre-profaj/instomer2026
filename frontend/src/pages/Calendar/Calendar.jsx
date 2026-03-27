@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { appointmentAPI, retellAPI } from '../../services/api';
+import { appointmentAPI, retellAPI, resourceAPI } from '../../services/api';
 import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
-    Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2
+    Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
+    Layers, Edit2, Building2
 } from 'lucide-react';
 import './Calendar.css';
 
@@ -14,7 +16,21 @@ const APPOINTMENT_STATUSES = [
     { value: 'NO_SHOW', label: 'Gelmedi', color: '#f59e0b' }
 ];
 
+const RESOURCE_TYPES = [
+    { value: 'ROOM', label: 'Room', icon: '🏠' },
+    { value: 'PERSON', label: 'Person', icon: '👤' },
+    { value: 'EQUIPMENT', label: 'Equipment', icon: '🔧' },
+    { value: 'OTHER', label: 'Other', icon: '📦' }
+];
+
+
+const RESOURCE_COLORS = [
+    '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+    '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'
+];
+
 const Calendar = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'day'
@@ -25,6 +41,22 @@ const Calendar = () => {
     const [loading, setLoading] = useState(true);
     const [selectedAgent, setSelectedAgent] = useState('');
     const [cancellingCallId, setCancellingCallId] = useState(null);
+
+    // Scheduled call edit modal
+    const [selectedScheduledCall, setSelectedScheduledCall] = useState(null);
+    const [rescheduleDate, setRescheduleDate] = useState('');
+    const [rescheduling, setRescheduling] = useState(false);
+
+    // Resource states
+    const [resources, setResources] = useState([]);
+    const [selectedResource, setSelectedResource] = useState('');
+    const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
+    const [editingResource, setEditingResource] = useState(null);
+    const [resourceForm, setResourceForm] = useState({
+        name: '', description: '', type: 'ROOM', color: '#8b5cf6',
+        availableStart: '09:00', availableEnd: '18:00',
+        availableDays: '[1,2,3,4,5]'
+    });
 
     // Modal states
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,6 +70,7 @@ const Calendar = () => {
         startTime: '',
         endTime: '',
         assignedToId: '',
+        resourceId: '',
         contactName: '',
         contactPhone: '',
         contactEmail: '',
@@ -57,8 +90,18 @@ const Calendar = () => {
             loadAgents();
             loadUpcomingAppointments();
             loadScheduledCalls();
+            loadResources();
         }
-    }, [currentWorkspace, currentDate, selectedAgent]);
+    }, [currentWorkspace, currentDate, selectedAgent, selectedResource]);
+
+    const loadResources = async () => {
+        try {
+            const response = await resourceAPI.getAll(currentWorkspace.id);
+            setResources(response.data.resources || []);
+        } catch (error) {
+            console.error('Load resources error:', error);
+        }
+    };
 
     const loadAppointments = async () => {
         try {
@@ -74,6 +117,10 @@ const Calendar = () => {
 
             if (selectedAgent) {
                 params.assignedToId = selectedAgent;
+            }
+
+            if (selectedResource) {
+                params.resourceId = selectedResource;
             }
 
             const response = await appointmentAPI.getAll(currentWorkspace.id, params);
@@ -104,10 +151,16 @@ const Calendar = () => {
             const nextWeek = new Date();
             nextWeek.setDate(nextWeek.getDate() + 7);
 
-            const response = await appointmentAPI.getAll(currentWorkspace.id, {
+            const params = {
                 startDate: lastWeek.toISOString(),
                 endDate: nextWeek.toISOString()
-            });
+            };
+
+            if (selectedResource) {
+                params.resourceId = selectedResource;
+            }
+
+            const response = await appointmentAPI.getAll(currentWorkspace.id, params);
 
             // Process appointments - include all, mark completed ones
             const upcoming = (response.data.appointments || [])
@@ -154,10 +207,44 @@ const Calendar = () => {
             setCancellingCallId(sc.id);
             await retellAPI.cancelScheduledCall(currentWorkspace.id, sc.id);
             setScheduledCalls(prev => prev.filter(c => c.id !== sc.id));
+            setSelectedScheduledCall(null);
         } catch (e) {
-            alert('İptal edilemedi');
+            alert('Could not cancel');
         } finally {
             setCancellingCallId(null);
+        }
+    };
+
+    const openScheduledCallModal = (sc) => {
+        setSelectedScheduledCall(sc);
+        // Pre-fill with current scheduled time
+        const d = new Date(sc.scheduledAt);
+        const offset = d.getTimezoneOffset();
+        const local = new Date(d.getTime() - (offset * 60 * 1000));
+        setRescheduleDate(local.toISOString().slice(0, 16));
+    };
+
+    const handleRescheduleCall = async () => {
+        if (!selectedScheduledCall || !rescheduleDate) return;
+        const newDate = new Date(rescheduleDate);
+        if (newDate <= new Date()) {
+            alert('Planlanan saat gelecekte olmalı');
+            return;
+        }
+        setRescheduling(true);
+        try {
+            await retellAPI.updateScheduledCall(currentWorkspace.id, selectedScheduledCall.id, {
+                scheduledAt: newDate.toISOString()
+            });
+            // Update local state
+            setScheduledCalls(prev => prev.map(sc =>
+                sc.id === selectedScheduledCall.id ? { ...sc, scheduledAt: newDate.toISOString() } : sc
+            ));
+            setSelectedScheduledCall(null);
+        } catch (e) {
+            alert(e.response?.data?.error || 'Arama güncellenemedi');
+        } finally {
+            setRescheduling(false);
         }
     };
 
@@ -174,9 +261,9 @@ const Calendar = () => {
         tomorrow.setDate(tomorrow.getDate() + 1);
 
         if (date.toDateString() === today.toDateString()) {
-            return 'Bugün';
+            return t('common.today');
         } else if (date.toDateString() === tomorrow.toDateString()) {
-            return 'Yarın';
+            return 'Tomorrow';
         } else {
             return date.toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric', month: 'short' });
         }
@@ -264,6 +351,7 @@ const Calendar = () => {
             startTime: formatDateTimeLocal(startTime),
             endTime: formatDateTimeLocal(endTime),
             assignedToId: agents[0]?.id || '',
+            resourceId: selectedResource || '',
             contactName: '',
             contactPhone: '',
             contactEmail: '',
@@ -282,6 +370,7 @@ const Calendar = () => {
             startTime: formatDateTimeLocal(new Date(appointment.startTime)),
             endTime: formatDateTimeLocal(new Date(appointment.endTime)),
             assignedToId: appointment.assignedToId,
+            resourceId: appointment.resourceId || '',
             contactName: appointment.contactName || '',
             contactPhone: appointment.contactPhone || '',
             contactEmail: appointment.contactEmail || '',
@@ -302,6 +391,13 @@ const Calendar = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // En az biri seçilmeli
+        if (!formData.assignedToId && !formData.resourceId) {
+            alert('Lütfen bir Agent veya Kaynak seçiniz.');
+            return;
+        }
+
         setIsCreating(true);
         setConflict(null);
 
@@ -310,6 +406,8 @@ const Calendar = () => {
             const statusColor = APPOINTMENT_STATUSES.find(s => s.value === formData.status)?.color || '#3b82f6';
             const data = {
                 ...formData,
+                assignedToId: formData.assignedToId || null,
+                resourceId: formData.resourceId || null,
                 color: statusColor,
                 startTime: new Date(formData.startTime).toISOString(),
                 endTime: new Date(formData.endTime).toISOString()
@@ -322,8 +420,8 @@ const Calendar = () => {
             }
 
             setIsModalOpen(false);
-            loadAppointments();
-            loadUpcomingAppointments(); // Refresh upcoming sidebar
+            await loadAppointments();
+            await loadUpcomingAppointments();
         } catch (error) {
             console.error('Save appointment error:', error);
             if (error.response?.data?.conflict) {
@@ -338,16 +436,16 @@ const Calendar = () => {
 
     const handleDelete = async () => {
         if (!selectedAppointment) return;
-        if (!confirm('Bu randevuyu silmek istediğinizden emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this appointment?')) return;
 
         try {
             await appointmentAPI.delete(currentWorkspace.id, selectedAppointment.id);
             setIsModalOpen(false);
-            loadAppointments();
-            loadUpcomingAppointments(); // Refresh upcoming sidebar
+            await loadAppointments();
+            await loadUpcomingAppointments();
         } catch (error) {
             console.error('Delete appointment error:', error);
-            alert('Randevu silinemedi');
+            alert('Could not delete appointment');
         }
     };
 
@@ -373,6 +471,57 @@ const Calendar = () => {
         return date.toDateString() === today.toDateString();
     };
 
+    // ─── Resource CRUD ───
+    const openResourceModal = (resource = null) => {
+        if (resource) {
+            setEditingResource(resource);
+            setResourceForm({
+                name: resource.name,
+                description: resource.description || '',
+                type: resource.type,
+                color: resource.color,
+                availableStart: resource.availableStart || '09:00',
+                availableEnd: resource.availableEnd || '18:00',
+                availableDays: resource.availableDays || '[1,2,3,4,5]'
+            });
+        } else {
+            setEditingResource(null);
+            setResourceForm({
+                name: '', description: '', type: 'ROOM', color: '#8b5cf6',
+                availableStart: '09:00', availableEnd: '18:00',
+                availableDays: '[1,2,3,4,5]'
+            });
+        }
+        setIsResourceModalOpen(true);
+    };
+
+    const handleResourceSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            if (editingResource) {
+                await resourceAPI.update(currentWorkspace.id, editingResource.id, resourceForm);
+            } else {
+                await resourceAPI.create(currentWorkspace.id, resourceForm);
+            }
+            setIsResourceModalOpen(false);
+            loadResources();
+        } catch (error) {
+            console.error('Save resource error:', error);
+            alert(error.response?.data?.error || 'Kaynak kaydedilemedi');
+        }
+    };
+
+    const handleResourceDelete = async (resourceId) => {
+        if (!confirm('Are you sure you want to delete this resource?')) return;
+        try {
+            await resourceAPI.delete(currentWorkspace.id, resourceId);
+            if (selectedResource === resourceId) setSelectedResource('');
+            loadResources();
+        } catch (error) {
+            alert('Could not delete resource');
+        }
+    };
+
     const monthNames = [
         'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
         'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
@@ -380,13 +529,18 @@ const Calendar = () => {
 
     const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
+    const getResourceName = (resourceId) => {
+        const r = resources.find(r => r.id === resourceId);
+        return r ? r.name : '';
+    };
+
     return (
         <div className="calendar-page">
             {/* Upcoming Appointments Sidebar */}
             <div className="upcoming-sidebar">
                 <div className="upcoming-header">
                     <Clock size={18} />
-                    <h3>Yaklaşan Randevular</h3>
+                    <h3>{t('calendar.title')}</h3>
                 </div>
                 <div className="upcoming-toggle">
                     <label className="toggle-label">
@@ -400,10 +554,10 @@ const Calendar = () => {
                     </label>
                 </div>
                 <div className="upcoming-list">
-                    {filteredUpcomingAppointments.length === 0 && scheduledCalls.length === 0 ? (
+                    {filteredUpcomingAppointments.length === 0 && (selectedResource || scheduledCalls.length === 0) ? (
                         <div className="upcoming-empty">
                             <CalendarIcon size={32} />
-                            <p>Yaklaşan randevu yok</p>
+                            <p>No upcoming appointments</p>
                         </div>
                     ) : (
                         <>
@@ -422,7 +576,7 @@ const Calendar = () => {
                                     {apt.isCompleted && (
                                         <span className="upcoming-status completed">
                                             <Check size={12} />
-                                            {apt.isPast && apt.status !== 'COMPLETED' ? 'Geçmiş' : 'Tamamlandı'}
+                                            {apt.isPast && apt.status !== 'COMPLETED' ? 'Geçmiş' : 'Completed'}
                                         </span>
                                     )}
                                     {apt.contactName && (
@@ -433,7 +587,13 @@ const Calendar = () => {
                                     )}
                                     {apt.assignedTo && (
                                         <span className="upcoming-agent">
-                                            Agent: {apt.assignedTo.name}
+                                            Temsilci: {apt.assignedTo.name}
+                                        </span>
+                                    )}
+                                    {apt.resourceId && (
+                                        <span className="upcoming-resource">
+                                            <Building2 size={12} />
+                                            {getResourceName(apt.resourceId)}
                                         </span>
                                     )}
                                 </div>
@@ -443,15 +603,15 @@ const Calendar = () => {
                                 />
                             </div>
                         ))}
-                        {scheduledCalls.slice(0, 8).map(sc => (
+                        {!selectedResource && scheduledCalls.slice(0, 8).map(sc => (
                             <div
                                 key={sc.id}
                                 className="upcoming-item"
-                                onClick={() => handleCancelScheduledCall(sc)}
-                                title="İptal etmek için tıkla"
+                                onClick={() => openScheduledCallModal(sc)}
+                                title="Düzenle / İptal et"
                             >
                                 <div className="upcoming-date-badge">
-                                    <span className="upcoming-day">{formatUpcomingDate(sc.scheduledAt)}</span>
+                                    <span className="upcoming-day">{new Date(sc.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
                                     <span className="upcoming-time">{formatTime(sc.scheduledAt)}</span>
                                 </div>
                                 <div className="upcoming-info" style={{ minWidth: 0 }}>
@@ -462,9 +622,68 @@ const Calendar = () => {
                                 </div>
                                 <div className="upcoming-color-bar" style={{ backgroundColor: '#f97316' }} />
                             </div>
-
                         ))}
                         </>
+                    )}
+                </div>
+
+                {/* ─── Resources Section ─── */}
+                <div className="resources-section">
+                    <div className="resources-header">
+                        <div className="resources-title">
+                            <Layers size={16} />
+                            <h4>Kaynaklar</h4>
+                        </div>
+                        <button className="resource-add-btn" onClick={() => openResourceModal()} title="Kaynak Ekle">
+                            <Plus size={14} />
+                        </button>
+                    </div>
+
+                    {resources.length === 0 ? (
+                        <div className="resources-empty">
+                            <p>Henüz kaynak yok</p>
+                            <button className="resource-create-link" onClick={() => openResourceModal()}>
+                                <Plus size={12} /> Kaynak Oluştur
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="resources-list">
+                            <div
+                                className={`resource-item ${selectedResource === '' ? 'active' : ''}`}
+                                onClick={() => setSelectedResource('')}
+                            >
+                                <div className="resource-dot" style={{ backgroundColor: '#6b7280' }} />
+                                <span className="resource-name">{t('common.all')}</span>
+                            </div>
+                            {resources.map(resource => (
+                                <div
+                                    key={resource.id}
+                                    className={`resource-item ${selectedResource === resource.id ? 'active' : ''}`}
+                                    onClick={() => setSelectedResource(selectedResource === resource.id ? '' : resource.id)}
+                                >
+                                    <div className="resource-dot" style={{ backgroundColor: resource.color }} />
+                                    <span className="resource-name">
+                                        {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
+                                    </span>
+                                    <div className="resource-actions">
+                                        <button
+                                            className="resource-action-btn"
+                                            onClick={(e) => { e.stopPropagation(); openResourceModal(resource); }}
+                                            title={t('common.edit')}
+                                        >
+                                            <Edit2 size={12} />
+                                        </button>
+                                        <button
+                                            className="resource-action-btn delete"
+                                            onClick={(e) => { e.stopPropagation(); handleResourceDelete(resource.id); }}
+                                            title={t('common.delete')}
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
 
@@ -475,7 +694,7 @@ const Calendar = () => {
                 <div className="calendar-header">
                     <div className="calendar-title">
                         <CalendarIcon size={24} />
-                        <h1>Takvim</h1>
+                        <h1>{t('calendar.title')}</h1>
                     </div>
 
                     <div className="calendar-controls">
@@ -484,15 +703,30 @@ const Calendar = () => {
                             value={selectedAgent}
                             onChange={(e) => setSelectedAgent(e.target.value)}
                         >
-                            <option value="">Tüm Agentlar</option>
+                            <option value="">{t('common.all')} Agents</option>
                             {agents.map(agent => (
                                 <option key={agent.id} value={agent.id}>{agent.name}</option>
                             ))}
                         </select>
 
+                        {resources.length > 0 && (
+                            <select
+                                className="resource-filter"
+                                value={selectedResource}
+                                onChange={(e) => setSelectedResource(e.target.value)}
+                            >
+                                <option value="">{t('common.all')}</option>
+                                {resources.map(resource => (
+                                    <option key={resource.id} value={resource.id}>
+                                        {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
                         <div className="nav-buttons">
                             <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
-                            <button className="today-btn" onClick={handleToday}>Bugün</button>
+                            <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
                             <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
                         </div>
 
@@ -502,7 +736,7 @@ const Calendar = () => {
 
                         <button className="add-appointment-btn" onClick={() => openCreateModal()}>
                             <Plus size={18} />
-                            Randevu Ekle
+                            {t('calendar.newAppointment')}
                         </button>
                     </div>
                 </div>
@@ -525,6 +759,7 @@ const Calendar = () => {
                                 <div className="day-appointments">
                                     {getAppointmentsForDay(day.date).slice(0, 3).map(apt => {
                                         const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
+                                        const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
                                         return (
                                             <div
                                                 key={apt.id}
@@ -532,7 +767,7 @@ const Calendar = () => {
                                             >
                                                 <div
                                                     className="appointment-pill"
-                                                    style={{ backgroundColor: apt.color }}
+                                                    style={{ backgroundColor: aptResource?.color || apt.color }}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         openEditModal(apt);
@@ -545,7 +780,7 @@ const Calendar = () => {
                                                     <div className="tooltip-header" style={{ borderLeftColor: apt.color }}>
                                                         <h4>{apt.title}</h4>
                                                         <span className="tooltip-status" style={{ backgroundColor: status?.color || '#3b82f6' }}>
-                                                            {status?.label || 'Planlandı'}
+                                                            {status?.label || t('calendar.save')}
                                                         </span>
                                                     </div>
                                                     <div className="tooltip-body">
@@ -568,7 +803,13 @@ const Calendar = () => {
                                                         {apt.assignedTo && (
                                                             <div className="tooltip-row tooltip-agent">
                                                                 <User size={14} />
-                                                                <span>Agent: {apt.assignedTo.name}</span>
+                                                                <span>Temsilci: {apt.assignedTo.name}</span>
+                                                            </div>
+                                                        )}
+                                                        {aptResource && (
+                                                            <div className="tooltip-row">
+                                                                <Building2 size={14} />
+                                                                <span>{aptResource.name}</span>
                                                             </div>
                                                         )}
                                                         {apt.notes && (
@@ -587,14 +828,14 @@ const Calendar = () => {
                                             +{getAppointmentsForDay(day.date).length - 3} daha
                                         </div>
                                     )}
-                                    {/* Scheduled Auto-Calls */}
-                                    {getScheduledCallsForDay(day.date).map(sc => (
+                                    {/* Scheduled Auto-Calls - hide when resource filter is active */}
+                                    {!selectedResource && getScheduledCallsForDay(day.date).map(sc => (
                                         <div
                                             key={sc.id}
                                             className="appointment-pill"
                                             style={{ backgroundColor: '#f97316', cursor: 'pointer' }}
-                                            title={`Planlanmış Arama: ${sc.contactName || sc.toNumber}\nSaat: ${new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}\nİptal etmek için tıkla`}
-                                            onClick={(e) => { e.stopPropagation(); handleCancelScheduledCall(sc); }}
+                                            title={`Planlanmış Arama: ${sc.contactName || sc.toNumber}\nSaat: ${new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}\nDüzenle / İptal et`}
+                                            onClick={(e) => { e.stopPropagation(); openScheduledCallModal(sc); }}
                                         >
                                             <span className="apt-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
                                             <span className="apt-title">{sc.contactName || sc.toNumber}</span>
@@ -610,15 +851,16 @@ const Calendar = () => {
             {/* Appointment Modal */}
             {isModalOpen && (
                 <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-                    <div className="modal-content appointment-modal" onClick={e => e.stopPropagation()}>
-                        <div className="modal-header">
+                    <div className="apt-modal" onClick={e => e.stopPropagation()}>
+                        {/* Dark Header */}
+                        <div className="apt-modal-header">
                             <h2>{selectedAppointment ? 'Randevu Düzenle' : 'Yeni Randevu'}</h2>
-                            <button className="modal-close-btn" onClick={() => setIsModalOpen(false)}>
-                                <X size={20} />
+                            <button className="apt-modal-close" onClick={() => setIsModalOpen(false)}>
+                                <X size={18} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="modal-body">
+                        <form onSubmit={handleSubmit} className="apt-modal-body">
                             {/* Conflict Warning */}
                             {conflict && (
                                 <div className="conflict-warning">
@@ -627,11 +869,7 @@ const Calendar = () => {
                                         <strong>{conflict.error}</strong>
                                         <p>Mevcut randevu: {conflict.conflictingAppointment?.title}</p>
                                         {conflict.suggestion && (
-                                            <button
-                                                type="button"
-                                                className="suggestion-btn"
-                                                onClick={applySuggestion}
-                                            >
+                                            <button type="button" className="suggestion-btn" onClick={applySuggestion}>
                                                 <Check size={16} />
                                                 Öneriyi Uygula: {new Date(conflict.suggestion.startTime).toLocaleString('tr-TR')}
                                             </button>
@@ -640,142 +878,348 @@ const Calendar = () => {
                                 </div>
                             )}
 
-                            <div className="form-group">
-                                <label><FileText size={16} /> Başlık *</label>
+                            {/* Title */}
+                            <div className="apt-field">
                                 <input
                                     type="text"
+                                    className="apt-title-input"
                                     value={formData.title}
                                     onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                                    placeholder="Randevu başlığı"
+                                    placeholder="Randevu başlığı girin..."
                                     required
                                 />
                             </div>
 
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label><Clock size={16} /> Başlangıç *</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={formData.startTime}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                                        required
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label><Clock size={16} /> Bitiş *</label>
-                                    <input
-                                        type="datetime-local"
-                                        value={formData.endTime}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label><User size={16} /> Atanan Agent *</label>
-                                <div className="custom-select-wrapper">
-                                    <div className="custom-select-icon">
-                                        <User size={18} />
+                            {/* Date & Time Row */}
+                            <div className="apt-section">
+                                <div className="apt-dt-row">
+                                    <div className="apt-dt-field">
+                                        <span className="apt-dt-label">{t('calendar.start')}</span>
+                                        <input
+                                            type="datetime-local"
+                                            value={formData.startTime}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                                            required
+                                        />
                                     </div>
-                                    <select
-                                        className="custom-select"
-                                        value={formData.assignedToId}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, assignedToId: e.target.value }))}
-                                        required
-                                    >
-                                        <option value="">Agent Seç</option>
-                                        {agents.map(agent => (
-                                            <option key={agent.id} value={agent.id}>{agent.name}</option>
-                                        ))}
-                                    </select>
-                                    <div className="custom-select-arrow">
-                                        <ChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
+                                    <div className="apt-dt-sep">→</div>
+                                    <div className="apt-dt-field">
+                                        <span className="apt-dt-label">{t('calendar.end')}</span>
+                                        <input
+                                            type="datetime-local"
+                                            value={formData.endTime}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, endTime: e.target.value }))}
+                                            required
+                                        />
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="form-divider">Müşteri Bilgileri</div>
+                            {/* Assignment Cards */}
+                            <div className="apt-section">
+                                <span className="apt-section-label">Atama</span>
+                                <div className="apt-assign-row">
+                                    <div className={`apt-assign-card ${formData.assignedToId ? 'selected' : ''}`}>
+                                        <div className="apt-assign-icon"><User size={16} /></div>
+                                        <div className="apt-assign-content">
+                                            <span className="apt-assign-type">Temsilci</span>
+                                            <select
+                                                value={formData.assignedToId}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, assignedToId: e.target.value }))}
+                                            >
+                                                <option value="">{t("channels.selectOption")}</option>
+                                                {agents.map(agent => (
+                                                    <option key={agent.id} value={agent.id}>{agent.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
 
-                            <div className="form-group">
-                                <label><User size={16} /> Müşteri Adı</label>
-                                <input
-                                    type="text"
-                                    value={formData.contactName}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, contactName: e.target.value }))}
-                                    placeholder="Müşteri adı"
-                                />
-                            </div>
-
-                            <div className="form-row">
-                                <div className="form-group">
-                                    <label><Phone size={16} /> Telefon</label>
-                                    <input
-                                        type="tel"
-                                        value={formData.contactPhone}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-                                        placeholder="+90 555 123 4567"
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label><Mail size={16} /> E-posta</label>
-                                    <input
-                                        type="email"
-                                        value={formData.contactEmail}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-                                        placeholder="ornek@email.com"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="form-group">
-                                <label><Check size={16} /> Durum</label>
-                                <div className="custom-select-wrapper status-select">
-                                    <div
-                                        className="custom-select-status-dot"
-                                        style={{
-                                            backgroundColor: APPOINTMENT_STATUSES.find(s => s.value === formData.status)?.color || '#3b82f6'
-                                        }}
-                                    />
-                                    <select
-                                        className="custom-select"
-                                        value={formData.status}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                                    >
-                                        {APPOINTMENT_STATUSES.map(status => (
-                                            <option key={status.value} value={status.value}>{status.label}</option>
-                                        ))}
-                                    </select>
-                                    <div className="custom-select-arrow">
-                                        <ChevronRight size={16} style={{ transform: 'rotate(90deg)' }} />
+                                    <div className={`apt-assign-card ${formData.resourceId ? 'selected' : ''}`}>
+                                        <div className="apt-assign-icon resource"><Building2 size={16} /></div>
+                                        <div className="apt-assign-content">
+                                            <span className="apt-assign-type">Kaynak</span>
+                                            <select
+                                                value={formData.resourceId}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, resourceId: e.target.value }))}
+                                            >
+                                                <option value="">{t("channels.selectOption")}</option>
+                                                {resources.map(resource => (
+                                                    <option key={resource.id} value={resource.id}>
+                                                        {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="form-group">
-                                <label>Notlar</label>
+                            {/* Customer Info - Compact */}
+                            <div className="apt-section">
+                                <span className="apt-section-label">{t('calendar.customerInfo')}</span>
+                                <div className="apt-customer-row">
+                                    <div className="apt-customer-field">
+                                        <User size={14} />
+                                        <input
+                                            type="text"
+                                            value={formData.contactName}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, contactName: e.target.value }))}
+                                            placeholder="Ad Soyad"
+                                        />
+                                    </div>
+                                    <div className="apt-customer-field">
+                                        <Phone size={14} />
+                                        <input
+                                            type="tel"
+                                            value={formData.contactPhone}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
+                                            placeholder="Telefon"
+                                        />
+                                    </div>
+                                    <div className="apt-customer-field">
+                                        <Mail size={14} />
+                                        <input
+                                            type="email"
+                                            value={formData.contactEmail}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
+                                            placeholder="E-posta"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Status Pills */}
+                            <div className="apt-section">
+                                <span className="apt-section-label">Durum</span>
+                                <div className="apt-status-pills">
+                                    {APPOINTMENT_STATUSES.map(status => (
+                                        <button
+                                            key={status.value}
+                                            type="button"
+                                            className={`apt-status-pill ${formData.status === status.value ? 'active' : ''}`}
+                                            style={formData.status === status.value ? { background: status.color, borderColor: status.color } : {}}
+                                            onClick={() => setFormData(prev => ({ ...prev, status: status.value }))}
+                                        >
+                                            {status.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Notes */}
+                            <div className="apt-section">
                                 <textarea
+                                    className="apt-notes"
                                     value={formData.notes}
                                     onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                                    placeholder="Randevu notları..."
-                                    rows={3}
+                                    placeholder="Not ekle..."
+                                    rows={2}
                                 />
+                            </div>
+
+                            {/* Footer */}
+                            <div className="apt-modal-footer">
+                                {selectedAppointment && (
+                                    <button type="button" className="apt-btn-delete" onClick={handleDelete}>
+                                        <Trash2 size={15} /> Sil
+                                    </button>
+                                )}
+                                <div className="apt-footer-right">
+                                    <button type="button" className="apt-btn-cancel" onClick={() => setIsModalOpen(false)}>
+                                        İptal
+                                    </button>
+                                    <button type="submit" className="apt-btn-save" disabled={isCreating}>
+                                        {isCreating ? 'Kaydediliyor...' : (selectedAppointment ? 'Güncelle' : 'Oluştur')}
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Resource Modal */}
+            {isResourceModalOpen && (
+                <div className="modal-overlay" onClick={() => setIsResourceModalOpen(false)}>
+                    <div className="modal-content resource-modal" onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>{editingResource ? 'Kaynak Düzenle' : 'Yeni Kaynak'}</h2>
+                            <button className="modal-close-btn" onClick={() => setIsResourceModalOpen(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleResourceSubmit} className="modal-body">
+                            <div className="form-group">
+                                <label><FileText size={16} /> Kaynak Adı *</label>
+                                <input
+                                    type="text"
+                                    value={resourceForm.name}
+                                    onChange={(e) => setResourceForm(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="Ör: Oda A, Dr. Ahmet Kaya, Yıkama Bölümü"
+                                    required
+                                />
+                            </div>
+
+                            <div className="form-group">
+                                <label>{t('teams.descriptionLabel')}</label>
+                                <input
+                                    type="text"
+                                    value={resourceForm.description}
+                                    onChange={(e) => setResourceForm(prev => ({ ...prev, description: e.target.value }))}
+                                    placeholder="Kısa açıklama (opsiyonel)"
+                                />
+                            </div>
+
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label><Layers size={16} /> Tür</label>
+                                    <select
+                                        className="custom-select"
+                                        value={resourceForm.type}
+                                        onChange={(e) => setResourceForm(prev => ({ ...prev, type: e.target.value }))}
+                                    >
+                                        {RESOURCE_TYPES.map(t => (
+                                            <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label>Renk</label>
+                                    <div className="color-palette">
+                                        {RESOURCE_COLORS.map(color => (
+                                            <button
+                                                key={color}
+                                                type="button"
+                                                className={`color-swatch ${resourceForm.color === color ? 'selected' : ''}`}
+                                                style={{ backgroundColor: color }}
+                                                onClick={() => setResourceForm(prev => ({ ...prev, color }))}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="form-divider">Müsaitlik Saatleri</div>
+
+                            <div className="form-row">
+                                <div className="form-group">
+                                    <label><Clock size={16} /> Başlangıç</label>
+                                    <input
+                                        type="time"
+                                        value={resourceForm.availableStart}
+                                        onChange={(e) => setResourceForm(prev => ({ ...prev, availableStart: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label><Clock size={16} /> Bitiş</label>
+                                    <input
+                                        type="time"
+                                        value={resourceForm.availableEnd}
+                                        onChange={(e) => setResourceForm(prev => ({ ...prev, availableEnd: e.target.value }))}
+                                    />
+                                </div>
                             </div>
 
                             <div className="modal-actions">
-                                {selectedAppointment && (
-                                    <button type="button" className="btn btn-danger" onClick={handleDelete}>
-                                        <Trash2 size={16} /> Sil
-                                    </button>
-                                )}
-                                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
+                                <button type="button" className="btn btn-secondary" onClick={() => setIsResourceModalOpen(false)}>
                                     İptal
                                 </button>
-                                <button type="submit" className="btn btn-primary" disabled={isCreating}>
-                                    {isCreating ? 'Kaydediliyor...' : (selectedAppointment ? 'Güncelle' : 'Oluştur')}
+                                <button type="submit" className="btn btn-primary">
+                                    {editingResource ? 'Güncelle' : 'Oluştur'}
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Scheduled Call Edit Modal */}
+            {selectedScheduledCall && (
+                <div className="modal-overlay" onClick={() => setSelectedScheduledCall(null)}>
+                    <div className="apt-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                        <div className="apt-modal-header">
+                            <h2>📞 Planlanmış Arama</h2>
+                            <button className="apt-modal-close" onClick={() => setSelectedScheduledCall(null)} style={{ color: '#ffffff' }}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="apt-modal-body" style={{ padding: '20px' }}>
+                            {/* Contact Info */}
+                            <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                    <User size={16} style={{ color: '#64748b' }} />
+                                    <span style={{ fontWeight: 600, color: '#1e293b' }}>{selectedScheduledCall.contactName || 'İsimsiz'}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <Phone size={16} style={{ color: '#64748b' }} />
+                                    <span style={{ color: '#475569' }}>{selectedScheduledCall.toNumber}</span>
+                                </div>
+                            </div>
+
+                            {/* Current Time */}
+                            <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fff7ed', borderRadius: 8, border: '1px solid #fed7aa' }}>
+                                <div style={{ fontSize: 12, color: '#9a3412', fontWeight: 600, marginBottom: 4 }}>Mevcut Planlanan Saat</div>
+                                <div style={{ fontSize: 15, color: '#c2410c', fontWeight: 600 }}>
+                                    <Clock size={14} style={{ marginRight: 6, verticalAlign: 'text-bottom' }} />
+                                    {new Date(selectedScheduledCall.scheduledAt).toLocaleString('tr-TR', {
+                                        day: '2-digit', month: '2-digit', year: 'numeric',
+                                        hour: '2-digit', minute: '2-digit'
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Reschedule Date */}
+                            <div style={{ marginBottom: 20 }}>
+                                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                    Yeni Tarih / Saat
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={rescheduleDate}
+                                    onChange={(e) => setRescheduleDate(e.target.value)}
+                                    style={{
+                                        width: '100%', padding: '10px 12px', border: '1.5px solid #d1d5db',
+                                        borderRadius: 8, fontSize: 14, outline: 'none',
+                                        transition: 'border-color 0.2s'
+                                    }}
+                                    onFocus={(e) => e.target.style.borderColor = '#f97316'}
+                                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="apt-modal-footer">
+                            <button
+                                type="button"
+                                className="apt-btn-delete"
+                                onClick={() => handleCancelScheduledCall(selectedScheduledCall)}
+                                disabled={cancellingCallId === selectedScheduledCall.id}
+                            >
+                                <Trash2 size={15} />
+                                {cancellingCallId === selectedScheduledCall.id ? 'İptal ediliyor...' : 'Aramayı İptal Et'}
+                            </button>
+                            <div className="apt-footer-right">
+                                <button
+                                    type="button"
+                                    className="apt-btn-cancel"
+                                    onClick={() => setSelectedScheduledCall(null)}
+                                >
+                                    Kapat
+                                </button>
+                                <button
+                                    type="button"
+                                    className="apt-btn-save"
+                                    onClick={handleRescheduleCall}
+                                    disabled={rescheduling}
+                                >
+                                    {rescheduling ? 'Güncelleniyor...' : 'Saati Güncelle'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -784,15 +1228,3 @@ const Calendar = () => {
 };
 
 export default Calendar;
-
-
-
-
-
-
-
-
-
-
-
-

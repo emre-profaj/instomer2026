@@ -1,14 +1,17 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { automationAPI, rulesAPI, teamAPI, emailAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, ArrowRight, Search, X,
-    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp
+    Smartphone, Settings, Shield, Tag, ChevronDown, ChevronUp, GitBranch
 } from 'lucide-react';
 import './Automations.css';
+import FlowBuilder from './FlowBuilder';
 
 const Automations = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState('templates');
     const [loading, setLoading] = useState(true);
@@ -67,7 +70,7 @@ const Automations = () => {
     // Email channels for SEND_EMAIL action
     const [emailChannels, setEmailChannels] = useState([]);
 
-    // --- Rules (Kurallar) state ---
+    // --- Rules (Rules) state ---
     const [rules, setRules] = useState([]);
     const [teams, setTeams] = useState([]);
     const [rulesLoading, setRulesLoading] = useState(false);
@@ -109,7 +112,13 @@ const Automations = () => {
         setSyncing(true);
         try {
             const response = await automationAPI.syncTemplates(currentWorkspace.id);
-            alert(response.data.message || 'Şablonlar senkronize edildi');
+            const { message, syncedCount, errors } = response.data;
+            if (errors && errors.length > 0) {
+                const errMsgs = errors.map(e => `${e.phone}: ${e.error}`).join('\n');
+                alert(`${message}\n\n⚠️ Hatalar:\n${errMsgs}`);
+            } else {
+                alert(message || 'Şablonlar senkronize edildi');
+            }
             loadData();
         } catch (error) {
             console.error('Sync error:', error);
@@ -138,7 +147,7 @@ const Automations = () => {
     };
 
     const handleDeleteTemplate = async (templateId) => {
-        if (!confirm('Bu şablonu silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this template?')) return;
         try {
             await automationAPI.deleteTemplate(currentWorkspace.id, templateId);
             loadData();
@@ -208,7 +217,7 @@ const Automations = () => {
     };
 
     const handleDeleteAutomation = async (automationId) => {
-        if (!confirm('Bu otomasyonu silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this automation?')) return;
         try {
             await automationAPI.deleteAutomation(currentWorkspace.id, automationId);
             loadData();
@@ -323,7 +332,7 @@ const Automations = () => {
                 phoneNumber: phoneNumber || undefined,
                 variables: variables.length > 0 ? variables : undefined
             });
-            alert('Şablon mesajı gönderildi!');
+            alert('Template message sent!');
             setShowSendModal(false);
         } catch (error) {
             console.error('Send error:', error);
@@ -349,15 +358,17 @@ const Automations = () => {
             case 'NEW_MESSAGE': return '💬 Yeni Mesaj';
             case 'NEW_CONVERSATION': return '📱 Yeni Sohbet';
             case 'NEW_WEBFORM': return '📋 Yeni Web Form';
+            case 'RETELL_COMPLETED_SUCCESS': return '📞 AI Call: Başarılı Görüşme';
+            case 'RETELL_COMPLETED_FAIL': return '📞 AI Call: Başarısız Görüşme';
             default: return trigger;
         }
     };
 
     const getActionLabel = (action) => {
         switch (action) {
-            case 'SEND_TEMPLATE': return '📨 Şablon Gönder';
-            case 'SEND_MESSAGE': return '💬 Mesaj Gönder';
-            case 'SEND_EMAIL': return '📧 E-posta Gönder';
+            case 'SEND_TEMPLATE': return '📨 Şablon Send';
+            case 'SEND_MESSAGE': return '💬 Mesaj Send';
+            case 'SEND_EMAIL': return '📧 E-posta Send';
             case 'ASSIGN_AGENT': return '👤 Temsilci Ata';
             default: return action;
         }
@@ -434,18 +445,18 @@ const Automations = () => {
                         <>
                             <button className="btn btn-secondary" onClick={handleSyncTemplates} disabled={syncing}>
                                 <RefreshCw size={16} className={syncing ? 'spinning' : ''} />
-                                {syncing ? 'Senkronize ediliyor...' : 'WhatsApp\'tan Senkronize Et'}
+                                {syncing ? 'Senkronize ediliyor...' : 'Sync from WhatsApp'}
                             </button>
                             <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
                                 <Plus size={16} />
-                                Şablon Ekle
+                                Add Template
                             </button>
                         </>
                     )}
                     {activeTab === 'automations' && (
                         <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setEditingAutomation(null); setShowAutomationModal(true); }}>
                             <Plus size={16} />
-                            Otomasyon Ekle
+                            Add Automation
                         </button>
                     )}
                 </div>
@@ -458,23 +469,29 @@ const Automations = () => {
                     onClick={() => setActiveTab('templates')}
                 >
                     <MessageSquare size={18} />
-                    WhatsApp Şablonları ({templates.length})
+                    WhatsApp Templates ({templates.length})
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'automations' ? 'active' : ''}`}
                     onClick={() => setActiveTab('automations')}
                 >
                     <Zap size={18} />
-                    Otomasyonlar ({automations.length})
+                    Automations ({automations.length})
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'rules' ? 'active' : ''}`}
                     onClick={() => setActiveTab('rules')}
                 >
                     <Shield size={18} />
-                    Kurallar
+                    Rules
                 </button>
-
+                <button
+                    className={`tab-btn ${activeTab === 'flows' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('flows')}
+                >
+                    <GitBranch size={18} />
+                    Akışlar
+                </button>
 
             </div>
 
@@ -486,11 +503,11 @@ const Automations = () => {
                         {templates.length === 0 ? (
                             <div className="empty-state">
                                 <div className="icon">📝</div>
-                                <h3>Henüz şablon yok</h3>
-                                <p>WhatsApp şablonlarını senkronize edin veya manuel ekleyin</p>
+                                <h3>No templates yet</h3>
+                                <p>{t('automations.syncDesc')}</p>
                                 <button className="btn btn-primary" onClick={handleSyncTemplates}>
                                     <RefreshCw size={18} />
-                                    Şablonları Senkronize Et
+                                    Sync Templates
                                 </button>
                             </div>
                         ) : (
@@ -531,7 +548,7 @@ const Automations = () => {
 
                                     <div className="template-actions">
                                         <button className="btn btn-success btn-sm" onClick={() => openSendModal(template)}>
-                                            <Send size={14} /> Gönder
+                                            <Send size={14} /> Send
                                         </button>
                                         <button className="btn btn-secondary btn-sm btn-icon" onClick={() => openEditTemplate(template)}>
                                             <Edit2 size={14} />
@@ -552,10 +569,10 @@ const Automations = () => {
                         {automations.length === 0 ? (
                             <div className="empty-state">
                                 <div className="icon">⚡</div>
-                                <h3>Henüz otomasyon yok</h3>
-                                <p>Lead'lere otomatik mesaj göndermek için otomasyon oluşturun</p>
+                                <h3>No automations yet</h3>
+                                <p>{t('automations.createDesc')}</p>
                                 <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setShowAutomationModal(true); }}>
-                                    <Plus size={18} /> Otomasyon Oluştur
+                                    <Plus size={18} /> Create Automation
                                 </button>
                             </div>
                         ) : (
@@ -585,7 +602,7 @@ const Automations = () => {
 
                                     <div className="automation-actions">
                                         <button className="btn btn-secondary btn-sm" onClick={() => openEditAutomation(automation)}>
-                                            <Edit2 size={14} /> Düzenle
+                                            <Edit2 size={14} /> Edit
                                         </button>
                                         <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteAutomation(automation.id)}>
                                             <Trash2 size={14} />
@@ -597,13 +614,13 @@ const Automations = () => {
                     </div>
                 )}
 
-                {/* Kurallar Tab */}
+                {/* Rules Tab */}
                 {activeTab === 'rules' && (
                     <div className="rules-section">
                         <div className="rules-intro">
                             <Shield size={20} />
                             <div>
-                                <h3>Otomatik Lead Kuralları</h3>
+                                <h3>{t('automations.autoRulesTitle')}</h3>
                                 <p>Aşağıdaki kurallar, gelen sohbetleri analiz ederek kontak etiketlerini otomatik olarak güncelleyen ve ekip bildirimleri gönderen çalışma alanı bazında yapılandırılabilir kurallardır. Açtığınız sadece bu çalışma alanını etkiler.</p>
                             </div>
                         </div>
@@ -657,7 +674,7 @@ const Automations = () => {
 
                             {/* Keyword editor */}
                             <div className="rule-config">
-                                <label className="config-label"><Tag size={13} /> Anahtar Kelimeler</label>
+                                <label className="config-label"><Tag size={13} /> Keywords</label>
                                 <div className="keyword-chips">
                                     {(getRule('HOT_KEYWORD').config?.keywords || []).map(kw => (
                                         <span key={kw} className="keyword-chip">
@@ -672,10 +689,10 @@ const Automations = () => {
                                         value={newKeyword}
                                         onChange={e => setNewKeyword(e.target.value)}
                                         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addKeyword(); } }}
-                                        placeholder="Anahtar kelime ekle..."
+                                        placeholder="Add keyword..."
                                         className="keyword-input"
                                     />
-                                    <button className="btn btn-secondary btn-sm" onClick={addKeyword}>Ekle</button>
+                                    <button className="btn btn-secondary btn-sm" onClick={addKeyword}>Add</button>
                                 </div>
                             </div>
                         </div>
@@ -706,7 +723,7 @@ const Automations = () => {
                             <div className="rule-config">
                                 <div className="config-row">
                                     <div className="config-group">
-                                        <label className="config-label">👥 Bildirim Gönderilecek Takım</label>
+                                        <label className="config-label">👥 Bildirim Sendilecek Takım</label>
                                         <select
                                             className="config-select"
                                             value={getRule('HOT_OPPORT_EMAIL').config?.teamId || ''}
@@ -722,7 +739,7 @@ const Automations = () => {
                                         )}
                                     </div>
                                     <div className="config-group">
-                                        <label className="config-label">📧 Gönderen E-posta Kanalı</label>
+                                        <label className="config-label">📧 Senden E-posta Kanalı</label>
                                         <select
                                             className="config-select"
                                             value={getRule('HOT_OPPORT_EMAIL').config?.emailChannelId || ''}
@@ -743,16 +760,17 @@ const Automations = () => {
                     </div>
                 )}
 
-
-
-
+                {/* Akışlar Tab */}
+                {activeTab === 'flows' && (
+                    <FlowBuilder workspaceId={currentWorkspace?.id} />
+                )}
 
                 {/* Template Modal */}
                 {showTemplateModal && (
                     <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
                         <div className="modal" onClick={(e) => e.stopPropagation()}>
                             <div className="modal-header">
-                                <h2>{editingTemplate ? 'Şablon Düzenle' : 'Şablon Ekle'}</h2>
+                                <h2>{editingTemplate ? 'Edit Template' : 'Add Template'}</h2>
                                 <button className="modal-close" onClick={() => setShowTemplateModal(false)}>×</button>
                             </div>
                             <div className="modal-body">
@@ -852,10 +870,10 @@ const Automations = () => {
                             </div>
                             <div className="modal-footer">
                                 <button className="btn btn-secondary" onClick={() => setShowTemplateModal(false)}>
-                                    İptal
+                                    Cancel
                                 </button>
                                 <button className="btn btn-primary" onClick={handleSaveTemplate}>
-                                    {editingTemplate ? 'Güncelle' : 'Kaydet'}
+                                    {editingTemplate ? 'Güncelle' : 'Save'}
                                 </button>
                             </div>
                         </div>
@@ -867,7 +885,7 @@ const Automations = () => {
                     <div className="modal-overlay" onClick={() => setShowAutomationModal(false)}>
                         <div className="modal" onClick={(e) => e.stopPropagation()}>
                             <div className="modal-header">
-                                <h2>{editingAutomation ? 'Otomasyon Düzenle' : 'Otomasyon Oluştur'}</h2>
+                                <h2>{editingAutomation ? 'Otomasyon Edit' : 'Create Automation'}</h2>
                                 <button className="modal-close" onClick={() => setShowAutomationModal(false)}>×</button>
                             </div>
                             <div className="modal-body">
@@ -882,7 +900,7 @@ const Automations = () => {
                                 </div>
 
                                 <div className="form-group">
-                                    <label>Açıklama</label>
+                                    <label>{t('teams.descriptionLabel')}</label>
                                     <textarea
                                         value={automationForm.description}
                                         onChange={(e) => setAutomationForm({ ...automationForm, description: e.target.value })}
@@ -902,6 +920,8 @@ const Automations = () => {
                                             <option value="NEW_MESSAGE">💬 Yeni Mesaj Geldiğinde</option>
                                             <option value="NEW_CONVERSATION">📱 Yeni Sohbet Başladığında</option>
                                             <option value="NEW_WEBFORM">📋 Yeni Web Form Geldiğinde</option>
+                                            <option value="RETELL_COMPLETED_SUCCESS">📞 AI Call Konuşması Başarılı Olduğunda</option>
+                                            <option value="RETELL_COMPLETED_FAIL">📞 AI Call Konuşması Başarısız Olduğunda</option>
                                         </select>
                                     </div>
                                     <div className="form-group">
@@ -952,7 +972,7 @@ const Automations = () => {
                                                 }}
                                             />
                                             <span className="action-icon">💬</span>
-                                            <span className="action-label">Mesaj Gönder</span>
+                                            <span className="action-label">Mesaj Send</span>
                                         </label>
                                         <label className={`action-card ${automationForm.selectedActions?.includes('SEND_EMAIL') ? 'selected' : ''}`}>
                                             <input
@@ -968,7 +988,7 @@ const Automations = () => {
                                                 }}
                                             />
                                             <span className="action-icon">📧</span>
-                                            <span className="action-label">E-posta Gönder</span>
+                                            <span className="action-label">E-posta Send</span>
                                         </label>
                                     </div>
                                     {automationForm.selectedActions?.length > 1 && (
@@ -1008,7 +1028,7 @@ const Automations = () => {
 
                                 {automationForm.selectedActions?.includes('SEND_TEMPLATE') && (
                                     <div className="form-group">
-                                        <label>Gönderilecek Şablon</label>
+                                        <label>Sendilecek Şablon</label>
                                         <select
                                             value={automationForm.templateId}
                                             onChange={(e) => setAutomationForm({ ...automationForm, templateId: e.target.value })}
@@ -1027,7 +1047,7 @@ const Automations = () => {
                                         <textarea
                                             value={automationForm.messageContent}
                                             onChange={(e) => setAutomationForm({ ...automationForm, messageContent: e.target.value })}
-                                            placeholder="Gönderilecek mesaj..."
+                                            placeholder="Sendilecek mesaj..."
                                             rows={3}
                                         />
                                     </div>
@@ -1081,10 +1101,10 @@ const Automations = () => {
                             </div>
                             <div className="modal-footer">
                                 <button className="btn btn-secondary" onClick={() => setShowAutomationModal(false)}>
-                                    İptal
+                                    Cancel
                                 </button>
                                 <button className="btn btn-primary" onClick={handleSaveAutomation}>
-                                    {editingAutomation ? 'Güncelle' : 'Kaydet'}
+                                    {editingAutomation ? 'Güncelle' : 'Save'}
                                 </button>
                             </div>
                         </div>
@@ -1098,7 +1118,7 @@ const Automations = () => {
                         <div className="modal-overlay" onClick={() => setShowSendModal(false)}>
                             <div className="modal send-template-modal" onClick={(e) => e.stopPropagation()}>
                                 <div className="modal-header">
-                                    <h2>📨 Şablon Gönder: {sendingTemplate.name}</h2>
+                                    <h2>📨 Şablon Send: {sendingTemplate.name}</h2>
                                     <button className="modal-close" onClick={() => setShowSendModal(false)}>×</button>
                                 </div>
                                 <div className="modal-body">
@@ -1191,14 +1211,14 @@ const Automations = () => {
                                 </div>
                                 <div className="modal-footer">
                                     <button className="btn btn-secondary" onClick={() => setShowSendModal(false)}>
-                                        İptal
+                                        Cancel
                                     </button>
                                     <button
                                         className="btn btn-success"
                                         onClick={handleSendTemplate}
                                         disabled={sending || (!selectedContact && !phoneNumber)}
                                     >
-                                        {sending ? 'Gönderiliyor...' : 'Gönder'}
+                                        {sending ? 'Sendiliyor...' : 'Send'}
                                     </button>
                                 </div>
                             </div>

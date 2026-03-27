@@ -1,7 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './i18n/index.js'
 import App from './App.jsx'
+
 
 // Production'da console log'larını gizle
 if (import.meta.env.PROD) {

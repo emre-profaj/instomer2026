@@ -4,6 +4,21 @@ import { useAuth } from '../context/AuthContext';
 import { X, UserPlus, Users } from 'lucide-react';
 import './AddMemberModal.css';
 
+const DEFAULT_WORKING_HOURS = {
+    monday: { enabled: true, start: '08:00', end: '18:00' },
+    tuesday: { enabled: true, start: '08:00', end: '18:00' },
+    wednesday: { enabled: true, start: '08:00', end: '18:00' },
+    thursday: { enabled: true, start: '08:00', end: '18:00' },
+    friday: { enabled: true, start: '08:00', end: '18:00' },
+    saturday: { enabled: false, start: '08:00', end: '18:00' },
+    sunday: { enabled: false, start: '08:00', end: '18:00' }
+};
+
+const DAY_LABELS = {
+    monday: 'Pazartesi', tuesday: 'Salı', wednesday: 'Çarşamba',
+    thursday: 'Perşembe', friday: 'Cuma', saturday: 'Cumartesi', sunday: 'Pazar'
+};
+
 const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState('existing'); // 'existing' or 'new'
@@ -13,6 +28,7 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
     const [role, setRole] = useState('AGENT');
+    const [workingHours, setWorkingHours] = useState(DEFAULT_WORKING_HOURS);
 
     // Existing users
     const [companyUsers, setCompanyUsers] = useState([]);
@@ -60,7 +76,8 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
                 email,
                 role,
                 name: name || undefined,
-                password: password || undefined
+                password: password || undefined,
+                workingHours
             });
             onSuccess();
             onClose();
@@ -258,6 +275,41 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
                                 <small className="text-muted">
                                     Agent: Sadece atanan sohbetleri görür ve yönetir
                                 </small>
+                            </div>
+
+                            {/* Working Hours */}
+                            <div className="wh-section">
+                                <div className="wh-title">Çalışma Saatleri</div>
+                                <div className="wh-table">
+                                    {Object.entries(DAY_LABELS).map(([key, label]) => (
+                                        <div key={key} className={`wh-row ${!workingHours[key]?.enabled ? 'disabled' : ''}`}>
+                                            <label className="wh-toggle">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={workingHours[key]?.enabled ?? false}
+                                                    onChange={(e) => setWorkingHours(prev => ({
+                                                        ...prev, [key]: { ...prev[key], enabled: e.target.checked }
+                                                    }))}
+                                                />
+                                                <span className="wh-slider" />
+                                            </label>
+                                            <span className="wh-day">{label}</span>
+                                            <div className="wh-times">
+                                                <input type="time" value={workingHours[key]?.start || '08:00'}
+                                                    onChange={(e) => setWorkingHours(prev => ({
+                                                        ...prev, [key]: { ...prev[key], start: e.target.value }
+                                                    }))}
+                                                    disabled={!workingHours[key]?.enabled} />
+                                                <span className="wh-sep">—</span>
+                                                <input type="time" value={workingHours[key]?.end || '18:00'}
+                                                    onChange={(e) => setWorkingHours(prev => ({
+                                                        ...prev, [key]: { ...prev[key], end: e.target.value }
+                                                    }))}
+                                                    disabled={!workingHours[key]?.enabled} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
                             {error && (

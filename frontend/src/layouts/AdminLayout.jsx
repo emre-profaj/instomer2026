@@ -12,7 +12,8 @@ import {
     ChevronDown,
     Building2,
     Settings,
-    Search
+    Search,
+    History
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -77,6 +78,11 @@ const AdminLayout = () => {
             path: '/admin/settings',
             icon: <Settings size={20} />,
             label: 'Ayarlar'
+        },
+        {
+            path: '/admin/activity-log',
+            icon: <History size={20} />,
+            label: 'İşlem Geçmişi'
         }
     ];
 

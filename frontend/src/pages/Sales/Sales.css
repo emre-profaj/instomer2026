@@ -662,3 +662,112 @@
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* ── OVERDUE deal card ─────────────────────── */
+.deal-card.overdue {
+    border-left-color: #ef4444;
+    background: #fff8f8;
+}
+
+/* ── Status badge extra variants ───────────── */
+.deal-status.overdue {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.deal-status.open {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.deal-status.won {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ── Due date in card ───────────────────────── */
+.deal-due-date {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.deal-due-date.overdue {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+/* ── Partial payment progress ───────────────── */
+.deal-partial-payment {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.payment-progress {
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.payment-bar {
+    height: 100%;
+    background: #10b981;
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.deal-partial-payment span {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* ── btn-success ────────────────────────────── */
+.btn-success {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-success:hover {
+    background: #059669;
+}
+
+.btn-success:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ── Utility ────────────────────────────────── */
+.text-danger {
+    color: #ef4444 !important;
+    font-weight: 600;
+}
+
+/* ── 3-col form row ─────────────────────────── */
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+@media (max-width: 600px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}

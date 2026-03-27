@@ -113,7 +113,9 @@ export const adminAPI = {
     getGlobalSettings: () => api.get('/admin/global-settings'),
     updateGlobalSettings: (data) => api.put('/admin/global-settings', data),
     // Facebook/Instagram Health Check
-    checkFacebookHealth: () => api.get('/admin/facebook/health-check')
+    checkFacebookHealth: () => api.get('/admin/facebook/health-check'),
+    // Activity Logs
+    getActivityLogs: (params) => api.get('/admin/activity-logs', { params })
 };
 
 export default api;
@@ -292,9 +294,9 @@ export const conversationAPI = {
     updateTopic: (workspaceId, conversationId, aiTopic) =>
         api.patch(`/conversations/${workspaceId}/${conversationId}/topic`, { aiTopic }),
 
-    // Update funnelType
-    updateFunnel: (workspaceId, conversationId, funnelType) =>
-        api.patch(`/conversations/${workspaceId}/${conversationId}/funnel`, { funnelType })
+    // Update funnelType and/or funnelStageId
+    updateFunnel: (workspaceId, conversationId, data) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/funnel`, data)
 };
 
 // Funnel API (user-defined pipeline categories)
@@ -302,7 +304,11 @@ export const funnelAPI = {
     getAll: (workspaceId) => api.get(`/funnels/${workspaceId}`),
     create: (workspaceId, data) => api.post(`/funnels/${workspaceId}`, data),
     update: (workspaceId, funnelId, data) => api.put(`/funnels/${workspaceId}/${funnelId}`, data),
-    delete: (workspaceId, funnelId) => api.delete(`/funnels/${workspaceId}/${funnelId}`)
+    delete: (workspaceId, funnelId) => api.delete(`/funnels/${workspaceId}/${funnelId}`),
+    // Stages
+    createStage: (workspaceId, funnelId, data) => api.post(`/funnels/${workspaceId}/${funnelId}/stages`, data),
+    updateStage: (workspaceId, funnelId, stageId, data) => api.put(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`, data),
+    deleteStage: (workspaceId, funnelId, stageId) => api.delete(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`)
 };
 
 // AI API
@@ -422,6 +428,14 @@ export const appointmentAPI = {
     getAgents: (workspaceId) => api.get(`/appointments/${workspaceId}/agents`)
 };
 
+// Calendar Resource API
+export const resourceAPI = {
+    getAll: (workspaceId, params) => api.get(`/resources/${workspaceId}`, { params }),
+    create: (workspaceId, data) => api.post(`/resources/${workspaceId}`, data),
+    update: (workspaceId, resourceId, data) => api.put(`/resources/${workspaceId}/${resourceId}`, data),
+    delete: (workspaceId, resourceId) => api.delete(`/resources/${workspaceId}/${resourceId}`)
+};
+
 // Automation & Template API
 export const automationAPI = {
     // Templates
@@ -508,9 +522,13 @@ export const dealAPI = {
         api.post(`/workspaces/${workspaceId}/deals/${dealId}/convert`, { targetStage }),
 
     // Stats
-    getStats: (workspaceId) => api.get(`/workspaces/${workspaceId}/deals/stats`),    // Contact Deals
+    getStats: (workspaceId) => api.get(`/workspaces/${workspaceId}/deals/stats`),
+    // Contact Deals
     getByContact: (workspaceId, contactId) =>
-        api.get(`/workspaces/${workspaceId}/contacts/${contactId}/deals`)
+        api.get(`/workspaces/${workspaceId}/contacts/${contactId}/deals`),
+    // Record payment
+    recordPayment: (workspaceId, dealId, data) =>
+        api.patch(`/workspaces/${workspaceId}/deals/${dealId}/payment`, data)
 };
 
 // Notification API
@@ -534,6 +552,7 @@ export const retellAPI = {
     scheduleCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/schedule-call`, data),
     getScheduledCalls: (workspaceId) => api.get(`/retell/${workspaceId}/scheduled-calls`),
     cancelScheduledCall: (workspaceId, id) => api.delete(`/retell/${workspaceId}/scheduled-calls/${id}`),
+    updateScheduledCall: (workspaceId, id, data) => api.patch(`/retell/${workspaceId}/scheduled-calls/${id}`, data),
     getAnalytics: (workspaceId, params = {}) => {
         const query = new URLSearchParams(params).toString();
         return api.get(`/retell/${workspaceId}/analytics${query ? `?${query}` : ''}`);
@@ -554,4 +573,13 @@ export const quickReplyAPI = {
 export const rulesAPI = {
     getAll: (workspaceId) => api.get(`/rules/${workspaceId}/rules`),
     upsert: (workspaceId, ruleType, data) => api.put(`/rules/${workspaceId}/rules/${ruleType}`, data)
+};
+
+// Flow Builder API
+export const flowAPI = {
+    getAll: (workspaceId) => api.get(`/workspaces/${workspaceId}/flows`),
+    create: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/flows`, data),
+    update: (workspaceId, flowId, data) => api.put(`/workspaces/${workspaceId}/flows/${flowId}`, data),
+    delete: (workspaceId, flowId) => api.delete(`/workspaces/${workspaceId}/flows/${flowId}`),
+    toggle: (workspaceId, flowId, isActive) => api.patch(`/workspaces/${workspaceId}/flows/${flowId}/toggle`, { isActive })
 };

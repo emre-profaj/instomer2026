@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, dealAPI } from '../../services/api';
@@ -58,6 +59,7 @@ const ManualIcon = ({ size = 18 }) => (
 );
 
 const Analytics = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [loading, setLoading] = useState(true);
     const [analytics, setAnalytics] = useState(null);
@@ -180,10 +182,10 @@ const Analytics = () => {
             WHATSAPP: 'WhatsApp',
             FACEBOOK: 'Facebook',
             INSTAGRAM: 'Instagram',
-            EMAIL: 'E-posta',
+            EMAIL: t('analytics.emailLabel'),
             WIDGET: 'Web Widget',
-            MANUAL: 'Manuel Ekleme',
-            UNKNOWN: 'Diğer'
+            MANUAL: t('analytics.manualEntry'),
+            UNKNOWN: t('analytics.other')
         };
         return labels[channel] || channel;
     };
@@ -206,8 +208,8 @@ const Analytics = () => {
             <div className="analytics-page">
                 <div className="empty-state">
                     <BarChart3 size={48} />
-                    <h3>Workspace Seçin</h3>
-                    <p>Analizleri görüntülemek için bir workspace seçin.</p>
+                    <h3>{t('analytics.selectWorkspace')}</h3>
+                    <p>{t('analytics.selectWorkspaceDesc')}</p>
                 </div>
             </div>
         );
@@ -233,7 +235,7 @@ const Analytics = () => {
             <div className="page-header">
                 <div className="header-left">
                     <BarChart3 size={28} />
-                    <h1>Analizler</h1>
+                    <h1>Analytics</h1>
                 </div>
                 <div className="header-right">
                     {/* Date Filter */}
@@ -244,12 +246,12 @@ const Analytics = () => {
                             onChange={(e) => setDateFilter(e.target.value)}
                             className="date-filter-select"
                         >
-                            <option value="all">Tüm Zamanlar</option>
-                            <option value="today">Bugün</option>
-                            <option value="yesterday">Dün</option>
-                            <option value="week">Son 7 Gün</option>
-                            <option value="month">Bu Ay</option>
-                            <option value="custom">Özel Tarih</option>
+                            <option value="all">{t('analytics.allTime')}</option>
+                            <option value="today">{t('common.today')}</option>
+                            <option value="yesterday">{t('common.yesterday')}</option>
+                            <option value="week">{t('analytics.last7Days')}</option>
+                            <option value="month">{t('analytics.thisMonth')}</option>
+                            <option value="custom">{t('analytics.customDate')}</option>
                         </select>
                     </div>
 
@@ -260,7 +262,7 @@ const Analytics = () => {
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                                 className="date-input"
-                                placeholder="Başlangıç"
+                                placeholder={t('common.start')}
                             />
                             <span className="date-separator">-</span>
                             <input
@@ -268,7 +270,7 @@ const Analytics = () => {
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                                 className="date-input"
-                                placeholder="Bitiş"
+                                placeholder={t('common.end')}
                             />
                         </div>
                     )}
@@ -283,7 +285,7 @@ const Analytics = () => {
             {loading ? (
                 <div className="loading-state">
                     <RefreshCw className="spin" size={32} />
-                    <p>Analizler yükleniyor...</p>
+                    <p>{t('analytics.loading')}</p>
                 </div>
             ) : (
                 <>
@@ -295,7 +297,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatNumber(analytics?.totalMessages || 0)}</span>
-                                <span className="stat-label">Toplam Mesaj</span>
+                                <span className="stat-label">{t('analytics.totalMessages')}</span>
                             </div>
                         </div>
 
@@ -305,7 +307,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatNumber(analytics?.totalLeads || 0)}</span>
-                                <span className="stat-label">Toplam Lead</span>
+                                <span className="stat-label">{t('analytics.totalLeads')}</span>
                             </div>
                         </div>
 
@@ -315,7 +317,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatNumber(analytics?.totalConversations || 0)}</span>
-                                <span className="stat-label">Toplam Sohbet</span>
+                                <span className="stat-label">Total Conversations</span>
                             </div>
                         </div>
 
@@ -325,7 +327,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatNumber(analytics?.totalContacts || 0)}</span>
-                                <span className="stat-label">Toplam Kişi</span>
+                                <span className="stat-label">{t('analytics.totalContacts')}</span>
                             </div>
                         </div>
                     </div>
@@ -338,7 +340,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{analytics?.positiveContacts || 0}</span>
-                                <span className="stat-label">Olumlu Müşteri</span>
+                                <span className="stat-label">{t('analytics.positiveContacts')}</span>
                             </div>
                         </div>
 
@@ -348,7 +350,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{analytics?.negativeContacts || 0}</span>
-                                <span className="stat-label">Olumsuz Müşteri</span>
+                                <span className="stat-label">{t('analytics.negativeContacts')}</span>
                             </div>
                         </div>
 
@@ -358,7 +360,7 @@ const Analytics = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{analytics?.conversionRate || 0}%</span>
-                                <span className="stat-label">Dönüşüm Oranı</span>
+                                <span className="stat-label">{t('analytics.conversionRate')}</span>
                             </div>
                         </div>
                     </div>
@@ -372,7 +374,7 @@ const Analytics = () => {
                                 </div>
                                 <div className="stat-content">
                                     <span className="stat-value">{salesStats.totals?.quotes || 0}</span>
-                                    <span className="stat-label">Toplam Teklif</span>
+                                    <span className="stat-label">{t('analytics.totalQuotes')}</span>
                                 </div>
                             </div>
 
@@ -382,7 +384,7 @@ const Analytics = () => {
                                 </div>
                                 <div className="stat-content">
                                     <span className="stat-value">{salesStats.totals?.orders || 0}</span>
-                                    <span className="stat-label">Toplam Sipariş</span>
+                                    <span className="stat-label">{t('analytics.totalOrders')}</span>
                                 </div>
                             </div>
 
@@ -392,7 +394,7 @@ const Analytics = () => {
                                 </div>
                                 <div className="stat-content">
                                     <span className="stat-value">{salesStats.totals?.invoices || 0}</span>
-                                    <span className="stat-label">Toplam Fatura</span>
+                                    <span className="stat-label">{t('analytics.totalInvoices')}</span>
                                 </div>
                             </div>
 
@@ -404,7 +406,7 @@ const Analytics = () => {
                                     <span className="stat-value">
                                         {formatCurrency(salesStats.stageStats?.find(s => s.stage === 'INVOICE')?.totalAmount || 0)}
                                     </span>
-                                    <span className="stat-label">Faturalandırılan</span>
+                                    <span className="stat-label">{t('analytics.invoiced')}</span>
                                 </div>
                             </div>
                         </div>
@@ -416,7 +418,7 @@ const Analytics = () => {
                         <div className="chart-card status-chart">
                             <div className="chart-header">
                                 <PieChartIcon size={20} />
-                                <h3>Müşteri Durumları</h3>
+                                <h3>{t('analytics.contactStatuses')}</h3>
                             </div>
                             <div className="status-bars">
                                 {analytics?.statusData?.map((item) => (
@@ -447,7 +449,7 @@ const Analytics = () => {
                         <div className="chart-card channel-chart">
                             <div className="chart-header">
                                 <BarChart3 size={20} />
-                                <h3>Kanal Dağılımı</h3>
+                                <h3>{t('analytics.channelDistribution')}</h3>
                             </div>
                             <div className="channel-grid">
                                 {analytics?.channelData?.length > 0 ? (
@@ -464,7 +466,7 @@ const Analytics = () => {
                                     ))
                                 ) : (
                                     <div className="empty-channel">
-                                        <p>Henüz kanal verisi yok</p>
+                                        <p>{t('analytics.noChannelData')}</p>
                                     </div>
                                 )}
                             </div>
@@ -475,7 +477,7 @@ const Analytics = () => {
                     <div className="chart-card monthly-chart">
                         <div className="chart-header">
                             <TrendingUp size={20} />
-                            <h3>Aylık Trend (Son 6 Ay)</h3>
+                            <h3>{t('analytics.monthlyTrend')}</h3>
                         </div>
                         <div className="monthly-bars">
                             {analytics?.monthlyData?.map((item, index) => {
@@ -502,14 +504,14 @@ const Analytics = () => {
                     <div className="chart-card summary-table">
                         <div className="chart-header">
                             <Users size={20} />
-                            <h3>Durum Özeti</h3>
+                            <h3>{t('analytics.statusSummary')}</h3>
                         </div>
                         <table className="analytics-table">
                             <thead>
                                 <tr>
-                                    <th>Durum</th>
-                                    <th>Sayı</th>
-                                    <th>Oran</th>
+                                    <th>{t('analytics.status')}</th>
+                                    <th>{t('analytics.count')}</th>
+                                    <th>{t('analytics.rate')}</th>
                                 </tr>
                             </thead>
                             <tbody>

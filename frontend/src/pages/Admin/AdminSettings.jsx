@@ -1,9 +1,12 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { adminAPI } from '../../services/api';
-import { Key, Save, Loader, CheckCircle, AlertCircle, Activity } from 'lucide-react';
+import { Key, Save, Loader, CheckCircle, AlertCircle, Activity, ShieldCheck, HelpCircle } from 'lucide-react';
 import './AdminDashboard.css';
+import './AdminSettings.css';
 
 const AdminSettings = () => {
+    const { t } = useTranslation();
     const [globalSettings, setGlobalSettings] = useState(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -75,289 +78,200 @@ const AdminSettings = () => {
     if (loading) {
         return (
             <div className="admin-dashboard">
-                <div className="loading">Yükleniyor...</div>
+                <div className="loading">
+                    <Loader className="spinning" size={24} />
+                    <span style={{ marginLeft: '10px' }}>Yükleniyor...</span>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="admin-dashboard">
+        <div className="admin-settings-container">
             {/* Message Alert */}
             {message.text && (
                 <div className={`alert ${message.type}`} style={{
-                    padding: '12px 16px',
-                    borderRadius: '8px',
+                    padding: '16px 20px',
+                    borderRadius: '12px',
                     marginBottom: '24px',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    background: message.type === 'success' ? '#d4edda' : '#f8d7da',
-                    color: message.type === 'success' ? '#155724' : '#721c24',
-                    border: `1px solid ${message.type === 'success' ? '#c3e6cb' : '#f5c6cb'}`
+                    gap: '12px',
+                    background: message.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                    color: message.type === 'success' ? '#166534' : '#991b1b',
+                    border: `1px solid ${message.type === 'success' ? '#bbf7d0' : '#fecaca'}`,
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
                 }}>
-                    {message.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+                    {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                     {message.text}
                 </div>
             )}
 
             {/* Global AI API Key Card */}
-            <div className="settings-card" style={{
-                background: 'white',
-                borderRadius: '12px',
-                padding: '24px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                marginBottom: '24px'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                    <div style={{
-                        width: '48px',
-                        height: '48px',
-                        borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}>
-                        <Key size={24} color="white" />
+            <div className="settings-card">
+                <div className="settings-card-header">
+                    <div className="header-icon-box red">
+                        <Key size={26} color="white" strokeWidth={2.5} />
                     </div>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#ef4444' }}>Global AI API Key</h2>
-                        <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>
-                            Tüm workspace'ler için varsayılan AI API anahtarı
-                        </p>
+                    <div className="header-text">
+                        <h2>Global AI API Key</h2>
+                        <p>Tüm workspace'ler için varsayılan AI API anahtarı</p>
                     </div>
                 </div>
 
-                {/* Current Status */}
-                <div style={{
-                    background: globalSettings?.hasGlobalAiApiKey ? '#fee2e2' : '#fff3e0',
-                    borderRadius: '8px',
-                    padding: '16px',
-                    marginBottom: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    border: globalSettings?.globalAiApiKey ? '1px solid #fecaca' : '1px solid #ffe0b2'
-                }}>
-                    {globalSettings?.globalAiApiKey ? (
+                {/* Current Status Badge */}
+                <div className={`status-badge ${globalSettings?.hasGlobalAiApiKey ? 'active' : 'warning'}`}>
+                    {globalSettings?.hasGlobalAiApiKey ? (
                         <>
-                            <CheckCircle size={20} color="#ef4444" />
-                            <div>
-                                <strong style={{ color: '#dc2626' }}>Aktif</strong>
-                                <span style={{ marginLeft: '8px', color: '#666' }}>
-                                    Key: ••••••••{globalSettings.globalAiApiKey.slice(-4)}
-                                </span>
-                            </div>
+                            <span className="badge-label">Active</span>
+                            <span>
+                                Key: <code style={{ letterSpacing: '2px', opacity: 0.8 }}>••••••••{globalSettings.globalAiApiKey?.slice(-4)}</code>
+                            </span>
                         </>
                     ) : (
                         <>
-                            <AlertCircle size={20} color="#f57c00" />
-                            <div>
-                                <strong style={{ color: '#e65100' }}>Ayarlanmamış</strong>
-                                <span style={{ marginLeft: '8px', color: '#666' }}>
-                                    Henüz global API key girilmemiş
-                                </span>
-                            </div>
+                            <span className="badge-label">Not Set</span>
+                            <span>Henüz global API key tanımlanmamış.</span>
                         </>
                     )}
                 </div>
 
                 {/* Input Form */}
-                <div className="form-group" style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500 }}>
-                        Google Gemini API Key
-                    </label>
+                <div className="settings-form-group">
+                    <label>Google Gemini API Key</label>
                     <input
                         type="password"
                         value={globalAiApiKey}
                         onChange={(e) => setGlobalAiApiKey(e.target.value)}
                         placeholder="AIza..."
-                        style={{
-                            width: '100%',
-                            padding: '12px 16px',
-                            borderRadius: '8px',
-                            border: '1px solid #ddd',
-                            fontSize: '14px'
-                        }}
+                        className="settings-input"
                     />
-                    <p style={{ color: '#888', fontSize: '12px', marginTop: '8px' }}>
+                    <div className="input-hint">
                         {globalSettings?.hasGlobalAiApiKey
-                            ? 'Yeni key girerek mevcut key\'i güncelleyebilirsiniz. Boş bırakırsanız key kaldırılır.'
-                            : 'API key girin. Bu key, kendi API key\'i olmayan tüm workspace\'ler tarafından kullanılacak.'}
-                    </p>
+                            ? 'Yeni bir anahtar girerek mevcut olanı güncelleyebilirsiniz. Alanı boş bırakıp kaydederseniz anahtar silinir.'
+                            : 'Google AI Studio üzerinden aldığınız API anahtarını buraya girin. Bu anahtar, bireysel anahtarı bulunmayan tüm workspace\'lerin AI özelliklerini besleyecektir.'}
+                    </div>
                 </div>
 
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    style={{
-                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                        color: 'white',
-                        border: 'none',
-                        padding: '12px 24px',
-                        borderRadius: '8px',
-                        cursor: saving ? 'not-allowed' : 'pointer',
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        opacity: saving ? 0.7 : 1
-                    }}
+                    className="btn-premium red"
                 >
                     {saving ? <Loader size={18} className="spinning" /> : <Save size={18} />}
-                    {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                    {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
                 </button>
             </div>
 
             {/* Facebook/Instagram Health Check Card */}
-            <div className="settings-card" style={{
-                background: 'white',
-                borderRadius: '12px',
-                padding: '24px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                marginBottom: '24px'
-            }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                    <div style={{
-                        width: '48px',
-                        height: '48px',
-                        borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}>
-                        <Activity size={24} color="white" />
+            <div className="settings-card">
+                <div className="settings-card-header">
+                    <div className="header-icon-box red">
+                        <Activity size={26} color="white" strokeWidth={2.5} />
                     </div>
-                    <div style={{ flex: 1 }}>
-                        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#3b82f6' }}>Facebook/Instagram Sayfa Kontrolü</h2>
-                        <p style={{ margin: '4px 0 0', color: '#666', fontSize: '14px' }}>
-                            Tüm sayfaların token durumunu kontrol edin
-                        </p>
+                    <div className="header-text" style={{ flex: 1 }}>
+                        <h2>Facebook/Instagram Sayfa Kontrolü</h2>
+                        <p>Platforma bağlı tüm sayfaların erişim durumunu ve token sağlığını kontrol edin</p>
                     </div>
                     <button
                         onClick={handleCheckFacebookHealth}
                         disabled={checkingHealth}
-                        style={{
-                            background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                            color: 'white',
-                            border: 'none',
-                            padding: '10px 20px',
-                            borderRadius: '8px',
-                            cursor: checkingHealth ? 'not-allowed' : 'pointer',
-                            fontSize: '14px',
-                            fontWeight: 500,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            opacity: checkingHealth ? 0.7 : 1
-                        }}
+                        className="btn-premium red"
                     >
                         {checkingHealth ? <Loader size={18} className="spinning" /> : <Activity size={18} />}
-                        {checkingHealth ? 'Kontrol ediliyor...' : 'Kontrol Et'}
+                        {checkingHealth ? 'Kontrol ediliyor...' : 'Şimdi Kontrol Et'}
                     </button>
                 </div>
 
                 {healthResults && (
-                    <>
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(3, 1fr)',
-                            gap: '12px',
-                            marginBottom: '20px'
-                        }}>
-                            <div style={{
-                                background: '#f0f9ff',
-                                padding: '12px',
-                                borderRadius: '8px',
-                                border: '1px solid #bfdbfe'
-                            }}>
-                                <div style={{ fontSize: '24px', fontWeight: 600, color: '#3b82f6' }}>{healthResults.total}</div>
-                                <div style={{ fontSize: '12px', color: '#666' }}>Toplam Sayfa</div>
+                    <div className="health-stat-container">
+                        <div className="health-stats-grid">
+                            <div className="health-stat-card total">
+                                <div className="value">{healthResults.total}</div>
+                                <div className="label">Toplam Sayfa</div>
                             </div>
-                            <div style={{
-                                background: '#f0fdf4',
-                                padding: '12px',
-                                borderRadius: '8px',
-                                border: '1px solid #bbf7d0'
-                            }}>
-                                <div style={{ fontSize: '24px', fontWeight: 600, color: '#22c55e' }}>{healthResults.healthy}</div>
-                                <div style={{ fontSize: '12px', color: '#666' }}>Sağlıklı</div>
+                            <div className="health-stat-card healthy">
+                                <div className="value">{healthResults.healthy}</div>
+                                <div className="label">Sağlıklı</div>
                             </div>
-                            <div style={{
-                                background: '#fef2f2',
-                                padding: '12px',
-                                borderRadius: '8px',
-                                border: '1px solid #fecaca'
-                            }}>
-                                <div style={{ fontSize: '24px', fontWeight: 600, color: '#ef4444' }}>{healthResults.unhealthy}</div>
-                                <div style={{ fontSize: '12px', color: '#666' }}>Sorunlu</div>
+                            <div className="health-stat-card unhealthy">
+                                <div className="value">{healthResults.unhealthy}</div>
+                                <div className="label">Sorunlu</div>
                             </div>
                         </div>
 
                         {healthResults.unhealthy > 0 && (
-                            <div style={{ marginTop: '20px' }}>
-                                <h3 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: '#ef4444' }}>
-                                    ⚠️ Sorunlu Sayfalar ({healthResults.unhealthy})
-                                </h3>
+                            <div className="unhealthy-table-container">
+                                <div className="unhealthy-title">
+                                    <AlertCircle size={18} />
+                                    Sorunlu Sayfalar ({healthResults.unhealthy})
+                                </div>
                                 <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+                                    <table className="unhealthy-table">
                                         <thead>
-                                            <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-                                                <th style={{ padding: '8px', textAlign: 'left' }}>Sayfa Adı</th>
-                                                <th style={{ padding: '8px', textAlign: 'left' }}>Tip</th>
-                                                <th style={{ padding: '8px', textAlign: 'left' }}>Workspace</th>
-                                                <th style={{ padding: '8px', textAlign: 'left' }}>Hata</th>
+                                            <tr>
+                                                <th>Sayfa Adı</th>
+                                                <th>Mecra</th>
+                                                <th>Workspace</th>
+                                                <th>Kontrol Detayı / Hata Mesajı</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {healthResults.unhealthyPages.map((page, idx) => (
-                                                <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                                    <td style={{ padding: '8px' }}>{page.pageName}</td>
-                                                    <td style={{ padding: '8px' }}>
-                                                        <span style={{
-                                                            background: page.channelType === 'FACEBOOK' ? '#1877f2' : '#e4405f',
-                                                            color: 'white',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '4px',
-                                                            fontSize: '11px'
-                                                        }}>
+                                                <tr key={idx}>
+                                                    <td style={{ fontWeight: 600 }}>{page.pageName}</td>
+                                                    <td>
+                                                        <span className={`channel-tag ${page.channelType.toLowerCase()}`}>
                                                             {page.channelType}
                                                         </span>
                                                     </td>
-                                                    <td style={{ padding: '8px', fontSize: '12px', color: '#666' }}>{page.workspaceName}</td>
-                                                    <td style={{ padding: '8px', fontSize: '12px', color: '#ef4444' }}>
-                                                        Code {page.errorCode}: {page.errorMessage}
+                                                    <td style={{ color: '#64748b' }}>{page.workspaceName}</td>
+                                                    <td style={{ color: '#ef4444' }}>
+                                                        <span style={{ opacity: 0.7, marginRight: '6px' }}>Kod {page.errorCode}:</span>
+                                                        {page.errorMessage}
                                                     </td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                 </div>
-                                <p style={{ marginTop: '12px', fontSize: '12px', color: '#666', background: '#fff3cd', padding: '8px', borderRadius: '4px', border: '1px solid #ffc107' }}>
-                                    💡 <strong>Çözüm:</strong> Sorunlu sayfaların workspace'lerine gidip Facebook/Instagram sayfalarını yeniden bağlayın.
-                                </p>
+                                <div style={{ padding: '16px', background: '#fffbeb', color: '#92400e', fontSize: '13px', display: 'flex', gap: '8px', borderTop: '1px solid #fde68a' }}>
+                                    <HelpCircle size={18} style={{ flexShrink: 0 }} />
+                                    <span><strong>Çözüm Önerisi:</strong> Listelenen sayfaların bağlı olduğu workspace'lere giderek Facebook/Instagram bağlantılarını yenilemeniz (re-auth) gerekmektedir.</span>
+                                </div>
                             </div>
                         )}
-                    </>
+                    </div>
                 )}
             </div>
 
-            {/* Info Card */}
-            <div style={{
-                background: '#f8f9fa',
-                borderRadius: '12px',
-                padding: '20px',
-                border: '1px solid #e9ecef'
-            }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600 }}>
-                    🔑 API Key Hiyerarşisi
-                </h3>
-                <ul style={{ margin: 0, paddingLeft: '20px', color: '#666', lineHeight: 1.8 }}>
-                    <li><strong>Workspace Key:</strong> Workspace kendi API key'ini girerse, o key kullanılır (öncelikli)</li>
-                    <li><strong>Global Key:</strong> Workspace key'i yoksa, bu global key kullanılır</li>
-                    <li><strong>Hata:</strong> Her iki key de yoksa, AI fonksiyonları çalışmaz</li>
+            {/* Info Card - Hierarchy */}
+            <div className="info-section">
+                <h3><ShieldCheck size={20} color="#ef4444" /> AI API Key Hiyerarşisi</h3>
+                <ul className="info-list">
+                    <li>
+                        <div className="info-bullet"></div>
+                        <div>
+                            <strong>Workspace Key:</strong>
+                            Eğer bir workspace kendi ayarlarından özel bir API key tanımlarsa, öncelikli olarak o anahtar kullanılır. (SaaS modeli için uygundur)
+                        </div>
+                    </li>
+                    <li>
+                        <div className="info-bullet"></div>
+                        <div>
+                            <strong>Global Key:</strong>
+                            Workspace'e özel bir anahtar tanımlanmamışsa, yukarıda belirttiğiniz bu anahtar varsayılan olarak tüm sistemde kullanılır.
+                        </div>
+                    </li>
+                    <li>
+                        <div className="info-bullet" style={{ background: '#94a3b8' }}></div>
+                        <div>
+                            <strong>Hata Durumu:</strong>
+                            Eğer her iki seviyede de anahtar tanımlı değilse, AI özellikleri (Robotik yanıt, özetleme vb.) devre dışı kalacaktır.
+                        </div>
+                    </li>
                 </ul>
             </div>
         </div>

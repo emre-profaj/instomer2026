@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI } from '../../services/api';
@@ -5,6 +6,7 @@ import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Penci
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [activeTab, setActiveTab] = useState('company');
 
@@ -86,7 +88,7 @@ const KnowledgeBase = () => {
                 companyWebsite: companyInfo.website,
                 companyWorkingHours: companyInfo.workingHours
             });
-            alert('Şirket bilgileri kaydedildi');
+            alert(t('knowledgeBase.saved'));
         } catch (error) {
             console.error('Error saving company info:', error);
             alert('Şirket bilgileri kaydedilirken hata oluştu');
@@ -111,7 +113,7 @@ const KnowledgeBase = () => {
             const response = await workspaceAPI.uploadCompanyLogo(currentWorkspace.id, formData);
             const info = response.data.companyInfo;
             setCompanyInfo(prev => ({ ...prev, logoPreview: info.companyLogo }));
-            alert('Logo yüklendi');
+            alert('Logo uploaded');
         } catch (error) {
             console.error('Error uploading logo:', error);
             alert('Logo yüklenirken hata oluştu');
@@ -119,7 +121,7 @@ const KnowledgeBase = () => {
     };
 
     const handleDeleteLogo = async () => {
-        if (!confirm('Logoyu silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete the logo?')) return;
 
         try {
             await workspaceAPI.deleteCompanyLogo(currentWorkspace.id);
@@ -133,7 +135,7 @@ const KnowledgeBase = () => {
 
     const handleAddTextEntry = async () => {
         if (!newKbContent.trim()) {
-            alert('İçerik gereklidir');
+            alert(t('knowledgeBase.contentRequired'));
             return;
         }
 
@@ -237,7 +239,7 @@ const KnowledgeBase = () => {
     if (!currentWorkspace) {
         return (
             <div className="empty-state">
-                <p>Lütfen bir workspace seçin</p>
+                <p>{t('common.selectWorkspace')}</p>
             </div>
         );
     }
@@ -246,8 +248,8 @@ const KnowledgeBase = () => {
         <div className="knowledge-base-page">
             <div className="page-header">
                 <div>
-                    <h1>Bilgi Bankası</h1>
-                    <p className="text-muted">AI asistanlarının kullanacağı bilgileri buraya ekleyin.</p>
+                    <h1>Knowledge Base</h1>
+                    <p className="text-muted">{t('knowledgeBase.description')}</p>
                 </div>
             </div>
 
@@ -331,7 +333,7 @@ const KnowledgeBase = () => {
 
                     <div className="company-form-grid">
                         <div className="form-group">
-                            <label>Şirket Adı</label>
+                            <label>{t('knowledgeBase.companyName')}</label>
                             <input
                                 type="text"
                                 className="input"
@@ -384,7 +386,7 @@ const KnowledgeBase = () => {
                     </div>
 
                     <div className="form-group">
-                        <label>Çalışma Saatleri</label>
+                        <label>{t('users.workingHoursTitle')}</label>
                         <input
                             type="text"
                             className="input"
@@ -395,7 +397,7 @@ const KnowledgeBase = () => {
                     </div>
 
                     <div className="form-group">
-                        <label>Şirket Açıklaması</label>
+                        <label>{t('knowledgeBase.companyDesc')}</label>
                         <textarea
                             className="input"
                             rows="4"
@@ -421,7 +423,7 @@ const KnowledgeBase = () => {
             {activeTab === 'text' && (
                 <div className="card kb-add-form">
                     <div className="form-group">
-                        <label>İçerik</label>
+                        <label>{t('knowledgeBase.content')}</label>
                         <textarea
                             className="input"
                             rows="12"
@@ -454,7 +456,7 @@ const KnowledgeBase = () => {
                 <div className="card kb-upload-area">
                     <div className="upload-dropzone">
                         <Upload size={48} style={{ opacity: 0.3, marginBottom: '16px' }} />
-                        <h3>Dosya Yükle</h3>
+                        <h3>{t('knowledgeBase.uploadFile')}</h3>
                         <p>PDF, DOCX, DOC veya TXT dosyası seçin</p>
                         <label className="btn btn-primary upload-btn" style={{ marginTop: '16px' }}>
                             <Upload size={16} />
@@ -490,7 +492,7 @@ const KnowledgeBase = () => {
                                     <button
                                         className="btn-icon btn-danger"
                                         onClick={() => handleDeleteEntry(entry.id)}
-                                        title="Sil"
+                                        title={t('common.delete')}
                                     >
                                         <Trash2 size={14} />
                                     </button>
@@ -505,7 +507,7 @@ const KnowledgeBase = () => {
             {activeTab === 'list' && (
                 <>
                     {kbLoading ? (
-                        <div className="loading">Yükleniyor...</div>
+                        <div className="loading">Loading...</div>
                     ) : knowledgeEntries.length === 0 ? (
                         <div className="card empty-kb">
                             <Database size={48} style={{ opacity: 0.3 }} />
@@ -536,7 +538,7 @@ const KnowledgeBase = () => {
                                                 <button
                                                     className="btn-icon btn-edit"
                                                     onClick={() => handleEditEntry(entry)}
-                                                    title="Düzenle"
+                                                    title={t('common.edit')}
                                                 >
                                                     <Pencil size={16} />
                                                 </button>
@@ -544,7 +546,7 @@ const KnowledgeBase = () => {
                                             <button
                                                 className="btn-icon btn-danger"
                                                 onClick={() => handleDeleteEntry(entry.id)}
-                                                title="Sil"
+                                                title={t('common.delete')}
                                             >
                                                 <Trash2 size={16} />
                                             </button>
@@ -580,7 +582,7 @@ const KnowledgeBase = () => {
                 <div className="modal-overlay" onClick={handleCancelEdit}>
                     <div className="modal-content kb-edit-modal" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>Bilgiyi Düzenle</h2>
+                            <h2>Bilgiyi Edit</h2>
                             <button className="btn-icon" onClick={handleCancelEdit}>
                                 <X size={20} />
                             </button>
@@ -597,7 +599,7 @@ const KnowledgeBase = () => {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>İçerik</label>
+                                <label>{t('knowledgeBase.content')}</label>
                                 <textarea
                                     className="input"
                                     rows="12"

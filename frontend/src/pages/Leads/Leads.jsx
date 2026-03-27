@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { leadsAPI, facebookAPI } from '../../services/api';
@@ -18,26 +19,30 @@ import {
     FileText,
     Tag,
     MessageSquare,
-    ExternalLink
+    ExternalLink,
+    Download
 } from 'lucide-react';
 import './Leads.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
-// Lead durumu seçenekleri
-const LEAD_STATUS_OPTIONS = [
-    { value: 'NEW', label: 'Yeni', color: '#6b7280', bg: '#f3f4f6' },
-    { value: 'CONTACTED', label: 'İletişime Geçildi', color: '#3b82f6', bg: '#eff6ff' },
-    { value: 'QUALIFIED', label: 'Nitelikli', color: '#8b5cf6', bg: '#f5f3ff' },
-    { value: 'CONVERTED', label: 'Dönüştürüldü', color: '#10b981', bg: '#ecfdf5' },
-    { value: 'LOST', label: 'Kaybedildi', color: '#ef4444', bg: '#fef2f2' }
-];
 
-const getStatusInfo = (status) => {
-    return LEAD_STATUS_OPTIONS.find(s => s.value === status) || LEAD_STATUS_OPTIONS[0];
-};
+// getStatusInfo moved inside component
+
 
 const Leads = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
+
+    const LEAD_STATUS_OPTIONS = [
+        { value: 'NEW', label: t('leads.new') || 'New', color: '#6b7280', bg: '#f3f4f6' },
+        { value: 'CONTACTED', label: t('leads.contacted'), color: '#3b82f6', bg: '#eff6ff' },
+        { value: 'QUALIFIED', label: t('leads.qualified') || 'Qualified', color: '#8b5cf6', bg: '#f5f3ff' },
+        { value: 'CONVERTED', label: t('leads.converted'), color: '#10b981', bg: '#ecfdf5' },
+        { value: 'LOST', label: t('leads.lost') || 'Lost', color: '#ef4444', bg: '#fef2f2' }
+    ];
+
+    const getStatusInfo = (status) => LEAD_STATUS_OPTIONS.find(s => s.value === status) || LEAD_STATUS_OPTIONS[0];
+
     const [leads, setLeads] = useState([]);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -47,6 +52,8 @@ const Leads = () => {
     const [stats, setStats] = useState(null);
     const [pages, setPages] = useState([]);
     const [selectedPage, setSelectedPage] = useState('');
+    const [dateStart, setDateStart] = useState('');
+    const [dateEnd, setDateEnd] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
@@ -55,15 +62,17 @@ const Leads = () => {
             loadStats();
             loadPages();
         }
-    }, [currentWorkspace, statusFilter, selectedPage]);
+    }, [currentWorkspace, statusFilter, selectedPage, dateStart, dateEnd]);
 
     const loadLeads = async () => {
         try {
             setLoading(true);
             const params = {
-                limit: 100,
+                limit: 500,
                 ...(statusFilter && { status: statusFilter }),
-                ...(selectedPage && { pageId: selectedPage })
+                ...(selectedPage && { pageId: selectedPage }),
+                ...(dateStart && { startDate: dateStart }),
+                ...(dateEnd && { endDate: dateEnd })
             };
             const response = await leadsAPI.getAll(currentWorkspace.id, params);
             setLeads(response.data.leads);
@@ -117,7 +126,7 @@ const Leads = () => {
             loadStats();
         } catch (error) {
             console.error('Error updating status:', error);
-            alert('Durum güncellenemedi');
+            alert('Could not update status');
         }
     };
 
@@ -125,8 +134,8 @@ const Leads = () => {
         setConfirmModal({
             isOpen: true,
             title: 'Lead Sil',
-            message: 'Bu lead\'i silmek istediğinize emin misiniz?',
-            confirmText: 'Evet, Sil',
+            message: 'Are you sure you want to delete this lead?',
+            confirmText: t('common.confirm'),
             type: 'danger',
             onConfirm: async () => {
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -145,6 +154,31 @@ const Leads = () => {
         });
     };
 
+    const handleExportCSV = () => {
+        const dataToExport = filteredLeads;
+        if (dataToExport.length === 0) {
+            alert('Dışa aktarılacak lead bulunamadı.');
+            return;
+        }
+
+        let csv = '\uFEFFAdı,E-posta,Telefon,Tarih\n';
+        for (const lead of dataToExport) {
+            const name = (lead.name || '').replace(/[,"]/g, ' ');
+            const email = (lead.email || '').replace(/[,"]/g, ' ');
+            const phone = lead.phone || '';
+            const date = lead.createdAt ? new Date(lead.createdAt).toISOString() : '';
+            csv += `"${name}","${email}","${phone}","${date}"\n`;
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `leads_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     const formatDate = (dateString) => {
         if (!dateString) return '-';
         return new Date(dateString).toLocaleDateString('tr-TR', {
@@ -160,16 +194,12 @@ const Leads = () => {
         if (!dateString) return '-';
         const date = new Date(dateString);
         const now = new Date();
-        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+        const isToday = date.toDateString() === now.toDateString();
 
-        if (diffDays === 0) {
+        if (isToday) {
             return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        } else if (diffDays === 1) {
-            return 'Dün';
-        } else if (diffDays < 7) {
-            return date.toLocaleDateString('tr-TR', { weekday: 'short' });
         } else {
-            return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+            return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         }
     };
 
@@ -194,7 +224,7 @@ const Leads = () => {
     if (!currentWorkspace) {
         return (
             <div className="empty-state">
-                <p>Lütfen bir workspace seçin</p>
+                <p>{t('common.selectWorkspace')}</p>
             </div>
         );
     }
@@ -272,6 +302,34 @@ const Leads = () => {
                             ))}
                         </select>
                     </div>
+
+                    {/* Date Range Filter + Export */}
+                    <div className="leads-filter-row" style={{ gap: '6px', marginTop: '6px' }}>
+                        <input
+                            type="date"
+                            value={dateStart}
+                            onChange={(e) => setDateStart(e.target.value)}
+                            className="leads-filter-select"
+                            style={{ fontSize: '12px', padding: '5px 8px' }}
+                            title="Başlangıç tarihi"
+                        />
+                        <input
+                            type="date"
+                            value={dateEnd}
+                            onChange={(e) => setDateEnd(e.target.value)}
+                            className="leads-filter-select"
+                            style={{ fontSize: '12px', padding: '5px 8px' }}
+                            title="Bitiş tarihi"
+                        />
+                        <button
+                            className="sync-btn-small"
+                            onClick={handleExportCSV}
+                            title="CSV olarak indir"
+                            style={{ background: '#10b981', color: 'white', borderColor: '#10b981', flexShrink: 0 }}
+                        >
+                            <Download size={14} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Lead Items */}
@@ -279,12 +337,12 @@ const Leads = () => {
                     {loading ? (
                         <div className="leads-loading">
                             <div className="loader-small"></div>
-                            <p>Yükleniyor...</p>
+                            <p>Loading...</p>
                         </div>
                     ) : filteredLeads.length === 0 ? (
                         <div className="leads-empty">
                             <Facebook size={32} className="empty-icon" />
-                            <p>Lead bulunamadı</p>
+                            <p>{t('leads.noLeads')}</p>
                             <button className="btn-sync-empty" onClick={handleSync}>
                                 <RefreshCw size={14} />
                                 Senkronize Et
@@ -367,7 +425,7 @@ const Leads = () => {
                                 <button
                                     className="btn-icon-delete"
                                     onClick={() => handleDelete(selectedLead.id)}
-                                    title="Sil"
+                                    title={t('common.delete')}
                                 >
                                     <Trash2 size={18} />
                                 </button>
@@ -401,7 +459,7 @@ const Leads = () => {
                                         </div>
                                     )}
                                     {!selectedLead.phone && !selectedLead.email && (
-                                        <p className="no-data">İletişim bilgisi yok</p>
+                                        <p className="no-data">{t('leads.noContact')}</p>
                                     )}
                                 </div>
                             </div>
@@ -460,7 +518,7 @@ const Leads = () => {
                                     )}
                                     <div className="lead-field">
                                         <Clock size={14} className="field-icon" />
-                                        <span className="field-label">Geliş Tarihi</span>
+                                        <span className="field-label">{t('leads.createdAt')}</span>
                                         <span className="field-value">{formatDate(selectedLead.createdAt)}</span>
                                     </div>
                                 </div>

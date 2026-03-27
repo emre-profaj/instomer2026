@@ -14,7 +14,7 @@
     border-right: 1px solid #e2e8f0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    z-index: 10;
 }
 
 .inbox-header {
@@ -132,13 +132,212 @@
 /* Multi-Select Filter Dropdown */
 .inbox-filter-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 6px;
     margin-bottom: 12px;
+}
+
+.inbox-filter-row-top {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+.inbox-filter-row-bottom {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    flex-wrap: wrap;
 }
 
 .inbox-filter-multiselect {
     position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.inbox-filter-multiselect .filter-multiselect-trigger {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.inbox-status-filters,
+.inbox-funnel-filter {
+    flex: 1;
+}
+
+.status-filter-select,
+.funnel-filter-select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Funnel Filter */
+.inbox-funnel-filter {
+    position: relative;
+}
+
+.funnel-filter-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    white-space: nowrap;
+}
+
+.funnel-filter-select:hover {
+    border-color: #cbd5e1;
+}
+
+.funnel-filter-select.active {
+    border-color: #8b5cf6;
+    background: #f5f3ff;
+    color: #7c3aed;
+}
+
+.funnel-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 200px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    z-index: 100;
+    padding: 6px 0;
+    animation: fadeIn 0.15s ease;
+}
+
+.funnel-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+}
+
+.funnel-filter-item:hover {
+    background: #f5f3ff;
+}
+
+.funnel-filter-item.selected {
+    background: #ede9fe;
+    color: #7c3aed;
+    font-weight: 600;
+}
+
+.funnel-filter-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Agent Filter */
+.inbox-agent-filter {
+    position: relative;
+    flex: 1;
+}
+
+.agent-filter-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    white-space: nowrap;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.agent-filter-select:hover {
+    border-color: #cbd5e1;
+}
+
+.agent-filter-select.active {
+    border-color: #10b981;
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.agent-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 200px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    z-index: 100;
+    padding: 6px 0;
+    animation: fadeIn 0.15s ease;
+}
+
+.agent-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+}
+
+.agent-filter-item:hover {
+    background: #ecfdf5;
+}
+
+.agent-filter-item.selected {
+    background: #d1fae5;
+    color: #059669;
+    font-weight: 600;
+}
+
+.agent-filter-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.agent-filter-role {
+    margin-left: auto;
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 400;
 }
 
 .filter-multiselect-trigger {
@@ -325,11 +524,15 @@
 
 /* Status Filter Select */
 .inbox-status-filters {
+    position: relative;
     display: flex;
     gap: 4px;
 }
 
 .status-filter-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     padding: 8px 12px;
     border: 1px solid #e2e8f0;
     background: #ffffff;
@@ -340,6 +543,10 @@
     cursor: pointer;
     transition: all 0.2s;
     outline: none;
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .status-filter-select:hover {
@@ -349,6 +556,98 @@
 .status-filter-select:focus {
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.status-filter-select.active {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+/* Stage Filter Dropdown */
+.stage-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 180px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    z-index: 100;
+    padding: 6px 0;
+}
+
+.stage-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: #334155;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+}
+
+.stage-filter-item:hover {
+    background: #f1f5f9;
+}
+
+.stage-filter-item.selected {
+    background: #eff6ff;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.stage-filter-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Funnel group with hover submenu */
+.stage-filter-funnel {
+    position: relative;
+}
+
+.stage-filter-funnel-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: default;
+    transition: background 0.12s;
+}
+
+.stage-filter-funnel:hover > .stage-filter-funnel-label {
+    background: #f8fafc;
+    color: #334155;
+}
+
+.stage-filter-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 180px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    padding: 6px 0;
+    z-index: 101;
+}
+
+.stage-filter-funnel:hover > .stage-filter-submenu {
+    display: block;
 }
 
 /* Search */
@@ -783,7 +1082,7 @@
     justify-content: space-between;
     width: 100%;
     padding: 12px 16px;
-    overflow-x: hidden;
+    overflow: visible;
 }
 
 .profile-bar-left {
@@ -903,6 +1202,7 @@
     cursor: pointer;
     outline: none;
     padding: 0;
+    max-width: 70px;
 }
 
 .status-dropdown-compact .status-dot {
@@ -921,7 +1221,7 @@
     font-weight: 500;
     color: #374151;
     outline: none;
-    width: 220px;
+    width: 145px;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
@@ -936,8 +1236,43 @@
     background: #fff;
 }
 
+/* Topic Dropdown */
+.topic-input-wrapper {
+    position: relative;
+}
+
+.topic-dropdown,
+.topic-dropdown-fixed {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    overflow: hidden;
+}
+
+.topic-dropdown-item {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.12s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.topic-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.topic-dropdown-item:hover {
+    background: #eff6ff;
+}
 
 .profile-action-btn {
+
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1061,12 +1396,29 @@
 .assignment-item select {
     border: none;
     background: transparent;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: #475569;
     cursor: pointer;
     outline: none;
-    min-width: 80px;
+    min-width: 50px;
+    max-width: 75px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* Funnel dropdown - sabit dar genişlik */
+.funnel-dropdown-compact select {
+    max-width: 75px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+/* Contact status/stage item - sabit dar genişlik */
+.contact-status-item select {
+    max-width: 100px;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }
 
 .assignment-item.status-item .status-dot {
@@ -1229,6 +1581,16 @@
     justify-content: center;
     color: #64748b;
     overflow: hidden;
+}
+
+.detail-avatar.mobile-avatar-trigger {
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.detail-avatar.mobile-avatar-trigger:hover,
+.detail-avatar.mobile-avatar-trigger:active {
+    opacity: 0.75;
 }
 
 .detail-avatar.lead-avatar {
@@ -1707,16 +2069,17 @@
 
 /* Lead Form Card Styles */
 .message.lead-message {
-    align-self: flex-start;
+    align-self: flex-start !important;
+    margin-right: auto !important;
+    margin-left: 0 !important;
     max-width: 400px;
 }
 
 .message.lead-message .message-content {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-left: 3px solid #ef4444;
-    border-radius: 8px;
-    padding: 16px 20px;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
 }
 
 .message.lead-message .message-content p {
@@ -2964,19 +3327,20 @@
 }
 
 @media (max-width: 992px) {
-    .inbox-page {
-        flex-direction: column;
-    }
-
+    /* 768px'de slide sistemi devreye gireceği için burada sadece yarı-geniş ekranlara yönelik ince ayarlar */
     .inbox-list-panel {
-        width: 100%;
-        min-width: auto;
-        max-height: 40vh;
+        width: 280px;
+        min-width: 280px;
     }
 
     .inbox-detail-panel {
-        flex: 1;
         border-right: none;
+    }
+
+    .inbox-contact-sidebar-wrapper {
+        width: 260px;
+        min-width: 260px;
+        max-width: 260px;
     }
 }
 
@@ -3428,6 +3792,127 @@
    BULK SELECTION TOOLBAR & CHECKBOX STYLES
    ===================================================== */
 
+.qf-dropdown-wrapper {
+    position: relative;
+}
+
+.qf-dropdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+
+.qf-dropdown-btn:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+    color: #334155;
+}
+
+.qf-dropdown-btn.active {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.qf-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 999;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+    padding: 4px;
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.qf-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 12px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.qf-menu-item:hover {
+    background: #f1f5f9;
+}
+
+.qf-menu-item.active {
+    background: #eff6ff;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.qf-menu-item.clear {
+    color: #ef4444;
+    font-size: 11px;
+}
+
+.qf-menu-item.clear:hover {
+    background: #fef2f2;
+}
+
+.qf-divider {
+    height: 1px;
+    background: #e2e8f0;
+    margin: 3px 4px;
+}
+
+
+
+.quick-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    background: #ffffff;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.quick-filter-chip:hover {
+    border-color: #94a3b8;
+    color: #334155;
+    background: #f1f5f9;
+}
+
+.quick-filter-chip.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #ffffff;
+    font-weight: 600;
+}
+
 .bulk-selection-toolbar {
     display: flex;
     flex-direction: column;
@@ -3436,6 +3921,7 @@
     overflow: visible;
     position: relative;
 }
+
 
 .toolbar-row {
     display: flex;
@@ -3900,6 +4386,402 @@
         flex: 1;
         min-width: 100px;
     }
+
+    /* ══════════════════════════════════════════
+       MOBİL INBOX LAYOUT — Panel Geçiş Sistemi
+       ══════════════════════════════════════════ */
+
+    /* Üst kapsayıcı */
+    .inbox-page {
+        flex-direction: row;
+        overflow: hidden;
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+
+    /* ── LİSTE PANELİ: varsayılan olarak tam ekran ── */
+    .inbox-list-panel {
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        max-height: none;
+        z-index: 2;
+        border-right: none;
+        transform: translateX(0);
+        opacity: 1;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.25s ease;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Öğe seçildiğinde liste sola kayar */
+    .inbox-page.has-selected .inbox-list-panel {
+        transform: translateX(-100%);
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* Pipeline modunda her zaman görünür */
+    .inbox-list-panel.pipeline-mode {
+        transform: translateX(0) !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+
+    /* ── SOHBET PANELİ: başlangıçta sağda (görünmez) ── */
+    .inbox-detail-panel {
+        position: absolute;
+        top: 0; left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 3;
+        border: none;
+        background: #f8fafc;
+        transform: translateX(100%);
+        opacity: 0;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.25s ease;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    /* Öğe seçilince sohbet tam ekran gelir */
+    .inbox-page.has-selected .inbox-detail-panel {
+        transform: translateX(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* ── CONTACT SIDEBAR: mobilde tam ekran bottom sheet modal ── */
+    .inbox-contact-sidebar-wrapper {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex !important;
+        align-items: flex-end;
+        animation: mobileOverlayIn 0.2s ease;
+    }
+
+    @keyframes mobileOverlayIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    /* Extra div (stopPropagation wrapper) tam genişlik */
+    .inbox-contact-sidebar-wrapper > div {
+        width: 100%;
+        max-height: 85vh;
+        animation: mobileSheetUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ContactSidebar bileşeninin kendisi */
+    .inbox-contact-sidebar-wrapper .contact-sidebar {
+        width: 100% !important;
+        height: 100% !important;
+        max-height: 85vh;
+        border-radius: 20px 20px 0 0;
+        border-left: none;
+        overflow-y: auto;
+        box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18);
+    }
+
+    @keyframes mobileSheetUp {
+        from { transform: translateY(100%); }
+        to   { transform: translateY(0); }
+    }
+
+    /* ── GERİ BUTONU ── */
+    .mobile-back-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        color: #334155;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        margin-right: 8px;
+        transition: background 0.18s;
+    }
+
+    .mobile-back-btn:hover,
+    .mobile-back-btn:active {
+        background: #e2e8f0;
+    }
+
+    /* ── HEADER DÜZENLEMELER ── */
+    .inbox-header-top {
+        height: 54px;
+        padding: 0 10px;
+    }
+
+    .inbox-header-left h2 {
+        font-size: 15px;
+    }
+
+    .inbox-header-left .new-conversation-btn span {
+        display: none;
+    }
+
+    .inbox-header-left .new-conversation-btn {
+        padding: 6px 8px;
+    }
+
+    /* ── FİLTRE SATIRI ── */
+    .inbox-filter-row {
+        padding: 8px 10px;
+    }
+
+    .inbox-filter-row-top,
+    .inbox-filter-row-bottom {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .filter-multiselect-trigger {
+        font-size: 12px;
+        padding: 7px 10px;
+        min-width: 0;
+    }
+
+    .funnel-filter-select,
+    .agent-filter-select,
+    .status-filter-select {
+        font-size: 12px;
+        padding: 7px 10px;
+    }
+
+    /* ── ARAMA ── */
+    .inbox-search {
+        margin-left: 10px;
+        margin-right: 10px;
+    }
+
+    /* ── PROFIL BAR ── */
+    .profile-bar {
+        height: auto !important;        /* height: 64px sabitini kır */
+        min-height: 56px;
+        padding: 8px 10px !important;   /* overflow-x: hidden'ı kır */
+        overflow: visible !important;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .profile-bar-left {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    /* Profil adı satırı — wrap yerine truncate */
+    .profile-name-row {
+        flex-wrap: nowrap;
+        overflow: hidden;
+    }
+
+    .profile-name-row h3 {
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 160px;
+    }
+
+    .profile-topic-tag {
+        display: none; /* Mobilde konu tag'i gizle — yer kazanmak için */
+    }
+
+    .profile-stage-inline {
+        display: none; /* Mobilde stage inline gizle */
+    }
+
+    .profile-dates-row {
+        display: none; /* Mobilde tarih satırı gizle */
+    }
+
+    /* Sağ taraftaki butonlar — sadece ikonlar */
+    .profile-bar-actions {
+        gap: 4px;
+        flex-shrink: 0;
+        flex-wrap: nowrap;
+    }
+
+    .profile-bar-actions .topic-input-compact {
+        display: none; /* Mobilde konu inputu gizle */
+    }
+
+    .status-dropdown-compact {
+        padding: 5px 7px;
+        font-size: 11px;
+    }
+
+    .status-dropdown-compact select {
+        max-width: 75px;
+        font-size: 11px;
+    }
+
+    /* Aksiyon butonlarındaki span etiketleri gizle, sadece ikon kalsın */
+    .profile-bar-actions button span,
+    .detail-header-actions button span,
+    .detail-header-actions a span {
+        display: none;
+    }
+
+    .profile-bar-actions button,
+    .detail-header-actions button,
+    .detail-header-actions a {
+        padding: 6px 8px;
+        min-width: 32px;
+    }
+
+    /* ── ATAMA BARI — mobilde gizle, yer kazandır ── */
+    .assignment-bar {
+        display: none;
+    }
+
+    /* ── MESAJLAR ── */
+    .messages-container {
+        padding: 10px 8px;
+        gap: 8px;
+    }
+
+    .message {
+        max-width: 88%;
+    }
+
+    .message-content {
+        font-size: 13px;
+        padding: 10px 12px;
+    }
+
+    /* ── MESAJ INPUT FORMU ── */
+    .message-input-form {
+        padding: 8px 10px;
+        /* Bottom nav (position:fixed, 60px) arkasında kalmasın */
+        padding-bottom: 68px;
+        flex-shrink: 0;
+    }
+
+    .message-input-container {
+        padding: 8px 10px;
+        gap: 8px;
+        border-radius: 10px;
+    }
+
+    .message-input-container textarea {
+        min-height: 40px;
+        max-height: 100px;
+        font-size: 14px;
+    }
+
+    /* Input altındaki aksiyon butonu satırı */
+    .input-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 4px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        justify-content: flex-end;
+        align-items: center;
+    }
+
+    .input-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Autopilot toggle — sadece ikon */
+    .autopilot-toggle {
+        padding: 6px 8px;
+        gap: 0;
+        flex-shrink: 0;
+    }
+
+    .autopilot-toggle span {
+        display: none;
+    }
+
+    /* Quick reply butonu — sadece ikon */
+    .quick-reply-btn span {
+        display: none;
+    }
+
+    .quick-reply-btn {
+        padding: 6px 8px;
+        flex-shrink: 0;
+    }
+
+    /* Takeover butonu — sadece ikon */
+    .take-over-btn-input span {
+        display: none;
+    }
+
+    .take-over-btn-input {
+        padding: 6px 8px;
+        flex-shrink: 0;
+    }
+
+    /* Gönder butonu — ikon + kısalt */
+    .send-btn,
+    [class*="send"] {
+        padding: 6px 12px;
+        flex-shrink: 0;
+    }
+
+    /* ── TOOLBAR ── */
+    .toolbar-row {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px 10px;
+    }
+
+    /* ── SEKMELER (tabs) ── */
+    .inbox-assignment-tabs {
+        padding: 3px;
+    }
+
+    .assignment-tab {
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+
+    /* ── 992px OVERRIDE: artık column değil row (slide sistemi) ── */
+    .inbox-page {
+        flex-direction: row !important;
+    }
+}
+
+/* ── Çok küçük ekranlar (iPhone SE vb.) ── */
+@media (max-width: 390px) {
+    .inbox-header-left h2 {
+        font-size: 13px;
+    }
+
+    .profile-info h3 {
+        font-size: 13px;
+    }
+
+    .message {
+        max-width: 95%;
+    }
+
+    .assignment-item select {
+        max-width: 110px;
+        font-size: 11px;
+    }
 }
 
 /* ========== Quick Reply (Hazır Mesaj) Styles ========== */
@@ -4200,6 +5082,7 @@
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
 }
 
@@ -4417,3 +5300,195 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
 }
+/* ═══════════════════════════════════════════════════════════
+   PIPELINE / CHAT VIEW TOGGLE
+   ═══════════════════════════════════════════════════════════ */
+
+/* Toggle button in inbox header */
+.inbox-view-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+}
+
+.inbox-view-toggle-btn:hover {
+    background: #f3f4f6;
+    color: #111827;
+    border-color: #d1d5db;
+}
+
+.inbox-view-toggle-btn.active {
+    background: #eff6ff;
+    color: #2563eb;
+    border-color: #bfdbfe;
+}
+
+/* Hide elements not needed in pipeline view */
+.hidden-in-pipeline {
+    display: none !important;
+}
+
+/* Pipeline embed — takes full remaining height inside inbox-list-panel */
+.inbox-pipeline-embed {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.inbox-pipeline-embed > * {
+    flex: 1;
+    min-height: 0;
+}
+
+/* When in pipeline mode, inbox-list-panel expands to fill the whole content area */
+.inbox-list-panel.pipeline-mode {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LEAD FORM CARD — Premium Design (görsele göre)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Override: lead-message bubble should be transparent / no background */
+.message.incoming.lead-message .message-content {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    max-width: 380px;
+}
+
+.lead-card-modern {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    min-width: 300px;
+    max-width: 360px;
+}
+
+/* Orange header bar */
+.lead-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--primary, #ef4444);
+}
+.lead-card-header-icon { font-size: 15px; }
+
+/* Form name */
+.lead-card-form-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #111827;
+    border-bottom: 1px solid #f9fafb;
+}
+.lead-card-form-name-icon { font-size: 14px; opacity: 0.6; }
+
+/* Primary fields (İsim, E-posta, Telefon) */
+.lead-card-primary-fields {
+    padding: 8px 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.lead-card-field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+.lead-card-field-icon { font-size: 14px; width: 18px; flex-shrink: 0; }
+.lead-card-field-label {
+    color: #6b7280;
+    white-space: nowrap;
+    min-width: 64px;
+}
+.lead-card-field-value {
+    font-weight: 600;
+    color: #111827;
+}
+.lead-card-email-link {
+    font-weight: 600;
+    color: #2563eb;
+    text-decoration: none;
+}
+.lead-card-email-link:hover { text-decoration: underline; }
+
+/* EK BİLGİLER section */
+.lead-card-extra {
+    margin: 6px 10px 10px;
+    background: #f8fafc;
+    border-radius: 9px;
+    padding: 8px 10px;
+}
+.lead-card-extra-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    color: #9ca3af;
+    margin-bottom: 6px;
+}
+.lead-card-extra-icon { font-size: 12px; }
+.lead-card-extra-row { font-size: 12px; color: #374151; line-height: 1.5; }
+.lead-card-extra-field { color: #6b7280; }
+.lead-card-extra-value { color: #111827; font-weight: 500; }
+
+/* Footer: timestamp + schedule button */
+.lead-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 14px 11px;
+    border-top: 1px solid #f3f4f6;
+    gap: 10px;
+}
+.lead-card-footer-time {
+    font-size: 11px;
+    color: #9ca3af;
+    white-space: nowrap;
+}
+.lead-card-schedule-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--primary, #ef4444);
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+.lead-card-schedule-btn:hover { background: var(--primary-dark, #dc2626); }
+.lead-card-schedule-btn:disabled { opacity: 0.7; cursor: not-allowed; }

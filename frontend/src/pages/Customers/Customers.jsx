@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, automationAPI, emailAPI, retellAPI } from '../../services/api';
+import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI } from '../../services/api';
 import * as XLSX from 'xlsx';
 import {
     User,
@@ -37,69 +37,67 @@ import {
     Tag
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import './Customers.css';
 import '../../components/ContactSidebar/ContactSidebar.css';
+import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
-
-// Müşteri durumu seçenekleri
-const CUSTOMER_STATUS_OPTIONS = [
-    { value: 'NEW_APPLICATION', label: 'Yeni Başvuru', color: '#3b82f6', bg: '#eff6ff' },
-    { value: 'OPPORTUNITY', label: 'Fırsat', color: '#f59e0b', bg: '#fffbeb' },
-    { value: 'HOT_OPPORTUNITY', label: 'Sıcak Fırsat', color: '#ef4444', bg: '#fef2f2' },
-    { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b', bg: '#f8fafc' },
-    { value: 'CALLBACK', label: 'Tekrar Ara', color: '#0ea5e9', bg: '#f0f9ff' },
-    { value: 'OFFER_GIVEN', label: 'Teklif Verildi', color: '#8b5cf6', bg: '#f5f3ff' },
-    { value: 'NEGOTIATION', label: 'Pazarlık', color: '#f97316', bg: '#fff7ed' },
-    { value: 'CONTRACT', label: 'Sözleşme', color: '#06b6d4', bg: '#ecfeff' },
-    { value: 'SALE_COMPLETED', label: 'Satış', color: '#10b981', bg: '#ecfdf5' },
-    { value: 'LOST', label: 'Kayıp', color: '#1f2937', bg: '#f9fafb' },
-    { value: 'NOT_INTERESTED', label: 'İlgisiz', color: '#9ca3af', bg: '#f3f4f6' },
-];
-
-
-const getStatusInfo = (status) => {
-    return CUSTOMER_STATUS_OPTIONS.find(s => s.value === status) || CUSTOMER_STATUS_OPTIONS[0];
-};
-
-// Kaynak seçenekleri
-const SOURCE_OPTIONS = [
-    { value: 'ALL', label: 'Tüm Kaynaklar', icon: Users },
-    { value: 'FACEBOOK', label: 'Facebook', icon: Facebook, color: '#1877f2' },
-    { value: 'INSTAGRAM', label: 'Instagram', icon: Instagram, color: '#e4405f' },
-    { value: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle, color: '#25d366' },
-    { value: 'WIDGET', label: 'Web Widget', icon: MessageSquare, color: '#6366f1' },
-    { value: 'EMAIL', label: 'E-posta', icon: Mail, color: '#f59e0b' },
-    { value: 'LEAD', label: 'Lead', icon: User, color: '#8b5cf6' },
-    { value: 'MANUAL', label: 'Manuel', icon: Plus, color: '#6b7280' }
-];
-
-const getSourceInfo = (source) => {
-    return SOURCE_OPTIONS.find(s => s.value === source) || SOURCE_OPTIONS[0];
-};
-
-// Kategori seçenekleri
-const CATEGORY_OPTIONS = [
-    { value: 'ALL', label: 'Tüm Kategoriler', icon: Users, color: '#6b7280' },
-    { value: 'NEW', label: 'Yeni', icon: User, color: '#3b82f6' },
-    { value: 'CUSTOMER', label: 'Müşteriler', icon: User, color: '#10b981' },
-    { value: 'OPPORTUNITY', label: 'Fırsatlar', icon: User, color: '#f59e0b' },
-    { value: 'VIP', label: 'VIP', icon: User, color: '#8b5cf6' },
-    { value: 'PARTNER', label: 'İş Ortakları', icon: Building, color: '#3b82f6' },
-    { value: 'SPAM', label: 'Spam', icon: User, color: '#ef4444' },
-    { value: 'BLACKLIST', label: 'Kara Liste', icon: User, color: '#1f2937' }
-];
-
-const getCategoryInfo = (category) => {
-    return CATEGORY_OPTIONS.find(c => c.value === category) || CATEGORY_OPTIONS[1];
-};
 
 const Customers = () => {
     const { currentWorkspace } = useAuth();
     const navigate = useNavigate();
+    const { t } = useTranslation();
+
+    // Status options
+
+    const CUSTOMER_STATUS_OPTIONS = [
+        { value: 'NEW_APPLICATION', label: t('contacts.statusNew'), color: '#3b82f6', bg: '#eff6ff' },
+        { value: 'OPPORTUNITY', label: t('contacts.statusOpportunity'), color: '#f59e0b', bg: '#fffbeb' },
+        { value: 'HOT_OPPORTUNITY', label: t('contacts.statusHotOpportunity'), color: '#ef4444', bg: '#fef2f2' },
+        { value: 'UNREACHABLE', label: t('contacts.statusUnreachable'), color: '#64748b', bg: '#f8fafc' },
+        { value: 'CALLBACK', label: t('contacts.statusCallback'), color: '#0ea5e9', bg: '#f0f9ff' },
+        { value: 'OFFER_GIVEN', label: t('contacts.statusOfferGiven'), color: '#8b5cf6', bg: '#f5f3ff' },
+        { value: 'APPOINTMENT_SCHEDULED', label: 'Randevu Planlandı', color: '#14b8a6', bg: '#f0fdfa' },
+        { value: 'NEGOTIATION', label: t('contacts.statusNegotiation'), color: '#f97316', bg: '#fff7ed' },
+        { value: 'CONTRACT', label: t('contacts.statusContract'), color: '#06b6d4', bg: '#ecfeff' },
+        { value: 'SALE_COMPLETED', label: t('contacts.statusSaleCompleted'), color: '#10b981', bg: '#ecfdf5' },
+        { value: 'LOST', label: t('contacts.statusLost'), color: '#1f2937', bg: '#f9fafb' },
+        { value: 'NOT_INTERESTED', label: t('contacts.statusNotInterested'), color: '#9ca3af', bg: '#f3f4f6' },
+    ];
+
+    const SOURCE_OPTIONS = [
+        { value: 'ALL', label: t('contacts.sourceAll'), icon: Users },
+        { value: 'FACEBOOK', label: 'Facebook', icon: Facebook, color: '#1877f2' },
+        { value: 'INSTAGRAM', label: 'Instagram', icon: Instagram, color: '#e4405f' },
+        { value: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle, color: '#25d366' },
+        { value: 'WIDGET', label: 'Web Widget', icon: MessageSquare, color: '#6366f1' },
+        { value: 'EMAIL', label: t('contacts.sourceEmail'), icon: Mail, color: '#f59e0b' },
+        { value: 'LEAD', label: 'Lead', icon: User, color: '#8b5cf6' },
+        { value: 'MANUAL', label: t('contacts.sourceManual'), icon: Plus, color: '#6b7280' }
+    ];
+
+    const CATEGORY_OPTIONS = [
+        { value: 'ALL', label: t('contacts.allCategories'), icon: Users, color: '#6b7280' },
+        { value: 'NEW', label: t('contacts.categoryNew'), icon: User, color: '#3b82f6' },
+        { value: 'CUSTOMER', label: t('contacts.categoryCustomer'), icon: User, color: '#10b981' },
+        { value: 'OPPORTUNITY', label: t('contacts.categoryOpportunity'), icon: User, color: '#f59e0b' },
+        { value: 'VIP', label: 'VIP', icon: User, color: '#8b5cf6' },
+        { value: 'PARTNER', label: t('contacts.categoryPartner'), icon: Building, color: '#3b82f6' },
+        { value: 'SPAM', label: 'Spam', icon: User, color: '#ef4444' },
+        { value: 'BLACKLIST', label: t('contacts.categoryBlacklist'), icon: User, color: '#1f2937' }
+    ];
+
+    const getStatusInfo = (status) => CUSTOMER_STATUS_OPTIONS.find(s => s.value === status) || CUSTOMER_STATUS_OPTIONS[0];
+    const getSourceInfo = (source) => SOURCE_OPTIONS.find(s => s.value === source) || SOURCE_OPTIONS[0];
+    const getCategoryInfo = (category) => CATEGORY_OPTIONS.find(c => c.value === category) || CATEGORY_OPTIONS[1];
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    // Funnel filter state
+    const [funnelFilter, setFunnelFilter] = useState('ALL');
+    const [funnelStageFilter, setFunnelStageFilter] = useState('ALL');
+    const [availableFunnels, setAvailableFunnels] = useState([]);
     const [sourceFilter, setSourceFilter] = useState('ALL');
     const [categoryFilter, setCategoryFilter] = useState('ALL');
     const [callStatusFilter, setCallStatusFilter] = useState('ALL');
@@ -160,6 +158,8 @@ const Customers = () => {
     const [showBulkCall, setShowBulkCall] = useState(false);
     const [bulkCallRunning, setBulkCallRunning] = useState(false);
     const [bulkCallProgress, setBulkCallProgress] = useState({ called: 0, total: 0, errors: 0 });
+    const [retellAgents, setRetellAgents] = useState([]);
+    const [selectedAgentId, setSelectedAgentId] = useState('');
 
     // Excel Import state
     const [showImportModal, setShowImportModal] = useState(false);
@@ -177,19 +177,50 @@ const Customers = () => {
     const [importGroupFilter, setImportGroupFilter] = useState('ALL');
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
 
+    // Load funnels for funnel filter dropdown
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        funnelAPI.getAll(currentWorkspace.id)
+            .then(res => setAvailableFunnels(res.data.funnels || res.data || []))
+            .catch(() => {});
+    }, [currentWorkspace]);
+
+    // Fetch Retell agents for bulk call modal
+    useEffect(() => {
+        if (showBulkCall && currentWorkspace) {
+            setSelectedAgentId('');
+            retellAPI.getAgents(currentWorkspace.id)
+                .then(res => setRetellAgents(res.data.agents || []))
+                .catch(err => console.error('Error fetching Retell agents:', err));
+        }
+    }, [showBulkCall, currentWorkspace]);
+
     useEffect(() => {
         if (currentWorkspace) {
             loadContacts();
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, importGroupFilter, showArchived]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter]);
 
     // Real-time update listener
     useEffect(() => {
         const handleContactUpdate = (event) => {
             const data = event.detail;
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
-                console.log('🔄 [Customers] Real-time contact update received, reloading...');
-                loadContacts();
+                // Check if only notes were updated — if so, update locally without full reload
+                const fields = data.updatedFields || {};
+                const fieldKeys = Object.keys(fields).filter(k => fields[k] !== undefined);
+                const isNotesOnly = fieldKeys.length === 1 && fieldKeys[0] === 'notes';
+
+                if (isNotesOnly && data.contactId) {
+                    // Local update only — don't reload the entire list
+                    console.log('📝 [Customers] Notes-only update, skipping full reload');
+                    setContacts(prev => prev.map(c =>
+                        c.id === data.contactId ? { ...c, notes: fields.notes } : c
+                    ));
+                } else {
+                    console.log('🔄 [Customers] Real-time contact update received, reloading...');
+                    loadContacts();
+                }
 
                 // Also update selectedContact if it matches
                 if (selectedContact && data.contactId === selectedContact.id && data.updatedFields) {
@@ -240,6 +271,8 @@ const Customers = () => {
                 tag: tagFilter,
                 callStatus: callStatusFilter,
                 importGroup: importGroupFilter,
+                funnelType: funnelFilter,
+                funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
                 limit,
                 offset: (page - 1) * limit
@@ -715,11 +748,12 @@ const Customers = () => {
                 const phoneCol = findCol(['telefon', 'phone', 'cep', 'gsm', 'tel', 'numara', 'whatsapp']);
                 const emailCol = findCol(['e-posta', 'email', 'mail', 'eposta']);
                 const notesCol = findCol(['not', 'note', 'açıklama', 'mesaj']);
+                const dateCol = findCol(['tarih', 'date', 'oluşturulma', 'created']);
 
                 // Fallback: if no phone found in main headers, check for secondary phone columns
                 const phone2Col = phoneCol >= 0 ? findCol(['ikinci', 'whatsapp', '2. telefon'].filter(k => headers.indexOf(k) !== phoneCol)) : -1;
 
-                console.log(`📊 [Import] Column mapping: name=${nameCol}, phone=${phoneCol}, email=${emailCol}, notes=${notesCol}`);
+                console.log(`📊 [Import] Column mapping: name=${nameCol}, phone=${phoneCol}, email=${emailCol}, notes=${notesCol}, date=${dateCol}`);
 
                 const contacts = [];
                 for (let i = 1; i < jsonData.length; i++) {
@@ -729,10 +763,11 @@ const Customers = () => {
                     const phone = phoneCol >= 0 ? (row[phoneCol] || '').toString().trim() : '';
                     const email = emailCol >= 0 ? (row[emailCol] || '').toString().trim() : '';
                     const notes = notesCol >= 0 ? (row[notesCol] || '').toString().trim() : '';
+                    const createdAt = dateCol >= 0 ? (row[dateCol] || '').toString().trim() : '';
                     // Use phone2 (e.g. WhatsApp number) as fallback if primary phone is empty
                     const finalPhone = phone || (phone2Col >= 0 ? (row[phone2Col] || '').toString().trim() : '');
                     if (name || finalPhone || email) {
-                        contacts.push({ name, phone: finalPhone, email, notes });
+                        contacts.push({ name, phone: finalPhone, email, notes, createdAt });
                     }
                 }
                 setImportData(contacts);
@@ -770,16 +805,7 @@ const Customers = () => {
     const formatDate = (dateString) => {
         if (!dateString) return '---';
         const date = new Date(dateString);
-        const now = new Date();
-        const diff = now - date;
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-        if (days === 0) return 'Bugün';
-        if (days === 1) return 'Dün';
-        if (days < 7) return `${days} gün önce`;
-        if (days < 30) return `${Math.floor(days / 7)} hafta önce`;
-        if (days < 365) return `${Math.floor(days / 30)} ay önce`;
-        return `${Math.floor(days / 365)} yıl önce`;
+        return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     };
 
     const copyToClipboard = (text) => {
@@ -867,41 +893,44 @@ const Customers = () => {
                                 </select>
                             </div>
 
-                            {/* Status Dropdown */}
+                            {/* Funnel Dropdown */}
                             <div className="filter-dropdown-item">
-                                <label>Durum</label>
+                                <label>Funnel</label>
                                 <select
-                                    value={statusFilter}
-                                    onChange={(e) => handleStatusFilter(e.target.value)}
-                                    className="filter-select"
-                                >
-                                    <option value="ALL">Tüm Durumlar</option>
-                                    {CUSTOMER_STATUS_OPTIONS.map(option => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Category Dropdown */}
-                            <div className="filter-dropdown-item">
-                                <label>Kategori</label>
-                                <select
-                                    value={categoryFilter}
+                                    value={funnelFilter}
                                     onChange={(e) => {
-                                        setCategoryFilter(e.target.value);
+                                        setFunnelFilter(e.target.value);
+                                        setFunnelStageFilter('ALL');
                                         setPage(1);
                                     }}
                                     className="filter-select"
                                 >
-                                    {CATEGORY_OPTIONS.map(option => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
+                                    <option value="ALL">Tüm Funneller</option>
+                                    {availableFunnels.map(f => (
+                                        <option key={f.id} value={f.id}>{f.name}</option>
                                     ))}
                                 </select>
                             </div>
+
+                            {/* Funnel Stage Dropdown */}
+                            {funnelFilter !== 'ALL' && (
+                                <div className="filter-dropdown-item">
+                                    <label>Aşama</label>
+                                    <select
+                                        value={funnelStageFilter}
+                                        onChange={(e) => {
+                                            setFunnelStageFilter(e.target.value);
+                                            setPage(1);
+                                        }}
+                                        className="filter-select"
+                                    >
+                                        <option value="ALL">Tüm Aşamalar</option>
+                                        {(availableFunnels.find(f => f.id === funnelFilter)?.stages || []).map(s => (
+                                            <option key={s.id} value={s.id}>{s.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             {/* AI Call Status Filter */}
                             <div className="filter-dropdown-item">
@@ -1386,6 +1415,32 @@ const Customers = () => {
                                                         <div style={{ background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: '8px', padding: '12px', marginBottom: '16px', fontSize: '13px', color: '#92400e' }}>
                                                             ⚠️ Aramalar sıralı olarak başlatılacaktır. Her arama arasında bekleme süresi olacaktır.
                                                         </div>
+
+                                                        <div className="bulk-call-agent-selector" style={{ marginBottom: '20px' }}>
+                                                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#4b5563', marginBottom: '8px' }}>Konuşacak Agent</label>
+                                                            <select
+                                                                value={selectedAgentId}
+                                                                onChange={(e) => setSelectedAgentId(e.target.value)}
+                                                                style={{ 
+                                                                    width: '100%', 
+                                                                    padding: '10px 12px', 
+                                                                    borderRadius: '8px', 
+                                                                    border: '1px solid #d1d5db', 
+                                                                    fontSize: '14px', 
+                                                                    backgroundColor: '#fff',
+                                                                    outline: 'none',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                <option value="">Varsayılan Agent</option>
+                                                                {retellAgents.map(a => (
+                                                                    <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>
+                                                                ))}
+                                                            </select>
+                                                            <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                                                                Boş bırakırsanız varsayılan agent kullanılır.
+                                                            </p>
+                                                        </div>
                                                         <div className="customers-bulk-call-list">
                                                             {eligibleContacts.map(c => (
                                                                 <div key={c.id} className="customers-bulk-call-item">
@@ -1415,7 +1470,8 @@ const Customers = () => {
                                                                         await retellAPI.makeCall(currentWorkspace.id, {
                                                                             toNumber: c.phone || c.phones?.[0],
                                                                             contactId: c.id,
-                                                                            contactName: c.name || 'Müşteri'
+                                                                            contactName: c.name || 'Müşteri',
+                                                                            agentId: selectedAgentId
                                                                         });
                                                                     } catch (e) { errors++; }
                                                                     setBulkCallProgress({ called: i + 1, total, errors });
@@ -1441,549 +1497,14 @@ const Customers = () => {
 
                 </div>
 
-                {/* Right Sidebar - Contact Profile */}
+                {/* Right Sidebar - Shared ContactSidebar Component */}
                 {selectedContact && (
-                    <div className="contact-sidebar" style={{ height: 'calc(100vh - 60px)', minHeight: 'calc(100vh - 60px)', display: 'flex', flexDirection: 'column' }}>
-                        <button className="sidebar-close" onClick={closeSidebar}>
-                            <X size={20} />
-                        </button>
-
-                        {/* Profile Header */}
-                        <div className="sidebar-profile-header">
-                            <img
-                                src={getAvatarUrl(selectedContact)}
-                                alt={selectedContact.name}
-                                className="sidebar-avatar"
-                                onError={(e) => {
-                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedContact.name || 'U')}&background=ef4444&color=fff&size=150`;
-                                }}
-                            />
-                            <h2 className="sidebar-name">{getDisplayName(selectedContact)}</h2>
-                            {selectedContact.title && (
-                                <p className="sidebar-title">{selectedContact.title}</p>
-                            )}
-
-                            {/* Social Links - Only show if data exists */}
-                            {(selectedContact.facebookId || selectedContact.instagramUsername) && (
-                                <div className="sidebar-social-links">
-                                    {selectedContact.facebookId && (
-                                        <a href={`https://facebook.com/${selectedContact.facebookId}`} target="_blank" rel="noopener noreferrer" className="social-link facebook">
-                                            <Facebook size={16} />
-                                        </a>
-                                    )}
-                                    {selectedContact.instagramUsername && (
-                                        <a href={`https://instagram.com/${selectedContact.instagramUsername}`} target="_blank" rel="noopener noreferrer" className="social-link instagram">
-                                            <Instagram size={16} />
-                                        </a>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Category Selector */}
-                        <div className="sidebar-category-section">
-                            <h3>Kategori</h3>
-                            <select
-                                className="category-select"
-                                value={selectedContact.category || 'CUSTOMER'}
-                                onChange={async (e) => {
-                                    const newCategory = e.target.value;
-                                    try {
-                                        await contactAPI.update(currentWorkspace.id, selectedContact.id, { category: newCategory });
-                                        setSelectedContact(prev => ({ ...prev, category: newCategory }));
-                                        setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, category: newCategory } : c));
-                                    } catch (err) {
-                                        console.error('Category update error:', err);
-                                    }
-                                }}
-                                style={{
-                                    borderColor: getCategoryInfo(selectedContact.category).color,
-                                    backgroundColor: `${getCategoryInfo(selectedContact.category).color}15`
-                                }}
-                            >
-                                {CATEGORY_OPTIONS.filter(c => c.value !== 'ALL').map(cat => (
-                                    <option key={cat.value} value={cat.value}>
-                                        {cat.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Contact Info Section - Multi-phone, Multi-email, Company */}
-                        <div className="section-container">
-                            <h3 className="section-title">İLETİŞİM BİLGİLERİ</h3>
-                            <div className="meta-list">
-                                {/* Company - Always visible */}
-                                <div className="meta-item">
-                                    <div className="meta-icon">
-                                        <Building size={16} />
-                                    </div>
-                                    <div className="meta-content">
-                                        <span className="meta-label">Şirket</span>
-                                        <input
-                                            type="text"
-                                            className="meta-input"
-                                            value={selectedContact.company || ''}
-                                            onChange={(e) => setSelectedContact(prev => ({ ...prev, company: e.target.value }))}
-                                            onBlur={async () => {
-                                                try {
-                                                    await contactAPI.update(currentWorkspace.id, selectedContact.id, { company: selectedContact.company });
-                                                    setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, company: selectedContact.company } : c));
-                                                } catch (err) { console.error('Company update error:', err); }
-                                            }}
-                                            placeholder="Şirket adı..."
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Phones - Multiple */}
-                                {(() => {
-                                    let phones = selectedContact.phones;
-                                    if (!Array.isArray(phones)) {
-                                        phones = selectedContact.phone ? [selectedContact.phone] : [''];
-                                    }
-                                    if (phones.length === 0) phones = [''];
-                                    return phones.map((phone, index) => (
-                                        <div key={`phone-${index}`} className="meta-item">
-                                            <div className="meta-icon">
-                                                <Phone size={16} />
-                                            </div>
-                                            <div className="meta-content">
-                                                <span className="meta-label">Telefon {phones.length > 1 ? index + 1 : ''}</span>
-                                                <div className="meta-input-row">
-                                                    <input
-                                                        type="text"
-                                                        className="meta-input"
-                                                        value={phone}
-                                                        onChange={(e) => {
-                                                            const newPhones = [...phones];
-                                                            newPhones[index] = e.target.value;
-                                                            setSelectedContact(prev => ({ ...prev, phones: newPhones, phone: newPhones[0] }));
-                                                        }}
-                                                        onBlur={async () => {
-                                                            try {
-                                                                const newPhones = phones.filter(p => p.trim());
-                                                                await contactAPI.update(currentWorkspace.id, selectedContact.id, {
-                                                                    phones: newPhones,
-                                                                    phone: newPhones[0] || ''
-                                                                });
-                                                                setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, phones: newPhones, phone: newPhones[0] || '' } : c));
-                                                            } catch (err) { console.error('Phone update error:', err); }
-                                                        }}
-                                                        placeholder="Telefon numarası..."
-                                                    />
-                                                    {phones.length > 1 && (
-                                                        <button
-                                                            className="meta-remove-btn"
-                                                            onClick={async () => {
-                                                                const newPhones = phones.filter((_, i) => i !== index);
-                                                                setSelectedContact(prev => ({ ...prev, phones: newPhones, phone: newPhones[0] || '' }));
-                                                                try {
-                                                                    await contactAPI.update(currentWorkspace.id, selectedContact.id, { phones: newPhones, phone: newPhones[0] || '' });
-                                                                    setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, phones: newPhones, phone: newPhones[0] || '' } : c));
-                                                                } catch (err) { console.error('Phone remove error:', err); }
-                                                            }}
-                                                            title="Telefonu sil"
-                                                        >
-                                                            <X size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ));
-                                })()}
-                                <button
-                                    className="meta-add-btn"
-                                    onClick={() => {
-                                        let phones = selectedContact.phones;
-                                        if (!Array.isArray(phones)) {
-                                            phones = selectedContact.phone ? [selectedContact.phone] : [''];
-                                        }
-                                        setSelectedContact(prev => ({ ...prev, phones: [...phones, ''] }));
-                                    }}
-                                >
-                                    <Plus size={14} />
-                                    Telefon ekle
-                                </button>
-
-                                {/* Emails - Multiple */}
-                                {(() => {
-                                    let emails = selectedContact.emails;
-                                    if (!Array.isArray(emails)) {
-                                        emails = selectedContact.email ? [selectedContact.email] : [''];
-                                    }
-                                    if (emails.length === 0) emails = [''];
-                                    return emails.map((email, index) => (
-                                        <div key={`email-${index}`} className="meta-item">
-                                            <div className="meta-icon">
-                                                <Mail size={16} />
-                                            </div>
-                                            <div className="meta-content">
-                                                <span className="meta-label">E-posta {emails.length > 1 ? index + 1 : ''}</span>
-                                                <div className="meta-input-row">
-                                                    <input
-                                                        type="email"
-                                                        className="meta-input"
-                                                        value={email}
-                                                        onChange={(e) => {
-                                                            const newEmails = [...emails];
-                                                            newEmails[index] = e.target.value;
-                                                            setSelectedContact(prev => ({ ...prev, emails: newEmails, email: newEmails[0] }));
-                                                        }}
-                                                        onBlur={async () => {
-                                                            try {
-                                                                const newEmails = emails.filter(e => e.trim());
-                                                                await contactAPI.update(currentWorkspace.id, selectedContact.id, {
-                                                                    emails: newEmails,
-                                                                    email: newEmails[0] || ''
-                                                                });
-                                                                setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, emails: newEmails, email: newEmails[0] || '' } : c));
-                                                            } catch (err) { console.error('Email update error:', err); }
-                                                        }}
-                                                        placeholder="E-posta adresi..."
-                                                    />
-                                                    {emails.length > 1 && (
-                                                        <button
-                                                            className="meta-remove-btn"
-                                                            onClick={async () => {
-                                                                const newEmails = emails.filter((_, i) => i !== index);
-                                                                setSelectedContact(prev => ({ ...prev, emails: newEmails, email: newEmails[0] || '' }));
-                                                                try {
-                                                                    await contactAPI.update(currentWorkspace.id, selectedContact.id, { emails: newEmails, email: newEmails[0] || '' });
-                                                                    setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, emails: newEmails, email: newEmails[0] || '' } : c));
-                                                                } catch (err) { console.error('Email remove error:', err); }
-                                                            }}
-                                                            title="E-postayı sil"
-                                                        >
-                                                            <X size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ));
-                                })()}
-                                <button
-                                    className="meta-add-btn"
-                                    onClick={() => {
-                                        let emails = selectedContact.emails;
-                                        if (!Array.isArray(emails)) {
-                                            emails = selectedContact.email ? [selectedContact.email] : [''];
-                                        }
-                                        setSelectedContact(prev => ({ ...prev, emails: [...emails, ''] }));
-                                    }}
-                                >
-                                    <Plus size={14} />
-                                    E-posta ekle
-                                </button>
-
-                                {selectedContact.location && (
-                                    <div className="meta-item">
-                                        <div className="meta-icon">
-                                            <MapPin size={16} />
-                                        </div>
-                                        <div className="meta-content">
-                                            <span className="meta-label">Konum</span>
-                                            <span className="meta-value">{selectedContact.location}</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="divider"></div>
-
-                        {/* Notes Section - Compact Design */}
-                        <div className="section-container ai-summary-section" style={{ margin: '10px' }}>
-                            <div className="section-header">
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <StickyNote size={18} style={{ color: '#f59e0b' }} />
-                                    <h3>NOTLAR</h3>
-                                </div>
-                            </div>
-
-                            {/* Saved Notes List - Always Visible */}
-                            {selectedContact.notes && (() => {
-                                try {
-                                    const notes = JSON.parse(selectedContact.notes);
-                                    if (Array.isArray(notes) && notes.length > 0) {
-                                        return (
-                                            <div className="saved-notes-list" style={{ marginTop: '12px' }}>
-                                                {notes.map((note, index) => {
-                                                    const title = note.title || 'Not';
-                                                    const content = note.content || '';
-                                                    const hasMoreContent = content && content.length > 60;
-                                                    const isExpanded = expandedNotes[index];
-
-                                                    return (
-                                                        <div
-                                                            key={index}
-                                                            className={`saved-note-item ${isExpanded ? 'expanded' : ''}`}
-                                                            onClick={() => hasMoreContent && setExpandedNotes(prev => ({ ...prev, [index]: !prev[index] }))}
-                                                            style={{ cursor: hasMoreContent ? 'pointer' : 'default' }}
-                                                        >
-                                                            <div className="note-header">
-                                                                <span className="note-timestamp">{note.timestamp}</span>
-                                                                <button
-                                                                    className="delete-note-btn"
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteNote(index); }}
-                                                                    disabled={savingNotes}
-                                                                    title="Bu notu sil"
-                                                                >
-                                                                    <Trash2 size={12} />
-                                                                </button>
-                                                            </div>
-                                                            <div className="note-title">{title}</div>
-                                                            {!isExpanded ? (
-                                                                <div className="note-preview">
-                                                                    {content.substring(0, 40)}{hasMoreContent ? ' - Tıklayın' : ''}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="note-content">
-                                                                    <p>{content}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        );
-                                    }
-                                } catch (e) {
-                                    return null;
-                                }
-                                return null;
-                            })()}
-
-                            {/* Add Note Button / Collapsible Form */}
-                            {!notesExpanded ? (
-                                <button
-                                    className="add-note-btn"
-                                    onClick={() => setNotesExpanded(true)}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px',
-                                        width: '100%',
-                                        padding: '10px 12px',
-                                        marginTop: '12px',
-                                        background: '#f8fafc',
-                                        border: '1px dashed #d1d5db',
-                                        borderRadius: '8px',
-                                        color: '#6b7280',
-                                        fontSize: '0.8125rem',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    <Plus size={14} />
-                                    Not Ekle
-                                </button>
-                            ) : (
-                                <div className="summary-content-wrapper" style={{ marginTop: '12px' }}>
-                                    {/* Topic/Note Title */}
-                                    <div className="topic-card">
-                                        <span className="topic-label">NOT BAŞLIĞI</span>
-                                        <input
-                                            type="text"
-                                            className="topic-input"
-                                            value={noteTitle}
-                                            onChange={(e) => setNoteTitle(e.target.value)}
-                                            placeholder="Not başlığı giriniz..."
-                                        />
-                                    </div>
-
-                                    {/* Note Content */}
-                                    <div className="summary-text-card">
-                                        <span className="summary-label">İÇERİK</span>
-                                        <textarea
-                                            className="summary-textarea"
-                                            value={contactNotes}
-                                            onChange={(e) => setContactNotes(e.target.value)}
-                                            placeholder="Not içeriği..."
-                                            rows={3}
-                                        />
-                                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                                            <button
-                                                className="save-note-btn"
-                                                onClick={() => {
-                                                    handleSaveNotes();
-                                                    setNotesExpanded(false);
-                                                }}
-                                                disabled={savingNotes || (!noteTitle.trim() && !contactNotes.trim())}
-                                                style={{ flex: 1 }}
-                                            >
-                                                <Save size={14} />
-                                                {savingNotes ? 'Kaydediliyor...' : 'Kaydet'}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    setNotesExpanded(false);
-                                                    setNoteTitle('');
-                                                    setContactNotes('');
-                                                }}
-                                                style={{
-                                                    padding: '8px 12px',
-                                                    background: '#f3f4f6',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    color: '#6b7280',
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                <X size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Previous Conversations */}
-                        <div className="sidebar-conversations">
-                            <h3>
-                                <MessageSquare size={16} />
-                                Sohbet Geçmişi
-                            </h3>
-                            {selectedContact.conversations && selectedContact.conversations.length > 0 ? (
-                                <div className="conversation-list">
-                                    {selectedContact.conversations.map(conv => (
-                                        <div
-                                            key={conv.id}
-                                            className="conversation-item"
-                                            onClick={() => navigate(`/inbox?conversationId=${conv.id}`)}
-                                        >
-                                            <div className="conversation-info">
-                                                <span className="conversation-name">
-                                                    {conv.channel === 'WHATSAPP' ? '📱 WhatsApp' :
-                                                        conv.channel === 'FACEBOOK' ? '💬 Facebook' :
-                                                            conv.channel === 'INSTAGRAM' ? '📸 Instagram' :
-                                                                conv.channel === 'EMAIL' ? '📧 E-posta' :
-                                                                    conv.channel === 'FORM' ? '📝 Web Form' : '💬 Sohbet'}
-                                                </span>
-                                                <span className="conversation-date">{formatDate(conv.lastMessageAt || conv.createdAt)}</span>
-                                            </div>
-                                            <p className="conversation-preview">
-                                                {conv.messages?.[0]?.content?.substring(0, 50) || 'Sohbete gitmek için tıklayın...'}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : selectedContact._count?.conversations > 0 ? (
-                                <div className="conversation-list">
-                                    <div className="conversation-item" onClick={() => navigate(`/inbox?contactId=${selectedContact.id}`)}>
-                                        <div className="conversation-info">
-                                            <span className="conversation-name">{getDisplayName(selectedContact)}</span>
-                                            <span className="conversation-date">{formatDate(selectedContact.updatedAt)}</span>
-                                        </div>
-                                        <p className="conversation-preview">{selectedContact._count.conversations} sohbet - Tıklayın</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="no-conversations">Henüz sohbet yok</p>
-                            )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="sidebar-actions" style={{
-                            padding: '16px',
-                            borderTop: '1px solid #e5e7eb',
-                            display: 'flex',
-                            gap: '8px',
-                            marginTop: 'auto'
-                        }}>
-                            <button
-                                className="action-btn edit-btn"
-                                onClick={() => handleEditContact(selectedContact)}
-                                style={{
-                                    flex: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '6px',
-                                    padding: '10px',
-                                    background: '#f0f9ff',
-                                    border: '1px solid #bae6fd',
-                                    borderRadius: '8px',
-                                    color: '#0284c7',
-                                    fontSize: '0.8125rem',
-                                    fontWeight: 500,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <Edit2 size={16} />
-                                Düzenle
-                            </button>
-                            <button
-                                className={`action-btn archive-btn ${selectedContact.isArchived ? 'archived' : ''}`}
-                                onClick={async () => {
-                                    try {
-                                        if (selectedContact.isArchived) {
-                                            await contactAPI.unarchive(currentWorkspace.id, selectedContact.id);
-                                            setSelectedContact(prev => ({ ...prev, isArchived: false }));
-                                            setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, isArchived: false } : c));
-                                        } else {
-                                            await contactAPI.archive(currentWorkspace.id, selectedContact.id);
-                                            setSelectedContact(prev => ({ ...prev, isArchived: true }));
-                                            if (!showArchived) {
-                                                setContacts(prev => prev.filter(c => c.id !== selectedContact.id));
-                                                setSelectedContact(null);
-                                            } else {
-                                                setContacts(prev => prev.map(c => c.id === selectedContact.id ? { ...c, isArchived: true } : c));
-                                            }
-                                        }
-                                    } catch (err) {
-                                        console.error('Archive error:', err);
-                                    }
-                                }}
-                                style={{
-                                    flex: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '6px',
-                                    padding: '10px',
-                                    background: selectedContact.isArchived ? '#fef3c7' : '#f3f4f6',
-                                    border: `1px solid ${selectedContact.isArchived ? '#fcd34d' : '#d1d5db'}`,
-                                    borderRadius: '8px',
-                                    color: selectedContact.isArchived ? '#92400e' : '#6b7280',
-                                    fontSize: '0.8125rem',
-                                    fontWeight: 500,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                {selectedContact.isArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-                                {selectedContact.isArchived ? 'Çıkar' : 'Arşivle'}
-                            </button>
-                            <button
-                                className="action-btn delete-btn"
-                                onClick={() => {
-                                    handleDeleteContact(selectedContact.id);
-                                }}
-                                style={{
-                                    flex: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '6px',
-                                    padding: '10px',
-                                    background: '#fef2f2',
-                                    border: '1px solid #fecaca',
-                                    borderRadius: '8px',
-                                    color: '#dc2626',
-                                    fontSize: '0.8125rem',
-                                    fontWeight: 500,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <Trash2 size={16} />
-                                Sil
-                            </button>
-                        </div>
-                    </div>
+                    <ContactSidebar
+                        contactId={selectedContact.id}
+                        isOpen={!!selectedContact}
+                        onClose={() => setSelectedContact(null)}
+                    />
                 )}
-
                 {/* Create/Edit Contact Modal - Google Contacts Style */}
                 {isModalOpen && (
                     <div className="contact-modal-overlay" onClick={closeModal}>
@@ -2195,7 +1716,7 @@ const Customers = () => {
                                     <input
                                         type="text"
                                         className="form-input"
-                                        placeholder="Örn: Mirnas Müşterileri"
+                                        placeholder="Örn: Facebook Leads Mart 2026"
                                         value={importTag}
                                         onChange={(e) => setImportTag(e.target.value)}
                                     />

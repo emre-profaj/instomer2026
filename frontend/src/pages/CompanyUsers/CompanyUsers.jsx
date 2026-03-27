@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { Users, Plus, X, Check } from 'lucide-react';
 import { companyAPI } from '../../services/api';
@@ -5,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import './CompanyUsers.css';
 
 const CompanyUsers = ({ companyId }) => {
+    const { t } = useTranslation();
     const { user, onlineUsers } = useAuth();
     const [users, setUsers] = useState([]);
     const [companyWorkspaces, setCompanyWorkspaces] = useState([]);
@@ -57,7 +59,7 @@ const CompanyUsers = ({ companyId }) => {
             fetchCompanyUsers();
         } catch (error) {
             console.error('Error assigning user:', error);
-            alert('Kullanıcı ataması başarısız oldu');
+            alert('User assignment failed');
         }
     };
 
@@ -69,16 +71,16 @@ const CompanyUsers = ({ companyId }) => {
             fetchCompanyUsers();
         } catch (error) {
             console.error('Error removing user:', error);
-            alert('Kullanıcı çıkarma işlemi başarısız oldu');
+            alert('User removal failed');
         }
     };
 
-    if (loading) return <div className="loading">Yükleniyor...</div>;
+    if (loading) return <div className="loading">Loading...</div>;
 
     return (
         <div className="company-users-container">
             <div className="company-users-header">
-                <h2><Users size={24} /> Firma Kullanıcıları</h2>
+                <h2><Users size={24} />{t('companyUsers.title')}</h2>
                 <p>{users.length} kullanıcı</p>
             </div>
 
@@ -107,7 +109,7 @@ const CompanyUsers = ({ companyId }) => {
                                     <button
                                         onClick={() => handleRemoveFromWorkspace(user.id, ws.id)}
                                         className="remove-btn"
-                                        title="Çıkar"
+                                        title={t('common.remove') || 'Remove'}
                                     >
                                         <X size={12} />
                                     </button>
@@ -129,7 +131,7 @@ const CompanyUsers = ({ companyId }) => {
                 <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>Workspace Ataması</h3>
+                            <h3>{t('companyUsers.workspaceAssignment')}</h3>
                             <button onClick={() => setShowAssignModal(false)}>
                                 <X size={20} />
                             </button>

@@ -28,13 +28,13 @@ import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
 import Invoices from './pages/Sales/Invoices';
-import Pipeline from './pages/Pipeline/Pipeline';
 import Funnels from './pages/Funnels/Funnels';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSettings from './pages/Admin/AdminSettings';
+import AdminActivityLog from './pages/Admin/AdminActivityLog';
 
 function App() {
   return (
@@ -54,6 +54,7 @@ function App() {
             }>
               <Route index element={<AdminDashboard />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="activity-log" element={<AdminActivityLog />} />
               <Route path="company/:companyId" element={<AdminDashboard />} />
               <Route path="company/:companyId/workspace/:workspaceId" element={<AdminDashboard />} />
               <Route path="workspace/:workspaceId" element={<AdminDashboard />} />
@@ -91,7 +92,7 @@ function App() {
               <Route path="quotes" element={<Quotes />} />
               <Route path="orders" element={<Orders />} />
               <Route path="invoices" element={<Invoices />} />
-              <Route path="pipeline" element={<Pipeline />} />
+              <Route path="pipeline" element={<Navigate to="/inbox" replace />} />
               <Route path="funnels" element={<Funnels />} />
             </Route>
 

@@ -683,3 +683,114 @@
     transform: none;
     margin: 0 auto;
 }
+
+/* Language Switcher */
+.lang-switcher {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin-bottom: 4px;
+    color: #9ca3af;
+}
+
+.lang-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #9ca3af;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.lang-btn:hover {
+    color: #374151;
+}
+
+.lang-btn.active {
+    color: #dc2626;
+    background: #fef2f2;
+}
+
+.lang-sep {
+    color: #e5e7eb;
+    font-size: 11px;
+}
+
+/* ══════════════════════════════════════════
+   MOBİL SİDEBAR — Bottom Navigation Bar
+   ══════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+    /* ── Masaüstü sidebar'ı gizle ── */
+    .sidebar {
+        display: none !important;
+    }
+
+    /* ── Bottom Nav Bar ── */
+    .mobile-bottom-nav {
+        display: flex !important;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: #ffffff;
+        border-top: 1px solid #e5e7eb;
+        z-index: 999;
+        align-items: stretch;
+        box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .mobile-nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        text-decoration: none;
+        color: #9ca3af;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 6px 4px 4px;
+        position: relative;
+        transition: color 0.15s;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .mobile-nav-item.active {
+        color: #dc2626;
+    }
+
+    .mobile-nav-item svg {
+        width: 22px;
+        height: 22px;
+        stroke-width: 1.8;
+    }
+
+    .mobile-nav-badge {
+        position: absolute;
+        top: 4px;
+        right: calc(50% - 18px);
+        background: #ef4444;
+        color: white;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 8px;
+        min-width: 16px;
+        text-align: center;
+        line-height: 14px;
+    }
+}
+
+/* Desktop'ta bottom nav gizli */
+.mobile-bottom-nav {
+    display: none;
+}

@@ -1,55 +1,70 @@
+/* ── Funnels Page — App-Consistent Design ── */
+
 .funnels-page {
-    padding: 32px;
-    max-width: 720px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    padding: 28px 36px 40px;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+    background: #f9fafb;
 }
 
+/* ── Header ── */
 .funnels-header {
     display: flex;
     align-items: center;
     gap: 16px;
     margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
 }
 
 .funnels-header-icon {
-    width: 48px;
-    height: 48px;
+    width: 46px;
+    height: 46px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    background: #ef4444;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #fff;
     flex-shrink: 0;
+    box-shadow: 0 3px 10px rgba(239, 68, 68, 0.25);
 }
 
 .funnels-header h1 {
     font-size: 20px;
     font-weight: 700;
-    color: #0f172a;
-    margin: 0 0 4px 0;
+    color: #111827;
+    margin: 0 0 2px 0;
 }
 
 .funnels-header p {
     font-size: 13px;
-    color: #64748b;
+    color: #6b7280;
     margin: 0;
+    line-height: 1.4;
 }
 
+/* ── Create Card ── */
 .funnels-create-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e5e7eb;
     border-radius: 12px;
-    padding: 20px;
+    padding: 20px 24px;
     margin-bottom: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .funnels-create-card h2 {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
     color: #374151;
     margin: 0 0 14px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
 }
 
 .funnels-create-row {
@@ -59,31 +74,41 @@
     flex-wrap: wrap;
 }
 
+/* ── Inputs ── */
 .funnels-input {
     flex: 1;
     min-width: 180px;
+    max-width: 380px;
     height: 38px;
-    padding: 0 12px;
-    border: 1px solid #d1d5db;
+    padding: 0 13px;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
-    font-size: 14px;
-    color: #1e293b;
+    font-size: 13.5px;
+    color: #1f2937;
+    background: #f9fafb;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
 }
 
+.funnels-input::placeholder { color: #9ca3af; }
+
 .funnels-input:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+    border-color: #ef4444;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.10);
 }
 
 .funnels-input-edit {
     min-width: 140px;
+    max-width: 280px;
+    height: 34px;
+    font-size: 13px;
 }
 
+/* ── Color Dots ── */
 .funnels-color-row {
     display: flex;
-    gap: 6px;
+    gap: 5px;
     align-items: center;
 }
 
@@ -91,143 +116,354 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    border: 2px solid transparent;
+    border: 2.5px solid transparent;
     cursor: pointer;
-    transition: transform 0.12s, box-shadow 0.12s;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
     padding: 0;
 }
 
-.funnels-color-dot:hover {
-    transform: scale(1.15);
-}
+.funnels-color-dot:hover { transform: scale(1.18); }
 
 .funnels-color-dot.active {
-    border-color: #1e293b;
+    border-color: #1f2937;
+    box-shadow: 0 0 0 2px rgba(30,41,59,0.12);
 }
 
+/* ── Primary Button ── */
 .funnels-btn-primary {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 0 16px;
+    padding: 0 18px;
     height: 38px;
-    background: #3b82f6;
+    background: #ef4444;
     color: #fff;
     border: none;
     border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13.5px;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s;
     white-space: nowrap;
+    transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.22);
 }
 
-.funnels-btn-primary:hover { background: #2563eb; }
-.funnels-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.funnels-btn-primary:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.30);
+}
 
+.funnels-btn-primary:active { transform: translateY(0); }
+
+.funnels-btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* ── List Card ── */
 .funnels-list-card {
     background: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e5e7eb;
     border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
+/* ── Empty State ── */
 .funnels-empty {
-    padding: 48px;
+    padding: 48px 32px;
     text-align: center;
-    color: #94a3b8;
+    color: #9ca3af;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
-    font-size: 14px;
+    font-size: 13.5px;
 }
 
+.funnels-empty svg { opacity: 0.35; }
+
+/* ── Funnel Row ── */
 .funnels-row {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 14px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    transition: background 0.1s;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.12s ease;
 }
 
 .funnels-row:last-child { border-bottom: none; }
-.funnels-row:hover { background: #f8fafc; }
+.funnels-row:hover { background: #fef2f2; }
 
+/* ── Row Color Dot ── */
 .funnels-dot {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     flex-shrink: 0;
-    transition: background 0.15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 
+/* ── Row Name ── */
 .funnels-name {
     flex: 1;
     font-size: 14px;
     font-weight: 500;
-    color: #1e293b;
+    color: #111827;
 }
 
-.funnels-id {
-    font-size: 11px;
-    color: #cbd5e1;
-    font-family: monospace;
-}
-
+/* ── Icon Buttons ── */
 .funnels-icon-btn {
     width: 30px;
     height: 30px;
-    border-radius: 6px;
+    border-radius: 7px;
     border: none;
     background: transparent;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #6b7280;
-    transition: background 0.12s, color 0.12s;
+    color: #9ca3af;
+    transition: background 0.15s, color 0.15s;
 }
 
-.funnels-icon-btn:hover { background: #f1f5f9; color: #374151; }
-.funnels-icon-btn-danger:hover { background: #fef2f2; color: #ef4444; }
+.funnels-icon-btn:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
 
+.funnels-icon-btn-danger:hover {
+    background: #fef2f2;
+    color: #ef4444;
+}
+
+/* ── Small Action Buttons (edit mode) ── */
 .funnels-btn-sm {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 0 10px;
+    padding: 0 11px;
     height: 30px;
-    border-radius: 6px;
-    border: 1px solid;
+    border-radius: 7px;
+    border: 1.5px solid;
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
+    transition: background 0.15s, transform 0.12s;
 }
 
 .funnels-btn-save {
-    background: #3b82f6;
+    background: #ef4444;
     color: #fff;
-    border-color: #3b82f6;
+    border-color: #ef4444;
+    box-shadow: 0 1px 4px rgba(239,68,68,0.18);
 }
 
-.funnels-btn-save:hover { background: #2563eb; }
+.funnels-btn-save:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    transform: translateY(-1px);
+}
 
 .funnels-btn-cancel {
     background: #fff;
     color: #6b7280;
-    border-color: #d1d5db;
+    border-color: #e5e7eb;
 }
 
-.funnels-btn-cancel:hover { background: #f1f5f9; }
-
-.spin {
-    animation: spin 0.7s linear infinite;
+.funnels-btn-cancel:hover {
+    background: #f3f4f6;
+    color: #374151;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
+/* ── Spinner ── */
+.spin { animation: spin 0.7s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Funnel block (wraps row + stages panel) ── */
+.funnels-funnel-block {
+    border-bottom: 1px solid #f3f4f6;
+}
+.funnels-funnel-block:last-child { border-bottom: none; }
+.funnels-funnel-block--open { background: #fafafa; }
+
+.funnels-funnel-block .funnels-row {
+    border-bottom: none;
+}
+.funnels-funnel-block--open .funnels-row {
+    border-bottom: 1px solid #f3f4f6;
+}
+
+/* ── Expand toggle button ── */
+.funnels-expand-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.14s, color 0.14s;
+}
+.funnels-expand-btn:hover { background: #f3f4f6; color: #374151; }
+
+/* ── Stage count badge ── */
+.funnels-stage-count {
+    font-size: 11.5px;
+    color: #9ca3af;
+    background: #f3f4f6;
+    border-radius: 20px;
+    padding: 2px 9px;
+    margin-right: auto;
+    font-weight: 500;
+}
+
+/* ── Stages panel ── */
+.funnels-stages-panel {
+    padding: 16px 24px 20px 60px;
+    background: #fafafa;
+    border-top: 1px solid #f3f4f6;
+    animation: stageFadeIn 0.18s ease;
+}
+
+@keyframes stageFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.funnels-stages-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #9ca3af;
+    margin-bottom: 10px;
+}
+
+.funnels-stages-empty {
+    font-size: 13px;
+    color: #b0b7c3;
+    margin-bottom: 12px;
+}
+
+/* ── Stage list ── */
+.funnels-stages-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+}
+
+.funnels-stage-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: #fff;
+    border: 1px solid #f3f4f6;
+    transition: background 0.12s;
+}
+.funnels-stage-row:hover { background: #fef2f2; border-color: #fde8e8; }
+
+.funnels-stage-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.funnels-stage-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.funnels-stage-del {
+    width: 26px;
+    height: 26px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.funnels-stage-row:hover .funnels-stage-del { opacity: 1; }
+
+/* ── Add stage section ── */
+.funnels-stage-add-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px dashed #e5e7eb;
+}
+
+/* ── Stage color picker ── */
+.funnels-stage-color-picker {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.funnels-stage-color-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.funnels-stage-color-dot:hover { transform: scale(1.2); }
+.funnels-stage-color-dot.active {
+    border-color: #1f2937;
+    box-shadow: 0 0 0 2px rgba(30,41,59,0.15);
+    transform: scale(1.1);
+}
+
+/* ── Add stage inputs row ── */
+.funnels-stage-add-inputs {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.funnels-stage-input {
+    max-width: 260px;
+    height: 34px !important;
+    font-size: 13px !important;
+}
+
+.funnels-btn-sm-add {
+    height: 34px !important;
+    padding: 0 14px !important;
+    font-size: 12.5px !important;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .funnels-page { padding: 20px 16px; }
+
+    .funnels-create-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .funnels-input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .funnels-stages-panel { padding-left: 20px; }
+    .funnels-btn-primary { justify-content: center; }
 }

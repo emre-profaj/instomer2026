@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { aiAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -5,6 +6,7 @@ import { Settings, Code, Bot, Save, Copy, Check, MessageSquare, Sparkles } from 
 import './WebWidget.css';
 
 const WebWidget = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
 
@@ -13,10 +15,10 @@ const WebWidget = () => {
     const [copied, setCopied] = useState(false);
 
     // Settings state
-    const [title, setTitle] = useState('Canlı Destek');
-    const [subtitle, setSubtitle] = useState('Size nasıl yardımcı olabiliriz?');
+    const [title, setTitle] = useState(t('webWidget.liveSupport'));
+    const [subtitle, setSubtitle] = useState(t('webWidget.subtitle'));
     const [primaryColor, setPrimaryColor] = useState('#ef4444');
-    const [greetingMessage, setGreetingMessage] = useState('Merhaba! Size nasıl yardımcı olabilirim?');
+    const [greetingMessage, setGreetingMessage] = useState(t('webWidget.greeting'));
     const [isActive, setIsActive] = useState(true);
     const [position, setPosition] = useState('RIGHT');
     const [width, setWidth] = useState(350);
@@ -38,7 +40,7 @@ const WebWidget = () => {
             const s = res.data.settings;
             const bots = res.data.bots || [];
             
-            setTitle(s.title || 'Canlı Destek');
+            setTitle(s.title || t('webWidget.liveSupport'));
             setSubtitle(s.subtitle || '');
             setPrimaryColor(s.primaryColor || '#ef4444');
             setGreetingMessage(s.greetingMessage || '');
@@ -61,7 +63,7 @@ const WebWidget = () => {
                 title, subtitle, primaryColor, greetingMessage, isActive, position, width,
                 assignedBotId: assignedBotId || null
             });
-            alert('Widget ayarları kaydedildi!');
+            alert(t('webWidget.saved'));
         } catch (error) {
             console.error('Error saving widget settings:', error);
             alert('Kaydedilemedi.');
@@ -101,7 +103,7 @@ const WebWidget = () => {
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Web Widget</h1>
-                    <p className="text-muted">Web sitenize bir canlı destek botu ekleyin ve asistanınızı eğitin.</p>
+                    <p className="text-muted">{t('webWidget.description')}</p>
                 </div>
             </div>
 
@@ -110,11 +112,11 @@ const WebWidget = () => {
                 <div className="widget-card">
                     <div className="card-header">
                         <Settings size={20} />
-                        <h3>Görünüm Ayarları</h3>
+                        <h3>{t('webWidget.appearance')}</h3>
                     </div>
                     <div className="card-body">
                         <div className="form-group">
-                            <label className="form-label">Widget Başlığı</label>
+                            <label className="form-label">{t('webWidget.widgetTitle')}</label>
                             <input
                                 type="text"
                                 className="input-modern"
@@ -123,7 +125,7 @@ const WebWidget = () => {
                             />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Alt Başlık</label>
+                            <label className="form-label">{t('webWidget.widgetSubtitle')}</label>
                             <input
                                 type="text"
                                 className="input-modern"
@@ -132,7 +134,7 @@ const WebWidget = () => {
                             />
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Ana Renk</label>
+                            <label className="form-label">Primary Color</label>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                 <input
                                     type="color"
@@ -150,7 +152,7 @@ const WebWidget = () => {
                             </div>
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Karşılama Mesajı</label>
+                            <label className="form-label">Welcome Message</label>
                             <textarea
                                 className="input-modern"
                                 rows="3"
@@ -176,7 +178,7 @@ const WebWidget = () => {
                             </div>
                         </div>
                         <div className="form-group">
-                            <label className="form-label">Widget Genişliği (px)</label>
+                            <label className="form-label">{t('webWidget.widgetWidth')}</label>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                 <input
                                     type="range"
@@ -225,7 +227,7 @@ const WebWidget = () => {
                                     onChange={(e) => setIsActive(e.target.checked)}
                                     style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#ef4444' }}
                                 />
-                                <label htmlFor="widget-active" style={{ margin: 0, cursor: 'pointer', fontWeight: '500', color: '#334155' }}>Widget Aktif</label>
+                                <label htmlFor="widget-active" style={{ margin: 0, cursor: 'pointer', fontWeight: '500', color: '#334155' }}>Widget Active</label>
                             </div>
                         </div>
                         <button className="btn-modern btn-primary" onClick={handleSave} disabled={saving} style={{ marginTop: '20px', width: '100%', justifyContent: 'center' }}>
@@ -253,7 +255,7 @@ const WebWidget = () => {
                         </div>
 
                         <div className="preview-info" style={{ marginTop: '32px' }}>
-                            <h4>Önizleme</h4>
+                            <h4>{t('webWidget.preview')}</h4>
                             <div className="widget-preview" style={{
                                 '--widget-color': primaryColor,
                                 alignItems: position === 'LEFT' ? 'flex-start' : 'flex-end',

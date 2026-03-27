@@ -128,6 +128,10 @@ export const AuthProvider = ({ children }) => {
             window.dispatchEvent(new CustomEvent('websocket:contact_updated', { detail: data }));
         });
 
+        socket.on('funnel_stage_updated', (data) => {
+            window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', { detail: data }));
+        });
+
         socket.on('new_notification', (data) => {
             console.log('🔔 [AuthContext] New notification:', data);
             window.dispatchEvent(new CustomEvent('websocket:new_notification', { detail: data }));

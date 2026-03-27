@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
@@ -5,6 +6,7 @@ import { Plus, Search, Filter, MoreVertical, ArrowRight, TrendingUp, Package, Fi
 import './Sales.css';
 
 const Quotes = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [deals, setDeals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -86,12 +88,12 @@ const Quotes = () => {
             fetchStats();
         } catch (error) {
             console.error('Failed to create deal:', error);
-            alert('Teklif oluşturulurken hata oluştu');
+            alert('Error creating quote');
         }
     };
 
     const handleConvertToOrder = async (dealId) => {
-        if (!confirm('Bu teklifi siparişe dönüştürmek istiyor musunuz?')) return;
+        if (!confirm('Are you sure you want to convert this quote to order?')) return;
         try {
             await dealAPI.convert(currentWorkspace.id, dealId, 'ORDER');
             fetchDeals();
@@ -99,7 +101,7 @@ const Quotes = () => {
             setSelectedDeal(null);
         } catch (error) {
             console.error('Failed to convert deal:', error);
-            alert('Dönüştürme başarısız');
+            alert('Conversion failed');
         }
     };
 
@@ -193,7 +195,7 @@ const Quotes = () => {
                     <div className="stat-icon quote"><FileText size={20} /></div>
                     <div className="stat-info">
                         <span className="stat-value">{quoteStats.count}</span>
-                        <span className="stat-label">Toplam Teklif</span>
+                        <span className="stat-label">{t('analytics.totalQuotes')}</span>
                     </div>
                 </div>
                 <div className="stat-card">
@@ -207,7 +209,7 @@ const Quotes = () => {
                     <div className="stat-icon conversion"><ArrowRight size={20} /></div>
                     <div className="stat-info">
                         <span className="stat-value">{stats?.conversionRates?.quoteToOrder || 0}%</span>
-                        <span className="stat-label">Siparişe Dönüşüm</span>
+                        <span className="stat-label">{t('sales.orderConversion')}</span>
                     </div>
                 </div>
             </div>
@@ -230,11 +232,11 @@ const Quotes = () => {
                 {/* Deals List */}
                 <div className="deals-list">
                     {loading ? (
-                        <div className="loading-state">Yükleniyor...</div>
+                        <div className="loading-state">Loading...</div>
                     ) : filteredDeals.length === 0 ? (
                         <div className="empty-state">
                             <FileText size={48} />
-                            <h3>Henüz teklif yok</h3>
+                            <h3>{t('sales.noQuotes')}</h3>
                             <p>İlk teklifinizi oluşturmak için "Yeni Teklif" butonuna tıklayın</p>
                         </div>
                     ) : (
@@ -247,7 +249,7 @@ const Quotes = () => {
                                 <div className="deal-card-header">
                                     <span className="deal-number">{deal.quoteNumber}</span>
                                     <span className={`deal-status ${deal.status.toLowerCase()}`}>
-                                        {deal.status === 'OPEN' ? 'Açık' : deal.status === 'WON' ? 'Kazanıldı' : 'Kaybedildi'}
+                                        {deal.status === 'OPEN' ? t('pipeline.open') : deal.status === 'WON' ? t('sales.won') : t('sales.lost')}
                                     </span>
                                 </div>
                                 <h3 className="deal-title">{deal.title}</h3>
@@ -277,7 +279,7 @@ const Quotes = () => {
                                 <span className="value">{selectedDeal.quoteNumber}</span>
                             </div>
                             <div className="info-row">
-                                <span className="label">Müşteri:</span>
+                                <span className="label">{t('sales.customer')}</span>
                                 <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName}</span>
                             </div>
                             <div className="info-row">
@@ -292,15 +294,15 @@ const Quotes = () => {
                                     className="status-select"
                                 >
                                     <option value="OPEN">Açık</option>
-                                    <option value="WON">Kazanıldı</option>
-                                    <option value="LOST">Kaybedildi</option>
+                                    <option value="WON">{t('sales.won')}</option>
+                                    <option value="LOST">{t('sales.lost')}</option>
                                 </select>
                             </div>
                         </div>
 
                         {/* Products */}
                         <div className="detail-products">
-                            <h4>Ürünler</h4>
+                            <h4>{t('sales.products')}</h4>
                             <div className="products-table">
                                 {selectedDeal.products?.map((product, i) => (
                                     <div key={i} className="product-row">
@@ -348,7 +350,7 @@ const Quotes = () => {
                 <div className="modal-overlay" onClick={() => setShowForm(false)}>
                     <div className="modal-content deal-form" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>Yeni Teklif Oluştur</h2>
+                            <h2>New Teklif Create</h2>
                             <button className="btn-icon" onClick={() => setShowForm(false)}>
                                 <X size={20} />
                             </button>
@@ -356,7 +358,7 @@ const Quotes = () => {
 
                         <form onSubmit={handleCreateDeal}>
                             <div className="form-group">
-                                <label>Müşteri *</label>
+                                <label>{t('sales.customerLabel')}</label>
                                 <select
                                     value={formData.contactId}
                                     onChange={(e) => setFormData({ ...formData, contactId: e.target.value })}
@@ -383,7 +385,7 @@ const Quotes = () => {
                             </div>
 
                             <div className="form-group">
-                                <label>Açıklama</label>
+                                <label>{t('teams.descriptionLabel')}</label>
                                 <textarea
                                     value={formData.description}
                                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -409,7 +411,7 @@ const Quotes = () => {
 
                             {/* Products */}
                             <div className="form-group products-section">
-                                <label>Ürünler / Hizmetler</label>
+                                <label>{t('sales.productsServices')}</label>
                                 {formData.products.map((product, index) => (
                                     <div key={index} className="product-input-row">
                                         <input

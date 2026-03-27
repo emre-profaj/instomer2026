@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -8,17 +9,20 @@ import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Inf
 import WebWidgetModal from '../../components/WebWidgetModal';
 import './Channels.css';
 
-const SYNC_PERIOD_OPTIONS = [
-    { value: 0, label: 'Süre Seç' },
-    { value: 0.25, label: 'Son 1 Hafta' },
-    { value: 0.5, label: 'Son 2 Hafta' },
-    { value: 1, label: 'Son 1 Ay' },
-    { value: 2, label: 'Son 2 Ay' },
-    { value: 3, label: 'Son 3 Ay' },
-    { value: 6, label: 'Son 6 Ay' }
-];
+
 
 const Channels = () => {
+    const { t } = useTranslation();
+
+    const SYNC_PERIOD_OPTIONS = [
+        { value: 0, label: 'Süre Seçin' },
+        { value: 0.25, label: 'Son 1 Hafta' },
+        { value: 0.5, label: 'Son 2 Hafta' },
+        { value: 1, label: 'Son 1 Ay' },
+        { value: 2, label: 'Son 2 Ay' },
+        { value: 3, label: 'Son 3 Ay' },
+        { value: 6, label: 'Son 6 Ay' }
+    ];
     const { currentWorkspace, user } = useAuth();
     const [searchParams] = useSearchParams();
 
@@ -81,7 +85,7 @@ const Channels = () => {
         { value: 'INSTAGRAM', label: 'Instagram DM', icon: Instagram, color: '#E4405F' },
         { value: 'FACEBOOK', label: 'Facebook Messenger', icon: Facebook, color: '#1877F2' },
         { value: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle, color: '#25D366' },
-        { value: 'EMAIL', label: 'E-posta', icon: Mail, color: '#EA4335' },
+        { value: 'EMAIL', label: 'Email', icon: Mail, color: '#EA4335' },
         { value: 'WEB_WIDGET', label: 'Web Widget', icon: Globe, color: '#3B82F6' },
         { value: 'FORM', label: 'Web Form', icon: FileText, color: '#8B5CF6' }
     ];
@@ -157,14 +161,14 @@ const Channels = () => {
             setChannelRoutings(response.data.routings || []);
         } catch (error) {
             console.error('Error saving routing:', error);
-            alert('Yönlendirme kaydedilemedi');
+            alert('Routing could not be saved');
         } finally {
             setSavingRouting(null);
         }
     };
 
     const handleDeleteRouting = async (channel) => {
-        if (!confirm('Bu yönlendirmeyi silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this routing?')) return;
         try {
             await channelRoutingAPI.delete(currentWorkspace.id, channel);
             const response = await channelRoutingAPI.getAll(currentWorkspace.id);
@@ -177,7 +181,7 @@ const Channels = () => {
     // Form webhook functions
     const handleCreateFormWebhook = async () => {
         if (!newFormName.trim() || !newSiteUrl.trim()) {
-            alert('Form adı ve site URL zorunludur.');
+            alert(t('channels.formNameRequired'));
             return;
         }
         try {
@@ -191,12 +195,12 @@ const Channels = () => {
             loadAllChannels();
         } catch (error) {
             console.error('Error creating form webhook:', error);
-            alert('Form webhook oluşturulamadı.');
+            alert('Form webhook could not be created.');
         }
     };
 
     const handleDeleteFormWebhook = async (webhookId) => {
-        if (!confirm('Bu form webhook\'unu silmek istediğinizden emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this form webhook?')) return;
         try {
             await formWebhookAPI.deleteWebhook(currentWorkspace.id, webhookId);
             loadAllChannels();
@@ -217,24 +221,24 @@ const Channels = () => {
     };
 
     const handleDeleteWhatsapp = async (phoneNumberId) => {
-        if (!confirm('Bu WhatsApp numarasını silmek istediğinizden emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this WhatsApp number?')) return;
         try {
             await whatsappAPI.disconnect(phoneNumberId);
             loadAllChannels();
         } catch (error) {
             console.error('Error deleting whatsapp:', error);
-            alert('WhatsApp numarası silinemedi.');
+            alert('WhatsApp number could not be deleted.');
         }
     };
 
     const handleDeleteWebWidget = async (widgetId) => {
-        if (!confirm('Bu Web Widget\'ı silmek istediğinizden emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this Web Widget?')) return;
         try {
             await webWidgetAPI.delete(widgetId);
             loadAllChannels();
         } catch (error) {
             console.error('Error deleting web widget:', error);
-            alert('Web Widget silinemedi.');
+            alert('Web Widget could not be deleted.');
         }
     };
 
@@ -244,7 +248,7 @@ const Channels = () => {
         const period = syncPeriods[channelId];
 
         if (!period || period === 0) {
-            alert('Lütfen bir süre seçin.');
+            alert('Please select a time period.');
             return;
         }
 
@@ -278,7 +282,7 @@ const Channels = () => {
             console.error('Sync error:', error);
             setSyncResults(prev => ({
                 ...prev,
-                [channelId]: { success: false, error: error.message || 'Senkronizasyon hatası' }
+                [channelId]: { success: false, error: error.message || 'Sync error' }
             }));
         } finally {
             setSyncing(prev => ({ ...prev, [channelId]: false }));
@@ -309,7 +313,7 @@ const Channels = () => {
             loadAllChannels();
         } catch (error) {
             console.error('Error assigning bot:', error);
-            alert('Bot atanamadı.');
+            alert('Bot could not be assigned.');
         } finally {
             setAssigningBot(null);
         }
@@ -322,11 +326,11 @@ const Channels = () => {
 
         let message;
         if (channelType === 'instagram') {
-            message = 'Instagram bağlantısını kesmek istediğinizden emin misiniz?';
+            message = 'Are you sure you want to disconnect Instagram?';
         } else if (channelType === 'facebook' && hasInstagram) {
-            message = 'Facebook bağlantısını kesmek istediğinizden emin misiniz?\n\n⚠️ Instagram bu sayfaya bağlı olduğu için Instagram bağlantısı da silinecek!';
+            message = 'Are you sure you want to disconnect Facebook?\n\n⚠️ Instagram is linked to this page and will also be disconnected!';
         } else {
-            message = 'Bu sayfanın bağlantısını kesmek istediğinizden emin misiniz?';
+            message = 'Are you sure you want to disconnect this page?';
         }
 
         if (!confirm(message)) return;
@@ -339,7 +343,7 @@ const Channels = () => {
     };
 
     const handleDeleteEmail = async (id) => {
-        if (!confirm('Bu e-posta hesabını kaldırmak istediğinizden emin misiniz?')) return;
+        if (!confirm('Are you sure you want to remove this email account?')) return;
         try {
             await emailAPI.delete(id);
             loadAllChannels();
@@ -351,7 +355,7 @@ const Channels = () => {
     const handleSyncEmail = async (id) => {
         try {
             await emailAPI.sync(id);
-            alert('Senkronizasyon başlatıldı.');
+            alert('Sync started.');
             loadAllChannels();
         } catch (error) {
             console.error('Error syncing email:', error);
@@ -387,7 +391,7 @@ const Channels = () => {
     // IMAP/SMTP connect (Yandex, Webmail, etc.)
     const handleImapConnect = async () => {
         if (!imapForm.email || !imapForm.password) {
-            alert('Email ve şifre gereklidir.');
+            alert('E-posta ve şifre gereklidir.');
             return;
         }
 
@@ -405,10 +409,10 @@ const Channels = () => {
 
             setShowEmailModal(false);
             loadAllChannels();
-            alert('Email hesabı başarıyla bağlandı!');
+            alert('E-posta hesabı başarıyla bağlandı!');
         } catch (error) {
             console.error('Error connecting IMAP:', error);
-            alert(error.response?.data?.error || 'Bağlantı başarısız. Email veya şifre hatalı olabilir.');
+            alert(error.response?.data?.error || 'Bağlantı başarısız. E-posta veya şifre hatalı olabilir.');
         } finally {
             setConnectingEmail(false);
         }
@@ -555,7 +559,7 @@ const Channels = () => {
             alert('Sayfalar başarıyla bağlandı!');
         } catch (error) {
             console.error('Error connecting pages:', error);
-            alert('Sayfa bağlanırken hata oluştu: ' + (error.response?.data?.error || error.message));
+            alert('Sayfa bağlantı hatası: ' + (error.response?.data?.error || error.message));
         } finally {
             setConnectingPages(false);
         }
@@ -757,12 +761,12 @@ const Channels = () => {
 
             <div className="channels-content">
                 {loading ? (
-                    <div className="loading">Kanallar yükleniyor...</div>
+                    <div className="loading">{t('channels.loading')}</div>
                 ) : !hasAnyChannel ? (
                     <div className="empty-state">
                         <Globe size={64} />
-                        <h3>Henüz bağlı kanal yok</h3>
-                        <p>Yukarıdaki butonları kullanarak Facebook, Instagram, WhatsApp, E-posta veya Web Form kanallarınızı bağlayın.</p>
+                        <h3>{t('channels.noChannels')}</h3>
+                        <p>{t('channels.noChannelsDesc')}</p>
                     </div>
                 ) : (
                     <div className="unified-channels-grid">
@@ -926,7 +930,7 @@ const Channels = () => {
                                         <div className="channel-card-footer">
                                             <label className="footer-label">
                                                 <Bot size={12} />
-                                                Otomatik Yanıt
+                                                Otomatik Yanıt Botu
                                             </label>
                                             <select
                                                 className="bot-select-mini"
@@ -968,7 +972,7 @@ const Channels = () => {
                                         <div className="channel-routing-section">
                                             <div className="routing-section-header">
                                                 <GitBranch size={12} />
-                                                <span>Yönlendirme Ayarları</span>
+                                                <span>{t('channels.redirectSettings')}</span>
                                             </div>
                                             {(() => {
                                                 const existingRouting = channelRoutings.find(r => r.channel === channel.routingChannel);
@@ -989,7 +993,7 @@ const Channels = () => {
                                                                 }}
                                                                 className="routing-select-inline"
                                                             >
-                                                                <option value="">Seçiniz</option>
+                                                                <option value="">{t("channels.selectOption")}</option>
                                                                 {teams.map(team => (
                                                                     <option key={team.id} value={team.id}>{team.name}</option>
                                                                 ))}
@@ -1011,7 +1015,7 @@ const Channels = () => {
                                         <div className="channel-sync-section">
                                             <div className="sync-section-header">
                                                 <History size={12} />
-                                                <span>Geçmiş Senkronizasyonu</span>
+                                                <span>Sohbet Geçmişi Senkronizasyonu</span>
                                             </div>
                                             <div className="sync-section-body">
                                                 <select
@@ -1025,7 +1029,7 @@ const Channels = () => {
                                                 >
                                                     {channel.type === 'whatsapp' ? (
                                                         <>
-                                                            <option value={0}>Süre Seç</option>
+                                                            <option value={0}>Süre Seçin</option>
                                                             <option value={1}>Son 24 Saat</option>
                                                         </>
                                                     ) : (
@@ -1042,9 +1046,9 @@ const Channels = () => {
                                                     disabled={!syncPeriods[channel.id] || syncing[channel.id]}
                                                 >
                                                     {syncing[channel.id] ? (
-                                                        <><RefreshCcw size={12} className="spin" /> Senkronize Ediliyor...</>
+                                                        <><RefreshCcw size={12} className="spin" /> Syncing...</>
                                                     ) : (
-                                                        <><History size={12} /> Senkronize Et</>
+                                                        <><History size={12} /> Sync</>
                                                     )}
                                                 </button>
                                             </div>
@@ -1082,17 +1086,17 @@ const Channels = () => {
                                 <input
                                     type="text"
                                     className="form-input"
-                                    placeholder="Örn: Ana Sayfa İletişim Formu"
+                                    placeholder="ör. Ana Sayfa İletişim Formu"
                                     value={newFormName}
                                     onChange={(e) => setNewFormName(e.target.value)}
                                 />
                             </div>
                             <div className="form-group">
-                                <label>Site URL *</label>
+                                <label>Site URL'si *</label>
                                 <input
                                     type="text"
                                     className="form-input"
-                                    placeholder="Örn: https://siteniz.com"
+                                    placeholder="ör. https://siteniz.com"
                                     value={newSiteUrl}
                                     onChange={(e) => setNewSiteUrl(e.target.value)}
                                 />
@@ -1148,7 +1152,7 @@ const Channels = () => {
                         </div>
                         <div className="modal-body">
                             <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px' }}>
-                                AI destekli sesli arama entegrasyonu. AI Call Dashboard'dan API key alın.
+                                Yapay zeka destekli sesli arama entegrasyonu. API anahtarınızı AI Call Dashboard'dan alın.
                             </p>
                             <RetellSettings onSave={() => loadAllChannels()} />
                         </div>
@@ -1252,7 +1256,7 @@ const Channels = () => {
                 <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
                         <div className="modal-header">
-                            <h3><Mail size={20} /> E-posta Bağla</h3>
+                            <h3><Mail size={20} /> E-posta Bağlantısı</h3>
                             <button className="btn-icon-sm" onClick={() => setShowEmailModal(false)}>
                                 <X size={18} />
                             </button>
@@ -1282,7 +1286,7 @@ const Channels = () => {
                                         </div>
                                         <div>
                                             <div style={{ fontWeight: '600', fontSize: '16px' }}>Gmail</div>
-                                            <div style={{ color: '#666', fontSize: '13px' }}>Google hesabınız ile giriş yapın</div>
+                                            <div style={{ color: '#666', fontSize: '13px' }}>Google hesabınızla giriş yapın</div>
                                         </div>
                                     </button>
 
@@ -1313,7 +1317,7 @@ const Channels = () => {
                                 /* Step 2: IMAP/SMTP Form */
                                 <div className="imap-form">
                                     <div className="form-group" style={{ marginBottom: '1rem' }}>
-                                        <label>E-posta Sağlayıcısı</label>
+                                        <label>E-posta Sağlayıcı</label>
                                         <select
                                             value={imapForm.preset}
                                             onChange={(e) => handleImapPresetChange(e.target.value)}
@@ -1350,12 +1354,12 @@ const Channels = () => {
                                                 <strong>⚠️ Yandex için:</strong>
                                                 <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
                                                     <li>2FA kapalıysa normal şifrenizi kullanabilirsiniz</li>
-                                                    <li>2FA açıksa <strong>Uygulama Şifresi</strong> gerekir:</li>
+                                                    <li>2FA açıksa <strong>Uygulama Şifresi</strong> gereklidir:</li>
                                                 </ul>
                                                 <div style={{ marginTop: '6px', paddingLeft: '16px' }}>
                                                     1. <a href="https://id.yandex.com/security/app-passwords" target="_blank" rel="noopener" style={{ color: '#2563EB' }}>id.yandex.com/security/app-passwords</a> adresine gidin<br />
-                                                    2. "Şifre oluştur" tıklayın<br />
-                                                    3. Uygulama adı yazın (örn: Instomer)<br />
+                                                    2. "Şifre oluştur" butonuna tıklayın<br />
+                                                    3. Uygulama adı girin (ör. Instomer)<br />
                                                     4. Oluşturulan şifreyi buraya yapıştırın
                                                 </div>
                                             </div>

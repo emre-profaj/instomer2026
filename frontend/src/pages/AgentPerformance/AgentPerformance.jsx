@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -19,6 +20,7 @@ import {
 import './AgentPerformance.css';
 
 const AgentPerformance = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [loading, setLoading] = useState(true);
     const [agentPerformance, setAgentPerformance] = useState(null);
@@ -106,8 +108,8 @@ const AgentPerformance = () => {
             <div className="agent-performance-page">
                 <div className="empty-state">
                     <Activity size={48} />
-                    <h3>Workspace Seçin</h3>
-                    <p>Agent performanslarını görüntülemek için bir workspace seçin.</p>
+                    <h3>{t('analytics.selectWorkspace')}</h3>
+                    <p>{t('analytics.selectWorkspaceDesc')}</p>
                 </div>
             </div>
         );
@@ -131,7 +133,7 @@ const AgentPerformance = () => {
             <div className="page-header">
                 <div className="header-left">
                     <Activity size={28} />
-                    <h1>Agent Performansları</h1>
+                    <h1>{t('analytics.agentPerformance')}</h1>
                 </div>
                 <div className="header-right">
                     {/* Date Filter */}
@@ -142,12 +144,12 @@ const AgentPerformance = () => {
                             onChange={(e) => setDateFilter(e.target.value)}
                             className="date-filter-select"
                         >
-                            <option value="all">Tüm Zamanlar</option>
-                            <option value="today">Bugün</option>
-                            <option value="yesterday">Dün</option>
-                            <option value="week">Son 7 Gün</option>
-                            <option value="month">Bu Ay</option>
-                            <option value="custom">Özel Tarih</option>
+                            <option value="all">{t('analytics.allTime')}</option>
+                            <option value="today">{t('common.today')}</option>
+                            <option value="yesterday">{t('common.yesterday')}</option>
+                            <option value="week">{t('analytics.last7Days')}</option>
+                            <option value="month">{t('analytics.thisMonth')}</option>
+                            <option value="custom">{t('analytics.customDate')}</option>
                         </select>
                     </div>
 
@@ -158,7 +160,7 @@ const AgentPerformance = () => {
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                                 className="date-input"
-                                placeholder="Başlangıç"
+                                placeholder={t('common.start')}
                             />
                             <span className="date-separator">-</span>
                             <input
@@ -166,7 +168,7 @@ const AgentPerformance = () => {
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                                 className="date-input"
-                                placeholder="Bitiş"
+                                placeholder={t('common.end')}
                             />
                         </div>
                     )}
@@ -181,7 +183,7 @@ const AgentPerformance = () => {
             {loading ? (
                 <div className="loading-state">
                     <RefreshCw className="spin" size={32} />
-                    <p>Agent performansları yükleniyor...</p>
+                    <p>{t('agentPerformance.loading')}</p>
                 </div>
             ) : (
                 <>
@@ -203,7 +205,7 @@ const AgentPerformance = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatNumber(agentPerformance?.teamTotals?.resolvedConversations || 0)}</span>
-                                <span className="stat-label">Çözülen Sohbet</span>
+                                <span className="stat-label">{t('agentPerformance.resolvedChats')}</span>
                             </div>
                         </div>
 
@@ -213,7 +215,7 @@ const AgentPerformance = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatResponseTime(agentPerformance?.teamTotals?.avgResponseTime || 0)}</span>
-                                <span className="stat-label">Ort. Yanıt Süresi</span>
+                                <span className="stat-label">{t('agentPerformance.avgResponseTime')}</span>
                             </div>
                         </div>
 
@@ -223,7 +225,7 @@ const AgentPerformance = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{formatResponseTime(agentPerformance?.teamTotals?.avgResolutionTime || 0)}</span>
-                                <span className="stat-label">Ort. Çözüm Süresi</span>
+                                <span className="stat-label">{t('agentPerformance.avgResolutionTime')}</span>
                             </div>
                         </div>
 
@@ -233,7 +235,7 @@ const AgentPerformance = () => {
                             </div>
                             <div className="stat-content">
                                 <span className="stat-value">{agentPerformance?.teamTotals?.avgResolutionRate || 0}%</span>
-                                <span className="stat-label">Ort. Çözüm Oranı</span>
+                                <span className="stat-label">{t('agentPerformance.avgResolutionRate')}</span>
                             </div>
                         </div>
                     </div>
@@ -242,8 +244,8 @@ const AgentPerformance = () => {
                     <div className="agents-section">
                         <div className="section-header">
                             <Users size={20} />
-                            <h2>Agent Bazlı Performans</h2>
-                            <span className="agent-count">{agentPerformance?.agents?.length || 0} agent</span>
+                            <h2>Temsilci Performansı</h2>
+                            <span className="agent-count">{agentPerformance?.agents?.length || 0} temsilci</span>
                         </div>
 
                         {agentPerformance?.agents?.length > 0 ? (
@@ -267,7 +269,7 @@ const AgentPerformance = () => {
                                             </div>
                                             <div className="agent-info">
                                                 <h4>{agent.name}</h4>
-                                                <span className="agent-role">{agent.role === 'OWNER' ? 'Sahip' : 'Agent'}</span>
+                                                <span className="agent-role">{agent.role === 'OWNER' ? 'Yönetici' : 'Temsilci'}</span>
                                             </div>
                                         </div>
 
@@ -348,8 +350,8 @@ const AgentPerformance = () => {
                         ) : (
                             <div className="empty-agents">
                                 <User size={48} />
-                                <h3>Henüz Agent Verisi Yok</h3>
-                                <p>Agent'lara sohbet atandığında performans verileri burada görünecek.</p>
+                                <h3>Henüz Temsilci Verisi Yok</h3>
+                                <p>Sohbetler temsilcilere atandığında performans verileri burada görünecektir.</p>
                             </div>
                         )}
                     </div>
@@ -359,7 +361,7 @@ const AgentPerformance = () => {
                         <div className="agents-section bots-section">
                             <div className="section-header">
                                 <Bot size={20} />
-                                <h2>AI Bot Performansları</h2>
+                                <h2>AI Bot Performansı</h2>
                                 <span className="agent-count">{agentPerformance.bots.length} bot</span>
                             </div>
 

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { conversationAPI, workspaceAPI, aiAPI, teamAPI } from '../../services/api';
@@ -7,6 +8,7 @@ import PendingTransfersModal from '../../components/PendingTransfers/PendingTran
 import './Conversations.css';
 
 const Conversations = () => {
+    const { t } = useTranslation();
     const { currentWorkspace, user, refreshWorkspace, setUnreadCount } = useAuth();
     const [conversations, setConversations] = useState([]);
     const [selectedConversation, setSelectedConversation] = useState(null);
@@ -279,12 +281,12 @@ const Conversations = () => {
             }
         } catch (error) {
             console.error('Assign bot error:', error);
-            alert('Bot ataması yapılamadı.');
+            alert('Could not assign bot.');
         }
     };
 
     const handleDeleteConversation = async (conversationId) => {
-        if (!confirm('Bu sohbeti tamamen silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to permanently delete this conversation?')) return;
 
         try {
             await conversationAPI.delete(currentWorkspace.id, conversationId);
@@ -295,7 +297,7 @@ const Conversations = () => {
             loadConversations();
         } catch (error) {
             console.error('Error deleting conversation:', error);
-            alert('Sohbet silinirken hata oluştu.');
+            alert('Error deleting conversation.');
         }
     };
 
@@ -332,7 +334,7 @@ const Conversations = () => {
             // Let's keep it as is (persist mode until toggled off).
         } catch (error) {
             console.error('Error sending message/note:', error);
-            alert('Mesaj/Not gönderilemedi.');
+            alert('Could not send message/note.');
         }
     };
 
@@ -364,13 +366,13 @@ const Conversations = () => {
     if (!currentWorkspace) {
         return (
             <div className="empty-state">
-                <p>Lütfen bir workspace seçin</p>
+                <p>{t('common.selectWorkspace')}</p>
             </div>
         );
     }
 
     if (loading) {
-        return <div className="loading">Yükleniyor...</div>;
+        return <div className="loading">Loading...</div>;
     }
 
     return (
@@ -441,7 +443,7 @@ const Conversations = () => {
                 <div className="conversations-items">
                     {conversations.length === 0 ? (
                         <div className="empty-state">
-                            <p>Henüz sohbet yok</p>
+                            <p>{t('conversations.noConversations')}</p>
                         </div>
                     ) : (
                         conversations.map((conv) => (
@@ -700,7 +702,7 @@ const Conversations = () => {
                     </>
                 ) : (
                     <div className="empty-state">
-                        <p>Bir sohbet seçin</p>
+                        <p>{t('conversations.selectConversation')}</p>
                     </div>
                 )}
             </div>

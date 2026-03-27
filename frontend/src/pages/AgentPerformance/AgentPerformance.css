@@ -266,8 +266,7 @@
     align-items: center;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-lg);
-    padding-bottom: var(--spacing-md);
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: none;
 }
 
 .section-header svg {

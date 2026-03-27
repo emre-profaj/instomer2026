@@ -1146,3 +1146,8 @@
         grid-template-columns: 1fr;
     }
 }
+/* FlowBuilder tab — remove content padding so builder fills full area */
+.automations-content:has(.fb-root) {
+    padding: 0;
+    overflow: hidden;
+}

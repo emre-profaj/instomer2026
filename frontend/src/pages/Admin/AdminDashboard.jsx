@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react';
 
 const AdminDashboard = () => {
+    const { t } = useTranslation();
     const { user: currentUser, switchWorkspace } = useAuth();
     const navigate = useNavigate();
     const { companyId, workspaceId } = useParams();
@@ -394,7 +396,7 @@ const AdminDashboard = () => {
     };
 
     if (loading) {
-        return <div className="loading">Yükleniyor...</div>;
+        return <div className="loading">Loading...</div>;
     }
 
     const searchFiltered = companies.filter(c =>
@@ -411,7 +413,7 @@ const AdminDashboard = () => {
                 <div className="workspace-detail-header">
                     <button className="back-btn" onClick={() => navigate(companyId ? `/admin/company/${companyId}` : '/admin')}>
                         <ArrowLeft size={20} />
-                        <span>Geri Dön</span>
+                        <span>Go Back</span>
                     </button>
                     <div className="workspace-title-row">
                         <div className="workspace-title">
@@ -427,21 +429,21 @@ const AdminDashboard = () => {
                                 }}
                             >
                                 <Edit2 size={16} />
-                                Düzenle
+                                Edit
                             </button>
                             <button
                                 className="btn-icon-text success"
                                 onClick={() => handleSwitchToWorkspace(selectedWorkspace)}
                             >
                                 <ExternalLink size={16} />
-                                Geçiş Yap
+                                Switch
                             </button>
                             <button
                                 className="btn-icon-text danger"
                                 onClick={() => handleDeleteWorkspace(workspaceId)}
                             >
                                 <Trash2 size={16} />
-                                Sil
+                                Delete
                             </button>
                         </div>
                     </div>
@@ -453,21 +455,21 @@ const AdminDashboard = () => {
                         <Users size={24} />
                         <div>
                             <span className="stat-value">{workspaceMembers.length}</span>
-                            <span className="stat-label">Üyeler</span>
+                            <span className="stat-label">Members</span>
                         </div>
                     </div>
                     <div className="stat-card">
                         <MessageSquare size={24} />
                         <div>
                             <span className="stat-value">{selectedWorkspace._count?.conversations || 0}</span>
-                            <span className="stat-label">Sohbetler</span>
+                            <span className="stat-label">Conversations</span>
                         </div>
                     </div>
                     <div className="stat-card">
                         <Database size={24} />
                         <div>
                             <span className="stat-value">{selectedWorkspace._count?.contacts || 0}</span>
-                            <span className="stat-label">Kişiler</span>
+                            <span className="stat-label">{t('adminDashboard.contacts')}</span>
                         </div>
                     </div>
                 </div>
@@ -499,7 +501,7 @@ const AdminDashboard = () => {
                         <div className="ai-usage-stats">
                             <div className="ai-stat">
                                 <span className="ai-stat-value">{aiUsage.currentCount}</span>
-                                <span className="ai-stat-label">Bugün</span>
+                                <span className="ai-stat-label">Today</span>
                             </div>
                             <div className="ai-stat">
                                 <span className="ai-stat-value">{aiUsage.limit}</span>
@@ -507,7 +509,7 @@ const AdminDashboard = () => {
                             </div>
                             <div className="ai-stat">
                                 <span className="ai-stat-value">{aiUsage.remaining}</span>
-                                <span className="ai-stat-label">Kalan</span>
+                                <span className="ai-stat-label">Remaining</span>
                             </div>
                         </div>
                     </div>
@@ -515,10 +517,10 @@ const AdminDashboard = () => {
 
                 {/* Members Section */}
                 <div className="section-header">
-                    <h2><Users size={20} /> Üyeler ({workspaceMembers.length})</h2>
+                    <h2><Users size={20} /> Members ({workspaceMembers.length})</h2>
                     <button className="btn-primary" onClick={() => setIsCreateUserModalOpen(true)}>
                         <UserPlus size={16} />
-                        Kullanıcı Ekle
+                        Add User
                     </button>
                 </div>
 
@@ -526,10 +528,10 @@ const AdminDashboard = () => {
                     <table>
                         <thead>
                             <tr>
-                                <th>Kullanıcı</th>
-                                <th>E-posta</th>
+                                <th>{t('teams.userLabel')}</th>
+                                <th>Email</th>
                                 <th>Rol</th>
-                                <th>İşlemler</th>
+                                <th>{t('adminDashboard.actions')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -540,7 +542,7 @@ const AdminDashboard = () => {
                                             <div className="user-avatar">
                                                 {member.user?.name?.charAt(0)?.toUpperCase() || 'U'}
                                             </div>
-                                            <span>{member.user?.name || 'Bilinmiyor'}</span>
+                                            <span>{member.user?.name || 'Unknown'}</span>
                                         </div>
                                     </td>
                                     <td>{member.user?.email || '-'}</td>
@@ -558,7 +560,7 @@ const AdminDashboard = () => {
                                         <button
                                             className="btn-icon danger"
                                             onClick={() => handleRemoveMember(member.id)}
-                                            title="Çıkar"
+                                            title={t('common.remove') || 'Remove'}
                                         >
                                             <Trash2 size={16} />
                                         </button>
@@ -573,11 +575,11 @@ const AdminDashboard = () => {
                 {isEditWorkspaceModalOpen && (
                     <div className="modal-overlay" onClick={() => setIsEditWorkspaceModalOpen(false)}>
                         <div className="modal" onClick={e => e.stopPropagation()}>
-                            <h2>Workspace Düzenle</h2>
+                            <h2>Edit Workspace</h2>
                             {editWorkspaceError && <div className="error-message">{editWorkspaceError}</div>}
                             <form onSubmit={handleEditWorkspace}>
                                 <div className="form-group">
-                                    <label>Workspace Adı</label>
+                                    <label>Workspace Name</label>
                                     <input
                                         type="text"
                                         value={editWorkspaceForm.name}
@@ -587,9 +589,9 @@ const AdminDashboard = () => {
                                 </div>
                                 <div className="modal-actions">
                                     <button type="button" className="btn-secondary" onClick={() => setIsEditWorkspaceModalOpen(false)}>
-                                        İptal
+                                        Cancel
                                     </button>
-                                    <button type="submit" className="btn-primary">Kaydet</button>
+                                    <button type="submit" className="btn-primary">Save</button>
                                 </div>
                             </form>
                         </div>
@@ -600,11 +602,11 @@ const AdminDashboard = () => {
                 {isCreateUserModalOpen && (
                     <div className="modal-overlay" onClick={() => setIsCreateUserModalOpen(false)}>
                         <div className="modal" onClick={e => e.stopPropagation()}>
-                            <h2>Yeni Kullanıcı Ekle</h2>
+                            <h2>Add New User</h2>
                             {newUserError && <div className="error-message">{newUserError}</div>}
                             <form onSubmit={handleCreateNewUser}>
                                 <div className="form-group">
-                                    <label>Ad Soyad</label>
+                                    <label>Full Name</label>
                                     <input
                                         type="text"
                                         value={newUserForm.name}
@@ -613,7 +615,7 @@ const AdminDashboard = () => {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>E-posta</label>
+                                    <label>Email</label>
                                     <input
                                         type="email"
                                         value={newUserForm.email}
@@ -622,7 +624,7 @@ const AdminDashboard = () => {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>Şifre</label>
+                                    <label>Password</label>
                                     <input
                                         type="password"
                                         value={newUserForm.password}
@@ -632,7 +634,7 @@ const AdminDashboard = () => {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>Rol</label>
+                                    <label>Role</label>
                                     <select
                                         value={newUserForm.role}
                                         onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value })}
@@ -643,9 +645,9 @@ const AdminDashboard = () => {
                                 </div>
                                 <div className="modal-actions">
                                     <button type="button" className="btn-secondary" onClick={() => setIsCreateUserModalOpen(false)}>
-                                        İptal
+                                        Cancel
                                     </button>
-                                    <button type="submit" className="btn-primary">Oluştur</button>
+                                    <button type="submit" className="btn-primary">Create</button>
                                 </div>
                             </form>
                         </div>
@@ -656,10 +658,10 @@ const AdminDashboard = () => {
                 {isEditAiLimitModalOpen && (
                     <div className="modal-overlay" onClick={() => setIsEditAiLimitModalOpen(false)}>
                         <div className="modal" onClick={e => e.stopPropagation()}>
-                            <h2>AI Limitlerini Düzenle</h2>
+                            <h2>Edit AI Limits</h2>
                             <form onSubmit={handleUpdateAiLimit}>
                                 <div className="form-group">
-                                    <label>AI Abonelik Paketi</label>
+                                    <label>AI Subscription Package</label>
                                     <select
                                         value={aiLimitForm.aiSubscriptionType}
                                         onChange={(e) => {
@@ -679,7 +681,7 @@ const AdminDashboard = () => {
                                     </select>
                                 </div>
                                 <div className="form-group">
-                                    <label>Günlük AI Limit</label>
+                                    <label>Daily AI Limit</label>
                                     <input
                                         type="number"
                                         min="0"
@@ -687,13 +689,13 @@ const AdminDashboard = () => {
                                         onChange={(e) => setAiLimitForm({ ...aiLimitForm, dailyAiChatLimit: parseInt(e.target.value) || 0 })}
                                         required
                                     />
-                                    <div className="form-hint">999999 = Sınırsız</div>
+                                    <div className="form-hint">999999 = Unlimited</div>
                                 </div>
                                 <div className="modal-actions">
                                     <button type="button" className="btn-secondary" onClick={() => setIsEditAiLimitModalOpen(false)}>
-                                        İptal
+                                        Cancel
                                     </button>
-                                    <button type="submit" className="btn-primary">Kaydet</button>
+                                    <button type="submit" className="btn-primary">Save</button>
                                 </div>
                             </form>
                         </div>
@@ -710,7 +712,7 @@ const AdminDashboard = () => {
                 <div className="workspace-detail-header">
                     <button className="back-btn" onClick={() => navigate('/admin')}>
                         <ArrowLeft size={20} />
-                        <span>Firmalara Dön</span>
+                        <span>Back to Companies</span>
                     </button>
                     <div className="workspace-title-row">
                         <div className="workspace-title">
@@ -843,7 +845,7 @@ const AdminDashboard = () => {
                 {isEditCompanyModalOpen && (
                     <div className="modal-overlay" onClick={() => setIsEditCompanyModalOpen(false)}>
                         <div className="modal" onClick={e => e.stopPropagation()}>
-                            <h2>Firma Düzenle</h2>
+                            <h2>Firma Edit</h2>
                             {editCompanyError && <div className="error-message">{editCompanyError}</div>}
                             <form onSubmit={handleEditCompany}>
                                 <div className="form-group">
@@ -856,7 +858,7 @@ const AdminDashboard = () => {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>Açıklama</label>
+                                    <label>{t('teams.descriptionLabel')}</label>
                                     <textarea
                                         value={editCompanyForm.description || ''}
                                         onChange={(e) => setEditCompanyForm({ ...editCompanyForm, description: e.target.value })}
@@ -911,7 +913,7 @@ const AdminDashboard = () => {
                                     <button type="button" className="btn-secondary" onClick={() => setIsEditCompanyModalOpen(false)}>
                                         İptal
                                     </button>
-                                    <button type="submit" className="btn-primary">Kaydet</button>
+                                    <button type="submit" className="btn-primary">Save</button>
                                 </div>
                             </form>
                         </div>
@@ -922,7 +924,7 @@ const AdminDashboard = () => {
                 {isCreateWorkspaceModalOpen && (
                     <div className="modal-overlay" onClick={() => setIsCreateWorkspaceModalOpen(false)}>
                         <div className="modal" onClick={e => e.stopPropagation()}>
-                            <h2>Yeni Workspace Oluştur</h2>
+                            <h2>New Workspace Create</h2>
                             {createWorkspaceError && <div className="error-message">{createWorkspaceError}</div>}
                             <form onSubmit={handleCreateWorkspaceInCompany}>
                                 <div className="form-group">
@@ -945,7 +947,7 @@ const AdminDashboard = () => {
                                     <button type="button" className="btn-secondary" onClick={() => setIsCreateWorkspaceModalOpen(false)}>
                                         İptal
                                     </button>
-                                    <button type="submit" className="btn-primary">Oluştur</button>
+                                    <button type="submit" className="btn-primary">Create</button>
                                 </div>
                             </form>
                         </div>
@@ -1063,7 +1065,7 @@ const AdminDashboard = () => {
                     <div className="empty-state full-width">
                         <Briefcase size={64} />
                         <h3>Henüz firma yok</h3>
-                        <p>Yeni bir firma oluşturarak başlayın.</p>
+                        <p>New bir firma oluşturarak başlayın.</p>
                     </div>
                 )}
             </div>
@@ -1184,7 +1186,7 @@ const AdminDashboard = () => {
                 isCreateCompanyModalOpen && (
                     <div className="modal-overlay" onClick={() => setIsCreateCompanyModalOpen(false)}>
                         <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-                            <h2>Yeni Firma Oluştur</h2>
+                            <h2>New Firma Create</h2>
                             {createCompanyError && <div className="error-message">{createCompanyError}</div>}
                             <form onSubmit={handleCreateCompany}>
                                 <div className="form-group">
@@ -1224,7 +1226,7 @@ const AdminDashboard = () => {
                                             value={createCompanyForm.ownerId}
                                             onChange={(e) => setCreateCompanyForm({ ...createCompanyForm, ownerId: e.target.value })}
                                         >
-                                            <option value="">Kullanıcı Seçin...</option>
+                                            <option value="">{t('teams.selectUser')}</option>
                                             {users.map(u => (
                                                 <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
                                             ))}
@@ -1301,7 +1303,7 @@ const AdminDashboard = () => {
                                     <button type="button" className="btn-secondary" onClick={() => setIsCreateCompanyModalOpen(false)}>
                                         İptal
                                     </button>
-                                    <button type="submit" className="btn-primary">Oluştur</button>
+                                    <button type="submit" className="btn-primary">Create</button>
                                 </div>
                             </form>
                         </div>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { emailAPI, conversationAPI } from '../../services/api';
@@ -77,6 +78,7 @@ const cleanEmailContent = (content) => {
 
 const Emails = () => {
     const { currentWorkspace } = useAuth();
+    const { t } = useTranslation();
     const [emailChannels, setEmailChannels] = useState([]);
     const [conversations, setConversations] = useState([]);
     const [selectedEmail, setSelectedEmail] = useState(null);
@@ -216,7 +218,7 @@ const Emails = () => {
             await loadEmailConversations();
         } catch (error) {
             console.error('Error syncing emails:', error);
-            alert('Senkronizasyon sırasında hata oluştu');
+            alert('Error during synchronization');
         } finally {
             setSyncing(false);
         }
@@ -250,7 +252,7 @@ const Emails = () => {
     const handleDeleteEmail = async () => {
         if (!selectedEmail) return;
         
-        if (!confirm('Bu e-postayı silmek istediğinizden emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this email?')) return;
 
         try {
             await conversationAPI.delete(currentWorkspace.id, selectedEmail.id);
@@ -321,7 +323,7 @@ const Emails = () => {
             setMessages(response.data.conversation.messages || []);
         } catch (error) {
             console.error('Error sending reply:', error);
-            alert('Yanıt gönderilemedi');
+            alert('Could not send reply');
         } finally {
             setSending(false);
         }
@@ -372,16 +374,12 @@ const Emails = () => {
         if (!dateString) return '';
         const date = new Date(dateString);
         const now = new Date();
-        const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+        const isToday = date.toDateString() === now.toDateString();
         
-        if (diffDays === 0) {
+        if (isToday) {
             return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        } else if (diffDays === 1) {
-            return 'Dün';
-        } else if (diffDays < 7) {
-            return date.toLocaleDateString('tr-TR', { weekday: 'short' });
         } else {
-            return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+            return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         }
     };
 
@@ -413,7 +411,7 @@ const Emails = () => {
     if (!currentWorkspace) {
         return (
             <div className="emails-empty-state">
-                <p>Lütfen bir workspace seçin</p>
+                <p>{t('common.selectWorkspace')}</p>
             </div>
         );
     }
@@ -425,7 +423,7 @@ const Emails = () => {
                 <div className="compose-overlay" onClick={handleCloseCompose}>
                     <div className="compose-modal" onClick={e => e.stopPropagation()}>
                         <div className="compose-header">
-                            <h3>Yeni E-posta</h3>
+                            <h3>New E-posta</h3>
                             <button className="compose-close" onClick={handleCloseCompose}>
                                 <X size={20} />
                             </button>
@@ -554,12 +552,12 @@ const Emails = () => {
                     {loading ? (
                         <div className="emails-loading">
                             <RefreshCw size={24} className="spin" />
-                            <p>Yükleniyor...</p>
+                            <p>Loading...</p>
                         </div>
                     ) : filteredConversations.length === 0 ? (
                         <div className="emails-empty">
                             <Mail size={40} />
-                            <p>E-posta bulunamadı</p>
+                            <p>{t('emails.noEmails')}</p>
                             <button className="btn-sync" onClick={handleSyncEmails}>
                                 <RefreshCw size={14} />
                                 Senkronize Et
@@ -634,7 +632,7 @@ const Emails = () => {
                                 <button 
                                     className="btn-delete"
                                     onClick={handleDeleteEmail}
-                                    title="Sil"
+                                    title={t('common.delete')}
                                 >
                                     <Trash2 size={18} />
                                 </button>
@@ -713,8 +711,8 @@ const Emails = () => {
                 ) : (
                     <div className="email-detail-empty">
                         <Mail size={48} />
-                        <h3>E-posta Seçin</h3>
-                        <p>Detayları görüntülemek için soldan bir e-posta seçin</p>
+                        <h3>{t('emails.selectEmail')}</h3>
+                        <p>{t('emails.selectEmailDesc')}</p>
                     </div>
                 )}
             </div>

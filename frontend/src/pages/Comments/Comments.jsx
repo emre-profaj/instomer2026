@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect, useRef } from 'react';
 import {
     MessageCircle,
@@ -23,6 +24,7 @@ import { io } from 'socket.io-client';
 import './Comments.css';
 
 const Comments = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [pages, setPages] = useState([]);
     const [selectedPage, setSelectedPage] = useState(null);
@@ -278,7 +280,7 @@ const Comments = () => {
     };
 
     const handleDeleteComment = async (commentId) => {
-        if (!confirm('Bu yorumu silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this comment?')) return;
         try {
             await facebookAPI.deleteComment(commentId, currentWorkspace.id);
             loadComments(selectedPost.id);
@@ -366,7 +368,7 @@ const Comments = () => {
                     {loading && posts.length === 0 ? (
                         <div className="empty-state-icon">
                             <RefreshCw className="animate-spin" />
-                            <span>Yükleniyor...</span>
+                            <span>Loading...</span>
                         </div>
                     ) : posts.length > 0 ? (
                         posts.map(post => (
@@ -399,7 +401,7 @@ const Comments = () => {
                         ))
                     ) : (
                         <div className="empty-state-icon">
-                            <span>Bu sayfada henüz gönderi yok.</span>
+                            <span>{t('comments.noPosts')}</span>
                         </div>
                     )}
                 </div>
@@ -432,7 +434,7 @@ const Comments = () => {
                             {threadLoading ? (
                                 <div className="empty-state-icon">
                                     <RefreshCw className="animate-spin" />
-                                    <span>Yorumlar yükleniyor...</span>
+                                    <span>{t('comments.loading')}</span>
                                 </div>
                             ) : comments.length > 0 ? (
                                 comments.map(comment => (
@@ -454,8 +456,8 @@ const Comments = () => {
                                                     {comment.message}
                                                 </div>
                                                 <div className="comment-actions">
-                                                    <button className="comment-action-btn" onClick={() => handleEditComment(comment)}>Yanıtla / Düzenle</button>
-                                                    <button className="comment-action-btn" onClick={() => handleDeleteComment(comment.id)}>Sil</button>
+                                                    <button className="comment-action-btn" onClick={() => handleEditComment(comment)}>{t('comments.replyEdit')}</button>
+                                                    <button className="comment-action-btn" onClick={() => handleDeleteComment(comment.id)}>Delete</button>
                                                 </div>
                                             </div>
                                         </div>
@@ -479,8 +481,8 @@ const Comments = () => {
                                                         {reply.message}
                                                     </div>
                                                     <div className="comment-actions">
-                                                        <button className="comment-action-btn" onClick={() => handleEditComment(reply)}>Düzenle</button>
-                                                        <button className="comment-action-btn" onClick={() => handleDeleteComment(reply.id)}>Sil</button>
+                                                        <button className="comment-action-btn" onClick={() => handleEditComment(reply)}>Edit</button>
+                                                        <button className="comment-action-btn" onClick={() => handleDeleteComment(reply.id)}>Delete</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -490,7 +492,7 @@ const Comments = () => {
                             ) : (
                                 <div className="empty-state-icon">
                                     <MessageSquare size={48} />
-                                    <p>Henüz yorum yapılmamış.</p>
+                                    <p>{t('comments.noComments')}</p>
                                 </div>
                             )}
                             <div ref={commentsEndRef} />

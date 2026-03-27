@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import { X, CheckCircle, AlertCircle, Info, UserPlus, MessageSquare, Bell } from 'lucide-react';
+import notificationService from '../../services/notificationService';
 import './Toast.css';
 
 // Toast Context
@@ -81,8 +82,25 @@ export const ToastProvider = ({ children }) => {
                 type: 'message',
                 title: `📨 ${senderName}`,
                 message: `${channelLabel}: ${preview}`,
-                duration: 5000
+                duration: 5000,
+                onClick: () => {
+                    const convId = data.conversationId || data.message?.conversationId;
+                    if (convId) {
+                        window.location.href = `/inbox?conversationId=${convId}`;
+                    } else {
+                        window.location.href = '/inbox';
+                    }
+                }
             });
+
+            // Show browser notification if document is hidden (out of tab)
+            if (document.hidden) {
+                notificationService.showNewMessageNotification(
+                    data.message,
+                    { id: data.conversationId, channel: data.channel },
+                    { name: senderName, id: data.contactId || data.message?.contactId }
+                );
+            }
         };
 
         window.addEventListener('websocket:new_message', handleNewMessage);
@@ -112,7 +130,7 @@ export const ToastProvider = ({ children }) => {
                 message: notif.body || 'Hatırlatıcı zamanı geldi!',
                 duration: 8000,
                 onClick: conversationId ? () => {
-                    window.location.href = `/inbox?conversation=${conversationId}`;
+                    window.location.href = `/inbox?conversationId=${conversationId}`;
                 } : undefined
             });
         };

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { formWebhookAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -5,6 +6,7 @@ import { Plus, Trash2, Copy, Check, AlertCircle, ExternalLink, Sparkles, X } fro
 import './WebForms.css';
 
 const WebForms = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [webhooks, setWebhooks] = useState([]);
     const [submissions, setSubmissions] = useState([]);
@@ -52,12 +54,12 @@ const WebForms = () => {
             loadData();
         } catch (error) {
             console.error('Create error:', error);
-            alert('Form webhook oluşturulamadı');
+            alert('Could not create form webhook');
         }
     };
 
     const handleDelete = async (webhookId) => {
-        if (!confirm('Bu webhook\'u silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this webhook?')) return;
         try {
             await formWebhookAPI.deleteWebhook(currentWorkspace.id, webhookId);
             loadData();
@@ -68,13 +70,13 @@ const WebForms = () => {
     };
 
     const handleDeleteSubmission = async (submissionId) => {
-        if (!confirm('Bu form gönderisini silmek istediğinize emin misiniz?')) return;
+        if (!confirm('Are you sure you want to delete this form submission?')) return;
         try {
             await formWebhookAPI.deleteSubmission(currentWorkspace.id, submissionId);
             loadData();
         } catch (error) {
             console.error('Delete submission error:', error);
-            alert('Form gönderisi silinemedi');
+            alert('Could not delete form submission');
         }
     };
 
@@ -116,7 +118,7 @@ ${webhook.webhookUrl}
 ✓ form_fields[company] → Şirket`;
     };
 
-    if (loading) return <div className="loading">Yükleniyor...</div>;
+    if (loading) return <div className="loading">Loading...</div>;
 
     return (
         <div className="web-forms-page">
@@ -126,12 +128,12 @@ ${webhook.webhookUrl}
                         <Sparkles size={24} />
                         Web Form Entegrasyonu
                     </h1>
-                    <p>Elementor formlarınızı CRM'e bağlayın - Otomatik field algılama aktif</p>
+                    <p>{t('webForms.description')}</p>
                 </div>
                 <div className="header-actions">
                     <button className="btn-primary" onClick={() => setShowModal(true)}>
                         <Plus size={18} />
-                        Yeni Webhook
+                        New Webhook
                     </button>
                 </div>
             </div>
@@ -148,7 +150,7 @@ ${webhook.webhookUrl}
                     className={`tab-btn ${activeTab === 'submissions' ? 'active' : ''}`}
                     onClick={() => setActiveTab('submissions')}
                 >
-                    Form Gönderileri
+                    Form Submissions
                     <span className="tab-badge">{submissions.length}</span>
                 </button>
             </div>
@@ -170,8 +172,8 @@ ${webhook.webhookUrl}
                         {webhooks.length === 0 ? (
                             <div className="empty-state">
                                 <Sparkles size={48} />
-                                <h3>Henüz webhook oluşturulmadı</h3>
-                                <p>Web sitenizden form gönderileri almak için bir webhook oluşturun</p>
+                                <h3>{t('webForms.noWebhooks')}</h3>
+                                <p>{t('webForms.noWebhooksDesc')}</p>
                                 <button className="btn-primary" onClick={() => setShowModal(true)}>
                                     <Plus size={18} />
                                     İlk Webhook'u Oluştur
@@ -194,7 +196,7 @@ ${webhook.webhookUrl}
                                                 <button
                                                     className="btn-icon-danger"
                                                     onClick={() => handleDelete(webhook.id)}
-                                                    title="Sil"
+                                                    title={t('common.delete')}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -203,7 +205,7 @@ ${webhook.webhookUrl}
 
                                         <span className="status-badge success">
                                             <Check size={14} />
-                                            Otomatik field algılama aktif
+                                            Auto field detection active
                                         </span>
 
                                         <div className="webhook-url">
@@ -243,7 +245,7 @@ ${webhook.webhookUrl}
                                         </div>
 
                                         <details className="integration-code">
-                                            <summary>📋 Elementor Kurulum Talimatları</summary>
+                                            <summary>{t('webForms.setupInstructions')}</summary>
                                             <pre>{getElementorInstructions(webhook)}</pre>
                                             <button
                                                 onClick={() => copyToClipboard(getElementorInstructions(webhook), `code-${webhook.id}`)}
@@ -262,7 +264,7 @@ ${webhook.webhookUrl}
                         {submissions.length === 0 ? (
                             <div className="empty-state">
                                 <AlertCircle size={48} />
-                                <h3>Henüz form gönderisi yok</h3>
+                                <h3>{t('webForms.noSubmissions')}</h3>
                                 <p>Web sitenizden form gönderildiğinde burada görünecek</p>
                             </div>
                         ) : (
@@ -270,13 +272,13 @@ ${webhook.webhookUrl}
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th>Tarih</th>
+                                            <th>Date</th>
                                             <th>Form</th>
-                                            <th>İsim</th>
-                                            <th>E-posta</th>
-                                            <th>Telefon</th>
-                                            <th>Durum</th>
-                                            <th style={{ width: '150px' }}>İşlemler</th>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Phone</th>
+                                            <th>{t('analytics.status')}</th>
+                                            <th style={{ width: '150px' }}>{t('adminDashboard.actions')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -299,10 +301,10 @@ ${webhook.webhookUrl}
                                                         }}
                                                         className="status-select"
                                                     >
-                                                        <option value="NEW">Yeni</option>
-                                                        <option value="CONTACTED">İletişime Geçildi</option>
-                                                        <option value="CONVERTED">Dönüştürüldü</option>
-                                                        <option value="CLOSED">Kapatıldı</option>
+                                                        <option value="NEW">New</option>
+                                                        <option value="CONTACTED">{t('leads.contacted')}</option>
+                                                        <option value="CONVERTED">{t('leads.converted')}</option>
+                                                        <option value="CLOSED">Closed</option>
                                                     </select>
                                                 </td>
                                                 <td>
@@ -311,7 +313,7 @@ ${webhook.webhookUrl}
                                                             <button
                                                                 className="btn-view"
                                                                 onClick={() => window.location.href = `/inbox?conversation=${sub.conversationId}`}
-                                                                title="Görüntüle"
+                                                                title="View"
                                                             >
                                                                 <ExternalLink size={14} />
                                                             </button>
@@ -319,7 +321,7 @@ ${webhook.webhookUrl}
                                                         <button
                                                             className="btn-delete"
                                                             onClick={() => handleDeleteSubmission(sub.id)}
-                                                            title="Sil"
+                                                            title={t('common.delete')}
                                                         >
                                                             <Trash2 size={14} />
                                                         </button>
@@ -338,7 +340,7 @@ ${webhook.webhookUrl}
             {showModal && (
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={e => e.stopPropagation()}>
-                        <h2>Yeni Form Webhook</h2>
+                        <h2>New Form Webhook</h2>
 
                         <div className="auto-mapping-info">
                             <Sparkles size={16} />
@@ -350,7 +352,7 @@ ${webhook.webhookUrl}
                         </div>
 
                         <div className="form-group">
-                            <label>Form Adı</label>
+                            <label>Form Name</label>
                             <input
                                 type="text"
                                 value={formData.name}
@@ -373,14 +375,14 @@ ${webhook.webhookUrl}
                         </div>
                         <div className="modal-actions">
                             <button className="btn-secondary" onClick={() => setShowModal(false)}>
-                                İptal
+                                Cancel
                             </button>
                             <button
                                 className="btn-primary"
                                 onClick={handleCreate}
                                 disabled={!formData.name || !formData.siteUrl}
                             >
-                                Oluştur
+                                Create
                             </button>
                         </div>
                     </div>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { teamAPI, workspaceAPI, aiAPI } from '../../services/api';
@@ -6,6 +7,7 @@ import './Teams.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 const Teams = () => {
+    const { t } = useTranslation();
     const { currentWorkspace, user } = useAuth();
     const [teams, setTeams] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -108,9 +110,9 @@ const Teams = () => {
     const handleDeleteTeam = async (teamId) => {
         setConfirmModal({
             isOpen: true,
-            title: 'Takım Sil',
-            message: 'Bu takımı ve alt takımlarını silmek istediğinize emin misiniz?',
-            confirmText: 'Evet, Sil',
+            title: t('teams.deleteTeam'),
+            message: t('teams.deleteConfirm'),
+            confirmText: t('common.confirm'),
             type: 'danger',
             onConfirm: async () => {
                 setConfirmModal(prev => ({ ...prev, isOpen: false }));
@@ -179,7 +181,7 @@ const Teams = () => {
             loadTeams();
         } catch (error) {
             console.error('Error adding member:', error);
-            alert('Üye eklenirken bir hata oluştu.');
+            alert(t('teams.addMemberError'));
         }
     };
 
@@ -217,7 +219,7 @@ const Teams = () => {
             loadTeams();
         } catch (error) {
             console.error('Error adding bot:', error);
-            alert('Bot eklenirken bir hata oluştu.');
+            alert(t('teams.addBotError'));
         }
     };
 
@@ -313,7 +315,7 @@ const Teams = () => {
             setExpandedTeams(prev => ({ ...prev, [targetTeamId]: true }));
         } catch (error) {
             console.error('Error moving team:', error);
-            alert('Takım taşınırken bir hata oluştu.');
+            alert(t('teams.moveError'));
         }
         setDraggedTeam(null);
     };
@@ -345,7 +347,7 @@ const Teams = () => {
             loadTeams();
         } catch (error) {
             console.error('Error moving team to root:', error);
-            alert('Takım taşınırken bir hata oluştu.');
+            alert(t('teams.moveError'));
         }
         setDraggedTeam(null);
     };
@@ -370,14 +372,14 @@ const Teams = () => {
                     <div className="team-card-header">
                         <div className="team-info">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className="drag-handle" title="Sürükle & Bırak">
+                                <span className="drag-handle" title={t('teams.dragDrop')}>
                                     <GripVertical size={14} />
                                 </span>
                                 {hasChildren && (
                                     <button
                                         className="expand-btn"
                                         onClick={() => toggleExpand(team.id)}
-                                        title={isExpanded ? 'Daralt' : 'Genişlet'}
+                                        title={isExpanded ? t('teams.collapse') : t('teams.expand')}
                                     >
                                         {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                     </button>
@@ -385,20 +387,20 @@ const Teams = () => {
                                 {isChild && <GitBranch size={14} color="#9ca3af" />}
                                 <h3>{team.name}</h3>
                             </div>
-                            <p className="team-description">{team.description || 'Açıklama yok'}</p>
+                            <p className="team-description">{team.description || t('teams.noDescription')}</p>
                         </div>
                         <div className="team-actions">
                             <button
                                 className="icon-btn"
                                 onClick={() => openCreateModal(null, team.id)}
-                                title="Alt Takım Ekle"
+                                title={t('teams.addSubTeam')}
                             >
                                 <Plus size={16} />
                             </button>
-                            <button className="icon-btn" onClick={() => openCreateModal(team)} title="Düzenle">
+                            <button className="icon-btn" onClick={() => openCreateModal(team)} title={t('common.edit')}>
                                 <Edit2 size={16} />
                             </button>
-                            <button className="icon-btn danger" onClick={() => handleDeleteTeam(team.id)} title="Sil">
+                            <button className="icon-btn danger" onClick={() => handleDeleteTeam(team.id)} title={t('common.delete')}>
                                 <Trash2 size={16} />
                             </button>
                         </div>
@@ -406,7 +408,7 @@ const Teams = () => {
 
                     <div className="team-stats">
                         <Users size={16} />
-                        <span>{team.members?.filter(m => m.userId).length || 0} Kullanıcı</span>
+                        <span>{team.members?.filter(m => m.userId).length || 0} {t('teams.userLabel')}</span>
                         {hasChildren && (
                             <span className="sub-team-count">
                                 <GitBranch size={13} />
@@ -433,7 +435,7 @@ const Teams = () => {
     return (
         <div className="teams-page-container">
             <div className="teams-header">
-                <h2>Takım Yönetimi</h2>
+                <h2>{t('teams.management')}</h2>
                 <button className="create-team-btn" onClick={() => openCreateModal()}>
                     <Plus size={20} />
                     Yeni Takım Oluştur
@@ -441,7 +443,7 @@ const Teams = () => {
             </div>
 
             {loading ? (
-                <div>Yükleniyor...</div>
+                <div>Loading...</div>
             ) : (
                 <div
                     className={`teams-grid ${isDragOverRoot ? 'drag-over-root' : ''}`}
@@ -487,14 +489,14 @@ const Teams = () => {
                                             return null;
                                         };
                                         return findTeam(teams, parentIdForCreate)?.name;
-                                    })()}</strong> takımının altına eklenecek
+                                    })()}</strong> will be added under
                                 </span>
                             </div>
                         )}
 
                         <form onSubmit={handleCreateTeam}>
                             <div className="form-group">
-                                <label>Takım Adı</label>
+                                <label>{t('teams.teamNameLabel')}</label>
                                 <input
                                     type="text"
                                     className="form-input"
@@ -505,7 +507,7 @@ const Teams = () => {
                                 />
                             </div>
                             <div className="form-group">
-                                <label>Açıklama</label>
+                                <label>{t('teams.descriptionLabel')}</label>
                                 <textarea
                                     className="form-input"
                                     value={teamDescription}
@@ -515,8 +517,8 @@ const Teams = () => {
                                 />
                             </div>
                             <div className="teams-modal-actions">
-                                <button type="button" className="btn-secondary" onClick={closeCreateModal}>İptal</button>
-                                <button type="submit" className="btn-primary">Kaydet</button>
+                                <button type="button" className="btn-secondary" onClick={closeCreateModal}>Cancel</button>
+                                <button type="submit" className="btn-primary">Save</button>
                             </div>
                         </form>
                     </div>
@@ -528,7 +530,7 @@ const Teams = () => {
                 <div className="teams-modal-overlay" onClick={() => setIsMembersModalOpen(false)}>
                     <div className="teams-modal-content" onClick={e => e.stopPropagation()}>
                         <div className="teams-modal-header">
-                            <h3>{selectedTeam.name} - Üyeler</h3>
+                            <h3>{selectedTeam.name} - Members</h3>
                             <button className="teams-close-modal-btn" onClick={() => setIsMembersModalOpen(false)}>
                                 <X size={20} />
                             </button>
@@ -536,14 +538,14 @@ const Teams = () => {
 
                         {/* Kullanıcı Ekle */}
                         <div className="add-member-section">
-                            <div className="members-section-label"><Users size={13} /> Kullanıcı Ekle</div>
+                            <div className="members-section-label"><Users size={13} /> {t('teams.userLabel')}</div>
                             <div className="member-select-row">
                                 <select
                                     className="member-select"
                                     value={selectedMemberToAdd}
                                     onChange={(e) => setSelectedMemberToAdd(e.target.value)}
                                 >
-                                    <option value="">Kullanıcı Seçin...</option>
+                                    <option value="">{t('teams.selectUser')}</option>
                                     {getAvailableMembers().map(m => (
                                         <option key={m.userId} value={m.userId}>{m.user.name}</option>
                                     ))}
@@ -560,14 +562,14 @@ const Teams = () => {
 
                         {/* AI Asistan Ekle */}
                         <div className="add-member-section add-bot-section">
-                            <div className="members-section-label bot-label"><Bot size={13} /> AI Asistan Ekle</div>
+                            <div className="members-section-label bot-label"><Bot size={13} /> AI Asistan Add</div>
                             <div className="member-select-row">
                                 <select
                                     className="member-select"
                                     value={selectedBotToAdd}
                                     onChange={(e) => setSelectedBotToAdd(e.target.value)}
                                 >
-                                    <option value="">Asistan Seçin...</option>
+                                    <option value="">{t('teams.selectAssistant')}</option>
                                     {getAvailableBots().map(b => (
                                         <option key={b.id} value={b.id}>{b.name}</option>
                                     ))}
@@ -592,10 +594,10 @@ const Teams = () => {
                                         </div>
                                         <div className="member-details">
                                             <span className="member-name">{member.user?.name}</span>
-                                            <span className="member-type-badge">Kullanıcı</span>
+                                            <span className="member-type-badge">{t('teams.userLabel')}</span>
                                         </div>
                                     </div>
-                                    <button className="icon-btn danger" onClick={() => handleRemoveMember(member)} title="Çıkar">
+                                    <button className="icon-btn danger" onClick={() => handleRemoveMember(member)} title={t('common.remove') || 'Remove'}>
                                         <X size={16} />
                                     </button>
                                 </div>
@@ -610,10 +612,10 @@ const Teams = () => {
                                         </div>
                                         <div className="member-details">
                                             <span className="member-name">{member.bot?.name}</span>
-                                            <span className="member-type-badge bot-badge">AI Asistan</span>
+                                            <span className="member-type-badge bot-badge">{t('teams.aiAssistant')}</span>
                                         </div>
                                     </div>
-                                    <button className="icon-btn danger" onClick={() => handleRemoveBot(member.botId)} title="Çıkar">
+                                    <button className="icon-btn danger" onClick={() => handleRemoveBot(member.botId)} title={t('common.remove') || 'Remove'}>
                                         <X size={16} />
                                     </button>
                                 </div>

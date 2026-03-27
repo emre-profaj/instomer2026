@@ -1,11 +1,12 @@
+import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { conversationAPI, funnelAPI } from '../../services/api';
 import {
     Kanban, Plus, X, Search, RefreshCw,
     MessageSquare, Phone, Mail, Instagram, Facebook,
-    Globe, User, Settings, Trash2, Edit2, Check,
-    Clock, ChevronRight, Loader, Tag
+    Globe, User, Trash2, Edit2, Check,
+    Clock, ChevronRight, ChevronDown, Loader, Tag
 } from 'lucide-react';
 import './Pipeline.css';
 
@@ -21,25 +22,25 @@ const CHANNEL_ICONS = {
 };
 
 const PRESET_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#f97316', '#06b6d4', '#ec4899', '#14b8a6', '#64748b'];
-const PRESET_ICONS = ['📁', '💰', '🛟', '😤', '🤝', '📋', '🔥', '🎯', '💬', '🚀', '⭐', '✅'];
 
 const formatDate = (d) => {
     if (!d) return '';
     const date = new Date(d);
     const now = new Date();
-    const diff = Math.floor((now - date) / 86400000);
-    if (diff === 0) return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-    if (diff === 1) return 'Dün';
-    if (diff < 7) return date.toLocaleDateString('tr-TR', { weekday: 'short' });
-    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+    const isToday = date.toDateString() === now.toDateString();
+    if (isToday) return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 };
 
 /* ─── Conversation Card ─── */
 const ConvCard = ({ conv, onDragStart }) => {
+    const { t } = useTranslation();
     const channel = CHANNEL_ICONS[conv.channel] || CHANNEL_ICONS.MANUAL;
     const ChannelIcon = channel.icon;
-    const name = conv.contact?.name || 'İsimsiz';
+    const name = conv.contact?.name || 'Unnamed';
     const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    const phone = conv.contact?.phone;
+    const email = conv.contact?.email;
 
     return (
         <div
@@ -66,34 +67,44 @@ const ConvCard = ({ conv, onDragStart }) => {
                     <span>{conv.aiTopic}</span>
                 </div>
             )}
+            {(phone || email) && (
+                <div className="pl-card-contact-info">
+                    {phone && (
+                        <span className="pl-card-contact-item">
+                            <Phone size={10} /> {phone}
+                        </span>
+                    )}
+                    {email && (
+                        <span className="pl-card-contact-item">
+                            <Mail size={10} /> {email}
+                        </span>
+                    )}
+                </div>
+            )}
             <div className="pl-card-status-row">
                 <span className={`pl-card-badge pl-badge-${conv.status?.toLowerCase()}`}>
-                    {conv.status === 'OPEN' ? 'Açık' : conv.status === 'RESOLVED' ? 'Çözüldü' : 'Beklemede'}
+                    {conv.status === 'OPEN' ? t('pipeline.open') : conv.status === 'RESOLVED' ? t('pipeline.resolved') : t('pipeline.pending')}
                 </span>
             </div>
         </div>
     );
 };
 
-/* ─── Funnel Column ─── */
-const FunnelColumn = ({ funnel, convs, onDragStart, onDragOver, onDrop, isDragOver, onEdit, onDelete }) => (
+/* ─── Stage Column ─── */
+const StageColumn = ({ stage, convs, onDragStart, onDragOver, onDrop, isDragOver }) => (
     <div
         className={`pl-col ${isDragOver ? 'pl-col--over' : ''}`}
-        onDragOver={e => onDragOver(e, funnel.id)}
-        onDrop={e => onDrop(e, funnel.id)}
-        id={`plcol-${funnel.id}`}
+        onDragOver={e => onDragOver(e, stage.id)}
+        onDrop={e => onDrop(e, stage.id)}
+        id={`plcol-${stage.id}`}
     >
-        <div className="pl-col-header" style={{ borderTopColor: funnel.color }}>
+        <div className="pl-col-header" style={{ borderTopColor: stage.color }}>
             <div className="pl-col-header-left">
-                <span className="pl-col-icon">{funnel.icon}</span>
-                <span className="pl-col-name">{funnel.name}</span>
-                <span className="pl-col-count" style={{ background: funnel.color + '22', color: funnel.color }}>
+                <div className="pl-col-dot" style={{ background: stage.color }} />
+                <span className="pl-col-name">{stage.name}</span>
+                <span className="pl-col-count" style={{ background: stage.color + '22', color: stage.color }}>
                     {convs.length}
                 </span>
-            </div>
-            <div className="pl-col-actions">
-                <button className="pl-col-btn" onClick={() => onEdit(funnel)} title="Düzenle"><Edit2 size={12} /></button>
-                <button className="pl-col-btn pl-col-btn--del" onClick={() => onDelete(funnel.id)} title="Sil"><Trash2 size={12} /></button>
             </div>
         </div>
         <div className="pl-col-body">
@@ -106,73 +117,21 @@ const FunnelColumn = ({ funnel, convs, onDragStart, onDragOver, onDrop, isDragOv
     </div>
 );
 
-/* ─── Create/Edit Funnel Modal ─── */
-const FunnelModal = ({ initial, onSave, onClose }) => {
-    const [name, setName] = useState(initial?.name || '');
-    const [color, setColor] = useState(initial?.color || '#3b82f6');
-    const [saving, setSaving] = useState(false);
-
-    const handleSave = async () => {
-        if (!name.trim()) return;
-        setSaving(true);
-        await onSave({ name: name.trim(), color, icon: initial?.icon || '📁' });
-        setSaving(false);
-    };
-
-    return (
-        <div className="pl-modal-overlay" onClick={onClose}>
-            <div className="pl-modal" onClick={e => e.stopPropagation()}>
-                <div className="pl-modal-header">
-                    <h3>{initial ? 'Funnel Düzenle' : 'Yeni Funnel'}</h3>
-                    <button className="pl-modal-close" onClick={onClose}><X size={16} /></button>
-                </div>
-                <div className="pl-modal-body">
-                    <label className="pl-modal-label">Funnel Adı</label>
-                    <input
-                        className="pl-modal-input"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="ör. Satış, Destek, Şikayet..."
-                        autoFocus
-                    />
-                    <label className="pl-modal-label">Renk</label>
-                    <div className="pl-color-grid">
-                        {PRESET_COLORS.map(c => (
-                            <button
-                                key={c}
-                                className={`pl-color-chip ${color === c ? 'pl-color-chip--active' : ''}`}
-                                style={{ background: c }}
-                                onClick={() => setColor(c)}
-                            />
-                        ))}
-                    </div>
-
-                </div>
-                <div className="pl-modal-footer">
-                    <button className="pl-btn-cancel" onClick={onClose}>İptal</button>
-                    <button className="pl-btn-save" onClick={handleSave} disabled={saving || !name.trim()}>
-                        {saving ? <Loader size={14} className="spin" /> : <Check size={14} />}
-                        {initial ? 'Kaydet' : 'Oluştur'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 /* ─── MAIN Pipeline Component ─── */
 const Pipeline = () => {
+    const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
     const [funnels, setFunnels] = useState([]);
+    const [selectedFunnelId, setSelectedFunnelId] = useState(null);
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [dragOverCol, setDragOverCol] = useState(null);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const dragConv = useRef(null);
 
-    // Modal state
-    const [showModal, setShowModal] = useState(false);
-    const [editingFunnel, setEditingFunnel] = useState(null);
+    const selectedFunnel = funnels.find(f => f.id === selectedFunnelId);
+    const stages = selectedFunnel?.stages || [];
 
     const loadData = useCallback(async () => {
         if (!currentWorkspace) return;
@@ -182,8 +141,39 @@ const Pipeline = () => {
                 funnelAPI.getAll(currentWorkspace.id),
                 conversationAPI.getAll(currentWorkspace.id, { limit: 500, status: 'OPEN' })
             ]);
-            setFunnels(fRes.data.funnels || []);
-            // getAll returns { conversations: [...] }
+            let loadedFunnels = fRes.data.funnels || [];
+
+            // Auto-create default stages for funnels that have none
+            const DEFAULT_STAGES = [
+                { name: 'New', color: '#3b82f6' },
+                { name: 'In Progress', color: '#f59e0b' },
+                { name: 'Closed', color: '#10b981' }
+            ];
+            let needsReload = false;
+            for (const funnel of loadedFunnels) {
+                if (!funnel.stages || funnel.stages.length === 0) {
+                    try {
+                        for (const s of DEFAULT_STAGES) {
+                            await funnelAPI.createStage(currentWorkspace.id, funnel.id, s);
+                        }
+                        needsReload = true;
+                    } catch (err) {
+                        console.error('Auto-create stages error:', err);
+                    }
+                }
+            }
+            if (needsReload) {
+                const refreshed = await funnelAPI.getAll(currentWorkspace.id);
+                loadedFunnels = refreshed.data.funnels || [];
+            }
+
+            setFunnels(loadedFunnels);
+
+            // Auto-select first funnel if none selected
+            if (!selectedFunnelId && loadedFunnels.length > 0) {
+                setSelectedFunnelId(loadedFunnels[0].id);
+            }
+
             const rawConvs = cRes.data.conversations || cRes.data || [];
             setConversations(rawConvs);
         } catch (err) {
@@ -205,17 +195,37 @@ const Pipeline = () => {
         }, 0);
     };
     const handleDragOver = (e, colId) => { e.preventDefault(); setDragOverCol(colId); };
-    const handleDrop = async (e, targetFunnelId) => {
+    const handleDrop = async (e, targetStageId) => {
         e.preventDefault();
         setDragOverCol(null);
         const conv = dragConv.current;
-        if (!conv || conv.funnelType === targetFunnelId) return;
-        // Optimistic
-        setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, funnelType: targetFunnelId } : c));
+        if (!conv || conv.funnelStageId === targetStageId) return;
+
+        // Optimistic update
+        setConversations(prev => prev.map(c =>
+            c.id === conv.id ? { ...c, funnelType: selectedFunnelId, funnelStageId: targetStageId } : c
+        ));
         try {
-            await conversationAPI.updateFunnel(currentWorkspace.id, conv.id, targetFunnelId);
+            await conversationAPI.updateFunnel(currentWorkspace.id, conv.id, {
+                funnelType: selectedFunnelId,
+                funnelStageId: targetStageId
+            });
+            // Notify ContactSidebar to update the funnel stage tag immediately
+            const updatedStage = stages.find(s => s.id === targetStageId);
+            window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                detail: {
+                    conversationId: conv.id,
+                    funnelStageId: targetStageId,
+                    funnelType: selectedFunnelId,
+                    stageName: updatedStage?.name,
+                    stageColor: updatedStage?.color
+                }
+            }));
         } catch {
-            setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, funnelType: conv.funnelType } : c));
+            // Revert on error
+            setConversations(prev => prev.map(c =>
+                c.id === conv.id ? { ...c, funnelType: conv.funnelType, funnelStageId: conv.funnelStageId } : c
+            ));
         }
         dragConv.current = null;
     };
@@ -224,29 +234,7 @@ const Pipeline = () => {
         setDragOverCol(null);
     };
 
-    /* Funnel CRUD */
-    const handleSaveFunnel = async (data) => {
-        try {
-            if (editingFunnel) {
-                const res = await funnelAPI.update(currentWorkspace.id, editingFunnel.id, data);
-                setFunnels(prev => prev.map(f => f.id === editingFunnel.id ? res.data.funnel : f));
-            } else {
-                const res = await funnelAPI.create(currentWorkspace.id, data);
-                setFunnels(prev => [...prev, res.data.funnel]);
-            }
-        } catch (err) { console.error('Funnel save error:', err); }
-        setShowModal(false);
-        setEditingFunnel(null);
-    };
-    const handleDeleteFunnel = async (funnelId) => {
-        if (!window.confirm('Bu funnel silinecek. Emin misiniz?')) return;
-        try {
-            await funnelAPI.delete(currentWorkspace.id, funnelId);
-            setFunnels(prev => prev.filter(f => f.id !== funnelId));
-        } catch (err) { console.error('Funnel delete error:', err); }
-    };
-
-    /* Grouping */
+    /* Grouping by stage */
     const filtered = conversations.filter(c => {
         if (!search) return true;
         const q = search.toLowerCase();
@@ -254,13 +242,31 @@ const Pipeline = () => {
             (c.aiTopic || '').toLowerCase().includes(q);
     });
 
-    // Conversations grouped by funnelType (funnel.id === funnelType stored as funnel name or id)
-    const grouped = funnels.reduce((acc, f) => {
-        acc[f.id] = filtered.filter(c => c.funnelType === f.id || c.funnelType === f.name);
+    // For selected funnel: group conversations by stageId
+    const grouped = stages.reduce((acc, s) => {
+        acc[s.id] = filtered.filter(c =>
+            c.funnelType === selectedFunnelId && c.funnelStageId === s.id
+        );
         return acc;
     }, {});
 
-    const unassigned = filtered.filter(c => !c.funnelType || !funnels.some(f => f.id === c.funnelType || f.name === c.funnelType));
+    // Count conversations assigned to this funnel but no stage (put in first stage column)
+    const noStageConvs = filtered.filter(c =>
+        c.funnelType === selectedFunnelId && (!c.funnelStageId || !stages.some(s => s.id === c.funnelStageId))
+    );
+    if (stages.length > 0 && noStageConvs.length > 0) {
+        grouped[stages[0].id] = [...(grouped[stages[0].id] || []), ...noStageConvs];
+    }
+
+    // Unassigned: conversations not in any funnel
+    const unassigned = filtered.filter(c =>
+        !c.funnelType || !funnels.some(f => f.id === c.funnelType)
+    );
+
+    // Total conversations in selected funnel
+    const funnelConvCount = selectedFunnel
+        ? filtered.filter(c => c.funnelType === selectedFunnelId).length
+        : 0;
 
     return (
         <div className="pl-page" onDragEnd={handleDragEnd}>
@@ -270,7 +276,9 @@ const Pipeline = () => {
                     <Kanban size={22} className="pl-header-icon" />
                     <div>
                         <h1 className="pl-title">Pipeline</h1>
-                        <span className="pl-subtitle">{loading ? 'Yükleniyor...' : `${funnels.length} funnel • ${conversations.length} sohbet`}</span>
+                        <span className="pl-subtitle">
+                            {loading ? 'Yükleniyor...' : `${funnels.length} funnel • ${conversations.length} sohbet`}
+                        </span>
                     </div>
                 </div>
                 <div className="pl-header-right">
@@ -286,62 +294,88 @@ const Pipeline = () => {
                     <button className="pl-btn-refresh" onClick={loadData} disabled={loading} title="Yenile">
                         <RefreshCw size={15} className={loading ? 'spin' : ''} />
                     </button>
-                    <button className="pl-btn-add" onClick={() => { setEditingFunnel(null); setShowModal(true); }}>
-                        <Plus size={15} /> Funnel Ekle
-                    </button>
                 </div>
             </div>
 
-            {/* Board */}
-            {loading ? (
-                <div className="pl-loading"><div className="pl-spinner" /><p>Pipeline yükleniyor...</p></div>
-            ) : funnels.length === 0 ? (
-                <div className="pl-empty-state">
-                    <Kanban size={52} />
-                    <h2>Henüz funnel yok</h2>
-                    <p>Satış, Destek, Şikayet gibi funnellar oluşturun ve<br />sohbetleri bu funnellar arasında sürükleyip bırakın.</p>
-                    <button className="pl-btn-add pl-btn-add--large" onClick={() => setShowModal(true)}>
-                        <Plus size={16} /> İlk Funnel'ı Oluştur
-                    </button>
-                </div>
-            ) : (
-                <div className="pl-board">
-                    {funnels.map(f => (
-                        <FunnelColumn
-                            key={f.id}
-                            funnel={f}
-                            convs={grouped[f.id] || []}
-                            onDragStart={handleDragStart}
-                            onDragOver={handleDragOver}
-                            onDrop={handleDrop}
-                            isDragOver={dragOverCol === f.id}
-                            onEdit={fun => { setEditingFunnel(fun); setShowModal(true); }}
-                            onDelete={handleDeleteFunnel}
-                        />
-                    ))}
-                    {/* Unassigned column */}
-                    {unassigned.length > 0 && (
-                        <FunnelColumn
-                            funnel={{ id: '__none__', name: 'Atanmamış', icon: '📥', color: '#94a3b8' }}
-                            convs={unassigned}
-                            onDragStart={handleDragStart}
-                            onDragOver={handleDragOver}
-                            onDrop={handleDrop}
-                            isDragOver={dragOverCol === '__none__'}
-                            onEdit={() => {}}
-                            onDelete={() => {}}
-                        />
+            {/* Funnel Selector Bar */}
+            {funnels.length > 0 && (
+                <div className="pl-funnel-bar">
+                    <div className="pl-funnel-selector-wrap">
+                        <button
+                            className="pl-funnel-selector"
+                            onClick={() => setDropdownOpen(p => !p)}
+                        >
+                            {selectedFunnel && (
+                                <div className="pl-funnel-sel-dot" style={{ background: selectedFunnel.color }} />
+                            )}
+                            <span>{selectedFunnel?.name || t('pipeline.selectFunnel')}</span>
+                            <ChevronDown size={16} className={`pl-funnel-chevron ${dropdownOpen ? 'open' : ''}`} />
+                        </button>
+
+                        {dropdownOpen && (
+                            <div className="pl-funnel-dropdown">
+                                {funnels.map(f => {
+                                    const count = filtered.filter(c => c.funnelType === f.id).length;
+                                    return (
+                                        <button
+                                            key={f.id}
+                                            className={`pl-funnel-option ${f.id === selectedFunnelId ? 'active' : ''}`}
+                                            onClick={() => { setSelectedFunnelId(f.id); setDropdownOpen(false); }}
+                                        >
+                                            <div className="pl-funnel-opt-dot" style={{ background: f.color }} />
+                                            <span className="pl-funnel-opt-name">{f.name}</span>
+                                            <span className="pl-funnel-opt-count">{count}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                    {selectedFunnel && (
+                        <div className="pl-funnel-info">
+                            <span className="pl-funnel-info-label">{stages.length} durum</span>
+                            <span className="pl-funnel-info-sep">•</span>
+                            <span className="pl-funnel-info-label">{funnelConvCount} sohbet</span>
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* Modal */}
-            {showModal && (
-                <FunnelModal
-                    initial={editingFunnel}
-                    onSave={handleSaveFunnel}
-                    onClose={() => { setShowModal(false); setEditingFunnel(null); }}
-                />
+            {/* Board */}
+            {loading ? (
+                <div className="pl-loading"><div className="pl-spinner" /><p>{t('pipeline.loading')}</p></div>
+            ) : funnels.length === 0 ? (
+                <div className="pl-empty-state">
+                    <Kanban size={52} />
+                    <h2>No funnels yet</h2>
+                    <p>Ayarlar → Funnel Yönetimi sayfasından<br />ilk funnel'ınızı oluşturun.</p>
+                </div>
+            ) : !selectedFunnel ? (
+                <div className="pl-empty-state">
+                    <Kanban size={52} />
+                    <h2>{t('pipeline.selectFunnelTitle')}</h2>
+                    <p>Yukarıdaki seçiciden bir funnel seçerek<br />durumlarını görüntüleyin.</p>
+                </div>
+            ) : stages.length === 0 ? (
+                <div className="pl-empty-state">
+                    <Kanban size={52} />
+                    <h2>Bu funnel'da durum yok</h2>
+                    <p>Ayarlar → Funnel Yönetimi sayfasından<br />bu funnel'a durumlar ekleyin.</p>
+                </div>
+            ) : (
+                <div className="pl-board">
+                    {stages.map(s => (
+                        <StageColumn
+                            key={s.id}
+                            stage={s}
+                            convs={grouped[s.id] || []}
+                            onDragStart={handleDragStart}
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            isDragOver={dragOverCol === s.id}
+                        />
+                    ))}
+                </div>
             )}
         </div>
     );
