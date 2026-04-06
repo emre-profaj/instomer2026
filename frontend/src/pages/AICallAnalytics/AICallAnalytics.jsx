@@ -499,7 +499,7 @@ const AICallAnalytics = () => {
                                                                     }
                                                                 </button>
                                                             </div>
-                                                            <div className="aicall-td">{formatDate(call.createdAt)}</div>
+                                                            <div className="aicall-td">{formatDate(call.startedAt || call.createdAt)}</div>
                                                             <div className="aicall-td phone-cell">{call.fromNumber}</div>
                                                             <div className="aicall-td phone-cell">{call.toNumber}</div>
                                                             <div className="aicall-td">{formatDuration(call.duration)}</div>

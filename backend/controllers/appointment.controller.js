@@ -1,13 +1,12 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 
-const prisma = new PrismaClient();
 
 // Get all appointments for a workspace
 export const getAppointments = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { startDate, endDate, assignedToId, status } = req.query;
+        const { startDate, endDate, assignedToId, status, resourceId } = req.query;
 
         let where = { workspaceId };
 
@@ -29,9 +28,13 @@ export const getAppointments = async (req, res) => {
             where.assignedToId = assignedToId;
         }
 
-        // Filter by status
         if (status) {
             where.status = status;
+        }
+
+        // Filter by resource
+        if (resourceId) {
+            where.resourceId = resourceId;
         }
 
         const appointments = await prisma.appointment.findMany({
@@ -92,12 +95,18 @@ export const createAppointment = async (req, res) => {
         const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
-            color, notes
+            color, notes, resourceId
         } = req.body;
 
-        if (!title || !startTime || !endTime || !assignedToId) {
+        if (!title || !startTime || !endTime) {
             return res.status(400).json({
-                error: 'Başlık, başlangıç/bitiş zamanı ve atanan kişi gereklidir'
+                error: 'Başlık ve başlangıç/bitiş zamanı gereklidir'
+            });
+        }
+
+        if (!assignedToId && !resourceId) {
+            return res.status(400).json({
+                error: 'Bir agent veya kaynak seçilmelidir'
             });
         }
 
@@ -137,6 +146,7 @@ export const createAppointment = async (req, res) => {
                 contactEmail,
                 color: color || '#3b82f6',
                 notes,
+                resourceId: resourceId || null,
                 createdById: req.user.id
             }
         });
@@ -163,7 +173,7 @@ export const updateAppointment = async (req, res) => {
         const {
             title, description, startTime, endTime, assignedToId,
             contactId, contactName, contactPhone, contactEmail,
-            status, color, notes
+            status, color, notes, resourceId
         } = req.body;
 
         const existing = await prisma.appointment.findFirst({ where: { id, workspaceId } });
@@ -184,6 +194,7 @@ export const updateAppointment = async (req, res) => {
         if (status !== undefined) updateData.status = status;
         if (color !== undefined) updateData.color = color;
         if (notes !== undefined) updateData.notes = notes;
+        if (resourceId !== undefined) updateData.resourceId = resourceId || null;
 
         // Check for time conflicts if time/agent is changing
         if (startTime || endTime || assignedToId) {

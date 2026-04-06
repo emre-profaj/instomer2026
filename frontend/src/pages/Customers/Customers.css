@@ -2099,3 +2099,125 @@
 .contact-sidebar .sidebar-details {
     overflow-y: auto;
 }
+
+/* Hierarchical Funnel Filter */
+.contacts-funnel-filter {
+    position: relative;
+    width: 100%;
+}
+
+.contacts-funnel-filter .funnel-filter-select {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    color: #374151;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    white-space: nowrap;
+}
+
+.contacts-funnel-filter .funnel-filter-select:hover {
+    border-color: #d1d5db;
+}
+
+.contacts-funnel-filter .funnel-filter-select.active {
+    border-color: #ef4444;
+    background: #fef2f2;
+    color: #ef4444;
+}
+
+.contacts-funnel-filter .funnel-filter-select .chevron {
+    margin-left: auto;
+    transition: transform 0.2s;
+}
+
+.contacts-funnel-filter .funnel-filter-select .chevron.open {
+    transform: rotate(180deg);
+}
+
+.contacts-funnel-filter .funnel-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 220px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    z-index: 1000;
+    padding: 6px 0;
+    animation: fadeIn 0.15s ease;
+}
+
+.contacts-funnel-filter .funnel-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
+}
+
+.contacts-funnel-filter .funnel-filter-item:hover {
+    background: #f9fafb;
+}
+
+.contacts-funnel-filter .funnel-filter-item.selected {
+    background: #fef2f2;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.contacts-funnel-filter .funnel-filter-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.contacts-funnel-filter .stage-filter-funnel {
+    position: relative;
+}
+
+.contacts-funnel-filter .stage-filter-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -6px;
+    min-width: 200px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    padding: 6px 0;
+    z-index: 1001;
+}
+
+.contacts-funnel-filter .stage-filter-funnel:hover > .stage-filter-submenu {
+    display: block;
+}
+
+.contacts-funnel-filter .filter-divider {
+    height: 1px;
+    background: #f3f4f6;
+    margin: 6px 0;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}

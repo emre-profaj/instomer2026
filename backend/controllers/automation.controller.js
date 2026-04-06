@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import axios from 'axios';
 
-const prisma = new PrismaClient();
-const WHATSAPP_API_VERSION = 'v18.0';
+const WHATSAPP_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v21.0';
 
 // ============================================
 // WhatsApp Template Management
@@ -151,19 +150,20 @@ export const syncTemplates = async (req, res) => {
 
         for (const phone of phoneNumbers) {
             try {
+                const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phone.wabaId}/message_templates`;
+                console.log(`📡 [SYNC] Fetching templates from: ${apiUrl}`);
+                console.log(`📡 [SYNC] Phone: ${phone.displayPhoneNumber}, WABA: ${phone.wabaId}, Token: ${phone.accessToken?.substring(0, 20)}...`);
+
                 // Fetch templates from WhatsApp API
-                const response = await axios.get(
-                    `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phone.wabaId}/message_templates`,
-                    {
-                        params: {
-                            access_token: phone.accessToken,
-                            limit: 100
-                        }
+                const response = await axios.get(apiUrl, {
+                    params: {
+                        access_token: phone.accessToken,
+                        limit: 250
                     }
-                );
+                });
 
                 const templates = response.data.data || [];
-                console.log(`📋 Found ${templates.length} templates from Meta`);
+                console.log(`📋 [SYNC] Found ${templates.length} templates from Meta for WABA ${phone.wabaId}`);
 
                 for (const tpl of templates) {
                     // Parse components
@@ -171,10 +171,6 @@ export const syncTemplates = async (req, res) => {
                     const body = tpl.components?.find(c => c.type === 'BODY');
                     const footer = tpl.components?.find(c => c.type === 'FOOTER');
                     const buttons = tpl.components?.find(c => c.type === 'BUTTONS');
-
-                    console.log(`📝 Template: ${tpl.name}, Language: ${tpl.language}, Status: ${tpl.status}`);
-                    console.log(`   Header: ${header ? `type=${header.format}` : 'none'}`);
-                    console.log(`   Body: ${body?.text?.substring(0, 50) || 'none'}...`);
 
                     await prisma.whatsappTemplate.upsert({
                         where: {
@@ -199,7 +195,9 @@ export const syncTemplates = async (req, res) => {
                             buttons: buttons ? JSON.stringify(buttons.buttons) : null
                         },
                         update: {
+                            name: tpl.name,
                             status: tpl.status || 'APPROVED',
+                            category: tpl.category || 'MARKETING',
                             components: JSON.stringify(tpl.components || []),
                             headerType: header?.format || null,
                             headerContent: header?.text || null,
@@ -211,7 +209,8 @@ export const syncTemplates = async (req, res) => {
                     syncedCount++;
                 }
             } catch (err) {
-                console.error(`Sync error for phone ${phone.displayPhoneNumber}:`, err.response?.data || err.message);
+                const errDetail = err.response?.data?.error || err.response?.data || err.message;
+                console.error(`❌ [SYNC] Error for ${phone.displayPhoneNumber} (WABA: ${phone.wabaId}):`, JSON.stringify(errDetail));
                 errors.push({
                     phone: phone.displayPhoneNumber,
                     error: err.response?.data?.error?.message || err.message
@@ -222,6 +221,8 @@ export const syncTemplates = async (req, res) => {
         res.json({
             message: `${syncedCount} şablon senkronize edildi`,
             syncedCount,
+            apiVersion: WHATSAPP_API_VERSION,
+            phoneCount: phoneNumbers.length,
             errors: errors.length > 0 ? errors : undefined
         });
     } catch (error) {
@@ -1107,6 +1108,103 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
     }
 };
 
+/**
+ * Execute automation based on Retell call outcome (Success/Fail)
+ * @param {string} workspaceId 
+ * @param {object} callRecord - Prisma RetellCall object
+ */
+export const executeRetellAutomation = async (workspaceId, callRecord) => {
+    try {
+        if (!callRecord || !workspaceId) return;
+
+        const isSuccess = callRecord.callSuccessful === true;
+        const trigger = isSuccess ? 'RETELL_COMPLETED_SUCCESS' : 'RETELL_COMPLETED_FAIL';
+
+        console.log(`🤖 [AUTOMATION] executeRetellAutomation called for trigger: ${trigger} (Call: ${callRecord.callId})`);
+
+        const contact = callRecord.contactId ? await prisma.contact.findUnique({ where: { id: callRecord.contactId } }) : null;
+
+        // Find active automations for this trigger
+        const automations = await prisma.automation.findMany({
+            where: {
+                workspaceId,
+                isActive: true,
+                trigger
+            }
+        });
+
+        if (automations.length === 0) {
+            console.log(`ℹ️ [AUTOMATION] No active automations for ${trigger}`);
+            return;
+        }
+
+        for (const automation of automations) {
+            console.log(`🤖 [AUTOMATION] Processing: ${automation.name} for ${callRecord.callId}`);
+
+            // Parse actions from JSON or use legacy single action
+            let actionsToExecute = [];
+            try {
+                actionsToExecute = automation.actions ? JSON.parse(automation.actions) : [automation.action];
+            } catch (e) {
+                actionsToExecute = [automation.action];
+            }
+
+            for (const actionType of actionsToExecute) {
+                if (actionType === 'SEND_TEMPLATE' && automation.templateId) {
+                    if (!contact?.phone) {
+                        console.log(`⚠️ [AUTOMATION] Skipping - Contact has no phone number`);
+                        continue;
+                    }
+
+                    // Delay if configured
+                    if (automation.delayMinutes > 0) {
+                        console.log(`⏱️ [AUTOMATION] Scheduling template in ${automation.delayMinutes}m`);
+                        setTimeout(async () => {
+                            await sendTemplateToContact(workspaceId, automation.templateId, contact);
+                        }, automation.delayMinutes * 60 * 1000);
+                    } else {
+                        await sendTemplateToContact(workspaceId, automation.templateId, contact);
+                    }
+                }
+
+                // SEND_EMAIL action
+                if (actionType === 'SEND_EMAIL' && automation.emailChannelId) {
+                    if (!contact?.email) continue;
+
+                    const sendEmailAction = async () => {
+                        try {
+                            const { sendEmailViaChannel, replacePlaceholders } = await import('../services/emailSender.service.js');
+                            const emailData = {
+                                name: contact.name || '',
+                                phone: contact.phone || '',
+                                email: contact.email || ''
+                            };
+                            const subject = replacePlaceholders(automation.emailSubject || 'Arama Bilgilendirmesi', emailData);
+                            const body = replacePlaceholders(automation.emailBody || '', emailData);
+
+                            await sendEmailViaChannel(
+                                automation.emailChannelId,
+                                contact.email,
+                                subject,
+                                body,
+                                { isHtml: automation.emailIsHtml }
+                            );
+                        } catch (e) { console.error('❌ Email automation error:', e); }
+                    };
+
+                    if (automation.delayMinutes > 0) {
+                        setTimeout(sendEmailAction, automation.delayMinutes * 60 * 1000);
+                    } else {
+                        await sendEmailAction();
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error('❌ [AUTOMATION] executeRetellAutomation error:', error);
+    }
+};
+
 // Helper: Send template to a contact
 const sendTemplateToContact = async (workspaceId, templateId, contact) => {
     try {
@@ -1228,23 +1326,24 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
 
         console.log(`✅ Automation template sent to ${contact.phone}:`, response.data);
 
-        // Find existing conversation - prefer WHATSAPP, then any OPEN conversation (e.g., LEAD)
+        // Find existing conversation - PRIORITY: LEAD (most recent open), then WHATSAPP, then create new
+        // This prevents duplicate conversations when automation fires on a lead form submission
         let conversation = await prisma.conversation.findFirst({
             where: {
                 contactId: contact.id,
                 workspaceId,
-                channel: 'WHATSAPP'
+                status: 'OPEN'
             },
             orderBy: { lastMessageAt: 'desc' }
         });
 
         if (!conversation) {
-            // Check for any other open conversation (e.g., LEAD) to prevent duplicates
+            // Check for any existing WHATSAPP conversation (even if resolved)
             conversation = await prisma.conversation.findFirst({
                 where: {
                     contactId: contact.id,
                     workspaceId,
-                    status: 'OPEN'
+                    channel: 'WHATSAPP'
                 },
                 orderBy: { lastMessageAt: 'desc' }
             });
@@ -1261,6 +1360,8 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
                 }
             });
         }
+
+        console.log(`📋 [AUTOMATION] Using conversation: ${conversation.id} (channel: ${conversation.channel}, status: ${conversation.status})`);
 
         await prisma.message.create({
             data: {

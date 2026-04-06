@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import multer from 'multer';
 import { createRequire } from 'module';
@@ -8,7 +8,6 @@ import mammoth from 'mammoth';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { checkAiUsageLimit, incrementAiUsage } from '../services/aiUsage.service.js';
 
-const prisma = new PrismaClient();
 
 // Lock to prevent duplicate AI replies for same conversation
 const aiReplyLocks = new Set();
@@ -332,6 +331,12 @@ ${documentContext || "Bilgi bankası boş."}
                 });
                 lastRole = currentRole;
             }
+        }
+
+        // 🔧 Gemini API requires the first history entry to be role 'user'.
+        // Strip leading 'model' entries to prevent API errors.
+        while (historyParts.length > 0 && historyParts[0].role === 'model') {
+            historyParts.shift();
         }
 
         // Helper function to try generating content with fallback
@@ -1500,6 +1505,14 @@ ${documentContext || "Bilgi bankası boş."}
             }
         }
 
+        // 🔧 Gemini API requires the first history entry to be role 'user'.
+        // If the conversation started with a bot message (e.g. welcome/greeting),
+        // strip leading 'model' entries to prevent "First content should be with role 'user'" error.
+        while (historyParts.length > 0 && historyParts[0].role === 'model') {
+            historyParts.shift();
+            console.log(`🔧 [AI] Stripped leading 'model' entry from history to satisfy Gemini API requirement`);
+        }
+
         // Determine the final message to send (must be from user)
         let finalUserMessage = userMessage || (isEnglish ? 'Hello' : 'Merhaba');
 
@@ -2412,5 +2425,54 @@ JSON:`;
     } catch (error) {
         console.error('❌ [AI Auto-Extract] Final Error:', error);
         return null;
+    }
+};
+
+/**
+ * Auto-generate a short topic title for a conversation from its first customer message.
+ * Fire-and-forget: call without await from webhook handlers.
+ * Only runs if conversation has no aiTopic yet.
+ *
+ * @param {string} workspaceId
+ * @param {string} conversationId
+ * @param {string} firstMessage - The first customer message text
+ */
+export const autoGenerateTopic = async (workspaceId, conversationId, firstMessage) => {
+    try {
+        if (!workspaceId || !conversationId || !firstMessage?.trim()) return;
+
+        // Skip if topic already set
+        const existing = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { aiTopic: true }
+        });
+        if (existing?.aiTopic) return;
+
+        // Get API key
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) return;
+
+        const prompt = `Aşağıdaki müşteri mesajından 3-6 kelimelik, Türkçe, kısa ve öz bir konu başlığı oluştur.
+Sadece başlığı döndür, başka hiçbir şey yazma.
+
+Mesaj: "${firstMessage.substring(0, 500)}"
+
+Konu başlığı:`;
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const result = await model.generateContent(prompt);
+        const topic = result.response.text().trim().replace(/^["']|["']$/g, '').substring(0, 120);
+
+        if (!topic) return;
+
+        await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { aiTopic: topic }
+        });
+
+        console.log(`✅ [AutoTopic] Conversation ${conversationId}: "${topic}"`);
+    } catch (err) {
+        console.error('❌ [AutoTopic] Error:', err.message);
     }
 };

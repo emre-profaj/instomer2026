@@ -1,11 +1,10 @@
 import { validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
 
-const prisma = new PrismaClient();
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
 // Processing lock to prevent duplicate webhook processing
@@ -1476,6 +1475,17 @@ async function processWebhookAsync(body) {
                         });
                         console.log(`📡 [Webhook] ✅ Routing applied: Team=${routingResult.teamName}, BotDelay=${routingResult.botDelayedUntil}`);
                     }
+
+                    // 🔄 Flow Engine: FIRST_MSG trigger for new FB/IG conversations
+                    try {
+                        const { executeFlowsByTrigger } = await import('./flow.controller.js');
+                        executeFlowsByTrigger(facebookPage.workspaceId, 'FIRST_MSG', {
+                            contact,
+                            conversation
+                        });
+                    } catch (flowErr) {
+                        console.error('⚠️ [FLOW] FIRST_MSG trigger error:', flowErr.message);
+                    }
                 } else {
                     // Mevcut konuşma - güncelle
                     const updateData = {};
@@ -1621,7 +1631,7 @@ async function processWebhookAsync(body) {
                             if (callIntent && contact?.phone) {
                                 if (callIntent.type === 'immediate') {
                                     console.log(`📞 [FB] Chat call request (immediate) for ${contact.phone}`);
-                                    triggerAutoCall(facebookPage.workspaceId, contact.phone, contact?.id, contact?.name || 'Müşteri', 'CHAT_REQUEST').catch(e =>
+                                    triggerAutoCall(facebookPage.workspaceId, contact.phone, contact?.id, contact?.name || 'Müşteri', 'CHAT_REQUEST', message.text).catch(e =>
                                         console.error('⚠️ [FB] Chat immediate call error:', e.message)
                                     );
                                 } else if (callIntent.type === 'scheduled') {
@@ -1644,7 +1654,7 @@ async function processWebhookAsync(body) {
                                     const normalizedPhone = digits.startsWith('90') ? '+' + digits :
                                         digits.startsWith('0') ? '+90' + digits.slice(1) : '+90' + digits;
                                     const triggerChan = isInstagram ? 'INSTAGRAM' : 'FACEBOOK';
-                                    triggerAutoCall(facebookPage.workspaceId, normalizedPhone, contact?.id, contact?.name || 'Müşteri', triggerChan)
+                                    triggerAutoCall(facebookPage.workspaceId, normalizedPhone, contact?.id, contact?.name || 'Müşteri', triggerChan, message.text)
                                         .catch(e => console.error('❌ [AutoCall] FB/IG phone trigger error:', e.message));
                                 }
                             }
@@ -1822,8 +1832,15 @@ async function processWebhookAsync(body) {
 
                         // --- AUTO EXTRACT START ---
                         try {
-                            const { autoExtractFromConversation } = await import('./ai.controller.js');
+                            const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
+                            const { autoAssignDefaultFunnel } = await import('./funnel.controller.js');
                             autoExtractFromConversation(facebookPage.workspaceId, conversation.id);
+                            autoGenerateTopic(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
+                                console.error('❌ [AutoTopic] FB/IG error:', e.message)
+                            );
+                            autoAssignDefaultFunnel(facebookPage.workspaceId, conversation.id).catch(e =>
+                                console.error('❌ [AutoFunnel] FB/IG error:', e.message)
+                            );
                         } catch (extractError) {
                             console.error('❌ AI Auto-Extract call failed:', extractError);
                         }
@@ -1998,19 +2015,21 @@ export const addContactTag = async (req, res) => {
             return res.status(404).json({ error: 'Conversation not found' });
         }
 
-        // Verify workspace access (Security)
-        const member = await prisma.workspaceMember.findUnique({
-            where: {
-                userId_workspaceId: {
-                    userId: req.user.id,
-                    workspaceId: conversation.workspaceId
+        // Verify workspace access (Security) — SUPER_ADMIN bypasses member check
+        if (req.user.role !== 'SUPER_ADMIN') {
+            const member = await prisma.workspaceMember.findUnique({
+                where: {
+                    userId_workspaceId: {
+                        userId: req.user.id,
+                        workspaceId: conversation.workspaceId
+                    }
                 }
-            }
-        });
+            });
 
-        if (!member) {
-            console.error(`[TAG_DEBUG] Access denied for user ${req.user.id} to workspace ${conversation.workspaceId}`);
-            return res.status(403).json({ error: 'Access denied to this workspace' });
+            if (!member) {
+                console.error(`[TAG_DEBUG] Access denied for user ${req.user.id} to workspace ${conversation.workspaceId}`);
+                return res.status(403).json({ error: 'Access denied to this workspace' });
+            }
         }
 
         let tags = [];
@@ -2063,18 +2082,20 @@ export const removeContactTag = async (req, res) => {
 
         if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
 
-        // Verify workspace access (Security)
-        const member = await prisma.workspaceMember.findUnique({
-            where: {
-                userId_workspaceId: {
-                    userId: req.user.id,
-                    workspaceId: conversation.workspaceId
+        // Verify workspace access (Security) — SUPER_ADMIN bypasses member check
+        if (req.user.role !== 'SUPER_ADMIN') {
+            const member = await prisma.workspaceMember.findUnique({
+                where: {
+                    userId_workspaceId: {
+                        userId: req.user.id,
+                        workspaceId: conversation.workspaceId
+                    }
                 }
-            }
-        });
+            });
 
-        if (!member) {
-            return res.status(403).json({ error: 'Access denied to this workspace' });
+            if (!member) {
+                return res.status(403).json({ error: 'Access denied to this workspace' });
+            }
         }
 
         let tags = [];
@@ -2686,11 +2707,29 @@ export const deleteComment = async (req, res) => {
 // ============================================
 // LEADGEN HANDLER - Facebook Lead Ads
 // ============================================
+// In-memory dedup cache to prevent Meta's duplicate webhook calls
+if (!global.leadgenProcessingCache) {
+    global.leadgenProcessingCache = new Map();
+}
+
 async function handleLeadgenEvent(leadValue, entryId) {
+    const leadgenId = leadValue?.leadgen_id;
+
+    // Dedup check: if this leadgen_id was already processed within 5 minutes, skip
+    if (leadgenId && global.leadgenProcessingCache.has(leadgenId)) {
+        console.log(`🚫 [LEADGEN] Duplicate webhook for leadgen_id ${leadgenId} — skipping`);
+        return;
+    }
+    // Mark as processing (expires in 5 min)
+    if (leadgenId) {
+        global.leadgenProcessingCache.set(leadgenId, Date.now());
+        setTimeout(() => global.leadgenProcessingCache.delete(leadgenId), 5 * 60 * 1000);
+    }
+
     console.log('📋 =====================================');
     console.log('📋 LEADGEN EVENT RECEIVED');
     console.log('📋 =====================================');
-    console.log(`📋 Lead ID: ${leadValue?.leadgen_id}`);
+    console.log(`📋 Lead ID: ${leadgenId}`);
     console.log(`📋 Form ID: ${leadValue?.form_id}`);
     console.log(`📋 Page ID: ${leadValue?.page_id || entryId}`);
 
@@ -3000,14 +3039,6 @@ async function handleLeadgenEvent(leadValue, entryId) {
         }
 
         // 4. Create Message with lead info (Clean format)
-        const leadDate = new Date().toLocaleDateString('tr-TR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-
         // Build extra fields - skip contact info fields
         const skipFields = ['full_name', 'name', 'email', 'phone_number', 'phone', 'phonenumber', 'first_name', 'last_name', 'tel', 'telefon', 'e_mail', 'mail'];
         const extraFields = [];
@@ -3042,10 +3073,6 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 lines.push(`▸  ${field.label}: ${field.value}`);
             });
         }
-
-        lines.push(``);
-        lines.push(`──────────────────────────`);
-        lines.push(`🕐  ${leadDate}`);
 
         const messageContent = lines.join('\n');
 
@@ -3101,13 +3128,53 @@ async function handleLeadgenEvent(leadValue, entryId) {
         }
         // --- AUTOMATION TRIGGER END ---
 
+        // --- FLOW ENGINE TRIGGER ---
+        try {
+            const { executeFlowsByTrigger } = await import('./flow.controller.js');
+            executeFlowsByTrigger(facebookPage.workspaceId, 'NEW_FORM', {
+                contact, lead: savedLead, conversation,
+                formData: { name: leadName, email: leadEmail, phone: leadPhone }
+            });
+        } catch (flowErr) {
+            console.error('⚠️ [LEADGEN] Flow engine error:', flowErr.message);
+        }
+        // --- FLOW ENGINE TRIGGER END ---
+
         // --- AUTO CALL TRIGGER ---
         if (leadPhone) {
             try {
                 const { triggerAutoCall } = await import('./retell.controller.js');
-                triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', messageContent);
+                const baseDate = leadData.created_time ? new Date(leadData.created_time) : new Date();
+                // IMPORTANT: Pass null for messageContent — lead form messages are system-generated
+                // and contain date strings like "23.03.2026" that get misinterpreted as times (23:03).
+                // Lead forms never contain customer call-time preferences, so only business hours logic should apply.
+                triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', null, baseDate);
             } catch (autoCallErr) {
                 console.error('⚠️ [LEADGEN] AutoCall trigger error:', autoCallErr.message);
+            }
+        }
+
+        // --- AUTO TOPIC GENERATION ---
+        if (conversation?.id && messageContent) {
+            try {
+                const { autoGenerateTopic } = await import('./ai.controller.js');
+                autoGenerateTopic(facebookPage.workspaceId, conversation.id, messageContent).catch(e =>
+                    console.error('❌ [AutoTopic] LEADGEN error:', e.message)
+                );
+            } catch (topicErr) {
+                console.error('⚠️ [LEADGEN] AutoTopic error:', topicErr.message);
+            }
+        }
+
+        // --- AUTO FUNNEL ASSIGNMENT ---
+        if (conversation?.id) {
+            try {
+                const { autoAssignDefaultFunnel } = await import('./funnel.controller.js');
+                autoAssignDefaultFunnel(facebookPage.workspaceId, conversation.id).catch(e =>
+                    console.error('❌ [AutoFunnel] LEADGEN error:', e.message)
+                );
+            } catch (funnelErr) {
+                console.error('⚠️ [LEADGEN] AutoFunnel error:', funnelErr.message);
             }
         }
 

@@ -349,7 +349,22 @@ const Inbox = () => {
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
     const [searchTerm, setSearchTerm] = useState('');
     const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'MINE', 'PENDING', 'ALL'
-    const [showResolved, setShowResolved] = useState(false); // Hide resolved conversations by default
+    const [showResolved, setShowResolved] = useState(() => {
+        try {
+            return localStorage.getItem('inbox_showResolved') === 'true';
+        } catch {
+            return false;
+        }
+    }); // Hide resolved conversations by default
+    
+    // Persist showResolved to localStorage when it changes
+    useEffect(() => {
+        try {
+            localStorage.setItem('inbox_showResolved', showResolved);
+        } catch (e) {
+            console.error('Error saving showResolved state', e);
+        }
+    }, [showResolved]);
     // Resolved post IDs (Facebook/Instagram comments) — persisted in localStorage per workspace
     const [resolvedPostIds, setResolvedPostIds] = useState(() => {
         try {
@@ -441,6 +456,7 @@ const Inbox = () => {
     }, [currentWorkspace]);
 
     const [appointments, setAppointments] = useState([]); // For reminder indicators
+    const [totalItems, setTotalItems] = useState(0); // Total filtered items from backend
     const filterDropdownRef = useRef(null);
 
     const filterLabels = {
@@ -1252,8 +1268,21 @@ const Inbox = () => {
         try {
             setLoadingMore(true);
             const params = { limit: 100, page: currentPage + 1 };
+            
+            // Set assignment filter
             if (assignmentTab === 'MINE') params.assignedToId = 'mine';
             else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+            
+            // Admin/Owner Agent Filter overrides assignment tab
+            if (agentFilter) {
+                params.assignedToId = agentFilter === '__unassigned__' ? 'unassigned' : agentFilter;
+            }
+
+            if (funnelFilter) params.funnelType = funnelFilter;
+            if (statusFilter) {
+                params.funnelStageId = statusFilter;
+            }
+            if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
 
             const response = await conversationAPI.getAll(currentWorkspace.id, params);
             const moreConversations = response.data.conversations || [];
@@ -1264,9 +1293,21 @@ const Inbox = () => {
             const loadAll = activeFilters.length === allFilters.length;
             const hasChannelFilter = channelFilters.some(f => activeFilters.includes(f));
 
+            // --- Ghost Lead Suppression (Deduplication) ---
+            const realContactIds = new Set();
+            moreConversations.forEach(c => {
+                if (c.channel !== 'LEAD' || c.facebookPageId) {
+                    realContactIds.add(c.contactId);
+                }
+            });
+
             // Filter and add new conversations to existing items
             const newItems = moreConversations
                 .filter(conv => {
+                    // Suppress dummy leads if the contact has a real channel
+                    if (conv.channel === 'LEAD' && !conv.facebookPageId && realContactIds.has(conv.contactId)) {
+                        return false;
+                    }
                     // Check if resolved filter applies
                     if (!showResolved && conv.status === 'RESOLVED') {
                         return false;
@@ -1307,40 +1348,7 @@ const Inbox = () => {
                     }
                     if (!channelMatch) return false;
 
-                    // Check funnel type filter
-                    if (funnelFilter) {
-                        const convFunnelType = conv.funnelType || '';
-                        if (convFunnelType !== funnelFilter) return false;
-                    }
-
-                    // Check agent filter
-                    if (agentFilter) {
-                        if (agentFilter === '__unassigned__') {
-                            if (conv.assignedToId && conv.assignedToId !== '') return false;
-                        } else {
-                            if (conv.assignedToId !== agentFilter) return false;
-                        }
-                    }
-
-                    // Check funnel stage filter
-                    if (statusFilter) {
-                        let eff = conv._effectiveStageId;
-                        if (eff === undefined) {
-                            // Compute inline for items not enriched (e.g. websocket updates)
-                            const _allStages = funnelOptions.flatMap(f => f.stages || []);
-                            const _stageVals = new Set(_allStages.map(s => s.value));
-                            if (conv.funnelStageId && _stageVals.has(conv.funnelStageId)) {
-                                eff = conv.funnelStageId;
-                            } else if (conv.contact?.status && _stageVals.has(conv.contact.status)) {
-                                eff = conv.contact.status;
-                            } else {
-                                const cf = funnelOptions.find(f => f.value === (conv.funnelType || '') && f.stages);
-                                const ff = funnelOptions.find(f => f.value && f.stages);
-                                eff = cf?.stages?.[0]?.value || ff?.stages?.[0]?.value || null;
-                            }
-                        }
-                        if (eff !== statusFilter) return false;
-                    }
+                    if (!channelMatch) return false;
 
                     // Apply quick filter
                     if (quickFilter) {
@@ -1374,6 +1382,7 @@ const Inbox = () => {
                 const morePages = pagination.page < pagination.totalPages;
                 setCurrentPage(pagination.page);
                 currentPageRef.current = pagination.page;
+                setTotalItems(pagination.total || 0);
 
                 // If filtered results are empty but backend has more pages,
                 // automatically try loading the next page (max 5 auto-retries)
@@ -1507,29 +1516,43 @@ const Inbox = () => {
                 // Always use current page from ref (preserves pagination)
                 const pageToLoad = currentPageRef.current;
                 const params = { limit: 100, page: pageToLoad };
+                
+                // Set assignment filter
                 if (assignmentTab === 'MINE') params.assignedToId = 'mine';
                 else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+                
+                // Admin/Owner Agent Filter overrides assignment tab
+                if (agentFilter) {
+                    params.assignedToId = agentFilter === '__unassigned__' ? 'unassigned' : agentFilter;
+                }
+
+                if (funnelFilter) params.funnelType = funnelFilter;
+                if (statusFilter) {
+                    params.funnelStageId = statusFilter;
+                }
                 if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
+
+                // Advanced Single-Channel Push to Backend (Prevents Filter Pagination Paradox)
+                if (activeChannel) {
+                    params.channel = activeChannel;
+                } else if (activeFilters.length === 1) {
+                    const onlyFilter = activeFilters[0];
+                    if (onlyFilter === 'phone_calls') params.channel = 'PHONE';
+                    else if (onlyFilter === 'whatsapp') params.channel = 'WHATSAPP';
+                    else if (onlyFilter === 'facebook') params.channel = 'FACEBOOK';
+                    else if (onlyFilter === 'instagram') params.channel = 'INSTAGRAM';
+                    else if (onlyFilter === 'web_widget') params.channel = 'WIDGET';
+                    else if (onlyFilter === 'emails') params.channel = 'EMAIL';
+                }
 
                 const response = await conversationAPI.getAll(currentWorkspace.id, params);
                 const allConversations = response.data.conversations || [];
                 const pagination = response.data.pagination;
 
                 // Enrich each conversation with _effectiveStageId for consistent filtering
-                const allStages = funnelOptions.flatMap(f => f.stages || []);
-                const allStageValues = new Set(allStages.map(s => s.value));
                 allConversations.forEach(conv => {
-                    if (conv.funnelStageId && allStageValues.has(conv.funnelStageId)) {
-                        conv._effectiveStageId = conv.funnelStageId;
-                    } else if (conv.contact?.status && allStageValues.has(conv.contact.status)) {
-                        // contact.status matches a stage value directly (e.g. UUID set by manual change)
-                        conv._effectiveStageId = conv.contact.status;
-                    } else {
-                        // No valid stage set — use first stage of the conversation's funnel (same as dropdown fallback)
-                        const convFunnel = funnelOptions.find(f => f.value === (conv.funnelType || '') && f.stages);
-                        const firstFunnel = funnelOptions.find(f => f.value && f.stages);
-                        conv._effectiveStageId = convFunnel?.stages?.[0]?.value || firstFunnel?.stages?.[0]?.value || null;
-                    }
+                    // Use explicit funnelStageId first, then contact's funnelStageId
+                    conv._effectiveStageId = conv.funnelStageId || conv.contact?.funnelStageId || null;
                 });
 
                 // Check if there are more pages
@@ -1537,10 +1560,24 @@ const Inbox = () => {
                     setHasMore(pagination.page < pagination.totalPages);
                     setCurrentPage(pagination.page);
                     currentPageRef.current = pagination.page;
+                    setTotalItems(pagination.total || 0);
                 }
+
+                // --- Ghost Lead Suppression (Deduplication) ---
+                const realContactIds = new Set();
+                allConversations.forEach(c => {
+                    if (c.channel !== 'LEAD' || c.facebookPageId) {
+                        realContactIds.add(c.contactId);
+                    }
+                });
 
                 // Filter conversations based on channel and resolved status
                 allConversations.forEach(conv => {
+                    // Suppress dummy leads if the contact has a real channel
+                    if (conv.channel === 'LEAD' && !conv.facebookPageId && realContactIds.has(conv.contactId)) {
+                        return; // Skip this duplicate artifact
+                    }
+
                     // Check if resolved filter applies
                     if (!showResolved && conv.status === 'RESOLVED') {
                         return; // Skip resolved conversations if showResolved is false
@@ -1590,25 +1627,6 @@ const Inbox = () => {
                     }
 
                     if (channelMatch) {
-                        // Check funnel type filter
-                        if (funnelFilter && (conv.funnelType || '') !== funnelFilter) {
-                            return; // Skip conversations not matching the selected funnel
-                        }
-
-                        // Check agent filter
-                        if (agentFilter) {
-                            if (agentFilter === '__unassigned__') {
-                                if (conv.assignedToId && conv.assignedToId !== '') return;
-                            } else {
-                                if (conv.assignedToId !== agentFilter) return;
-                            }
-                        }
-
-                        // Check funnel stage filter using enriched _effectiveStageId
-                        if (statusFilter && conv._effectiveStageId !== statusFilter) {
-                            return; // Skip
-                        }
-
                         // Apply quick filter
                         if (quickFilter) {
                             const convDate = new Date(conv.lastMessageAt || conv.createdAt);
@@ -2736,6 +2754,9 @@ const Inbox = () => {
                                                 setShowResolved(false);
                                                 setShowOnlyAssigned(false);
                                                 setShowAssignedToMe(false);
+                                                setStatusFilter(null);
+                                                setAgentFilter(null);
+                                                setSearchTerm('');
                                             }}
                                         >
                                             Filtreleri Sıfırla
@@ -2792,43 +2813,8 @@ const Inbox = () => {
                         )}
                     </div>
 
-                    {/* Row 2: Status + Funnel filters side by side */}
+                    {/* Row 2: Status filter — full width */}
                     <div className="inbox-filter-row-bottom">
-                        {/* Funnel Type Filter */}
-                        <div className="inbox-funnel-filter" ref={funnelFilterRef}>
-                            <button
-                                className={`funnel-filter-select${funnelFilter ? ' active' : ''}`}
-                                onClick={() => setFunnelFilterOpen(prev => !prev)}
-                            >
-                                {funnelFilter
-                                    ? (funnelOptions.find(f => f.value === funnelFilter)?.label || 'Tüm Funnellar')
-                                    : 'Tüm Funnellar'
-                                }
-                                <ChevronDown size={14} style={{ marginLeft: 4, transform: funnelFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                            </button>
-                            {funnelFilterOpen && (
-                                <div className="funnel-filter-dropdown">
-                                    <button
-                                        className={`funnel-filter-item${!funnelFilter ? ' selected' : ''}`}
-                                        onClick={() => { setFunnelFilter(null); setFunnelFilterOpen(false); setStatusFilter(null); }}
-                                    >
-                                        Tüm Funnellar
-                                    </button>
-                                    {funnelOptions.filter(f => f.value).map(funnel => (
-                                        <button
-                                            key={funnel.value}
-                                            className={`funnel-filter-item${funnelFilter === funnel.value ? ' selected' : ''}`}
-                                            onClick={() => { setFunnelFilter(funnel.value); setFunnelFilterOpen(false); setStatusFilter(null); }}
-                                        >
-                                            <span className="funnel-filter-dot" style={{ background: funnel.color || '#9ca3af' }} />
-                                            {funnel.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Funnel Stage Filter — Hover Submenu Dropdown */}
                         <div className="inbox-status-filters" ref={stageFilterRef}>
                             <button
                                 className={`status-filter-select${statusFilter ? ' active' : ''}`}
@@ -2838,18 +2824,19 @@ const Inbox = () => {
                                     if (!statusFilter) return 'Tüm Durumlar';
                                     for (const f of funnelOptions) {
                                         if (!f.stages) continue;
+                                        if (funnelFilter && f.value !== funnelFilter) continue;
                                         const s = f.stages.find(s => s.value === statusFilter);
                                         if (s) return s.label;
                                     }
                                     return 'Tüm Durumlar';
                                 })()}
-                                <ChevronDown size={14} style={{ marginLeft: 4, transform: stageFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                <ChevronDown size={14} style={{ marginLeft: 'auto', transform: stageFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                             </button>
                             {stageFilterOpen && (
                                 <div className="stage-filter-dropdown">
                                     <button
                                         className={`stage-filter-item${!statusFilter ? ' selected' : ''}`}
-                                        onClick={() => { setStatusFilter(null); setStageFilterOpen(false); }}
+                                        onClick={() => { setStatusFilter(null); setFunnelFilter(null); setStageFilterOpen(false); currentPageRef.current = 1; setCurrentPage(1); }}
                                     >
                                         Tüm Durumlar
                                     </button>
@@ -2864,8 +2851,8 @@ const Inbox = () => {
                                                 {funnel.stages.map(stage => (
                                                     <button
                                                         key={stage.value}
-                                                        className={`stage-filter-item${statusFilter === stage.value ? ' selected' : ''}`}
-                                                        onClick={() => { setStatusFilter(stage.value); setStageFilterOpen(false); }}
+                                                        className={`stage-filter-item${statusFilter === stage.value && funnelFilter === funnel.value ? ' selected' : ''}`}
+                                                        onClick={() => { setStatusFilter(stage.value); setFunnelFilter(funnel.value); setStageFilterOpen(false); currentPageRef.current = 1; setCurrentPage(1); }}
                                                     >
                                                         <span className="stage-filter-dot" style={{ background: stage.color || '#6366f1' }} />
                                                         {stage.label}
@@ -2877,9 +2864,10 @@ const Inbox = () => {
                                 </div>
                             )}
                         </div>
-
                     </div>
                 </div>
+
+
 
                     {/* Search */}
                     <div className={`inbox-search${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
@@ -3071,6 +3059,12 @@ const Inbox = () => {
                                 </div>
                             );
                         })()}
+                        {/* Result Count Display */}
+                        {(statusFilter || funnelFilter) && (
+                            <div className="toolbar-total-count">
+                                {totalItems} {t('common.items', 'adet')}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -3192,6 +3186,8 @@ const Inbox = () => {
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
                                             )}
+
+
 
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
@@ -3512,7 +3508,8 @@ const Inbox = () => {
                                                 const stageOptions = (activeFunnel && activeFunnel.stages && activeFunnel.stages.length > 0)
                                                     ? activeFunnel.stages
                                                     : CUSTOMER_STATUS_OPTIONS;
-                                                const currentStageColor = stageOptions.find(o => o.value === (selectedItem.contact.status || stageOptions[0]?.value))?.color || '#3b82f6';
+                                                const activeStageVal = selectedItem._effectiveStageId || selectedItem.funnelStageId || selectedItem.contact?.funnelStageId || stageOptions[0]?.value;
+                                                const currentStageColor = stageOptions.find(o => o.value === activeStageVal)?.color || '#3b82f6';
                                                 return (
                                                     <>
                                                         {/* Funnel Seçici — sol */}
@@ -3543,14 +3540,14 @@ const Inbox = () => {
                                                                 style={{ backgroundColor: currentStageColor }}
                                                             />
                                                             <select
-                                                                value={selectedItem.contact.status || stageOptions[0]?.value || 'NEW_APPLICATION'}
+                                                                value={activeStageVal}
                                                                 onChange={async (e) => {
                                                                     const newStatus = e.target.value;
                                                                     try {
                                                                         await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStatus });
                                                                         // Also persist the funnelStageId on the conversation so it survives page refresh
                                                                         await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelStageId: newStatus });
-                                                                        setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus }, funnelStageId: newStatus }));
+                                                                        setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus }, funnelStageId: newStatus, _effectiveStageId: newStatus }));
                                                                         // Update sidebar funnel stage tag in real time
                                                                         const changedStage = stageOptions.find(o => o.value === newStatus);
                                                                         window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
@@ -4441,18 +4438,21 @@ const Inbox = () => {
             {selectedItem && showContactSidebar && (selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
                 <div
                     className="inbox-contact-sidebar-wrapper"
-                    onClick={() => setShowContactSidebar(false)}
+                    onClick={e => {
+                        // Sadece mobilde ve wrapper'ın kendisine (backdrop) tıklanınca kapat
+                        if (window.innerWidth <= 768 && e.target === e.currentTarget) {
+                            setShowContactSidebar(false);
+                        }
+                    }}
                 >
-                    <div onClick={e => e.stopPropagation()}>
-                        <ContactSidebar
-                            conversationId={selectedItem.id}
-                            isOpen={true}
-                            members={members}
-                            onAssign={userId => handleAssignUser(selectedItem.id, userId)}
-                            isOwner={isOwner}
-                            onClose={() => setShowContactSidebar(false)}
-                        />
-                    </div>
+                    <ContactSidebar
+                        conversationId={selectedItem.id}
+                        isOpen={true}
+                        members={members}
+                        onAssign={userId => handleAssignUser(selectedItem.id, userId)}
+                        isOwner={isOwner}
+                        onClose={() => setShowContactSidebar(false)}
+                    />
                 </div>
             )}
 

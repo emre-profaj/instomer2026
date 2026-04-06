@@ -11,6 +11,7 @@ import {
     scheduleCall,
     getScheduledCalls,
     cancelScheduledCall,
+    updateScheduledCall,
     recoverCallConversations,
     bulkRetryCall,
     syncRetellCalls
@@ -40,6 +41,7 @@ router.get('/:workspaceId/analytics', requireWorkspaceAccess, getCallAnalytics);
 // Scheduled Calls
 router.post('/:workspaceId/schedule-call', requireWorkspaceAccess, scheduleCall);
 router.get('/:workspaceId/scheduled-calls', requireWorkspaceAccess, getScheduledCalls);
+router.patch('/:workspaceId/scheduled-calls/:id', requireWorkspaceAccess, updateScheduledCall);
 router.delete('/:workspaceId/scheduled-calls/:id', requireWorkspaceAccess, cancelScheduledCall);
 
 // Recovery: create conversations for past calls

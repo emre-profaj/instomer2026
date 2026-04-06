@@ -51,8 +51,7 @@ router.post(
     [
         body('title').notEmpty().withMessage('Başlık gereklidir'),
         body('startTime').notEmpty().withMessage('Başlangıç zamanı gereklidir'),
-        body('endTime').notEmpty().withMessage('Bitiş zamanı gereklidir'),
-        body('assignedToId').notEmpty().withMessage('Atanan kişi gereklidir')
+        body('endTime').notEmpty().withMessage('Bitiş zamanı gereklidir')
     ],
     createAppointment
 );

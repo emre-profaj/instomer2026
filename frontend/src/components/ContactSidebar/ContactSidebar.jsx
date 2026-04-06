@@ -250,14 +250,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 setSummary(conversation.aiSummary);
             }
 
-            // Load funnel stage for this conversation
-            if (conversation?.funnelStageId && currentWorkspace?.id) {
+            // Load funnel stage for this conversation (Effective Status: Conversation Stage first, then Contact Status)
+            const effectiveStageId = conversation?.funnelStageId || profileData?.status;
+            if (effectiveStageId && currentWorkspace?.id) {
                 try {
                     const funnelsRes = await funnelAPI.getAll(currentWorkspace.id);
                     const funnels = funnelsRes.data?.funnels || [];
                     let found = null;
                     for (const funnel of funnels) {
-                        const stage = (funnel.stages || []).find(s => s.id === conversation.funnelStageId);
+                        const stage = (funnel.stages || []).find(s => s.id === effectiveStageId);
                         if (stage) { found = stage; break; }
                     }
                     setFunnelStage(found);

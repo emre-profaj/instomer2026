@@ -1,10 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import Retell from 'retell-sdk';
 import { createNotification } from './notification.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { emitToWorkspace } from '../socket.js';
 
-const prisma = new PrismaClient();
+
+// In-memory lock to prevent duplicate concurrent calls for the same number
+// Key: "workspaceId:normalizedPhone" — held for 30s then auto-released
+const autoCallLocks = new Set();
 
 // Get Retell settings for a workspace
 export const getSettings = async (req, res) => {
@@ -72,65 +75,100 @@ export const saveSettings = async (req, res) => {
 const recentAutoCallNumbers = new Map(); // phone -> timestamp
 
 /**
- * Parse preferred contact date+time from message content.
- * Detects:
- *   - Time ranges: "15:00-18:00", "saat 15-18 arası"
- *   - Specific dates: "12.03.2026", "12 Mart", "yarın", "bugün"
- *   - Single times: "15:00'te arayın", "saat 14'te"
- * Returns { startHour, startMinute, endHour, endMinute, targetDate? } or null
+ * AUTO-CALL SCHEDULING FUNCTIONS
+ * detectCallRequestInMessage, parsePreferredTime, calculateScheduledAt
  */
+
+// =====================================================================
+// TURKEY TIMEZONE HELPER
+// =====================================================================
+const TR_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3
+
 /**
- * detectCallRequestInMessage
- * Detects if a customer message requests a call (immediate or scheduled).
+ * Get current time in Turkey as { hours, minutes, day, date }
+ */
+function getTurkeyNow(baseDate = new Date()) {
+    const utc = new Date(baseDate).getTime();
+    const tr = new Date(utc + TR_OFFSET_MS);
+    return {
+        hours: tr.getUTCHours(),
+        minutes: tr.getUTCMinutes(),
+        day: tr.getUTCDay(),
+        date: tr.getUTCDate(),
+        month: tr.getUTCMonth(),
+        year: tr.getUTCFullYear(),
+        totalMinutes: tr.getUTCHours() * 60 + tr.getUTCMinutes(),
+        _utcEpoch: utc
+    };
+}
+
+/**
+ * Create a Date (UTC) that represents a specific Turkey local time on a given day.
+ * E.g., createTRDate(baseDate, 15, 0) → returns UTC Date for 15:00 TR on same day as baseDate.
+ */
+function createTRDate(baseDate, hours, minutes, dayOffset = 0) {
+    const utc = new Date(baseDate).getTime();
+    const tr = new Date(utc + TR_OFFSET_MS);
+    tr.setUTCHours(hours, minutes, 0, 0);
+    if (dayOffset) tr.setUTCDate(tr.getUTCDate() + dayOffset);
+    // Convert back to UTC
+    return new Date(tr.getTime() - TR_OFFSET_MS);
+}
+
+// =====================================================================
+// detectCallRequestInMessage
+// =====================================================================
+/**
+ * Detects if a customer message explicitly requests a phone call.
+ *
  * Returns:
- *   { type: 'immediate' }    → call now
+ *   { type: 'immediate' }                    → call right now
  *   { type: 'scheduled', scheduledAt: Date }  → call at specific time
- *   null → no call request
+ *   null                                      → no call request detected
+ *
+ * RULES:
+ *   - Time matching ONLY with colon separator (HH:MM), never dot
+ *   - "saat" prefix is REQUIRED to match a specific time
+ *   - A call-verb ("ara", "arayın", "telefon" etc.) is REQUIRED for scheduled
+ *   - Dates like "17.03.2026" and project codes like "9.03.26" are NEVER matched
  */
 export function detectCallRequestInMessage(text) {
     if (!text || typeof text !== 'string') return null;
     const t = text.toLowerCase().trim();
-    const now = new Date();
+    const trNow = getTurkeyNow();
     let scheduledAt = null;
 
-
-    // === CHECK FOR SPECIFIC TIME FIRST ===
-    // "10:55 de", "saat 15:00", "15.30'da", "10 55", "11:00'de" etc.
-    const timeMatch = t.match(/(?:saat\s+)?(\d{1,2})[:\.](\d{2})(?:\s*(?:de|da|te|ta|'de|'da|'te|'ta))?/);
+    // === CHECK FOR SPECIFIC TIME (requires "saat" prefix) ===
+    // Matches: "saat 15:00", "saat 15:30'da", "saat 15:00'te"
+    const timeMatch = t.match(/saat\s+(\d{1,2}):(\d{2})(?:\s*(?:de|da|te|ta|'de|'da|'te|'ta))?/);
     if (timeMatch) {
         const h = parseInt(timeMatch[1]);
         const m = parseInt(timeMatch[2]);
-        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-            const target = new Date();
-            target.setHours(h, m, 0, 0);
-            if (target <= now) target.setDate(target.getDate() + 1);
-            if (/yarın/.test(t)) target.setDate(now.getDate() + 1);
-            scheduledAt = target;
+        if (h >= 6 && h <= 23 && m >= 0 && m <= 59) {
+            // Schedule at this time today (Turkey), or tomorrow if already passed
+            const dayOffset = (h * 60 + m <= trNow.totalMinutes) ? 1 : 0;
+            scheduledAt = createTRDate(new Date(), h, m, dayOffset);
         }
     }
 
     // "saat 15'te" / "saat 3'te" (hour only, no minutes)
     if (!scheduledAt) {
-        const hourOnly = t.match(/(?:saat\s+)(\d{1,2})(?:'[a-zçğıöşü]+|\s+de|\s+da|\s+te|\s+ta)/);
+        const hourOnly = t.match(/saat\s+(\d{1,2})(?:'[a-zçğıöşü]+|\s+de|\s+da|\s+te|\s+ta)/);
         if (hourOnly) {
             const h = parseInt(hourOnly[1]);
-            if (h >= 0 && h <= 23) {
-                const target = new Date();
-                target.setHours(h, 0, 0, 0);
-                if (target <= now) target.setDate(target.getDate() + 1);
-                if (/yarın/.test(t)) target.setDate(now.getDate() + 1);
-                scheduledAt = target;
+            if (h >= 6 && h <= 23) {
+                const dayOffset = (h * 60 <= trNow.totalMinutes) ? 1 : 0;
+                scheduledAt = createTRDate(new Date(), h, 0, dayOffset);
             }
         }
     }
 
-    // If we found a specific time AND a call-related verb → schedule for that time
-    const hasCallVerb = /\bara\b|\barayın\b|\barayabilir\b|\barar\b|\bcall\b|\btelefon\b|\biletişim\b|\bgörüş\b/.test(t);
+    // Specific time found → require a call-related verb
+    const hasCallVerb = /\bara\b|\barayın\b|\barayabilir\b|\barar\b|\bcall\b|\btelefon\b|\bgörüşelim\b|\bkonuşalım\b/.test(t);
     if (scheduledAt && hasCallVerb) return { type: 'scheduled', scheduledAt };
 
     // === NO TIME FOUND → check for immediate call keywords ===
     const immediatePatterns = [
-        // Türkçe - temel
         /\bbeni\s+ara\b/, /\bbeni\s+arayın\b/, /\bbeni\s+arar\s+mısınız\b/,
         /\bbeni\s+arar\s+mısın\b/, /\bbeni\s+arayabilir\s+misin\b/, /\bbeni\s+arayabilir\s+misiniz\b/,
         /\bhemen\s+ara\b/, /\bhemen\s+arayın\b/, /\bşimdi\s+ara\b/, /\bşimdi\s+arayın\b/,
@@ -144,7 +182,6 @@ export function detectCallRequestInMessage(text) {
         /\bsizi\s+arayın\b/, /\bsizi\s+arasın\b/,
         /\biletişime\s+geç\b/, /\biletişime\s+geçin\b/,
         /\bsöyleşelim\b/, /\bgörüşelim\b/, /\bkonuşalım\b/,
-        // İngilizce
         /\bcall\s+me\b/, /\bcall\s+now\b/, /\bplease\s+call\b/, /\bgive\s+me\s+a\s+call\b/,
         /\bcan\s+you\s+call\b/, /\bcould\s+you\s+call\b/, /\bwould\s+you\s+call\b/,
         /\breach\s+out\b/, /\bcontact\s+me\b/, /\bphone\s+me\b/, /\bring\s+me\b/,
@@ -157,276 +194,135 @@ export function detectCallRequestInMessage(text) {
     return null;
 }
 
-
+// =====================================================================
+// parsePreferredTime
+// =====================================================================
+/**
+ * Parse a customer's preferred callback time WINDOW from message content.
+ *
+ * ONLY matches these formats:
+ *   1. "HH:MM-HH:MM"  (colon required, e.g. "15:00-18:00")
+ *   2. "saat X-Y arası" or "saat X-Y" (context keyword required)
+ *
+ * NEVER matches:
+ *   - Dates like "17.03.2026" or project codes like "9.03.26"
+ *   - Phone numbers like "+905554443322"
+ *   - Random digit-dash-digit patterns without time context
+ *
+ * @returns {{ startHour, startMinute, endHour, endMinute }|null}
+ */
 function parsePreferredTime(messageContent) {
-
     if (!messageContent || typeof messageContent !== 'string') return null;
-
     const text = messageContent.toLowerCase();
 
-    // ⚠️ GUARD: Only parse preferred time if message contains a call-related verb.
-    // Without this check, form metadata timestamps (e.g. "13.03.2026 14:15") would be
-    // misinterpreted as customer-requested call times, causing next-day scheduling.
-    const hasCallIntent = /\bara\b|\barayın\b|\barayabilir\b|\barar\b|\bcall\b|\btelefon\b|\biletişim\b|\bgörüş\b|\bulaşın\b|\bulaşabilir\b/.test(text);
-    if (!hasCallIntent) return null;
-    let result = null;
-
-    // === TIME PARSING ===
-
-    // Pattern 1: "15:00-18:00" or "15.00-18.00" or "15:00 - 18:00"
-    const rangeMatch = text.match(/(\d{1,2})[:\.](\d{2})\s*[-–]\s*(\d{1,2})[:\.](\d{2})/);
-    if (rangeMatch) {
-        const [, sh, sm, eh, em] = rangeMatch;
-        const startH = parseInt(sh), startM = parseInt(sm), endH = parseInt(eh), endM = parseInt(em);
-        if (startH >= 0 && startH <= 23 && endH >= 0 && endH <= 23) {
-            result = { startHour: startH, startMinute: startM, endHour: endH, endMinute: endM };
+    // Pattern 1: "15:00-18:00" or "15:00 - 18:00" (strict HH:MM-HH:MM with colon)
+    const rangeHHMM = text.match(/(\d{1,2}):(\d{2})\s*[-\u2013]\s*(\d{1,2}):(\d{2})/);
+    if (rangeHHMM) {
+        const startH = parseInt(rangeHHMM[1]), startM = parseInt(rangeHHMM[2]);
+        const endH   = parseInt(rangeHHMM[3]), endM   = parseInt(rangeHHMM[4]);
+        if (startH >= 6 && endH > startH && endH <= 23) {
+            console.log(`🔍 [parsePreferredTime] Matched HH:MM range: ${startH}:${String(startM).padStart(2,'0')}-${endH}:${String(endM).padStart(2,'0')}`);
+            return { startHour: startH, startMinute: startM, endHour: endH, endMinute: endM };
         }
     }
 
-    // Pattern 2: "saat 15-18" or "15-18 arası" (hour only)
-    if (!result) {
-        const hourRangeMatch = text.match(/(?:saat|aras[ıi]|ulaş|zaman|dilim)[^0-9]*(\d{1,2})\s*[-–]\s*(\d{1,2})/);
-        if (hourRangeMatch) {
-            const startH = parseInt(hourRangeMatch[1]), endH = parseInt(hourRangeMatch[2]);
-            if (startH >= 6 && startH <= 23 && endH >= 6 && endH <= 23) {
-                result = { startHour: startH, startMinute: 0, endHour: endH, endMinute: 0 };
-            }
+    // Pattern 2: "saat 15-18 arası" or "saat 15-18" (requires "saat" AND/OR "arası" context)
+    // This guards against matching random digit-dash-digit patterns from dates/codes
+    const rangeWithContext = text.match(/saat\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2})(?:\s*(?:aras[ıi]|saat))?/);
+    if (rangeWithContext) {
+        const startH = parseInt(rangeWithContext[1]), endH = parseInt(rangeWithContext[2]);
+        if (startH >= 6 && endH > startH && endH <= 23 && endH - startH <= 8) {
+            console.log(`🔍 [parsePreferredTime] Matched "saat X-Y" range: ${startH}-${endH}`);
+            return { startHour: startH, startMinute: 0, endHour: endH, endMinute: 0 };
         }
     }
 
-    // Pattern 3: standalone "15-18 arası" or "15-18 saat"
-    if (!result) {
-        const standAloneRange = text.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s*(?:arası|arasi|saat)/);
-        if (standAloneRange) {
-            const startH = parseInt(standAloneRange[1]), endH = parseInt(standAloneRange[2]);
-            if (startH >= 6 && startH <= 23 && endH >= 6 && endH <= 23) {
-                result = { startHour: startH, startMinute: 0, endHour: endH, endMinute: 0 };
-            }
+    // Pattern 2b: "15-18 arası" (requires "arası" suffix, no "saat" prefix)
+    const rangeWithArasi = text.match(/(\d{1,2})\s*[-\u2013]\s*(\d{1,2})\s+aras[ıi]/);
+    if (rangeWithArasi) {
+        const startH = parseInt(rangeWithArasi[1]), endH = parseInt(rangeWithArasi[2]);
+        if (startH >= 6 && endH > startH && endH <= 23 && endH - startH <= 8) {
+            console.log(`🔍 [parsePreferredTime] Matched "X-Y arası" range: ${startH}-${endH}`);
+            return { startHour: startH, startMinute: 0, endHour: endH, endMinute: 0 };
         }
     }
 
-    // Pattern 4: Single time - "15:00'te arayın", "saat 14'te", "14:30'da"
-    if (!result) {
-        const singleTimeMatch = text.match(/(?:saat\s*)?(\d{1,2})[:\.]?(\d{2})?\s*['']?\s*(?:te|da|de|'te|'da)/);
-        if (singleTimeMatch) {
-            const h = parseInt(singleTimeMatch[1]);
-            const m = parseInt(singleTimeMatch[2] || '0');
-            if (h >= 6 && h <= 23) {
-                // Single time → create a 1-hour window starting from that time
-                result = { startHour: h, startMinute: m, endHour: Math.min(h + 1, 23), endMinute: m };
-            }
-        }
-    }
-
-    if (!result) return null;
-
-    // === DATE PARSING ===
-    const turkishMonths = {
-        'ocak': 0, 'şubat': 1, 'mart': 2, 'nisan': 3, 'mayıs': 4, 'haziran': 5,
-        'temmuz': 6, 'ağustos': 7, 'eylül': 8, 'ekim': 9, 'kasım': 10, 'aralık': 11,
-        'subat': 1, 'mayis': 4, 'agustos': 7, 'eylul': 8, 'kasim': 10, 'aralik': 11
-    };
-
-    const now = new Date();
-
-    // Pattern A: "12.03.2026" or "12/03/2026" or "12-03-2026"
-    const fullDateMatch = text.match(/(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{4})/);
-    if (fullDateMatch) {
-        const day = parseInt(fullDateMatch[1]);
-        const month = parseInt(fullDateMatch[2]) - 1; // 0-indexed
-        const year = parseInt(fullDateMatch[3]);
-        const target = new Date(year, month, day);
-        if (target >= now || target.toDateString() === now.toDateString()) {
-            result.targetDate = target;
-            console.log(`📅 [AutoCall] Parsed specific date: ${day}.${month + 1}.${year}`);
-        }
-    }
-
-    // Pattern B: "12 Mart" or "12 mart"
-    if (!result.targetDate) {
-        for (const [monthName, monthIndex] of Object.entries(turkishMonths)) {
-            const datePattern = new RegExp(`(\\d{1,2})\\s+${monthName}`);
-            const match = text.match(datePattern);
-            if (match) {
-                const day = parseInt(match[1]);
-                let year = now.getFullYear();
-                let target = new Date(year, monthIndex, day);
-                // If the date is in the past, assume next year
-                if (target < now && target.toDateString() !== now.toDateString()) {
-                    target = new Date(year + 1, monthIndex, day);
-                }
-                result.targetDate = target;
-                console.log(`📅 [AutoCall] Parsed date: ${day} ${monthName} ${target.getFullYear()}`);
-                break;
-            }
-        }
-    }
-
-    // Pattern C: "yarın" (tomorrow) or "bugün" (today)
-    if (!result.targetDate) {
-        if (text.includes('yarın') || text.includes('yarin')) {
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            result.targetDate = tomorrow;
-            console.log(`📅 [AutoCall] Parsed: yarın (tomorrow)`);
-        } else if (text.includes('bugün') || text.includes('bugun')) {
-            result.targetDate = new Date(now);
-            console.log(`📅 [AutoCall] Parsed: bugün (today)`);
-        }
-    }
-
-    // Pattern D: Turkish day names - "pazartesi", "salı" etc.
-    if (!result.targetDate) {
-        const dayNames = {
-            'pazartesi': 1, 'salı': 2, 'sali': 2, 'çarşamba': 3, 'carsamba': 3,
-            'perşembe': 4, 'persembe': 4, 'cuma': 5, 'cumartesi': 6, 'pazar': 0
-        };
-        for (const [dayName, dayIndex] of Object.entries(dayNames)) {
-            if (text.includes(dayName)) {
-                const today = now.getDay();
-                let daysAhead = dayIndex - today;
-                if (daysAhead <= 0) daysAhead += 7; // Next week
-                const target = new Date(now);
-                target.setDate(target.getDate() + daysAhead);
-                result.targetDate = target;
-                console.log(`📅 [AutoCall] Parsed day name: ${dayName} (${daysAhead} days ahead)`);
-                break;
-            }
-        }
-    }
-
-    console.log(`🕐 [AutoCall] Parsed preferred time: ${result.startHour}:${String(result.startMinute).padStart(2, '0')}-${result.endHour}:${String(result.endMinute).padStart(2, '0')}${result.targetDate ? ` on ${result.targetDate.toLocaleDateString('tr-TR')}` : ''}`);
-    return result;
+    console.log(`🔍 [parsePreferredTime] No preferred time found in message`);
+    return null;
 }
 
+// =====================================================================
+// calculateScheduledAt
+// =====================================================================
 /**
- * Calculate milliseconds until next valid call window.
+ * Calculate the EXACT Date (UTC) when the call should be made.
+ * All time comparisons use Turkey timezone (UTC+3).
  *
- * Scenarios:
- *  - insideWindowDelayMs > 0 and currently INSIDE window → apply that delay (e.g. 5 min)
- *  - currently OUTSIDE window (or wrong day) → delay until start of next business window
- *  - no schedule → return 0 (call now)
+ *  A) preferredWindow provided:
+ *     - Window hasn't started yet today  → schedule at window start today
+ *     - Currently inside window          → call immediately
+ *     - Window already passed today      → schedule at window start tomorrow
  *
- * @param {Object|null} preferredTime - { startHour, startMinute, endHour, endMinute, targetDate? }
- * @param {Object|null} schedule - { start: '09:00', end: '18:00', days: [0..6] }
- * @param {number} insideWindowDelayMs - extra ms to add when INSIDE the window (default 0)
- * @returns {number} delay in ms (0 = call now)
+ *  B) No preferredWindow → use business hours (same logic as A)
+ *
+ * @returns {Date} UTC Date for when to schedule the call
  */
-function calculateCallDelay(preferredTime, schedule, insideWindowDelayMs = 0) {
-    const now = new Date();
+function calculateScheduledAt(preferredWindow, schedule, baseDate = new Date()) {
+    const tr = getTurkeyNow(baseDate);
+    const nowMin = tr.totalMinutes;
 
-    // === PRIORITY 1: Preferred time from message (with optional specific date) ===
-    if (preferredTime) {
-        const { startHour, startMinute, endHour, endMinute, targetDate } = preferredTime;
+    if (preferredWindow) {
+        const { startHour, startMinute, endHour, endMinute } = preferredWindow;
+        const windowStartMin = startHour * 60 + startMinute;
+        const windowEndMin   = endHour * 60 + endMinute;
 
-        if (targetDate) {
-            const target = new Date(targetDate);
-            target.setHours(startHour, startMinute, 0, 0);
-            if (target <= now) {
-                const endToday = new Date(targetDate);
-                endToday.setHours(endHour, endMinute, 0, 0);
-                if (endToday > now) {
-                    console.log(`🕐 [AutoCall] Specific date+time: within window, calling now`);
-                    return 0;
-                }
-                target.setDate(target.getDate() + 1);
-                target.setHours(startHour, startMinute, 0, 0);
-            }
-            const delayMs = target.getTime() - now.getTime();
-            console.log(`🕐 [AutoCall] Scheduling for specific date: ${target.toLocaleString('tr-TR')} (delay: ${Math.round(delayMs / 1000)}s)`);
-            return Math.max(0, delayMs);
-        }
-
-        const currentTotalMinutes = now.getHours() * 60 + now.getMinutes();
-        const startTotal = startHour * 60 + startMinute;
-        const endTotal = endHour * 60 + endMinute;
-
-        if (currentTotalMinutes >= startTotal && currentTotalMinutes < endTotal) {
-            return 0;
-        }
-
-        const target = new Date(now);
-        if (currentTotalMinutes < startTotal) {
-            target.setHours(startHour, startMinute, 0, 0);
+        if (nowMin < windowStartMin) {
+            console.log(`🕐 [AutoCall] Preferred window: scheduling at ${startHour}:${String(startMinute).padStart(2,'0')} today (TR)`);
+            return createTRDate(baseDate, startHour, startMinute);
+        } else if (nowMin < windowEndMin) {
+            console.log(`🕐 [AutoCall] Preferred window: currently inside — calling immediately`);
+            return new Date(baseDate);
         } else {
-            target.setDate(target.getDate() + 1);
-            target.setHours(startHour, startMinute, 0, 0);
-        }
-        const delayMs = target.getTime() - now.getTime();
-        console.log(`🕐 [AutoCall] Preferred time window: scheduling for ${target.toLocaleString('tr-TR')}`);
-        return Math.max(0, delayMs);
-    }
-
-    // === PRIORITY 2: Rule schedule (callStart/callEnd) ===
-    if (!schedule) {
-        // No schedule defined → call after insideWindowDelayMs (or immediately)
-        return insideWindowDelayMs;
-    }
-
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentDay = now.getDay();
-
-    const [sH, sM] = (schedule.start || '09:00').split(':').map(Number);
-    const [eH, eM] = (schedule.end || '18:00').split(':').map(Number);
-    const startHour = sH, startMinute = sM || 0;
-    const endHour = eH, endMinute = eM || 0;
-
-    // Check if current day is allowed
-    if (schedule.days && Array.isArray(schedule.days) && schedule.days.length > 0) {
-        if (!schedule.days.includes(currentDay)) {
-            let daysToWait = 1;
-            for (let i = 1; i <= 7; i++) {
-                const nextDay = (currentDay + i) % 7;
-                if (schedule.days.includes(nextDay)) {
-                    daysToWait = i;
-                    break;
-                }
-            }
-            const target = new Date(now);
-            target.setDate(target.getDate() + daysToWait);
-            target.setHours(startHour, startMinute, 0, 0);
-            const delayMs = target.getTime() - now.getTime();
-            console.log(`🕐 [AutoCall] Day not allowed (${currentDay}), scheduling for ${daysToWait} day(s) later at ${target.toLocaleString('tr-TR')}`);
-            return Math.max(0, delayMs);
+            console.log(`🕐 [AutoCall] Preferred window passed — scheduling at ${startHour}:${String(startMinute).padStart(2,'0')} tomorrow (TR)`);
+            return createTRDate(baseDate, startHour, startMinute, 1);
         }
     }
 
-    const currentTotal = currentHour * 60 + currentMinute;
-    const startTotal = startHour * 60 + startMinute;
-    const endTotal = endHour * 60 + endMinute;
+    // No preferred window — use business hours
+    const bizStart = schedule?.start || '09:00';
+    const bizEnd   = schedule?.end   || '18:00';
+    const [bizSH, bizSM] = bizStart.split(':').map(Number);
+    const [bizEH, bizEM] = bizEnd.split(':').map(Number);
+    const bizStartMin = bizSH * 60 + bizSM;
+    const bizEndMin   = bizEH * 60 + bizEM;
 
-    if (currentTotal >= startTotal && currentTotal < endTotal) {
-        // ✅ INSIDE business hours → apply 5-minute (or configured) delay
-        console.log(`🕐 [AutoCall] Inside business hours window. Applying inside-window delay: ${Math.round(insideWindowDelayMs / 1000)}s`);
-        return insideWindowDelayMs;
+    // Check if today is an allowed day
+    const allowedDays = (schedule?.days && schedule.days.length > 0) ? schedule.days : null;
+    const isAllowedDay = !allowedDays || allowedDays.includes(tr.day);
+
+    if (isAllowedDay && nowMin >= bizStartMin && nowMin < bizEndMin) {
+        console.log(`🕐 [AutoCall] Inside business hours (${bizStart}-${bizEnd}) — calling immediately`);
+        return new Date(baseDate);
     }
 
-    // ❌ OUTSIDE business hours → schedule for start of NEXT valid window
-    const target = new Date(now);
-    if (currentTotal < startTotal) {
-        // Before today's window starts
-        target.setHours(startHour, startMinute, 0, 0);
-    } else {
-        // After today's window ended — next day (or next valid day)
-        target.setDate(target.getDate() + 1);
-        // If days filter exists, advance to next allowed day
-        if (schedule.days && Array.isArray(schedule.days) && schedule.days.length > 0) {
-            for (let i = 0; i < 7; i++) {
-                const testDay = new Date(target);
-                testDay.setDate(testDay.getDate() + i);
-                if (schedule.days.includes(testDay.getDay())) {
-                    target.setDate(testDay.getDate());
-                    break;
-                }
-            }
+    if (isAllowedDay && nowMin < bizStartMin) {
+        console.log(`🕐 [AutoCall] Before business hours — scheduling at ${bizStart} today (TR)`);
+        return createTRDate(baseDate, bizSH, bizSM);
+    }
+
+    // Business hours passed or today not allowed — find next valid day
+    for (let offset = 1; offset <= 7; offset++) {
+        const futureDate = createTRDate(baseDate, bizSH, bizSM, offset);
+        const futureTR = getTurkeyNow(futureDate);
+        if (!allowedDays || allowedDays.includes(futureTR.day)) {
+            console.log(`🕐 [AutoCall] Outside business hours — scheduling at ${bizStart} in ${offset} day(s) (TR: ${futureDate.toISOString()})`);
+            return futureDate;
         }
-        target.setHours(startHour, startMinute, 0, 0);
     }
 
-    const delayMs = target.getTime() - now.getTime();
-    console.log(`🕐 [AutoCall] OUTSIDE business hours (${startHour}:${String(startMinute).padStart(2,'0')}–${endHour}:${String(endMinute).padStart(2,'0')}). Next window: ${target.toLocaleString('tr-TR')}`);
-    return Math.max(0, delayMs);
+    // Fallback: next day at business start
+    console.log(`🕐 [AutoCall] Fallback — scheduling at ${bizSH}:${String(bizSM).padStart(2,'0')} tomorrow (TR)`);
+    return createTRDate(baseDate, bizSH, bizSM, 1);
 }
 
 /**
@@ -438,8 +334,24 @@ function calculateCallDelay(preferredTime, schedule, insideWindowDelayMs = 0) {
  * @param {string} contactName - Contact name for personalization
  * @param {string} triggerSource - One of: onNewLead, onWhatsApp, onMessenger, onWebForm, onMissedChat
  * @param {string|null} messageContent - Optional message content to parse for preferred time
+ * @param {Date} baseDate - The timestamp the event occurred to build schedules from
  */
-export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null) => {
+export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date()) => {
+    // ─── CONCURRENCY LOCK ───────────────────────────────────────────────────────
+    // Prevent race condition: multiple triggers firing in parallel for the same
+    // phone create multiple ScheduledCall rows because they all pass the PENDING
+    // check simultaneously. Only the first caller gets through.
+    const rawPhone = phoneNumber ? String(phoneNumber).replace(/\s/g, '') : '';
+    const lockKey = `${workspaceId}:${rawPhone}`;
+    if (autoCallLocks.has(lockKey)) {
+        console.log(`🔒 [AutoCall] Lock active for ${lockKey} (trigger: ${triggerSource}) — skipping duplicate`);
+        return;
+    }
+    autoCallLocks.add(lockKey);
+    // Auto-release lock after 30 s so future legitimate retries can proceed
+    setTimeout(() => autoCallLocks.delete(lockKey), 30_000);
+    // ────────────────────────────────────────────────────────────────────────────
+
     try {
         if (!phoneNumber || !workspaceId) return;
 
@@ -517,6 +429,20 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             return;
         }
 
+        // Deduplication: don't create ANOTHER scheduled call if one is already PENDING for this number
+        const existingPendingCall = await prisma.scheduledCall.findFirst({
+            where: {
+                workspaceId,
+                toNumber: formattedPhone,
+                status: 'PENDING'
+            }
+        });
+
+        if (existingPendingCall) {
+            console.log(`⏭️ [AutoCall] Skipping: a PENDING scheduled call already exists for ${formattedPhone} (scheduledAt: ${existingPendingCall.scheduledAt?.toLocaleString('tr-TR')})`);
+            return;
+        }
+
         // Extract rule-specific config
         const ruleDelay = triggerConfig.delay !== undefined ? triggerConfig.delay : workspace.retellAutoCallDelay;
         const ruleAgentId = triggerConfig.agentId || workspace.retellAgentId;
@@ -526,6 +452,15 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             return;
         }
 
+        // 🛡️ SAFETY: System-generated triggers (LEAD, FORM, FLOW) should NEVER have their
+        // message content parsed for time preferences — they contain auto-formatted strings
+        // like dates ("23.03.2026") that can be misinterpreted as times ("23:03").
+        const SYSTEM_TRIGGERS = ['LEAD', 'FORM', 'FLOW_TRIGGER', 'FLOW_RETRY'];
+        if (SYSTEM_TRIGGERS.includes(triggerSource)) {
+            messageContent = null;
+            console.log(`🛡️ [AutoCall] System trigger "${triggerSource}" — message parsing skipped`);
+        }
+
         // 🕐 SMART SCHEDULING
         // 1. detectCallRequestInMessage: does the customer explicitly ask to be called?
         //    - type:'immediate' ("hemen ara", "beni arayın" etc.) → bypass schedule, call NOW
@@ -533,82 +468,107 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
         //    - null → fall through to business-hours logic
         // 2. parsePreferredTime: does the message contain a preferred time window?
         //    (e.g. "15:00-18:00 arası arayın") → schedule to that window
-        // 3. Business hours: inside → 5min delay, outside → wait until next window start
-        const INSIDE_WINDOW_DELAY_MS = 5 * 60 * 1000; // 5 minutes
-
+        // 3. Business hours: inside → call now+1min, outside → wait until next window start
         const callDetect = detectCallRequestInMessage(messageContent);
+        console.log(`🔍 [AutoCall] detectCallRequestInMessage result:`, JSON.stringify(callDetect));
+        console.log(`🔍 [AutoCall] messageContent (first 200):`, messageContent?.substring(0, 200));
+        console.log(`🔍 [AutoCall] baseDate:`, baseDate?.toISOString?.() || baseDate);
 
-        let scheduleDelay;
+        let scheduledAt;
 
         if (callDetect?.type === 'immediate') {
-            // Customer explicitly said "hemen ara", "beni arayın" etc. → ignore schedule
-            scheduleDelay = 0;
-            console.log(`📞 [AutoCall] Customer requested IMMEDIATE call — bypassing business hours`);
+            // Customer explicitly said "hemen ara", "beni arayın" etc. → call immediately
+            scheduledAt = new Date(baseDate);
+            console.log(`📞 [AutoCall] Customer requested IMMEDIATE call — scheduling immediately`);
 
         } else if (callDetect?.type === 'scheduled' && callDetect.scheduledAt) {
-            // Customer said "saat 15:00'te ara" → schedule for that exact time
-            const delayMs = callDetect.scheduledAt.getTime() - Date.now();
-            scheduleDelay = Math.max(0, delayMs);
-            console.log(`📞 [AutoCall] Customer requested call at ${callDetect.scheduledAt.toLocaleString('tr-TR')}. Delay: ${Math.round(scheduleDelay / 1000)}s`);
+            // Customer said "saat 15:00'te ara" → use that exact time
+            scheduledAt = callDetect.scheduledAt;
+            console.log(`📞 [AutoCall] Customer requested call at ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
 
         } else {
-            // No explicit customer request → apply business hours logic
-            const preferredTime = parsePreferredTime(messageContent); // time-window preference
+            // No explicit customer request → apply business hours / preferred window logic
+            let preferredWindow = parsePreferredTime(messageContent);
+
+            // Fallback: if no preferred time found in the trigger message,
+            // scan recent conversation messages (e.g., the "EK BİLGİLER" block may be in a different message)
+            if (!preferredWindow && contactId) {
+                try {
+                    const recentConversation = await prisma.conversation.findFirst({
+                        where: { contactId, workspaceId },
+                        orderBy: { lastMessageAt: 'desc' },
+                        select: { id: true }
+                    });
+                    if (recentConversation) {
+                        const recentMessages = await prisma.message.findMany({
+                            where: { conversationId: recentConversation.id },
+                            orderBy: { createdAt: 'desc' },
+                            take: 15,
+                            select: { content: true }
+                        });
+                        for (const msg of recentMessages) {
+                            preferredWindow = parsePreferredTime(msg.content);
+                            if (preferredWindow) {
+                                console.log(`📞 [AutoCall] Found preferred time window in conversation history: ${msg.content?.substring(0, 80)}`);
+                                break;
+                            }
+                        }
+                    }
+                } catch (scanErr) {
+                    console.warn(`⚠️ [AutoCall] Failed to scan conversation for preferred time:`, scanErr.message);
+                }
+            }
+
             const ruleSchedule = (triggerConfig.callStart && triggerConfig.callEnd) ? {
                 start: triggerConfig.callStart,
                 end: triggerConfig.callEnd,
                 days: workspace.retellAutoCallSchedule?.days || [0, 1, 2, 3, 4, 5, 6]
             } : workspace.retellAutoCallSchedule;
 
-            // Inside window → 5min delay, outside window → wait until start of next window
-            scheduleDelay = calculateCallDelay(preferredTime, ruleSchedule, INSIDE_WINDOW_DELAY_MS);
+            scheduledAt = calculateScheduledAt(preferredWindow, ruleSchedule, baseDate);
 
-            if (preferredTime) {
-                console.log(`📞 [AutoCall] Preferred time window from message. Delay: ${Math.round(scheduleDelay / 1000)}s`);
-            } else if (scheduleDelay >= INSIDE_WINDOW_DELAY_MS && scheduleDelay < 2 * INSIDE_WINDOW_DELAY_MS) {
-                console.log(`📞 [AutoCall] Inside business hours — 5-minute delay applied`);
-            } else if (scheduleDelay > 0) {
-                console.log(`📞 [AutoCall] Outside business hours — waiting until next window (${Math.round(scheduleDelay / 1000 / 60)} min)`);
+            console.log(`🔍 [AutoCall] parsePreferredTime result:`, JSON.stringify(preferredWindow));
+            if (preferredWindow) {
+                console.log(`📞 [AutoCall] Preferred time window → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+            } else {
+                console.log(`📞 [AutoCall] Business hours logic → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
             }
         }
 
+        console.log(`📅 [AutoCall] Final schedule: ${formattedPhone} → ${scheduledAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })} (UTC: ${scheduledAt.toISOString()})`);
 
-
-        const ruleDelayMs = (ruleDelay || 0) * 1000;
-        // Use the LARGER of schedule-based or per-rule fixed delay
-        const totalDelay = Math.max(scheduleDelay, ruleDelayMs);
-
-        const scheduledAt = new Date(Date.now() + totalDelay);
-        console.log(`📅 [AutoCall] Scheduling call to ${formattedPhone} at ${scheduledAt.toLocaleString('tr-TR')} (delay: ${Math.round(totalDelay / 1000)}s)`);
-
-        if (totalDelay > 2 * 60 * 1000) {
-            // Stagger: if other calls already scheduled near the same time, offset by 1 min each
-            const existingNearby = await prisma.scheduledCall.count({
-                where: {
-                    workspaceId,
-                    status: 'PENDING',
-                    scheduledAt: {
-                        gte: scheduledAt,
-                        lt: new Date(scheduledAt.getTime() + 60 * 60 * 1000) // within 1 hour window
-                    }
+        // Duplicate prevention: check for existing PENDING calls for this phone within 24 hours
+        const existingCall = await prisma.scheduledCall.findFirst({
+            where: {
+                workspaceId,
+                toNumber: formattedPhone,
+                status: 'PENDING',
+                scheduledAt: {
+                    gte: new Date(scheduledAt.getTime() - 24 * 60 * 60 * 1000),
+                    lte: new Date(scheduledAt.getTime() + 24 * 60 * 60 * 1000)
                 }
-            });
-            const staggeredAt = new Date(scheduledAt.getTime() + existingNearby * 60 * 1000);
-            if (existingNearby > 0) {
-                console.log(`📅 [AutoCall] Staggering: ${existingNearby} call(s) already queued near ${scheduledAt.toLocaleTimeString('tr-TR')}, offsetting by ${existingNearby} min → ${staggeredAt.toLocaleString('tr-TR')}`);
             }
+        });
+        if (existingCall) {
+            console.log(`⏭️ [AutoCall] Skipping duplicate: already have PENDING call for ${formattedPhone} at ${existingCall.scheduledAt.toLocaleString('tr-TR')}`);
+            return;
+        }
+
+        const delayMs = scheduledAt.getTime() - Date.now();
+        if (delayMs > 2 * 60 * 1000) {
             await prisma.scheduledCall.create({
                 data: {
                     workspaceId,
                     contactId: contactId || null,
                     contactName: contactName || null,
                     toNumber: formattedPhone,
-                    scheduledAt: staggeredAt,
+                    agentId: ruleAgentId || null,
+                    scheduledAt: scheduledAt,
                     status: 'PENDING',
                     createdById: 'auto'
                 }
             });
-            console.log(`📅 [AutoCall] Saved ScheduledCall to DB for ${staggeredAt.toLocaleString('tr-TR')}`);
+            console.log(`📅 [AutoCall] Saved ScheduledCall to DB for ${scheduledAt.toLocaleString('tr-TR')}`);
 
         } else {
             setTimeout(async () => {
@@ -617,7 +577,7 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                 } catch (callErr) {
                     console.error(`❌ [AutoCall] Failed to call ${formattedPhone}:`, callErr.message);
                 }
-            }, totalDelay);
+            }, Math.max(0, delayMs));
         }
 
     } catch (error) {
@@ -632,22 +592,37 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
         select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true }
     });
     if (!workspace?.retellApiKey) throw new Error('No Retell API key');
-    const ruleAgentId = agentId || workspace.retellAgentId;
+    
+    // Use provided agentId, otherwise fall back to workspace default
+    const effectiveAgentId = agentId || workspace.retellAgentId;
+    
+    if (!effectiveAgentId) throw new Error('No Retell Agent ID configured/provided');
+
     const client = new Retell({ apiKey: workspace.retellApiKey });
-    const callResponse = await client.call.createPhoneCall({
-        from_number: workspace.retellFromNumber,
+    const formattedFrom = normalizePhone(workspace.retellFromNumber);
+
+    const callParams = {
+        from_number: formattedFrom,
         to_number: toNumber,
-        override_agent_id: ruleAgentId,
-        metadata: { workspaceId, contactId: contactId || null, contactName: contactName || null, autoCallTrigger: triggerSource },
-        retell_llm_dynamic_variables: { customer_name: contactName || 'Müşteri' }
-    });
+        override_agent_id: effectiveAgentId,
+        metadata: { workspaceId, contactId: contactId || null, contactName: contactName || null, autoCallTrigger: triggerSource }
+    };
+
+    // Only add dynamic variables if we have a contact name
+    if (contactName) {
+        callParams.retell_llm_dynamic_variables = {
+            customer_name: contactName
+        };
+    }
+
+    const callResponse = await client.call.createPhoneCall(callParams);
     await prisma.retellCall.create({
         data: {
             workspace: { connect: { id: workspaceId } },
             contactId: contactId || null,
             callId: callResponse.call_id,
-            agentId: ruleAgentId,
-            fromNumber: workspace.retellFromNumber,
+            agentId: effectiveAgentId,
+            fromNumber: formattedFrom,
             toNumber,
             direction: 'outbound',
             status: callResponse.call_status || 'registered',
@@ -685,10 +660,18 @@ export const processScheduledCalls = async () => {
                     console.log(`📅 [ScheduledCall] Cancelled (dedup) for ${sc.toNumber} — already called`);
                     continue;
                 }
-                // Mark COMPLETED first to prevent duplicate execution on concurrent runs
-                await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'COMPLETED' } });
+                // 🔒 ATOMIC LOCK: Mark COMPLETED first using updateMany (returns count).
+                // If count=0, another runner already picked this up — skip to avoid duplicate calls.
+                const locked = await prisma.scheduledCall.updateMany({
+                    where: { id: sc.id, status: 'PENDING' },
+                    data: { status: 'COMPLETED' }
+                });
+                if (locked.count === 0) {
+                    console.log(`⏭️ [ScheduledCall] Skipping ${sc.id} — already picked up by another runner`);
+                    continue;
+                }
                 const ws = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true } });
-                await executeScheduledCall(sc.workspaceId, sc.toNumber, ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED');
+                await executeScheduledCall(sc.workspaceId, sc.toNumber, sc.agentId || ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED');
             } catch (err) {
                 console.error(`❌ [ScheduledCall] Failed for ${sc.toNumber}:`, err.message);
                 await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'FAILED', errorMessage: err.message } }).catch(() => {});
@@ -717,7 +700,35 @@ export const getAgents = async (req, res) => {
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const agents = await client.agent.list();
 
-        res.json({ agents: agents || [] });
+        // Unique by agent_id, prioritizing latest version and published state
+        const uniqueAgentsMap = new Map();
+        
+        // Sort by timestamp newest first to help pick the latest
+        const sortedAgents = (agents || []).sort((a, b) => 
+            (b.last_modification_timestamp || 0) - (a.last_modification_timestamp || 0)
+        );
+
+        sortedAgents.forEach(a => {
+            if (!uniqueAgentsMap.has(a.agent_id)) {
+                uniqueAgentsMap.set(a.agent_id, a);
+            } else {
+                // If we already have it, but this one is published and existing is not, prefer this
+                const existing = uniqueAgentsMap.get(a.agent_id);
+                if (a.is_published && !existing.is_published) {
+                    uniqueAgentsMap.set(a.agent_id, a);
+                }
+            }
+        });
+
+        let uniqueAgents = Array.from(uniqueAgentsMap.values());
+        
+        // If still too many (phantom agents), prioritize published ones only
+        if (uniqueAgents.length > 10) {
+            const publishedOnly = uniqueAgents.filter(a => a.is_published);
+            if (publishedOnly.length > 0) uniqueAgents = publishedOnly;
+        }
+
+        res.json({ agents: uniqueAgents });
     } catch (error) {
         console.error('❌ [Retell] Get agents error:', error);
         res.status(500).json({ error: 'Failed to fetch Retell agents' });
@@ -728,7 +739,7 @@ export const getAgents = async (req, res) => {
 export const makeCall = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { toNumber, contactId, contactName, conversationId: sourceConversationId } = req.body;
+        const { toNumber, contactId, contactName, conversationId: sourceConversationId, agentId } = req.body;
         const userId = req.user.id;
 
         if (!toNumber) {
@@ -740,8 +751,9 @@ export const makeCall = async (req, res) => {
             select: { retellApiKey: true, retellAgentId: true, retellFromNumber: true }
         });
 
-        if (!workspace?.retellApiKey || !workspace?.retellAgentId) {
-            return res.status(400).json({ error: 'Retell ayarları yapılandırılmamış' });
+        // Allow progress if either a specific agentId is provided OR workspace has a default
+        if (!workspace?.retellApiKey || (!agentId && !workspace?.retellAgentId)) {
+            return res.status(400).json({ error: 'Retell ayarları yapılandırılmamış (Agent ID eksik)' });
         }
 
         if (!workspace.retellFromNumber) {
@@ -749,24 +761,30 @@ export const makeCall = async (req, res) => {
         }
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
-
-        // Format phone number with proper normalization
         const formattedTo = normalizePhone(toNumber);
+        const effectiveAgentId = agentId || workspace.retellAgentId;
 
-        const callResponse = await client.call.createPhoneCall({
-            from_number: workspace.retellFromNumber,
+        const formattedFrom = normalizePhone(workspace.retellFromNumber);
+
+        const callParams = {
+            from_number: formattedFrom,
             to_number: formattedTo,
-            override_agent_id: workspace.retellAgentId,
+            override_agent_id: effectiveAgentId,
             metadata: {
                 workspaceId,
                 contactId: contactId || null,
                 contactName: contactName || null,
                 createdById: userId
-            },
-            retell_llm_dynamic_variables: {
-                customer_name: contactName || 'Müşteri'
             }
-        });
+        };
+
+        if (contactName) {
+            callParams.retell_llm_dynamic_variables = {
+                customer_name: contactName
+            };
+        }
+
+        const callResponse = await client.call.createPhoneCall(callParams);
 
         // Save call record
         const callRecord = await prisma.retellCall.create({
@@ -774,8 +792,8 @@ export const makeCall = async (req, res) => {
                 workspace: { connect: { id: workspaceId } },
                 contactId: contactId || null,
                 callId: callResponse.call_id,
-                agentId: workspace.retellAgentId,
-                fromNumber: workspace.retellFromNumber,
+                agentId: effectiveAgentId,
+                fromNumber: formattedFrom,
                 toNumber: formattedTo,
                 direction: 'outbound',
                 status: callResponse.call_status || 'registered',
@@ -1344,7 +1362,9 @@ async function handleCallEnded(call) {
                     transcript: call.transcript || null,
                     recordingUrl: call.recording_url || null,
                     endedReason: call.disconnection_reason || null,
-                    cost: call.call_cost?.combined_cost ?? null
+                    cost: call.call_cost?.combined_cost ?? null,
+                    // Retell'den gelen gerçek başlangıcç zamanını kaydet (yoksa mevcut değer korun)
+                    ...(call.start_timestamp ? { createdAt: new Date(call.start_timestamp) } : {})
                 }
             });
         } else {
@@ -1687,7 +1707,17 @@ async function handleCallAnalyzed(call) {
             }
         }
 
-        console.log(`📞 [Retell] Call analyzed: ${call.call_id}, sentiment: ${analysis.user_sentiment}`);
+        console.log(`📞 [Retell] Call analyzed: ${call.call_id}, sentiment: ${analysis.user_sentiment}, success: ${analysis.call_successful}`);
+
+        // === TRIGGER AUTOMATION ===
+        if (callRecord) {
+            try {
+                const { executeRetellAutomation } = await import('./automation.controller.js');
+                await executeRetellAutomation(callRecord.workspaceId, callRecord);
+            } catch (autoErr) {
+                console.error('❌ [Retell] Automation trigger error:', autoErr.message);
+            }
+        }
     } catch (err) {
         console.error('❌ [Retell] handleCallAnalyzed error:', err.message);
     }
@@ -1697,7 +1727,7 @@ async function handleCallAnalyzed(call) {
 export const scheduleCall = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { toNumber, contactId, contactName, scheduledAt } = req.body;
+        const { toNumber, contactId, contactName, scheduledAt, agentId } = req.body;
         const userId = req.user.id;
 
         if (!toNumber) {
@@ -1712,34 +1742,19 @@ export const scheduleCall = async (req, res) => {
             return res.status(400).json({ error: 'Planlanan saat gelecekte olmalı' });
         }
 
-        // Stagger: offset by 1 min per existing PENDING call near same time (same workspace)
-        const existingNearby = await prisma.scheduledCall.count({
-            where: {
-                workspaceId,
-                status: 'PENDING',
-                scheduledAt: {
-                    gte: scheduledDate,
-                    lt: new Date(scheduledDate.getTime() + 60 * 60 * 1000)
-                }
-            }
-        });
-        const staggeredDate = new Date(scheduledDate.getTime() + existingNearby * 60 * 1000);
-        if (existingNearby > 0) {
-            console.log(`📅 [Retell] Staggering manual schedule: ${existingNearby} call(s) already queued, offsetting by ${existingNearby} min → ${staggeredDate.toLocaleString('tr-TR')}`);
-        }
-
         const scheduled = await prisma.scheduledCall.create({
             data: {
                 workspaceId,
                 contactId: contactId || null,
                 contactName: contactName || null,
                 toNumber: normalizePhone(toNumber),
-                scheduledAt: staggeredDate,
+                agentId: agentId || null,
+                scheduledAt: scheduledDate,
                 createdById: userId
             }
         });
 
-        console.log(`📅 [Retell] Call scheduled: ${toNumber} at ${staggeredDate.toISOString()}`);
+        console.log(`📅 [Retell] Call scheduled: ${toNumber} at ${scheduledDate.toISOString()}`);
         res.json({ success: true, scheduledCall: scheduled });
 
     } catch (error) {
@@ -1794,6 +1809,42 @@ export const cancelScheduledCall = async (req, res) => {
     }
 };
 
+// Update (reschedule) a scheduled call
+export const updateScheduledCall = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const { scheduledAt } = req.body;
+
+        if (!scheduledAt) {
+            return res.status(400).json({ error: 'Yeni tarih/saat gerekli' });
+        }
+
+        const newDate = new Date(scheduledAt);
+        if (newDate <= new Date()) {
+            return res.status(400).json({ error: 'Planlanan saat gelecekte olmalı' });
+        }
+
+        const call = await prisma.scheduledCall.findFirst({
+            where: { id, workspaceId, status: 'PENDING' }
+        });
+
+        if (!call) {
+            return res.status(404).json({ error: 'Planlanmış arama bulunamadı' });
+        }
+
+        const updated = await prisma.scheduledCall.update({
+            where: { id },
+            data: { scheduledAt: newDate }
+        });
+
+        console.log(`📅 [Retell] Scheduled call rescheduled: ${id} → ${newDate.toISOString()}`);
+        res.json({ success: true, scheduledCall: updated });
+    } catch (error) {
+        console.error('❌ [Retell] Update scheduled call error:', error);
+        res.status(500).json({ error: 'Arama güncellenemedi' });
+    }
+};
+
 // Auto-execute scheduled calls (called by server interval)
 export const executeScheduledCalls = async () => {
     try {
@@ -1823,6 +1874,18 @@ export const executeScheduledCalls = async () => {
                         where: { id: sc.id },
                         data: { status: 'FAILED', errorMessage: 'AI Call ayarları yapılandırılmamış' }
                     });
+                    continue;
+                }
+
+                // 🔒 ATOMIC LOCK: Mark as PROCESSING first to prevent duplicate execution
+                // by the other scheduler (processScheduledCalls). If already picked up,
+                // the update will affect 0 rows and we skip.
+                const locked = await prisma.scheduledCall.updateMany({
+                    where: { id: sc.id, status: 'PENDING' },
+                    data: { status: 'COMPLETED' }
+                });
+                if (locked.count === 0) {
+                    console.log(`⏭️ [executeScheduledCalls] Skipping ${sc.id} — already picked up by another runner`);
                     continue;
                 }
 
@@ -1860,10 +1923,10 @@ export const executeScheduledCalls = async () => {
                     }
                 });
 
-                // Mark as completed
+                // Update retellCallId reference
                 await prisma.scheduledCall.update({
                     where: { id: sc.id },
-                    data: { status: 'COMPLETED', retellCallId: callResponse.call_id }
+                    data: { retellCallId: callResponse.call_id }
                 });
 
                 console.log(`✅ [Retell] Scheduled call executed: ${sc.id} -> ${formattedTo}`);
@@ -1981,7 +2044,7 @@ export const recoverCallConversations = async (req, res) => {
     }
 };
 
-// Sync historical calls from Retell API → DB → Inbox
+// Sync historical calls from Retell API → DB (Retell = tek kaynak of truth)
 export const syncRetellCalls = async (req, res) => {
     try {
         const { workspaceId } = req.params;
@@ -1997,7 +2060,7 @@ export const syncRetellCalls = async (req, res) => {
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
 
-        // Fetch calls from Retell API (paginated, up to 1000)
+        // ── 1. Retell'den tüm aramaları çek (sayfalı, maks 1000) ──
         let allCalls = [];
         let paginationKey = null;
         const PAGE_LIMIT = 100;
@@ -2006,233 +2069,141 @@ export const syncRetellCalls = async (req, res) => {
         do {
             const params = { limit: PAGE_LIMIT };
             if (paginationKey) params.pagination_key = paginationKey;
-            const calls = await client.call.list(params) || [];
-            allCalls = allCalls.concat(calls);
-            paginationKey = calls.length === PAGE_LIMIT ? calls[calls.length - 1].call_id : null;
+            const page = await client.call.list(params) || [];
+            allCalls = allCalls.concat(page);
+            paginationKey = page.length === PAGE_LIMIT ? page[page.length - 1].call_id : null;
             pageCount++;
         } while (paginationKey && pageCount < 10);
 
-        console.log(`📋 [Sync] Fetched ${allCalls.length} calls from Retell API`);
+        console.log(`📋 [Sync] Retell'den ${allCalls.length} arama çekildi`);
 
-        let newCalls = 0;
-        let updatedCalls = 0;
-        let inboxed = 0;
+        // ── 2. Retell'de OLMAYAN DB kayıtlarını sil (birebir eşleşme) ──
+        const retellIds = new Set(allCalls.map(c => c.call_id));
+        const deleted = await prisma.retellCall.deleteMany({
+            where: {
+                workspaceId,
+                callId: { notIn: Array.from(retellIds) }
+            }
+        });
+        console.log(`🗑️ [Sync] ${deleted.count} kayıt silindi (Retell'de yok)`);
+
+        // ── 3. Her Retell aramasını DB'ye yaz (upsert) ──
+        let created = 0;
+        let updated = 0;
         let errors = 0;
 
         for (const call of allCalls) {
             try {
-                const toNumber = call.to_number || call.to || '';
+                const toNumber   = call.to_number   || call.to   || '';
                 const fromNumber = call.from_number || call.from || '';
-                const duration = call.duration_ms ? Math.round(call.duration_ms / 1000) : null;
+                const duration   = call.duration_ms ? Math.round(call.duration_ms / 1000) : null;
+                const callTime   = call.start_timestamp ? new Date(call.start_timestamp) : null;
 
-                // Try to match contact by phone number (check both toNumber and fromNumber for inbound/outbound)
+                // Contact eşleştir (kendi numaramızı atla)
                 let contactId = null;
-                const phonesToCheck = [toNumber, fromNumber].filter(Boolean);
-                for (const phone of phonesToCheck) {
-                    const normalized = normalizePhone(phone);
-                    // Skip our own number
-                    if (normalized === normalizePhone(workspace.retellFromNumber || '')) continue;
+                for (const phone of [toNumber, fromNumber].filter(Boolean)) {
+                    const norm = normalizePhone(phone);
+                    if (norm === normalizePhone(workspace.retellFromNumber || '')) continue;
                     const contact = await prisma.contact.findFirst({
                         where: {
                             workspaceId,
                             OR: [
-                                { phone: normalized },
-                                { phone: phone },
+                                { phone: norm },
+                                { phone },
                                 { phone: phone.replace(/\D/g, '') }
                             ]
                         },
                         select: { id: true }
                     });
-                    if (contact) {
-                        contactId = contact.id;
-                        break;
-                    }
+                    if (contact) { contactId = contact.id; break; }
                 }
 
-                // Upsert into RetellCall table
-                // Check for a temp-ID "devam ediyor" record created by call_inbound webhook
-                // If found, update it with real data instead of creating duplicate
-                let tempRecord = null;
-                if (call.call_status === 'ended' || call.call_status === 'registered') {
-                    tempRecord = await prisma.retellCall.findFirst({
-                        where: {
-                            workspaceId,
-                            callId: { startsWith: 'retell_inbound_' },
-                            status: 'ongoing',
-                            OR: [
-                                { fromNumber, toNumber },
-                                { fromNumber: toNumber, toNumber: fromNumber }
-                            ]
-                        },
-                        orderBy: { createdAt: 'desc' }
-                    });
-                }
+                // Mevcut kaydı bul
+                const existing = await prisma.retellCall.findUnique({
+                    where: { callId: call.call_id }
+                });
 
-                const existing = tempRecord || await prisma.retellCall.findUnique({ where: { callId: call.call_id } });
-
-                const upsertData = {
+                const data = {
                     workspaceId,
-                    callId: call.call_id,
-                    agentId: call.agent_id || workspace.retellAgentId || '',
-                    fromNumber: fromNumber || workspace.retellFromNumber || '',
+                    callId:        call.call_id,
+                    agentId:       call.agent_id || workspace.retellAgentId || '',
+                    fromNumber:    fromNumber || workspace.retellFromNumber || '',
                     toNumber,
-                    direction: call.direction || 'outbound',
-                    status: call.call_status || 'ended',
+                    direction:     call.direction || 'outbound',
+                    status:        call.call_status || 'ended',
                     duration,
-                    transcript: call.transcript || null,
-                    recordingUrl: call.recording_url || null,
-                    endedReason: call.disconnection_reason || null,
+                    transcript:    call.transcript || null,
+                    recordingUrl:  call.recording_url || null,
+                    summary:       call.call_analysis?.call_summary || null,
+                    sentiment:     call.call_analysis?.user_sentiment || null,
+                    callSuccessful: call.call_analysis?.call_successful ?? null,
+                    endedReason:   call.disconnection_reason || null,
+                    cost:          call.call_cost?.combined_cost ?? null,
+                    ...(callTime ? { createdAt: callTime } : {}),
                     ...(contactId ? { contactId } : {})
                 };
 
                 if (!existing) {
-                    await prisma.retellCall.create({ data: upsertData });
-                    newCalls++;
+                    await prisma.retellCall.create({ data: { ...data, createdById: '' } });
+                    created++;
+                    
+                    // --- WEBHOOK RECOVERY TRIGGER ---
+                    if (data.status === 'ended' || data.status === 'error') {
+                        console.log(`🔄 [Sync] Missed webhook recovered for newly inserted call ${call.call_id}`);
+                        await handleCallEnded(call).catch(e => console.error(`❌ [Sync Recovery] call_ended error:`, e.message));
+                        if (call.call_analysis) {
+                            await handleCallAnalyzed(call).catch(e => console.error(`❌ [Sync Recovery] call_analyzed error:`, e.message));
+                        }
+                    }
                 } else {
                     await prisma.retellCall.update({
                         where: { id: existing.id },
                         data: {
-                            callId: call.call_id,
-                            status: upsertData.status,
-                            duration: upsertData.duration,
-                            transcript: upsertData.transcript,
-                            recordingUrl: upsertData.recordingUrl,
-                            endedReason: upsertData.endedReason,
+                            status:        data.status,
+                            duration:      data.duration,
+                            transcript:    data.transcript,
+                            recordingUrl:  data.recordingUrl,
+                            summary:       data.summary,
+                            sentiment:     data.sentiment,
+                            callSuccessful: data.callSuccessful,
+                            endedReason:   data.endedReason,
+                            cost:          data.cost,
+                            ...(data.toNumber   && !existing.toNumber   ? { toNumber: data.toNumber }     : {}),
+                            ...(data.fromNumber && !existing.fromNumber ? { fromNumber: data.fromNumber } : {}),
+                            ...(callTime ? { createdAt: callTime } : {}),
                             ...(contactId && !existing.contactId ? { contactId } : {})
                         }
                     });
-                    updatedCalls++;
-
-                    // If this was a temp "devam ediyor" record, close it in the Inbox
-                    if (tempRecord) {
-                        try {
-                            const durationText = duration ? `${Math.floor(duration / 60)}dk ${duration % 60}sn` : '0sn';
-                            const isInbound = (call.direction || 'inbound') === 'inbound';
-                            const displayNumber = isInbound ? fromNumber : toNumber;
-                            const closedContent = `${isInbound ? '📲 Gelen Arama' : '📞 Giden Arama'} Tamamlandı\n${displayNumber} • ${durationText}`;
-
-                            let convId = tempRecord.conversationId;
-                            if (!convId && (tempRecord.contactId || contactId)) {
-                                const phoneConv = await prisma.conversation.findFirst({
-                                    where: { workspaceId, channel: 'PHONE', contactId: tempRecord.contactId || contactId },
-                                    orderBy: { createdAt: 'desc' }
-                                });
-                                convId = phoneConv?.id || null;
-                            }
-                            if (!convId) {
-                                const phoneMsg = await prisma.message.findFirst({
-                                    where: { content: { contains: 'devam ediyor' }, conversation: { workspaceId, channel: 'PHONE' } },
-                                    orderBy: { createdAt: 'desc' }
-                                });
-                                convId = phoneMsg?.conversationId || null;
-                            }
-                            if (convId) {
-                                const devamMsg = await prisma.message.findFirst({
-                                    where: { conversationId: convId, content: { contains: 'devam ediyor' } }
-                                });
-                                if (devamMsg) {
-                                    await prisma.message.update({ where: { id: devamMsg.id }, data: { content: closedContent } });
-                                    await prisma.conversation.update({ where: { id: convId }, data: { lastMessageAt: new Date() } });
-                                    emitToWorkspace(workspaceId, 'new_message', { workspaceId, conversationId: convId, message: { type: 'call_ended', callId: call.call_id } });
-                                    console.log(`📞 [Sync] Closed devam ediyor for conversation ${convId}`);
-                                }
-                            } else {
-                                console.log(`⚠️ [Sync] No conversation found for temp record ${tempRecord.id}`);
-                            }
-                        } catch (closeErr) {
-                            console.error('⚠️ [Sync] Could not close devam ediyor:', closeErr.message);
+                    updated++;
+                    
+                    // --- WEBHOOK RECOVERY TRIGGER ---
+                    const missedStatus = existing.status !== 'ended' && existing.status !== 'error';
+                    const isNowEnded = data.status === 'ended' || data.status === 'error';
+                    
+                    if (missedStatus && isNowEnded) {
+                        console.log(`🔄 [Sync] Missed webhook recovered for existing call ${call.call_id} (Status: ${existing.status} -> ${data.status})`);
+                        await handleCallEnded(call).catch(e => console.error(`❌ [Sync Recovery] call_ended error:`, e.message));
+                        if (call.call_analysis) {
+                            await handleCallAnalyzed(call).catch(e => console.error(`❌ [Sync Recovery] call_analyzed error:`, e.message));
                         }
                     }
                 }
-                // If no contact matched, create one from the customer phone number
-                if (!contactId) {
-                    const customerPhone = phonesToCheck.find(p => {
-                        const normalized = normalizePhone(p);
-                        return normalized !== normalizePhone(workspace.retellFromNumber || '');
-                    });
-                    if (customerPhone) {
-                        const normalized = normalizePhone(customerPhone) || customerPhone;
-                        const newContact = await prisma.contact.create({
-                            data: {
-                                workspaceId,
-                                name: `Arayan: ${customerPhone}`,
-                                phone: normalized,
-                                status: 'NEW_APPLICATION',
-                                category: 'NEW_APPLICATION'
-                            }
-                        });
-                        contactId = newContact.id;
-                        // Update the retellCall record with the new contact
-                        await prisma.retellCall.update({
-                            where: { callId: call.call_id },
-                            data: { contactId }
-                        }).catch(() => {});
-                        console.log(`📞 [Sync] Created new contact ${contactId} for ${customerPhone}`);
-                    }
-                }
-
-                // Inject ended calls into Inbox
-                const effContactId = contactId || existing?.contactId;
-                console.log(`📋 [Sync] Call ${call.call_id}: status=${call.call_status}, effContactId=${effContactId}, contactId=${contactId}, from=${fromNumber}, to=${toNumber}, phonesToCheck=${JSON.stringify(phonesToCheck)}, retellFromNumber=${workspace.retellFromNumber}`);
-                if (effContactId && (call.call_status === 'ended' || call.call_status === 'registered')) {
-                    const callRecord = await prisma.retellCall.findUnique({ where: { callId: call.call_id } });
-
-                    // Find or create PHONE conversation
-                    let conversation = await prisma.conversation.findFirst({
-                        where: { workspaceId, contactId: effContactId, channel: 'PHONE' },
-                        orderBy: { lastMessageAt: 'desc' }
-                    });
-
-                    if (!conversation) {
-                        conversation = await prisma.conversation.create({
-                            data: {
-                                workspaceId,
-                                contactId: effContactId,
-                                channel: 'PHONE',
-                                status: 'OPEN',
-                                lastMessageAt: callRecord?.createdAt || new Date()
-                            }
-                        });
-                    }
-
-                    // Check for existing message (by call_id in content)
-                    const existingMsg = await prisma.message.findFirst({
-                        where: { conversationId: conversation.id, content: { contains: call.call_id } }
-                    });
-
-                    if (!existingMsg) {
-                        if (call.transcript && callRecord) {
-                            await injectTranscriptToChat(callRecord, call, duration);
-                        } else {
-                            const durationText = duration ? `${Math.floor(duration / 60)}dk ${duration % 60}sn` : '0sn';
-                            await prisma.message.create({
-                                data: {
-                                    content: `📞 Sesli Arama\n${toNumber} • ${durationText}\n_ID: ${call.call_id}_`,
-                                    conversationId: conversation.id,
-                                    isFromContact: false,
-                                    messageType: 'CALL_TRANSCRIPT',
-                                    status: 'SENT',
-                                    createdAt: callRecord?.createdAt || new Date()
-                                }
-                            });
-                            await prisma.conversation.update({
-                                where: { id: conversation.id },
-                                data: { lastMessageAt: callRecord?.createdAt || new Date() }
-                            });
-                        }
-                        inboxed++;
-                    }
-                }
-            } catch (callErr) {
+            } catch (err) {
                 errors++;
-                console.error(`❌ [Sync] Error for call ${call.call_id}:`, callErr.message);
+                console.error(`❌ [Sync] ${call.call_id}:`, err.message);
             }
         }
 
-        console.log(`✅ [Sync] Done: ${newCalls} new, ${updatedCalls} updated, ${inboxed} inboxed, ${errors} errors`);
-        res.json({ total: allCalls.length, newCalls, updatedCalls, inboxed, errors });
+        console.log(`✅ [Sync] ${created} yeni, ${updated} güncellendi, ${deleted.count} silindi, ${errors} hata`);
+        res.json({
+            total:   allCalls.length,
+            created,
+            updated,
+            deleted: deleted.count,
+            errors
+        });
     } catch (error) {
-        console.error('❌ [Sync] Error:', error);
-        res.status(500).json({ error: 'Senkronizasyon sırasında hata oluştu: ' + error.message });
+        console.error('❌ [Sync] Hata:', error);
+        res.status(500).json({ error: 'Senkronizasyon hatası: ' + error.message });
     }
 };

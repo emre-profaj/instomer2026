@@ -1,5 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma.js';
 
 // Helper: Otomatik numara üret
 const generateNumber = async (workspaceId, prefix) => {
@@ -28,6 +27,15 @@ const generateNumber = async (workspaceId, prefix) => {
     return `${pre}-${year}-${String(nextNum).padStart(4, '0')}`;
 };
 
+// Helper: OVERDUE durumunu otomatik hesapla
+const computeEffectiveStatus = (deal) => {
+    if (deal.status === 'WON' || deal.status === 'LOST') return deal.status;
+    if (deal.stage === 'INVOICE' && deal.dueDate && new Date(deal.dueDate) < new Date()) {
+        return 'OVERDUE';
+    }
+    return deal.status;
+};
+
 // Tüm deal'ları listele (stage filtresi ile)
 export const getDeals = async (req, res) => {
     try {
@@ -36,7 +44,7 @@ export const getDeals = async (req, res) => {
 
         const where = { workspaceId };
         if (stage) where.stage = stage;
-        if (status) where.status = status;
+        if (status && status !== 'OVERDUE') where.status = status;
         if (contactId) where.contactId = contactId;
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -59,11 +67,17 @@ export const getDeals = async (req, res) => {
             prisma.deal.count({ where })
         ]);
 
-        // Products JSON'ı parse et
-        const parsedDeals = deals.map(deal => ({
+        // Products JSON'ı parse et, OVERDUE hesapla
+        let parsedDeals = deals.map(deal => ({
             ...deal,
-            products: JSON.parse(deal.products || '[]')
+            products: JSON.parse(deal.products || '[]'),
+            effectiveStatus: computeEffectiveStatus(deal)
         }));
+
+        // OVERDUE filtresi uygulanmışsa frontend'de filtrele
+        if (status === 'OVERDUE') {
+            parsedDeals = parsedDeals.filter(d => d.effectiveStatus === 'OVERDUE');
+        }
 
         res.json({ deals: parsedDeals, total, page: parseInt(page), limit: parseInt(limit) });
     } catch (error) {
@@ -94,7 +108,8 @@ export const getDeal = async (req, res) => {
         res.json({
             deal: {
                 ...deal,
-                products: JSON.parse(deal.products || '[]')
+                products: JSON.parse(deal.products || '[]'),
+                effectiveStatus: computeEffectiveStatus(deal)
             }
         });
     } catch (error) {
@@ -116,12 +131,22 @@ export const createDeal = async (req, res) => {
             stage = 'QUOTE',
             products = [],
             assignedToId,
-            notes
+            notes,
+            // Yeni ödeme alanları
+            dueDate,
+            vatRate = 0,
+            paidAmount = 0,
+            paymentDate
         } = req.body;
 
         if (!contactId || !title) {
             return res.status(400).json({ error: 'Contact and title are required' });
         }
+
+        // Ürünlerin KDV dahil toplamını hesapla
+        const baseAmount = parseFloat(amount) || 0;
+        const vatAmount = baseAmount * (parseFloat(vatRate) / 100);
+        const totalAmount = baseAmount + vatAmount;
 
         // Stage'e göre numara üret
         const dealData = {
@@ -129,12 +154,16 @@ export const createDeal = async (req, res) => {
             contactId,
             title,
             description,
-            amount: parseFloat(amount) || 0,
+            amount: totalAmount,
             currency,
             stage,
             products: JSON.stringify(products),
             assignedToId: assignedToId || null,
-            notes
+            notes,
+            vatRate: parseFloat(vatRate) || 0,
+            paidAmount: parseFloat(paidAmount) || 0,
+            dueDate: dueDate ? new Date(dueDate) : null,
+            paymentDate: paymentDate ? new Date(paymentDate) : null
         };
 
         // Stage'e göre numara ve tarih ata
@@ -166,7 +195,8 @@ export const createDeal = async (req, res) => {
         res.status(201).json({
             deal: {
                 ...deal,
-                products: JSON.parse(deal.products)
+                products: JSON.parse(deal.products),
+                effectiveStatus: computeEffectiveStatus(deal)
             }
         });
     } catch (error) {
@@ -191,7 +221,12 @@ export const updateDeal = async (req, res) => {
             lostReason,
             quoteNumber,
             orderNumber,
-            invoiceNumber
+            invoiceNumber,
+            // Yeni ödeme alanları
+            dueDate,
+            vatRate,
+            paidAmount,
+            paymentDate
         } = req.body;
 
         // Mevcut deal'ı kontrol et
@@ -214,6 +249,11 @@ export const updateDeal = async (req, res) => {
         if (quoteNumber !== undefined) updateData.quoteNumber = quoteNumber;
         if (orderNumber !== undefined) updateData.orderNumber = orderNumber;
         if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;
+        // Ödeme alanları
+        if (vatRate !== undefined) updateData.vatRate = parseFloat(vatRate) || 0;
+        if (paidAmount !== undefined) updateData.paidAmount = parseFloat(paidAmount) || 0;
+        if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+        if (paymentDate !== undefined) updateData.paymentDate = paymentDate ? new Date(paymentDate) : null;
 
         // Status değişikliği
         if (status && status !== existing.status) {
@@ -222,6 +262,10 @@ export const updateDeal = async (req, res) => {
                 updateData.wonAt = new Date();
                 updateData.lostAt = null;
                 updateData.lostReason = null;
+                // Ödeme tarihi otomatik set et
+                if (!updateData.paymentDate && !existing.paymentDate) {
+                    updateData.paymentDate = new Date();
+                }
             } else if (status === 'LOST') {
                 updateData.lostAt = new Date();
                 updateData.lostReason = lostReason || null;
@@ -249,12 +293,73 @@ export const updateDeal = async (req, res) => {
         res.json({
             deal: {
                 ...deal,
-                products: JSON.parse(deal.products)
+                products: JSON.parse(deal.products),
+                effectiveStatus: computeEffectiveStatus(deal)
             }
         });
     } catch (error) {
         console.error('Update Deal Error:', error);
         res.status(500).json({ error: 'Failed to update deal' });
+    }
+};
+
+// Ödeme kaydet (kısmi veya tam ödeme)
+export const recordPayment = async (req, res) => {
+    try {
+        const { workspaceId, dealId } = req.params;
+        const { paidAmount, paymentDate, notes } = req.body;
+
+        const existing = await prisma.deal.findFirst({
+            where: { id: dealId, workspaceId }
+        });
+
+        if (!existing) {
+            return res.status(404).json({ error: 'Deal not found' });
+        }
+
+        const newPaidAmount = parseFloat(paidAmount) || 0;
+        const totalAmount = existing.amount;
+
+        // Tam ödendi mi?
+        const isFullyPaid = newPaidAmount >= totalAmount;
+
+        const updateData = {
+            paidAmount: newPaidAmount,
+            paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        };
+
+        if (isFullyPaid) {
+            updateData.status = 'WON'; // WON = Ödendi
+            updateData.wonAt = new Date();
+            if (notes) updateData.notes = existing.notes ? `${existing.notes}\n${notes}` : notes;
+        } else if (notes) {
+            updateData.notes = existing.notes ? `${existing.notes}\n${notes}` : notes;
+        }
+
+        const deal = await prisma.deal.update({
+            where: { id: dealId },
+            data: updateData,
+            include: {
+                contact: {
+                    select: { id: true, name: true, fullName: true, email: true, phone: true }
+                }
+            }
+        });
+
+        console.log(`💰 [Deal] Payment recorded: ${deal.invoiceNumber} — ${newPaidAmount}/${totalAmount} ${deal.currency}`);
+
+        res.json({
+            deal: {
+                ...deal,
+                products: JSON.parse(deal.products),
+                effectiveStatus: computeEffectiveStatus(deal)
+            },
+            isFullyPaid,
+            remainingAmount: Math.max(0, totalAmount - newPaidAmount)
+        });
+    } catch (error) {
+        console.error('Record Payment Error:', error);
+        res.status(500).json({ error: 'Failed to record payment' });
     }
 };
 
@@ -333,7 +438,8 @@ export const convertDeal = async (req, res) => {
         res.json({
             deal: {
                 ...deal,
-                products: JSON.parse(deal.products)
+                products: JSON.parse(deal.products),
+                effectiveStatus: computeEffectiveStatus(deal)
             }
         });
     } catch (error) {
@@ -368,6 +474,25 @@ export const getDealStats = async (req, res) => {
         const orders = await prisma.deal.count({ where: { workspaceId, orderCreatedAt: { not: null } } });
         const invoices = await prisma.deal.count({ where: { workspaceId, invoiceCreatedAt: { not: null } } });
 
+        // Gecikmiş faturalar (vadesi geçmiş + ödenmemiş)
+        const overdueInvoices = await prisma.deal.findMany({
+            where: {
+                workspaceId,
+                stage: 'INVOICE',
+                status: 'OPEN',
+                dueDate: { lt: new Date() }
+            },
+            select: { id: true, amount: true, paidAmount: true }
+        });
+        const overdueCount = overdueInvoices.length;
+        const overdueAmount = overdueInvoices.reduce((sum, d) => sum + Math.max(0, d.amount - (d.paidAmount || 0)), 0);
+
+        // Ödenen toplam (WON faturalar)
+        const paidStats = await prisma.deal.aggregate({
+            where: { workspaceId, stage: 'INVOICE', status: 'WON' },
+            _sum: { paidAmount: true, amount: true }
+        });
+
         const conversionRates = {
             quoteToOrder: quotes > 0 ? ((orders / quotes) * 100).toFixed(1) : 0,
             orderToInvoice: orders > 0 ? ((invoices / orders) * 100).toFixed(1) : 0
@@ -385,7 +510,10 @@ export const getDealStats = async (req, res) => {
                 totalAmount: s._sum.amount || 0
             })),
             conversionRates,
-            totals: { quotes, orders, invoices }
+            totals: { quotes, orders, invoices },
+            overdueCount,
+            overdueAmount,
+            paidTotal: paidStats._sum.paidAmount || paidStats._sum.amount || 0
         });
     } catch (error) {
         console.error('Get Deal Stats Error:', error);
@@ -407,7 +535,8 @@ export const getContactDeals = async (req, res) => {
         res.json({
             deals: deals.map(d => ({
                 ...d,
-                products: JSON.parse(d.products || '[]')
+                products: JSON.parse(d.products || '[]'),
+                effectiveStatus: computeEffectiveStatus(d)
             }))
         });
     } catch (error) {

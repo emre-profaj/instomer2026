@@ -1,7 +1,6 @@
 import { google } from 'googleapis';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 
-const prisma = new PrismaClient();
 
 // Helper function to decode HTML entities
 const decodeHtmlEntities = (text) => {

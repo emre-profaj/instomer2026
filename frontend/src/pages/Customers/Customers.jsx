@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI } from '../../services/api';
 import * as XLSX from 'xlsx';
@@ -15,11 +15,16 @@ import {
     ExternalLink,
     ChevronLeft,
     ChevronRight,
+    CheckCircle2,
+    Bell,
+    BookOpen,
     Edit2,
-    Trash2,
+    Smile,
+    Filter,
+    Check,
     Plus,
     X,
-    CheckSquare,
+    Trash2,
     Facebook,
     Instagram,
     MessageCircle,
@@ -51,7 +56,7 @@ const Customers = () => {
     // Status options
 
     const CUSTOMER_STATUS_OPTIONS = [
-        { value: 'NEW_APPLICATION', label: t('contacts.statusNew'), color: '#3b82f6', bg: '#eff6ff' },
+        { value: 'NEW', label: t('contacts.statusNew'), color: '#3b82f6', bg: '#eff6ff' },
         { value: 'OPPORTUNITY', label: t('contacts.statusOpportunity'), color: '#f59e0b', bg: '#fffbeb' },
         { value: 'HOT_OPPORTUNITY', label: t('contacts.statusHotOpportunity'), color: '#ef4444', bg: '#fef2f2' },
         { value: 'UNREACHABLE', label: t('contacts.statusUnreachable'), color: '#64748b', bg: '#f8fafc' },
@@ -102,6 +107,8 @@ const Customers = () => {
     const [categoryFilter, setCategoryFilter] = useState('ALL');
     const [callStatusFilter, setCallStatusFilter] = useState('ALL');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '', confirmText: '', type: 'danger' });
+    const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
+    const funnelFilterRef = useRef(null);
     const [showArchived, setShowArchived] = useState(false);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
@@ -177,6 +184,36 @@ const Customers = () => {
     const [importGroupFilter, setImportGroupFilter] = useState('ALL');
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
 
+    // Filter labels to show on the main button
+    const getActiveFilterLabel = () => {
+        if (funnelStageFilter !== 'ALL') {
+            // Find stage name
+            for (const f of availableFunnels) {
+                const stage = f.stages?.find(s => s.id === funnelStageFilter);
+                if (stage) return stage.name;
+            }
+        }
+        if (funnelFilter !== 'ALL') {
+            const funnel = availableFunnels.find(f => f.id === funnelFilter);
+            return funnel ? funnel.name : 'Funnel';
+        }
+        return 'Tüm Durumlar';
+    };
+
+    const getActiveFilterColor = () => {
+        if (funnelStageFilter !== 'ALL') {
+            for (const f of availableFunnels) {
+                const stage = f.stages?.find(s => s.id === funnelStageFilter);
+                if (stage) return stage.color;
+            }
+        }
+        if (funnelFilter !== 'ALL') {
+            const funnel = availableFunnels.find(f => f.id === funnelFilter);
+            return funnel ? funnel.color : '#64748b';
+        }
+        return '#64748b';
+    };
+
     // Load funnels for funnel filter dropdown
     useEffect(() => {
         if (!currentWorkspace) return;
@@ -201,7 +238,16 @@ const Customers = () => {
         }
     }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter]);
 
-    // Real-time update listener
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (funnelFilterRef.current && !funnelFilterRef.current.contains(event.target)) {
+                setFunnelFilterOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     useEffect(() => {
         const handleContactUpdate = (event) => {
             const data = event.detail;
@@ -417,6 +463,10 @@ const Customers = () => {
                 status: statusFilter !== 'ALL' ? statusFilter : undefined,
                 source: sourceFilter !== 'ALL' ? sourceFilter : undefined,
                 category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
+                funnelType: funnelFilter !== 'ALL' ? funnelFilter : undefined,
+                funnelStageId: funnelStageFilter !== 'ALL' ? funnelStageFilter : undefined,
+                tag: tagFilter !== 'ALL' ? tagFilter : undefined,
+                importGroup: importGroupFilter !== 'ALL' ? importGroupFilter : undefined,
                 isArchived: showArchived
             });
 
@@ -457,12 +507,23 @@ const Customers = () => {
                     }
                 }
 
+                // Get display label from funnel stage or legacy status
+                let displayLabel = 'Yeni';
+                if (contact.funnelStageId && availableFunnels.length > 0) {
+                    for (const funnel of availableFunnels) {
+                        const s = funnel.stages?.find(x => x.id === contact.funnelStageId);
+                        if (s) { displayLabel = s.name; break; }
+                    }
+                } else if (contact.status) {
+                    displayLabel = getStatusInfo(contact.status).label;
+                }
+
                 return [
                     contact.name || '',
                     contact.phone || '',
                     contact.email || '',
                     contact.firstMessageAt ? new Date(contact.firstMessageAt).toLocaleDateString('tr-TR') : '',
-                    getStatusInfo(contact.status).label,
+                    displayLabel,
                     lastNote
                 ];
             });
@@ -874,6 +935,93 @@ const Customers = () => {
                     {/* Compact Filter Dropdowns */}
                     <div className="contacts-filters">
                         <div className="filter-dropdowns-row">
+                            {/* Hierarchical Funnel & Status Filter */}
+                            <div className="filter-dropdown-item" ref={funnelFilterRef}>
+                                <label>Durum</label>
+                                <div className="inbox-funnel-filter contacts-funnel-filter">
+                                    <button
+                                        className={`funnel-filter-select ${funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' ? 'active' : ''}`}
+                                        onClick={() => setFunnelFilterOpen(!funnelFilterOpen)}
+                                    >
+                                        <Filter size={14} />
+                                        <span
+                                            className="funnel-filter-dot"
+                                            style={{ backgroundColor: getActiveFilterColor() }}
+                                        />
+                                        {getActiveFilterLabel()}
+                                        <ChevronDown size={14} className={`chevron ${funnelFilterOpen ? 'open' : ''}`} />
+                                    </button>
+
+                                    {funnelFilterOpen && (
+                                        <div className="funnel-filter-dropdown">
+                                            <button
+                                                className={`funnel-filter-item ${funnelFilter === 'ALL' && funnelStageFilter === 'ALL' ? 'selected' : ''}`}
+                                                onClick={() => {
+                                                    setFunnelFilter('ALL');
+                                                    setFunnelStageFilter('ALL');
+                                                    setFunnelFilterOpen(false);
+                                                    setPage(1);
+                                                }}
+                                            >
+                                                <div className="funnel-filter-dot" style={{ backgroundColor: '#64748b' }} />
+                                                Tüm Durumlar
+                                                {funnelFilter === 'ALL' && funnelStageFilter === 'ALL' && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                                            </button>
+
+                                            <div className="filter-divider" />
+
+                                            {availableFunnels.map(funnel => (
+                                                <div key={funnel.id} className="stage-filter-funnel">
+                                                    <button
+                                                        className={`funnel-filter-item ${funnelFilter === funnel.id && funnelStageFilter === 'ALL' ? 'selected' : ''}`}
+                                                        onClick={() => {
+                                                            // If there's a stage with the same name as the funnel, select that stage directly
+                                                            const matchingStage = funnel.stages?.find(
+                                                                s => s.name.toLowerCase() === funnel.name.toLowerCase()
+                                                            );
+                                                            if (matchingStage) {
+                                                                setFunnelFilter(funnel.id);
+                                                                setFunnelStageFilter(matchingStage.id);
+                                                            } else {
+                                                                setFunnelFilter(funnel.id);
+                                                                setFunnelStageFilter('ALL');
+                                                            }
+                                                            setFunnelFilterOpen(false);
+                                                            setPage(1);
+                                                        }}
+                                                    >
+                                                        <div className="funnel-filter-dot" style={{ backgroundColor: funnel.color || '#8b5cf6' }} />
+                                                        {funnel.name}
+                                                        <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />
+                                                    </button>
+
+                                                    {funnel.stages && funnel.stages.length > 0 && (
+                                                        <div className="stage-filter-submenu">
+                                                            {funnel.stages.map(stage => (
+                                                                <button
+                                                                    key={stage.id}
+                                                                    className={`funnel-filter-item ${funnelStageFilter === stage.id ? 'selected' : ''}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setFunnelFilter(funnel.id);
+                                                                        setFunnelStageFilter(stage.id);
+                                                                        setFunnelFilterOpen(false);
+                                                                        setPage(1);
+                                                                    }}
+                                                                >
+                                                                    <div className="funnel-filter-dot" style={{ backgroundColor: stage.color || '#3b82f6' }} />
+                                                                    {stage.name}
+                                                                    {funnelStageFilter === stage.id && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                             {/* Source Dropdown */}
                             <div className="filter-dropdown-item">
                                 <label>Kaynak</label>
@@ -893,66 +1041,7 @@ const Customers = () => {
                                 </select>
                             </div>
 
-                            {/* Funnel Dropdown */}
-                            <div className="filter-dropdown-item">
-                                <label>Funnel</label>
-                                <select
-                                    value={funnelFilter}
-                                    onChange={(e) => {
-                                        setFunnelFilter(e.target.value);
-                                        setFunnelStageFilter('ALL');
-                                        setPage(1);
-                                    }}
-                                    className="filter-select"
-                                >
-                                    <option value="ALL">Tüm Funneller</option>
-                                    {availableFunnels.map(f => (
-                                        <option key={f.id} value={f.id}>{f.name}</option>
-                                    ))}
-                                </select>
-                            </div>
 
-                            {/* Funnel Stage Dropdown */}
-                            {funnelFilter !== 'ALL' && (
-                                <div className="filter-dropdown-item">
-                                    <label>Aşama</label>
-                                    <select
-                                        value={funnelStageFilter}
-                                        onChange={(e) => {
-                                            setFunnelStageFilter(e.target.value);
-                                            setPage(1);
-                                        }}
-                                        className="filter-select"
-                                    >
-                                        <option value="ALL">Tüm Aşamalar</option>
-                                        {(availableFunnels.find(f => f.id === funnelFilter)?.stages || []).map(s => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {/* AI Call Status Filter */}
-                            <div className="filter-dropdown-item">
-                                <label><PhoneCall size={12} /> AI Arama</label>
-                                <select
-                                    value={callStatusFilter}
-                                    onChange={(e) => {
-                                        setCallStatusFilter(e.target.value);
-                                        setPage(1);
-                                    }}
-                                    className="filter-select"
-                                >
-                                    <option value="ALL">Tüm Aramalar</option>
-                                    <option value="ended">Araması Yapılanlar</option>
-                                    <option value="not_connected">Ulaşılamayanlar</option>
-                                    <option value="positive">Olumlu Sonuç</option>
-                                    <option value="negative">Olumsuz Sonuç</option>
-                                    <option value="no_call">Aranmamış</option>
-                                </select>
-                            </div>
-
-                            {/* Import Group Filter */}
                             {availableImportGroups.length > 0 && (
                                 <div className="filter-dropdown-item">
                                     <label><Tag size={12} /> İçe Aktarma Grubu</label>
@@ -1094,16 +1183,39 @@ const Customers = () => {
                                                 </td>
                                                 <td className="contact-status">
                                                     {(() => {
-                                                        const statusInfo = getStatusInfo(contact.status);
+                                                        let displayLabel = 'Yeni';
+                                                        let displayColor = '#6b7280';
+                                                        let displayBg = '#6b72801a';
+
+                                                        // Find stage from contact's funnelStageId
+                                                        if (contact.funnelStageId && availableFunnels.length > 0) {
+                                                            for (const funnel of availableFunnels) {
+                                                                const s = funnel.stages?.find(x => x.id === contact.funnelStageId);
+                                                                if (s) {
+                                                                    displayLabel = s.name;
+                                                                    displayColor = s.color || '#6366f1';
+                                                                    displayBg = `${displayColor}1a`;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        } else if (contact.status) {
+                                                            // Fallback to legacy status while migrating
+                                                            const statusInfo = getStatusInfo(contact.status);
+                                                            displayLabel = statusInfo.label;
+                                                            displayColor = statusInfo.color;
+                                                            displayBg = statusInfo.bg;
+                                                        }
+
                                                         return (
                                                             <span
                                                                 className="status-badge"
                                                                 style={{
-                                                                    backgroundColor: statusInfo.bg,
-                                                                    color: statusInfo.color
+                                                                    backgroundColor: displayBg,
+                                                                    color: displayColor,
+                                                                    border: (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none'
                                                                 }}
                                                             >
-                                                                {statusInfo.label}
+                                                                {displayLabel}
                                                             </span>
                                                         );
                                                     })()}

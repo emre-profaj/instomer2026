@@ -525,7 +525,7 @@ const RetellSettings = ({ onSave }) => {
                     }}>
                         {syncResult.error
                             ? `❌ ${syncResult.error}`
-                            : `✅ ${syncResult.total} arama çekildi — ${syncResult.newCalls} yeni, ${syncResult.inboxed} Inbox'a eklendi`
+                            : `✅ ${syncResult.total} arama çekildi — ${syncResult.created} yeni, ${syncResult.updated} güncellendi${syncResult.deleted > 0 ? `, ${syncResult.deleted} fazladan kayıt silindi` : ''}${syncResult.errors > 0 ? `, ${syncResult.errors} hata` : ''}`
                         }
                     </div>
                 )}

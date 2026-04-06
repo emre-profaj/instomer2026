@@ -1,7 +1,6 @@
 import { Server } from 'socket.io';
-import { PrismaClient } from '@prisma/client';
+import prisma from './lib/prisma.js';
 
-const prisma = new PrismaClient();
 let io;
 const isDev = process.env.NODE_ENV !== 'production';
 const log = (...args) => isDev && console.log(...args);

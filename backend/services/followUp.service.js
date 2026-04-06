@@ -8,9 +8,8 @@
  * Only for WhatsApp, Facebook, Instagram channels
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 
-const prisma = new PrismaClient();
 
 // Default messages
 const DEFAULT_INACTIVITY_MESSAGE = "Merhaba, yanıtınızı bekliyorum. Size nasıl yardımcı olabilirim? 😊";
@@ -24,25 +23,22 @@ export const processInactivityWarnings = async () => {
     try {
         const now = new Date();
 
-        // Find conversations where:
-        // - Bot is assigned
-        // - lastBotMessageAt is set (bot has sent a message)
-        // - inactivityWarningSent is false
-        // - Last customer message is before lastBotMessageAt (customer hasn't responded)
-        // - Time since lastBotMessageAt >= bot's inactivityWarningSeconds
-        // - Channel is WHATSAPP, FACEBOOK, or INSTAGRAM
+        // Pre-filter: Only fetch conversations where lastBotMessageAt is old enough
+        // Max possible warning threshold is 300s (5 min), use that as upper bound
+        // This dramatically reduces result set (989 → only actionable ones)
+        const maxThreshold = new Date(now.getTime() - 30 * 1000); // Min 30s old (most bots use 40s)
 
         const conversations = await prisma.conversation.findMany({
             where: {
                 OR: [
-                    // Conversation-level bot assignment (WhatsApp)
                     { assignedBotId: { not: null } },
-                    // Page-level bot assignment (Facebook/Instagram)
                     { facebookPage: { assignedBotId: { not: null } } },
-                    // Email channel-level bot assignment
                     { emailChannel: { assignedBotId: { not: null } } }
                 ],
-                lastBotMessageAt: { not: null },
+                lastBotMessageAt: {
+                    not: null,
+                    lte: maxThreshold  // Only conversations where bot message is old enough
+                },
                 inactivityWarningSent: false,
                 status: 'OPEN',
                 channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
@@ -53,7 +49,8 @@ export const processInactivityWarnings = async () => {
                 facebookPage: { include: { assignedBot: true } },
                 whatsappPhoneNumber: true,
                 emailChannel: { include: { assignedBot: true } }
-            }
+            },
+            take: 100  // Hard limit to prevent memory spikes
         });
 
         // Summary log (only if conversations found)
@@ -143,24 +140,21 @@ export const processDailyReminders = async () => {
     try {
         const now = new Date();
 
-        // Find conversations where:
-        // - Bot is assigned with dailyReminderEnabled
-        // - lastBotMessageAt is set
-        // - reminderSentAt is null (reminder not sent yet)
-        // - Time since lastBotMessageAt >= bot's dailyReminderHours
-        // - Channel is WHATSAPP, FACEBOOK, or INSTAGRAM
+        // Pre-filter: Only fetch conversations where lastBotMessageAt is old enough
+        // Minimum reminder threshold is typically 12-24 hours
+        const minReminderThreshold = new Date(now.getTime() - 12 * 60 * 60 * 1000); // 12h minimum
 
         const conversations = await prisma.conversation.findMany({
             where: {
                 OR: [
-                    // Conversation-level bot assignment (WhatsApp)
                     { assignedBotId: { not: null } },
-                    // Page-level bot assignment (Facebook/Instagram)
                     { facebookPage: { assignedBotId: { not: null } } },
-                    // Email channel-level bot assignment
                     { emailChannel: { assignedBotId: { not: null } } }
                 ],
-                lastBotMessageAt: { not: null },
+                lastBotMessageAt: {
+                    not: null,
+                    lte: minReminderThreshold  // Only old enough conversations
+                },
                 reminderSentAt: null,
                 status: 'OPEN',
                 channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
@@ -171,7 +165,8 @@ export const processDailyReminders = async () => {
                 facebookPage: { include: { assignedBot: true } },
                 whatsappPhoneNumber: true,
                 emailChannel: { include: { assignedBot: true } }
-            }
+            },
+            take: 50  // Hard limit
         });
 
         // Process in batches to avoid rate limiting (max 30 per cycle for daily reminders)

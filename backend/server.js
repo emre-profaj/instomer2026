@@ -19,6 +19,10 @@ import { fileURLToPath } from 'url';
 
 // Node.js 25+ compatibility fix for pdf-parse
 import { processScheduledCalls } from './controllers/retell.controller.js';
+import { syncEmailsUniversal } from './controllers/email.controller.js';
+import { createNotification } from './controllers/notification.controller.js';
+import prisma from './lib/prisma.js';
+
 if (typeof global.DOMMatrix === 'undefined') {
   global.DOMMatrix = class DOMMatrix { };
 }
@@ -49,6 +53,8 @@ import retellRoutes from './routes/retell.routes.js';
 import quickReplyRoutes from './routes/quickReply.routes.js';
 import rulesRoutes from './routes/rules.routes.js';
 import funnelRoutes from './routes/funnel.routes.js';
+import resourceRoutes from './routes/resource.routes.js';
+import flowRoutes from './routes/flow.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -173,6 +179,8 @@ app.use('/api/retell', retellRoutes);
 app.use('/api', quickReplyRoutes);
 app.use('/api/rules', rulesRoutes);
 app.use('/api/funnels', funnelRoutes);
+app.use('/api/resources', resourceRoutes);
+app.use('/api/workspaces', flowRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
@@ -225,57 +233,45 @@ httpServer.listen(PORT, () => {
   // Start email polling after server starts
   startEmailPolling();
 
-  // Start scheduled call checker (every 60 seconds)
-  setInterval(processScheduledCalls, 60 * 1000);
-  console.log('📅 Scheduled call checker started (60s interval)');
-
 });
 
 // Email Polling System - checks for new emails every 2 minutes
-async function startEmailPolling() {
-  const { PrismaClient } = await import('@prisma/client');
-  const prisma = new PrismaClient();
+const EMAIL_POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
 
-  const POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes
+async function pollEmails() {
+  try {
+    const channels = await prisma.emailChannel.findMany({
+      where: { isActive: true }
+    });
 
-  async function pollEmails() {
-    try {
-      // Get all active email channels
-      const channels = await prisma.emailChannel.findMany({
-        where: { isActive: true }
-      });
+    if (channels.length === 0) return;
 
-      if (channels.length === 0) return;
+    console.log(`📧 [Email Poll] Checking ${channels.length} email channel(s)...`);
 
-      console.log(`📧 [Email Poll] Checking ${channels.length} email channel(s)...`);
-
-      for (const channel of channels) {
-        try {
-          // Dynamic import to avoid circular dependencies
-          // Use Universal sync to support both Gmail and IMAP providers
-          const { syncEmailsUniversal } = await import('./controllers/email.controller.js');
-          await syncEmailsUniversal(channel.id);
-        } catch (error) {
-          console.error(`❌ [Email Poll] Error syncing channel ${channel.email}:`, error.message);
-        }
+    for (const channel of channels) {
+      try {
+        await syncEmailsUniversal(channel.id);
+      } catch (error) {
+        console.error(`❌ [Email Poll] Error syncing channel ${channel.email}:`, error.message);
       }
-    } catch (error) {
-      console.error('❌ [Email Poll] Error:', error.message);
     }
+  } catch (error) {
+    console.error('❌ [Email Poll] Error:', error.message);
   }
+}
 
-  // Start polling after 30 seconds (give server time to fully initialize)
+function startEmailPolling() {
   setTimeout(() => {
     console.log('📧 [Email Poll] Starting email polling service (every 2 minutes)');
-    pollEmails(); // Initial poll
-    setInterval(pollEmails, POLL_INTERVAL);
+    pollEmails();
+    setInterval(pollEmails, EMAIL_POLL_INTERVAL);
   }, 30000);
 }
 
 // Bot Delay Processor - gecikme süresi dolan konuşmalar için bot cevabını tetikle
 import { processPendingBotResponses } from './services/conversationRouting.service.js';
 
-const BOT_DELAY_CHECK_INTERVAL = 10000; // 10 saniyede bir kontrol
+const BOT_DELAY_CHECK_INTERVAL = 30000; // 30 saniyede bir kontrol (CPU optimizasyonu: 10s → 30s)
 
 setTimeout(() => {
   console.log('🤖 [Bot Delay] Starting bot delay processor (every 10 seconds)');
@@ -291,7 +287,7 @@ setTimeout(() => {
 // Follow-up Processor - 40s inactivity warning + 24h daily reminder
 import { processInactivityWarnings, processDailyReminders } from './services/followUp.service.js';
 
-const INACTIVITY_CHECK_INTERVAL = 10000; // 10 saniyede bir kontrol (40s uyarı)
+const INACTIVITY_CHECK_INTERVAL = 30000; // 30 saniyede bir kontrol (CPU optimizasyonu: 10s → 30s)
 const REMINDER_CHECK_INTERVAL = 30 * 60 * 1000; // 30 dakikada bir kontrol (1 gün hatırlatma)
 
 setTimeout(() => {
@@ -320,70 +316,70 @@ setTimeout(() => {
 // Checks every 60 seconds for due appointments and creates notifications
 const APPOINTMENT_REMINDER_INTERVAL = 60 * 1000; // 1 dakika
 
-setTimeout(async () => {
-  const { PrismaClient } = await import('@prisma/client');
-  const { createNotification } = await import('./controllers/notification.controller.js');
-  const prismaReminder = new PrismaClient();
+async function processAppointmentReminders() {
+  try {
+    const now = new Date();
 
-  console.log('🔔 [Reminder] Starting appointment reminder processor (every 60 seconds)');
+    const dueAppointments = await prisma.appointment.findMany({
+      where: {
+        startTime: { lte: now },
+        reminderSent: false,
+        status: 'SCHEDULED'
+      },
+      take: 50
+    });
 
-  async function processAppointmentReminders() {
-    try {
-      const now = new Date();
+    if (dueAppointments.length === 0) return;
 
-      // Find due appointments: startTime has passed, not yet notified, status SCHEDULED
-      const dueAppointments = await prismaReminder.appointment.findMany({
-        where: {
-          startTime: { lte: now },
-          reminderSent: false,
-          status: 'SCHEDULED'
-        },
-        take: 50
-      });
+    console.log(`🔔 [Reminder] Found ${dueAppointments.length} due appointment(s)`);
 
-      if (dueAppointments.length === 0) return;
+    for (const apt of dueAppointments) {
+      try {
+        const conversationIdMatch = apt.notes?.match(/Conversation ID: (.+)/);
+        const conversationId = conversationIdMatch ? conversationIdMatch[1].trim() : null;
 
-      console.log(`🔔 [Reminder] Found ${dueAppointments.length} due appointment(s)`);
+        await createNotification(
+          apt.workspaceId,
+          apt.assignedToId,
+          'REMINDER',
+          `⏰ Hatırlatıcı: ${apt.title}`,
+          apt.description || `${apt.contactName || 'Müşteri'} için hatırlatıcı zamanı geldi.`,
+          conversationId ? { conversationId, appointmentId: apt.id } : { appointmentId: apt.id }
+        );
 
-      for (const apt of dueAppointments) {
-        try {
-          // Extract conversationId from notes if available
-          const conversationIdMatch = apt.notes?.match(/Conversation ID: (.+)/);
-          const conversationId = conversationIdMatch ? conversationIdMatch[1].trim() : null;
+        await prisma.appointment.update({
+          where: { id: apt.id },
+          data: { reminderSent: true }
+        });
 
-          // Create notification for the assigned user
-          await createNotification(
-            apt.workspaceId,
-            apt.assignedToId,
-            'REMINDER',
-            `⏰ Hatırlatıcı: ${apt.title}`,
-            apt.description || `${apt.contactName || 'Müşteri'} için hatırlatıcı zamanı geldi.`,
-            conversationId ? { conversationId, appointmentId: apt.id } : { appointmentId: apt.id }
-          );
-
-          // Mark as sent
-          await prismaReminder.appointment.update({
-            where: { id: apt.id },
-            data: { reminderSent: true }
-          });
-
-          console.log(`🔔 [Reminder] Notification sent for appointment: ${apt.title} -> user ${apt.assignedToId}`);
-        } catch (aptError) {
-          console.error(`❌ [Reminder] Error processing appointment ${apt.id}:`, aptError.message);
-        }
+        console.log(`🔔 [Reminder] Notification sent for appointment: ${apt.title} -> user ${apt.assignedToId}`);
+      } catch (aptError) {
+        console.error(`❌ [Reminder] Error processing appointment ${apt.id}:`, aptError.message);
       }
-    } catch (error) {
-      console.error('❌ [Reminder] Processor error:', error.message);
     }
+  } catch (error) {
+    console.error('❌ [Reminder] Processor error:', error.message);
   }
+}
 
-  processAppointmentReminders(); // Initial check
+setTimeout(() => {
+  console.log('🔔 [Reminder] Starting appointment reminder processor (every 60 seconds)');
+  processAppointmentReminders();
   setInterval(processAppointmentReminders, APPOINTMENT_REMINDER_INTERVAL);
-}, 50000); // Start 50s after server launch
+}, 50000);
 
 // Scheduled calls cron: check every 60s for due auto-calls (persistent across restarts)
 setTimeout(() => {
   console.log('📅 [ScheduledCall] Starting scheduled call processor (every 60 seconds)');
-  processScheduledCalls(); // Initial check on startup (picks up any missed calls)
+  processScheduledCalls();
   setInterval(processScheduledCalls, 60 * 1000);
-}, 10000); // Start 10s after server launch
+}, 10000);
+
+// NO_REPLY Flow Cron: check every 5 minutes for silent conversations
+import { processNoReplyFlows } from './services/noReply.cron.js';
+setTimeout(() => {
+  console.log('⏰ [NO_REPLY] Starting no-reply flow cron (every 5 minutes)');
+  processNoReplyFlows();
+  setInterval(processNoReplyFlows, 5 * 60 * 1000);
+}, 60000);
+

@@ -1,15 +1,14 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 import { executeHotOpportunityEmailRule } from './rules.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 
-const prisma = new PrismaClient();
 
 // Get all contacts in a workspace
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, importGroup, callStatus, showArchived, limit = 50, offset = 0 } = req.query;
+        const { search, status, source, category, tag, importGroup, callStatus, showArchived, funnelType, funnelStageId, limit = 50, offset = 0 } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -109,6 +108,23 @@ export const getContacts = async (req, res) => {
                     where,
                     { importGroup: importGroup }
                 ]
+            };
+        }
+
+        // Add funnel/stage filter — filter directly on Contact model
+        if (funnelStageId && funnelStageId !== 'ALL') {
+            where = { 
+                AND: [
+                    where, 
+                    { funnelStageId: funnelStageId }
+                ] 
+            };
+        } else if (funnelType && funnelType !== 'ALL') {
+            where = { 
+                AND: [
+                    where, 
+                    { funnelType: funnelType }
+                ] 
             };
         }
 
@@ -386,7 +402,7 @@ export const getContactById = async (req, res) => {
 export const updateContact = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, fullName, phone, email, notes, tags, status, company, category } = req.body;
+        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId } = req.body;
 
         // Verify contact belongs to this workspace (either directly or via conversation)
         const existing = await prisma.contact.findFirst({
@@ -412,6 +428,8 @@ export const updateContact = async (req, res) => {
         if (notes !== undefined) updateData.notes = notes;
         if (status !== undefined) updateData.status = status;
         if (category !== undefined) updateData.category = category;
+        if (funnelType !== undefined) updateData.funnelType = funnelType;
+        if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
         if (tags !== undefined) {
             updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
         }
@@ -452,7 +470,7 @@ export const updateContact = async (req, res) => {
                 emitToWorkspace(conv.workspaceId, 'contact_updated', {
                     workspaceId: conv.workspaceId,
                     contactId: id,
-                    updatedFields: { name, phone, email, notes, tags, category, status }
+                    updatedFields: { name, phone, email, notes, tags, category, status, funnelStageId: updateData.funnelStageId, funnelType: updateData.funnelType }
                 });
             }
         }
@@ -468,6 +486,22 @@ export const updateContact = async (req, res) => {
             }
         }
 
+        // 🔥 HAS_PHONE Flow Trigger: fire when phone is newly added
+        const hadPhone = !!(existing.phone && existing.phone.trim());
+        const nowHasPhone = !!(contact.phone && contact.phone.trim());
+        if (!hadPhone && nowHasPhone) {
+            const contactWorkspaceId = workspaceId ||
+                (await prisma.conversation.findFirst({ where: { contactId: id }, select: { workspaceId: true } }))?.workspaceId;
+            if (contactWorkspaceId) {
+                const { executeFlowsByTrigger } = await import('./flow.controller.js');
+                executeFlowsByTrigger(contactWorkspaceId, 'HAS_PHONE', {
+                    contact,
+                    conversation: null
+                }).catch(e => console.error('❌ [FLOW:HAS_PHONE] error:', e.message));
+                console.log(`📞 [FLOW:HAS_PHONE] Triggered for contact ${id}`);
+            }
+        }
+
         res.json({ contact });
     } catch (error) {
         console.error('Update contact error:', error);
@@ -475,11 +509,12 @@ export const updateContact = async (req, res) => {
     }
 };
 
+
 // Create contact manually
 export const createContact = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone: rawPhone, email, notes, company } = req.body;
+        const { name, phone: rawPhone, email, notes, company, funnelType, funnelStageId } = req.body;
         const phone = normalizePhone(rawPhone);
 
         // Validation
@@ -523,6 +558,8 @@ export const createContact = async (req, res) => {
                 emails: emails ? JSON.stringify(emails) : '[]',
                 company,
                 status: initialStatus,
+                funnelType: funnelType || null,
+                funnelStageId: funnelStageId || null,
                 tags: '[]'
             }
         });
@@ -563,6 +600,9 @@ export const bulkImportContacts = async (req, res) => {
                 const phone = normalizePhone(row.phone);
                 const email = (row.email || '').trim();
                 const notes = (row.notes || '').trim();
+                const originalDate = row.createdAt ? new Date(row.createdAt) : new Date();
+                // Validate date
+                const contactDate = isNaN(originalDate.getTime()) ? new Date() : originalDate;
 
                 if (!name || (!phone && !email)) {
                     skipped++;
@@ -606,7 +646,7 @@ export const bulkImportContacts = async (req, res) => {
                     }]);
                 }
 
-                await prisma.contact.create({
+                const contact = await prisma.contact.create({
                     data: {
                         workspaceId,
                         name,
@@ -615,7 +655,20 @@ export const bulkImportContacts = async (req, res) => {
                         notes: notesJson,
                         importGroup: tag || null,
                         status: initialStatus,
-                        source: 'IMPORT'
+                        source: 'IMPORT',
+                        createdAt: contactDate
+                    }
+                });
+
+                // Create a LEAD conversation so the contact appears in Inbox
+                const conversation = await prisma.conversation.create({
+                    data: {
+                        workspaceId,
+                        contactId: contact.id,
+                        channel: 'LEAD',
+                        status: 'OPEN',
+                        lastMessageAt: contactDate,
+                        createdAt: contactDate
                     }
                 });
 

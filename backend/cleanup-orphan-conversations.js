@@ -1,7 +1,10 @@
 /**
- * Cleanup script to remove orphan conversations and contacts
- * (conversations without linked WhatsApp/Facebook/Email channels)
- * (contacts without any conversations)
+ * Cleanup script for orphan data
+ * - Orphan conversations (broken channel references) → channel ref is NULLIFIED, data preserved
+ * - Orphan leads (no linked Facebook page) → deleted
+ * 
+ * ⚠️  This script NEVER deletes conversations or messages.
+ *     It only clears broken foreign key references.
  * 
  * Run with: node cleanup-orphan-conversations.js
  */
@@ -14,7 +17,9 @@ async function cleanupOrphanData() {
     console.log('🧹 Starting orphan data cleanup...\n');
 
     try {
-        // ===== STEP 1: FIND ORPHAN CONVERSATIONS =====
+        // ===== STEP 1: FIND & FIX ORPHAN CONVERSATIONS =====
+        // Instead of deleting, we nullify the broken channel reference
+        // so conversations and messages are PRESERVED.
         
         // Find WhatsApp conversations with no linked phone number
         const orphanWhatsappConvs = await prisma.conversation.findMany({
@@ -33,7 +38,7 @@ async function cleanupOrphanData() {
 
         console.log(`📱 Found ${orphanWAIds.length} orphan WhatsApp conversations`);
 
-        // Find Facebook conversations with no linked page
+        // Find Facebook/Instagram conversations with no linked page
         const orphanFacebookConvs = await prisma.conversation.findMany({
             where: {
                 channel: { in: ['FACEBOOK', 'INSTAGRAM'] },
@@ -67,63 +72,39 @@ async function cleanupOrphanData() {
 
         console.log(`📧 Found ${orphanEmailIds.length} orphan Email conversations`);
 
-        const allOrphanIds = [...orphanWAIds, ...orphanFBIds, ...orphanEmailIds];
-
-        if (allOrphanIds.length > 0) {
-            console.log(`\n🗑️ Total orphan conversations to delete: ${allOrphanIds.length}`);
-
-            // Delete messages
-            const msgDeleted = await prisma.message.deleteMany({
-                where: { conversationId: { in: allOrphanIds } }
+        // Nullify broken channel references (SAFE - no data loss)
+        if (orphanWAIds.length > 0) {
+            const updated = await prisma.conversation.updateMany({
+                where: { id: { in: orphanWAIds } },
+                data: { whatsappPhoneNumberId: null }
             });
-            console.log(`   - Deleted ${msgDeleted.count} messages`);
+            console.log(`   ✅ Cleared ${updated.count} broken WhatsApp references (conversations preserved)`);
+        }
 
-            // Delete internal notes
-            const notesDeleted = await prisma.internalNote.deleteMany({
-                where: { conversationId: { in: allOrphanIds } }
+        if (orphanFBIds.length > 0) {
+            const updated = await prisma.conversation.updateMany({
+                where: { id: { in: orphanFBIds } },
+                data: { facebookPageId: null }
             });
-            console.log(`   - Deleted ${notesDeleted.count} internal notes`);
+            console.log(`   ✅ Cleared ${updated.count} broken Facebook/Instagram references (conversations preserved)`);
+        }
 
-            // Delete transfers
-            const transfersDeleted = await prisma.conversationTransfer.deleteMany({
-                where: { conversationId: { in: allOrphanIds } }
+        if (orphanEmailIds.length > 0) {
+            const updated = await prisma.conversation.updateMany({
+                where: { id: { in: orphanEmailIds } },
+                data: { emailChannelId: null }
             });
-            console.log(`   - Deleted ${transfersDeleted.count} transfers`);
+            console.log(`   ✅ Cleared ${updated.count} broken Email references (conversations preserved)`);
+        }
 
-            // Delete conversations
-            const convsDeleted = await prisma.conversation.deleteMany({
-                where: { id: { in: allOrphanIds } }
-            });
-            console.log(`   - Deleted ${convsDeleted.count} conversations`);
-        } else {
+        const totalOrphans = orphanWAIds.length + orphanFBIds.length + orphanEmailIds.length;
+        if (totalOrphans === 0) {
             console.log('\n✅ No orphan conversations found.');
+        } else {
+            console.log(`\n✅ Fixed ${totalOrphans} orphan conversations (data preserved, broken refs cleared)`);
         }
 
-        // ===== STEP 2: FIND AND DELETE ORPHAN CONTACTS =====
-        console.log('\n🔍 Checking for orphan contacts...');
-        
-        // Find all contacts
-        const allContacts = await prisma.contact.findMany({
-            select: { id: true, name: true }
-        });
-        
-        let orphanContactCount = 0;
-        
-        for (const contact of allContacts) {
-            // Check if contact has any conversations
-            const convCount = await prisma.conversation.count({
-                where: { contactId: contact.id }
-            });
-            
-            if (convCount === 0) {
-                await prisma.contact.delete({ where: { id: contact.id } }).catch(() => {});
-                orphanContactCount++;
-            }
-        }
-        
-        console.log(`👤 Deleted ${orphanContactCount} orphan contacts (contacts with no conversations)`);
-
-        // ===== STEP 3: DELETE ORPHAN LEADS =====
+        // ===== STEP 2: DELETE ORPHAN LEADS =====
         console.log('\n🔍 Checking for orphan leads...');
         
         const allLeads = await prisma.facebookLead.findMany({

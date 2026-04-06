@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 
-const prisma = new PrismaClient();
 
 // Get notifications for current user
 export const getNotifications = async (req, res) => {

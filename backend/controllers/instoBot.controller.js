@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const prisma = new PrismaClient();
 
 // Helper to get effective AI API key
 const getEffectiveAiApiKey = async (workspaceId) => {

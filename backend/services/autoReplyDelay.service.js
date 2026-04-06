@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { getAutoReply } from '../controllers/ai.controller.js';
 
-const prisma = new PrismaClient();
 
 // Store pending auto-reply timers
 const pendingTimers = new Map();

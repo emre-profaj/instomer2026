@@ -1,10 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { smartFieldMatcher } from '../utils/fieldMatcher.js';
 import { executeWebFormAutomation } from './automation.controller.js';
 
-const prisma = new PrismaClient();
 
 // Generate unique webhook URL and token
 const generateWebhookCredentials = () => {
@@ -465,11 +464,23 @@ export const handleFormSubmission = async (req, res) => {
             console.log(`ℹ️ [FormWebhook] Skipping automation - contact has no phone number`);
         }
 
+        // --- FLOW ENGINE TRIGGER ---
+        try {
+            const { executeFlowsByTrigger } = await import('./flow.controller.js');
+            executeFlowsByTrigger(webhook.workspaceId, 'NEW_FORM', {
+                contact, conversation,
+                formData: { name, email, phone, message, formName: webhook.name }
+            });
+        } catch (flowErr) {
+            console.error('⚠️ [FormWebhook] Flow engine error:', flowErr.message);
+        }
+
         // --- AUTO CALL TRIGGER ---
         if (phone) {
             try {
                 const { triggerAutoCall } = await import('./retell.controller.js');
-                triggerAutoCall(webhook.workspaceId, phone, contact?.id, name || 'Form Gönderen', 'FORM', messageContent);
+                // IMPORTANT: Pass null — form messages are system-generated, not customer time requests
+                triggerAutoCall(webhook.workspaceId, phone, contact?.id, name || 'Form Gönderen', 'FORM', null);
             } catch (autoCallErr) {
                 console.error('⚠️ [FormWebhook] AutoCall trigger error:', autoCallErr.message);
             }

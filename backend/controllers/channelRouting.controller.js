@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 
-const prisma = new PrismaClient();
 
 // Tüm kanal yönlendirmelerini getir
 export const getChannelRoutings = async (req, res) => {

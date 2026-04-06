@@ -1,12 +1,12 @@
 import { validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { getAiUsageStats } from '../services/aiUsage.service.js';
+import { logAdminActivity } from '../services/activityLog.service.js';
 
-const prisma = new PrismaClient();
 
 // Configure multer for logo upload
 const logoStorage = multer.diskStorage({
@@ -86,6 +86,9 @@ export const createWorkspace = async (req, res) => {
         });
 
         res.status(201).json({ workspace });
+        
+        // Log activity
+        await logAdminActivity(req, 'CREATE_WORKSPACE', 'WORKSPACE', workspace.id, workspace.name);
     } catch (error) {
         console.error('Create workspace error:', error);
         res.status(500).json({ error: 'Failed to create workspace' });
@@ -215,7 +218,8 @@ export const getWorkspaceMembers = async (req, res) => {
                         email: true,
                         avatar: true,
                         isOnline: true,
-                        lastSeenAt: true
+                        lastSeenAt: true,
+                        workingHours: true
                     }
                 }
             }
@@ -255,12 +259,14 @@ export const addMember = async (req, res) => {
             }
 
             const hashedPassword = await bcrypt.hash(password, 10);
+            const { workingHours } = req.body;
             user = await prisma.user.create({
                 data: {
                     email,
                     name,
                     password: hashedPassword,
-                    role: 'USER' // Default role for new users
+                    role: 'USER',
+                    workingHours: workingHours || null
                 }
             });
             console.log(`🆕 Created new user: ${email}`);
@@ -300,6 +306,9 @@ export const addMember = async (req, res) => {
         });
 
         res.status(201).json({ member });
+
+        // Log activity
+        await logAdminActivity(req, 'ADD_MEMBER', 'MEMBER', member.id, member.user?.name, { workspaceId, role });
     } catch (error) {
         console.error('Add member error:', error);
         res.status(500).json({ error: 'Failed to add member' });
@@ -369,6 +378,12 @@ export const removeMember = async (req, res) => {
             return res.status(400).json({ error: 'Cannot remove yourself' });
         }
 
+        // Fetch member name before deletion
+        const memberToLog = await prisma.workspaceMember.findUnique({
+            where: { userId_workspaceId: { userId, workspaceId } },
+            include: { user: { select: { name: true } } }
+        });
+
         await prisma.workspaceMember.delete({
             where: {
                 userId_workspaceId: {
@@ -377,6 +392,9 @@ export const removeMember = async (req, res) => {
                 }
             }
         });
+
+        const memberName = memberToLog?.user?.name || 'unknown';
+        await logAdminActivity(req, 'REMOVE_MEMBER', 'MEMBER', userId, memberName, { workspaceId });
 
         res.json({ message: 'Member removed successfully' });
     } catch (error) {
@@ -445,7 +463,7 @@ export const changeMemberPassword = async (req, res) => {
 export const updateMemberInfo = async (req, res) => {
     try {
         const { workspaceId, userId } = req.params;
-        const { name, email } = req.body;
+        const { name, email, workingHours } = req.body;
 
         if (!['OWNER', 'SUPER_ADMIN'].includes(req.workspaceMember.role)) {
             return res.status(403).json({ error: 'Yetkiniz yok' });
@@ -472,11 +490,12 @@ export const updateMemberInfo = async (req, res) => {
         const updateData = {};
         if (name) updateData.name = name;
         if (email) updateData.email = email;
+        if (workingHours !== undefined) updateData.workingHours = workingHours;
 
         const updatedUser = await prisma.user.update({
             where: { id: userId },
             data: updateData,
-            select: { id: true, name: true, email: true, avatar: true, isOnline: true }
+            select: { id: true, name: true, email: true, avatar: true, isOnline: true, workingHours: true }
         });
 
         console.log(`✏️ Member info updated for ${updatedUser.email} by ${req.user.email}`);
@@ -491,16 +510,23 @@ export const deleteWorkspace = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
+        // Fetch workspace name before deletion for logging
+        const workspaceToLog = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { name: true }
+        });
+
         // Check if requester has permission (must be OWNER)
         if (req.workspaceMember.role !== 'OWNER') {
             return res.status(403).json({ error: 'Only workspace owner can delete the workspace' });
         }
 
-        // Delete workspace (cascade will handle related data if configured in schema, 
-        // otherwise we might need manual cleanup but usually Prisma handles this)
         await prisma.workspace.delete({
             where: { id: workspaceId }
         });
+
+        const workspaceName = workspaceToLog?.name || 'deleted';
+        await logAdminActivity(req, 'DELETE_WORKSPACE', 'WORKSPACE', workspaceId, workspaceName);
 
         res.json({ message: 'Workspace deleted successfully' });
     } catch (error) {
@@ -524,7 +550,10 @@ export const getCompanyInfo = async (req, res) => {
                 companyEmail: true,
                 companyWebsite: true,
                 companyWorkingHours: true,
-                companyLogo: true
+                companyLogo: true,
+                invoiceTaxOffice: true,
+                invoiceTaxNumber: true,
+                invoiceIban: true
             }
         });
 
@@ -550,7 +579,10 @@ export const updateCompanyInfo = async (req, res) => {
             companyPhone,
             companyEmail,
             companyWebsite,
-            companyWorkingHours
+            companyWorkingHours,
+            invoiceTaxOffice,
+            invoiceTaxNumber,
+            invoiceIban
         } = req.body;
 
         const workspace = await prisma.workspace.update({
@@ -562,7 +594,10 @@ export const updateCompanyInfo = async (req, res) => {
                 companyPhone,
                 companyEmail,
                 companyWebsite,
-                companyWorkingHours
+                companyWorkingHours,
+                invoiceTaxOffice,
+                invoiceTaxNumber,
+                invoiceIban
             },
             select: {
                 companyName: true,
@@ -572,7 +607,10 @@ export const updateCompanyInfo = async (req, res) => {
                 companyEmail: true,
                 companyWebsite: true,
                 companyWorkingHours: true,
-                companyLogo: true
+                companyLogo: true,
+                invoiceTaxOffice: true,
+                invoiceTaxNumber: true,
+                invoiceIban: true
             }
         });
 

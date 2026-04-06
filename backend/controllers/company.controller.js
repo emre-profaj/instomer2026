@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import slugify from 'slugify';
 
-const prisma = new PrismaClient();
 
 // Tüm firmaları listele (SUPER_ADMIN only)
 export const getAllCompanies = async (req, res) => {

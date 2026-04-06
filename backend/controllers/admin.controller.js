@@ -1,9 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import bcrypt from 'bcryptjs';
 import { getAiUsageStats, updateAiLimit, SUBSCRIPTION_PLANS } from '../services/aiUsage.service.js';
+import { logAdminActivity } from '../services/activityLog.service.js';
 import axios from 'axios';
 
-const prisma = new PrismaClient();
 
 // Helper function to create slug from name
 const createSlug = (name) => {
@@ -58,6 +58,8 @@ export const createUser = async (req, res) => {
                 }
             }
         });
+
+        await logAdminActivity(req, 'CREATE_USER', 'USER', user.id, user.name, { email: user.email });
 
         res.status(201).json({
             message: 'User created successfully',
@@ -145,9 +147,13 @@ export const deleteUser = async (req, res) => {
             return res.status(400).json({ error: 'Cannot delete yourself' });
         }
 
+        const userToDelete = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } });
+
         await prisma.user.delete({
             where: { id: userId }
         });
+
+        await logAdminActivity(req, 'DELETE_USER', 'USER', userId, userToDelete?.name, { email: userToDelete?.email });
 
         res.json({ message: 'User deleted successfully' });
     } catch (error) {
@@ -219,6 +225,8 @@ export const createWorkspace = async (req, res) => {
             }
         });
 
+        await logAdminActivity(req, 'CREATE_WORKSPACE', 'WORKSPACE', workspace.id, workspace.name);
+
         res.status(201).json({ message: 'Workspace created successfully', workspace });
     } catch (error) {
         console.error('Create workspace error:', error);
@@ -278,6 +286,8 @@ export const updateWorkspace = async (req, res) => {
                 }
             }
         });
+
+        await logAdminActivity(req, 'UPDATE_WORKSPACE', 'WORKSPACE', workspaceId, name || 'unknown');
 
         res.json({ message: 'Workspace updated successfully' });
     } catch (error) {
@@ -353,6 +363,8 @@ export const deleteWorkspaceAdmin = async (req, res) => {
             timeout: 120000  // transaction timeout (120s / 2 minutes)
         });
 
+        await logAdminActivity(req, 'DELETE_WORKSPACE', 'WORKSPACE', workspaceId, 'deleted');
+
         res.json({ message: 'Workspace deleted successfully by admin' });
     } catch (error) {
         console.error('Admin delete workspace error:', error);
@@ -390,6 +402,8 @@ export const updateUser = async (req, res) => {
                 createdAt: true
             }
         });
+
+        await logAdminActivity(req, 'UPDATE_USER', 'USER', userId, user.name, { email: user.email });
 
         res.json({ message: 'Kullanıcı bilgileri başarıyla güncellendi', user });
     } catch (error) {
@@ -446,6 +460,8 @@ export const updateUserRole = async (req, res) => {
             });
             console.log(`🔄 Syncing all workspace roles for user ${userId} to ${role}`);
         }
+
+        await logAdminActivity(req, 'UPDATE_USER', 'USER', userId, user.name, { role, email: user.email });
 
         res.json({ message: 'User role updated successfully', user });
     } catch (error) {
@@ -552,6 +568,8 @@ export const addMemberToWorkspace = async (req, res) => {
             }
         });
 
+        await logAdminActivity(req, 'ADD_MEMBER', 'MEMBER', member.id, member.user?.name, { workspaceId, role: role || 'AGENT' });
+
         res.status(201).json({ message: 'Member added successfully', member });
     } catch (error) {
         console.error('Add member to workspace error:', error);
@@ -564,9 +582,16 @@ export const removeMemberFromWorkspace = async (req, res) => {
     try {
         const { workspaceId, memberId } = req.params;
 
+        const memberToRemove = await prisma.workspaceMember.findUnique({
+            where: { id: memberId },
+            include: { user: { select: { name: true } } }
+        });
+
         await prisma.workspaceMember.delete({
             where: { id: memberId }
         });
+
+        await logAdminActivity(req, 'REMOVE_MEMBER', 'MEMBER', memberId, memberToRemove?.user?.name, { workspaceId });
 
         res.json({ message: 'Member removed successfully' });
     } catch (error) {
@@ -734,6 +759,9 @@ export const updateWorkspaceAiLimit = async (req, res) => {
             subscriptionType,
             durationDays
         });
+
+        // Log activity
+        await logAdminActivity(req, 'UPDATE_AI_LIMIT', 'WORKSPACE', workspaceId, workspace.name, { dailyLimit, subscriptionType, durationDays });
 
         res.json({
             message: 'AI limits updated successfully',
@@ -978,6 +1006,36 @@ export const syncPhoneNumbersFromConversations = async (req, res) => {
     }
 };
 
+// Fix database funnel stage mismatches
+export const fixDatabaseFunnelStages = async (req, res) => {
+    try {
+        const conversations = await prisma.conversation.findMany({
+            where: {
+                NOT: { funnelStageId: null }
+            },
+            select: { id: true, funnelStageId: true }
+        });
+
+        let updated = 0;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+        for (const conv of conversations) {
+            if (!uuidRegex.test(conv.funnelStageId)) {
+                await prisma.conversation.update({
+                    where: { id: conv.id },
+                    data: { funnelStageId: null }
+                });
+                updated++;
+            }
+        }
+
+        res.json({ success: true, message: `Veritabanında hatalı olan ${updated} adet huni aşaması düzeltildi.` });
+    } catch (error) {
+        console.error('Fix DB error:', error);
+        res.status(500).json({ error: 'Veritabanı onarımı başarısız' });
+    }
+};
+
 // Check Facebook/Instagram pages health
 export const checkFacebookPagesHealth = async (req, res) => {
     try {
@@ -1083,9 +1141,50 @@ export const updateGlobalSettings = async (req, res) => {
             });
         }
 
+        await logAdminActivity(req, 'UPDATE_SETTINGS', 'SETTINGS', 'global', 'Global Ayarlar');
+
         res.json({ settings });
     } catch (error) {
         console.error('Update global settings error:', error);
         res.status(500).json({ error: 'Failed to update global settings' });
+    }
+};
+
+// Get admin activity logs
+export const getActivityLogs = async (req, res) => {
+    try {
+        const { page = 1, limit = 50, action, startDate, endDate } = req.query;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const where = {};
+        if (action) where.action = action;
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate) where.createdAt.lte = new Date(endDate + 'T23:59:59.999Z');
+        }
+
+        const [logs, total] = await Promise.all([
+            prisma.adminActivityLog.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: parseInt(limit)
+            }),
+            prisma.adminActivityLog.count({ where })
+        ]);
+
+        res.json({
+            logs,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error('Get activity logs error:', error);
+        res.status(500).json({ error: 'İşlem geçmişi yüklenemedi' });
     }
 };

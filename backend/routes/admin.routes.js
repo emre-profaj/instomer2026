@@ -25,7 +25,9 @@ import {
     syncPhoneNumbersFromConversations,
     getGlobalSettings,
     updateGlobalSettings,
-    checkFacebookPagesHealth
+    checkFacebookPagesHealth,
+    getActivityLogs,
+    fixDatabaseFunnelStages
 } from '../controllers/admin.controller.js';
 import { authenticateJWT, requireRole } from '../middleware/auth.middleware.js';
 
@@ -76,8 +78,12 @@ router.post('/email/bulk', sendBulkEmail);
 
 // Data Sync Utilities
 router.post('/sync/phone-numbers', syncPhoneNumbersFromConversations);
+router.post('/sync/fix-funnel-stages', fixDatabaseFunnelStages);
 
 // Facebook/Instagram Health Check
 router.get('/facebook/health-check', checkFacebookPagesHealth);
+
+// Activity Logs
+router.get('/activity-logs', getActivityLogs);
 
 export default router;

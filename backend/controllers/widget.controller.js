@@ -1,11 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { getAutoReply } from './ai.controller.js';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting } from '../services/conversationRouting.service.js';
 import { executeWebFormAutomation } from './automation.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 
-const prisma = new PrismaClient();
 
 // Get widget settings for a workspace
 export const getWidgetSettings = async (req, res) => {
@@ -237,6 +236,16 @@ export const handleWidgetChat = async (req, res) => {
             } catch (automationError) {
                 console.error('❌ [Widget] Automation trigger error:', automationError);
             }
+
+            // --- FLOW ENGINE TRIGGER ---
+            try {
+                const { executeFlowsByTrigger } = await import('./flow.controller.js');
+                executeFlowsByTrigger(workspaceId, 'FIRST_MSG', {
+                    contact, conversation, message
+                });
+            } catch (flowErr) {
+                console.error('⚠️ [Widget] Flow engine error:', flowErr.message);
+            }
         } else {
             // Existing conversation - sync bot assignment from widget settings
             let widgetSettings = null;
@@ -460,6 +469,17 @@ export const handlePrechat = async (req, res) => {
                 console.log(`🤖 [Widget Prechat] Web form automation triggered for contact ${contact.id}`);
             } catch (automationError) {
                 console.error('❌ [Widget Prechat] Automation trigger error:', automationError);
+            }
+
+            // --- FLOW ENGINE TRIGGER ---
+            try {
+                const { executeFlowsByTrigger } = await import('./flow.controller.js');
+                executeFlowsByTrigger(workspaceId, 'NEW_FORM', {
+                    contact, conversation,
+                    formData: { name, phone: normalizedPhone, subject }
+                });
+            } catch (flowErr) {
+                console.error('⚠️ [Widget Prechat] Flow engine error:', flowErr.message);
             }
         }
 

@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import passport from 'passport';
 import jwt from 'jsonwebtoken';
-const prisma = new PrismaClient();
+
 
 export const authenticateJWT = (req, res, next) => {
     passport.authenticate('jwt', { session: false }, async (err, user, info) => {

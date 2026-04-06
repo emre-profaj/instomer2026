@@ -8,7 +8,8 @@ import {
     deleteDeal,
     convertDeal,
     getDealStats,
-    getContactDeals
+    getContactDeals,
+    recordPayment
 } from '../controllers/deal.controller.js';
 
 const router = express.Router();
@@ -24,6 +25,7 @@ router.post('/:workspaceId/deals', requireWorkspaceAccess, createDeal);
 router.put('/:workspaceId/deals/:dealId', requireWorkspaceAccess, updateDeal);
 router.delete('/:workspaceId/deals/:dealId', requireWorkspaceAccess, deleteDeal);
 router.post('/:workspaceId/deals/:dealId/convert', requireWorkspaceAccess, convertDeal);
+router.patch('/:workspaceId/deals/:dealId/payment', requireWorkspaceAccess, recordPayment);
 
 // Kişiye ait deal'lar
 router.get('/:workspaceId/contacts/:contactId/deals', requireWorkspaceAccess, getContactDeals);

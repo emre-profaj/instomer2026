@@ -41,6 +41,7 @@ model User {
   ownedCompanies        Company[]              @relation("CompanyOwner")
   assignedDeals         Deal[]                 @relation("DealAssignee")
   notifications         Notification[]
+  workingHours          Json?
 
   @@map("users")
 }
@@ -86,6 +87,11 @@ model Workspace {
   companyWorkingHours String?
   companyLogo         String?
 
+  // Fatura ayarları
+  invoiceTaxOffice    String? // Vergi Dairesi
+  invoiceTaxNumber    String? // Vergi Numarası
+  invoiceIban         String? // IBAN
+
   // Firma (Company) ilişkisi
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
@@ -120,6 +126,8 @@ model Workspace {
   scheduledCalls       ScheduledCall[]
   workspaceRules       WorkspaceRule[]
   funnels              Funnel[]
+  calendarResources    CalendarResource[]
+  flows                Flow[]
 
   // Retell AI Voice
   retellApiKey     String?
@@ -289,6 +297,8 @@ model Contact {
   status            String           @default("NEW")
   source            String           @default("MANUAL")
   category          String           @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
+  funnelType        String? // Global stage category (e.g. Fırsat)
+  funnelStageId     String? // Exact stage ID (e.g. Sıcak Fırsat)
   lastContactedAt   DateTime?
   isBlocked         Boolean          @default(false)
   blockedAt         DateTime?
@@ -334,6 +344,7 @@ model Conversation {
   aiTopic               String? // AI-generated conversation topic
   aiSummary             String? // AI-generated conversation summary
   funnelType            String? // Funnel category (e.g., SATIS, DESTEK, SIKAYET)
+  funnelStageId         String? // Current stage within the funnel
   handoffPending        Boolean                @default(false) // Bot awaiting user confirmation for handoff
 
   routingState          String? // JSON: { currentQuestionIndex, answers: { fieldName: value }, completed }
@@ -354,6 +365,13 @@ model Conversation {
   messages              Message[]
   formSubmissions       FormSubmission[]
 
+  // Performance indexes for high-frequency cron queries
+  @@index([workspaceId])
+  @@index([status, botEnabled, assignedToId])           // processPendingBotResponses (every 30s)
+  @@index([status, inactivityWarningSent, channel])      // processInactivityWarnings (every 30s)
+  @@index([workspaceId, status, lastMessageAt])          // processNoReplyFlows (every 5m)
+  @@index([contactId])
+  @@index([assignedToId])
   @@map("conversations")
 }
 
@@ -395,6 +413,7 @@ model Message {
   sender            User?        @relation(fields: [senderId], references: [id])
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
+  @@index([conversationId, createdAt])   // Cron jobs: find latest message per conversation
   @@map("messages")
 }
 
@@ -604,7 +623,8 @@ model Appointment {
   description  String?
   startTime    DateTime
   endTime      DateTime
-  assignedToId String
+  assignedToId String?
+  resourceId   String?
   contactId    String?
   contactName  String?
   contactPhone String?
@@ -619,9 +639,29 @@ model Appointment {
 
   @@index([workspaceId])
   @@index([assignedToId])
+  @@index([resourceId])
   @@index([startTime])
   @@index([status])
   @@map("appointments")
+}
+
+model CalendarResource {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  name           String
+  description    String?
+  type           String   @default("ROOM") // ROOM, PERSON, EQUIPMENT, OTHER
+  color          String   @default("#8b5cf6")
+  isActive       Boolean  @default(true)
+  availableStart String?  // "09:00"
+  availableEnd   String?  // "18:00"
+  availableDays  String?  // JSON: [1,2,3,4,5]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("calendar_resources")
 }
 
 // WhatsApp Message Templates
@@ -701,6 +741,25 @@ model WorkspaceRule {
   @@unique([workspaceId, ruleType])
   @@index([workspaceId])
   @@map("workspace_rules")
+}
+
+// Visual Flow Builder Flows
+model Flow {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  isActive    Boolean  @default(false)
+  trigger     String?  // NEW_FORM, FIRST_MSG, TAG_ADDED
+  steps       Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([isActive])
+  @@index([trigger])
+  @@map("flows")
 }
 
 model FormWebhook {
@@ -787,7 +846,13 @@ model Deal {
 
   // Aşama ve Durum
   stage  String @default("QUOTE") // QUOTE, ORDER, INVOICE
-  status String @default("OPEN") // OPEN, WON, LOST
+  status String @default("OPEN") // OPEN, WON, LOST, OVERDUE
+
+  // Ödeme Takibi
+  dueDate     DateTime? // Son ödeme tarihi (vade)
+  vatRate     Float     @default(0) // KDV oranı: 0, 10, 20
+  paidAmount  Float     @default(0) // Ödenen tutar (kısmi ödeme desteği)
+  paymentDate DateTime? // Ödeme gerçekleştiği tarih
 
   // Ürünler (JSON array)
   products String @default("[]") // [{ name, quantity, unitPrice, total }]
@@ -861,6 +926,7 @@ model RetellCall {
   direction      String   @default("outbound")
   status         String   @default("registered")
   duration       Int?
+  startedAt      DateTime? // Retell'den gelen gerçek arama başlangıç zamanı (start_timestamp)
   transcript     String?  @db.Text
   recordingUrl   String?
   summary        String?
@@ -905,6 +971,7 @@ model ScheduledCall {
   contactId     String?
   contactName   String?
   toNumber      String
+  agentId       String?
   scheduledAt   DateTime
   status        String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED
   retellCallId  String?
@@ -923,15 +990,49 @@ model ScheduledCall {
 
 // Funnel: User-defined pipeline categories
 model Funnel {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   workspaceId String
   name        String
-  color       String    @default("#3b82f6")
-  icon        String    @default("📁")
-  order       Int       @default(0)
-  createdAt   DateTime  @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  color       String        @default("#3b82f6")
+  icon        String        @default("📁")
+  order       Int           @default(0)
+  createdAt   DateTime      @default(now())
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stages      FunnelStage[]
 
   @@index([workspaceId])
   @@map("funnels")
+}
+
+// FunnelStage: Stages within a funnel (e.g., Yeni, İşlemde, Kapandı)
+model FunnelStage {
+  id        String   @id @default(cuid())
+  funnelId  String
+  name      String
+  color     String   @default("#6b7280")
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  funnel    Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  @@index([funnelId])
+  @@map("funnel_stages")
+}
+
+// Admin İşlem Geçmişi (Activity Log)
+model AdminActivityLog {
+  id         String   @id @default(uuid())
+  userId     String
+  userName   String
+  action     String   // CREATE_USER, DELETE_USER, UPDATE_USER, CREATE_WORKSPACE, DELETE_WORKSPACE, UPDATE_WORKSPACE, ADD_MEMBER, REMOVE_MEMBER, UPDATE_SETTINGS, UPDATE_AI_LIMIT, RESET_AI_COUNTER
+  targetType String?  // USER, WORKSPACE, SETTINGS, MEMBER
+  targetId   String?
+  targetName String?
+  details    String?  // JSON string for additional info
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("admin_activity_logs")
 }

@@ -1,7 +1,6 @@
 import axios from 'axios';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 
-const prisma = new PrismaClient();
 
 const GRAPH_API_VERSION = 'v21.0';
 
@@ -9,13 +8,24 @@ const GRAPH_API_VERSION = 'v21.0';
 export const getLeads = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { pageId, formId, status, page = 1, limit = 20 } = req.query;
+        const { pageId, formId, status, page = 1, limit = 20, startDate, endDate } = req.query;
 
         // Get leads from database
         const where = { workspaceId };
         if (pageId) where.facebookPageId = pageId;
         if (formId) where.formId = formId;
         if (status) where.status = status;
+
+        // Date range filter
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                where.createdAt.lte = end;
+            }
+        }
 
         const [leads, total] = await Promise.all([
             prisma.facebookLead.findMany({

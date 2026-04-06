@@ -4,10 +4,9 @@
  * Workspace bazlı günlük AI sohbet limiti kontrolü ve yönetimi
  */
 
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 
-const prisma = new PrismaClient();
 
 // Abonelik planları ve limitleri
 export const SUBSCRIPTION_PLANS = {

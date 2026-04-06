@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
@@ -11,7 +11,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MEDIA_DIR = path.join(__dirname, '..', 'uploads', 'media');
 
-const prisma = new PrismaClient();
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
 // Processing lock to prevent duplicate webhook processing
@@ -977,6 +976,13 @@ export const webhookHandler = async (req, res) => {
                         }
                     }
 
+                    // Check if contact is blocked - skip processing if blocked
+                    if (contact.isBlocked) {
+                        console.log(`🚫 [BLOCKED] WhatsApp contact ${contact.id} (${contact.name}) is blocked. Ignoring incoming message.`);
+                        releaseMessageLock(wamid);
+                        return res.sendStatus(200);
+                    }
+
                     let conversation = await prisma.conversation.findFirst({
                         where: {
                             contactId: contact.id,
@@ -1027,6 +1033,18 @@ export const webhookHandler = async (req, res) => {
                                 include: { contact: true }
                             });
                             console.log(`📡 [Webhook] ✅ Routing applied: Team=${routingResult.teamName}, BotDelay=${routingResult.botDelayedUntil}`);
+                        }
+
+                        // 🔄 Flow Engine: FIRST_MSG trigger for new WhatsApp conversations
+                        try {
+                            const { executeFlowsByTrigger } = await import('./flow.controller.js');
+                            executeFlowsByTrigger(waNumber.workspaceId, 'FIRST_MSG', {
+                                contact,
+                                conversation,
+                                message: { content: msg_body }
+                            });
+                        } catch (flowErr) {
+                            console.error('⚠️ [FLOW] FIRST_MSG trigger error:', flowErr.message);
                         }
                     } else {
                         // Mevcut konuşma - güncelle
@@ -1109,7 +1127,7 @@ export const webhookHandler = async (req, res) => {
                             if (callIntent) {
                                 if (callIntent.type === 'immediate') {
                                     console.log(`📞 [WA] Chat call request detected (immediate) for ${from}`);
-                                    triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'CHAT_REQUEST').catch(e =>
+                                    triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'CHAT_REQUEST', msg_body).catch(e =>
                                         console.error('⚠️ [WA] Chat immediate call error:', e.message)
                                     );
                                 } else if (callIntent.type === 'scheduled') {
@@ -1127,7 +1145,7 @@ export const webhookHandler = async (req, res) => {
                             } else {
                                 // Fallback: original auto-call trigger (form-based, dedup handled inside)
                                 const { triggerAutoCall } = await import('./retell.controller.js');
-                                triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'WHATSAPP');
+                                triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'WHATSAPP', msg_body);
                             }
                         } catch (autoCallErr) {
                             console.error('⚠️ [WA] Call trigger error:', autoCallErr.message);
@@ -1243,8 +1261,15 @@ export const webhookHandler = async (req, res) => {
 
                     // --- AUTO EXTRACT START ---
                     try {
-                        const { autoExtractFromConversation } = await import('./ai.controller.js');
+                        const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
+                        const { autoAssignDefaultFunnel } = await import('./funnel.controller.js');
                         autoExtractFromConversation(waNumber.workspaceId, conversation.id);
+                        autoGenerateTopic(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
+                            console.error('❌ [AutoTopic] WA error:', e.message)
+                        );
+                        autoAssignDefaultFunnel(waNumber.workspaceId, conversation.id).catch(e =>
+                            console.error('❌ [AutoFunnel] WA error:', e.message)
+                        );
                     } catch (extractError) {
                         console.error('❌ AI Auto-Extract (WhatsApp) call failed:', extractError);
                     }

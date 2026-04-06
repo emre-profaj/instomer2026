@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import { getIO, emitToWorkspace } from '../socket.js';
 
-const prisma = new PrismaClient();
 
 /**
  * Kanal yönlendirmesine göre konuşmayı ekibe ata ve bot gecikmesini ayarla

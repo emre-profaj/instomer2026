@@ -1,16 +1,15 @@
 import { validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
 
-const prisma = new PrismaClient();
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
 export const getConversations = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { status, assignedToId, teamId, channel, contactId, page = 1, limit = 20 } = req.query;
+        const { status, assignedToId, teamId, channel, contactId, page = 1, limit = 20, search, funnelStageId, funnelType, contactStatus } = req.query;
 
         const { role } = req.workspaceMember; // Available from requireWorkspaceAccess middleware
 
@@ -31,9 +30,37 @@ export const getConversations = async (req, res) => {
             ...(channel === 'WIDGET' && {
                 channel: 'WIDGET'
             }),
+            ...(channel === 'PHONE' && {
+                channel: 'PHONE'
+            }),
             ...(status && { status }),
-            ...(contactId && { contactId })
+            ...(contactId && { contactId }),
+            ...(funnelType && { funnelType }),
+            // For funnelStageId, check explicit conversation stage OR inherit the contact's funnelStageId
+            ...(funnelStageId && { 
+                OR: [
+                    { funnelStageId: funnelStageId },
+                    { funnelStageId: null, contact: { funnelStageId: funnelStageId } }
+                ]
+            }),
+            // Keep contactStatus check just in case legacy calls use it
+            ...(contactStatus && { contact: { status: contactStatus } })
         };
+
+        // Server-side search: filter by contact name/email/phone
+        if (search && search.trim()) {
+            const term = search.trim();
+            where.contact = {
+                OR: [
+                    { name: { contains: term, mode: 'insensitive' } },
+                    { fullName: { contains: term, mode: 'insensitive' } },
+                    { email: { contains: term, mode: 'insensitive' } },
+                    { phone: { contains: term } },
+                    { instagramUsername: { contains: term, mode: 'insensitive' } },
+                    { company: { contains: term, mode: 'insensitive' } }
+                ]
+            };
+        }
 
         // Handle teamId if explicitly provided
         if (teamId) {
@@ -1061,18 +1088,6 @@ export const deleteConversation = async (req, res) => {
             where: { id: conversationId }
         });
 
-        // 6. Check if contact has other conversations, if not delete the contact too
-        const remainingConversations = await prisma.conversation.count({
-            where: { contactId: conversation.contactId }
-        });
-
-        if (remainingConversations === 0) {
-            await prisma.contact.delete({
-                where: { id: conversation.contactId }
-            });
-            console.log(` - Deleted orphan contact: ${conversation.contact?.name}`);
-        }
-
         console.log(`✅ [Delete Conversation] SUCCESS - ID: ${conversationId}`);
         res.json({ message: 'Conversation and all related data deleted successfully' });
     } catch (error) {
@@ -1131,24 +1146,12 @@ export const deleteAllConversations = async (req, res) => {
         });
         console.log(` - Deleted ${convDeleted.count} conversations`);
 
-        // 6. Delete orphan contacts (contacts with no remaining conversations)
-        let contactsDeleted = 0;
-        for (const contactId of contactIds) {
-            const remaining = await prisma.conversation.count({ where: { contactId } });
-            if (remaining === 0) {
-                await prisma.contact.delete({ where: { id: contactId } }).catch(() => { });
-                contactsDeleted++;
-            }
-        }
-        console.log(` - Deleted ${contactsDeleted} orphan contacts`);
-
         console.log(`✅ [Delete All Conversations] SUCCESS - ${convDeleted.count} conversations deleted`);
 
         res.json({
             message: `${convDeleted.count} sohbet başarıyla silindi.`,
             deletedCount: convDeleted.count,
-            messagesDeleted: msgDeleted.count,
-            contactsDeleted
+            messagesDeleted: msgDeleted.count
         });
     } catch (error) {
         console.error('Delete all conversations error:', error);
@@ -1703,23 +1706,122 @@ export const updateTopic = async (req, res) => {
     }
 };
 
-// Update funnelType for a conversation
+// Update funnelType and/or funnelStageId for a conversation
 export const updateFunnel = async (req, res) => {
     try {
         const { workspaceId, conversationId } = req.params;
-        const { funnelType } = req.body;
+        const { funnelType, funnelStageId } = req.body;
 
         const existing = await prisma.conversation.findFirst({ where: { id: conversationId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Conversation not found' });
 
-        const conversation = await prisma.conversation.update({
-            where: { id: conversationId },
-            data: { funnelType: funnelType || null }
-        });
+        const updateData = {};
+        if (funnelType !== undefined) updateData.funnelType = funnelType || null;
+        if (funnelStageId !== undefined && funnelStageId !== null) {
+            // Accept both UUID and CUID format stage IDs (FunnelStage uses cuid)
+            updateData.funnelStageId = (typeof funnelStageId === 'string' && funnelStageId.length > 5) ? funnelStageId : null;
+        } else if (funnelStageId === null) {
+            updateData.funnelStageId = null;
+        }
 
-        res.json({ success: true, funnelType: conversation.funnelType });
+        let conversation;
+        try {
+            conversation = await prisma.conversation.update({
+                where: { id: conversationId },
+                data: updateData
+            });
+        } catch (updateErr) {
+            // funnelStageId column may not exist yet — fall back to funnelType only
+            console.warn('⚠️ funnelStageId column not available, falling back:', updateErr.message);
+            conversation = await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { ...(funnelType !== undefined && { funnelType: funnelType || null }) }
+            });
+        }
+
+        res.json({ success: true, funnelType: conversation.funnelType, funnelStageId: conversation.funnelStageId || null });
+
+        // Emit socket so open sidebars update the funnel stage tag immediately
+        try {
+            emitToWorkspace(workspaceId, 'funnel_stage_updated', {
+                conversationId,
+                funnelType: conversation.funnelType,
+                funnelStageId: conversation.funnelStageId || null
+            });
+        } catch (_) {}
+
+        // 🔥 STAGE_CHANGED Flow Trigger & Contact Status Sync
+        if (funnelStageId && funnelStageId !== existing.funnelStageId) {
+            (async () => {
+                try {
+                    const [oldStageRec, newStageRec] = await Promise.all([
+                        existing.funnelStageId
+                            ? prisma.funnelStage.findUnique({ where: { id: existing.funnelStageId } }).catch(() => null)
+                            : null,
+                        prisma.funnelStage.findUnique({ where: { id: funnelStageId } }).catch(() => null)
+                    ]);
+
+                    // 🔥 Update Contact Status based on the new stage name
+                    if (newStageRec && existing.contactId) {
+                        const stageName = newStageRec.name;
+                        let newStatus = 'OPPORTUNITY'; // Default
+
+                        // Mapping stage names to Contact status constants
+                        if (stageName === 'Yeni Başvuru') newStatus = 'NEW';
+                        else if (stageName === 'Fırsat') newStatus = 'OPPORTUNITY';
+                        else if (stageName === 'Sıcak Fırsat') newStatus = 'HOT_OPPORTUNITY';
+                        else if (stageName === 'Satış') newStatus = 'SALE_COMPLETED';
+                        else if (stageName === 'Kayıp') newStatus = 'LOST';
+                        else if (stageName === 'İlgisiz') newStatus = 'NOT_INTERESTED';
+                        else if (stageName === 'Ulaşılamadı') newStatus = 'UNREACHABLE';
+                        else if (stageName === 'Tekrar Ara') newStatus = 'CALLBACK';
+                        else if (stageName === 'Teklif Verildi') newStatus = 'OFFER_GIVEN';
+                        else if (stageName === 'Pazarlık') newStatus = 'NEGOTIATION';
+                        else if (stageName === 'Sözleşme') newStatus = 'CONTRACT';
+                        else if (stageName === 'Randevu Planlandı') newStatus = 'APPOINTMENT';
+                        else if (stageName === 'Bilgi Verildi') newStatus = 'INFO_GIVEN';
+
+                        await prisma.contact.update({
+                            where: { id: existing.contactId },
+                            data: { 
+                                status: newStatus,
+                                funnelStageId: conversation.funnelStageId,
+                                funnelType: conversation.funnelType
+                            }
+                        });
+                        console.log(`✅ [StatusSync] Contact ${existing.contactId} status updated to ${newStatus} (Stage: ${stageName})`);
+
+                        // Emit contact update so UI refreshes
+                        try {
+                            emitToWorkspace(workspaceId, 'contact_updated', {
+                                contactId: existing.contactId,
+                                workspaceId,
+                                updatedFields: { 
+                                    status: newStatus,
+                                    funnelStageId: conversation.funnelStageId,
+                                    funnelType: conversation.funnelType
+                                }
+                            });
+                        } catch (e) {}
+                    }
+
+                    const { executeFlowsByTrigger } = await import('./flow.controller.js');
+                    await executeFlowsByTrigger(workspaceId, 'STAGE_CHANGED', {
+                        conversation: { id: conversationId },
+                        fromStage: oldStageRec?.name || null,
+                        toStage: newStageRec?.name || null,
+                        contact: existing.contactId ? { id: existing.contactId } : null
+                    });
+                    console.log('🔀 [FLOW:STAGE_CHANGED] stage changed');
+                } catch (e) {
+                    console.error('❌ [StatusSync/FLOW] error:', e.message);
+                }
+            })();
+        }
+
     } catch (error) {
         console.error('Update funnel error:', error);
         res.status(500).json({ error: 'Funnel güncellenemedi' });
     }
 };
+

@@ -1834,6 +1834,7 @@
 
 /* Call History Styles */
 .call-history-section {
+    margin-top: 16px;
     margin-bottom: 32px;
 }
 
@@ -2528,10 +2529,11 @@
     background: transparent;
 }
 
+/* Çarpı butonunu kartın sağ üstüne sabitle — sidebar-content paddingi hesaba katarak */
 .unified-close-btn {
     position: absolute;
-    top: 0;
-    right: -6px;
+    top: 20px;
+    right: 10px;
     z-index: 1;
     background: transparent;
     border: none;
