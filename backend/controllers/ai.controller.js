@@ -1551,8 +1551,22 @@ ${documentContext || "Bilgi bankası boş."}
         try {
             result = await tryGenerate("gemini-2.0-flash");
         } catch (e) {
-            console.log('Fallback to 1.5 due to:', e.message);
-            result = await tryGenerate("gemini-2.0-flash");
+            console.warn(`⚠️ [AI] Primary model (gemini-2.0-flash) failed for workspace ${workspaceId}: ${e.message}`);
+            
+            // 429 Rate Limit → 3 saniye bekle + farklı modelle dene
+            if (e.message.includes('429') || e.message.includes('Resource exhausted')) {
+                console.log('⏳ [AI] Rate limited, waiting 3s before fallback...');
+                await new Promise(r => setTimeout(r, 3000));
+            }
+            
+            try {
+                console.log('🔄 [AI] Falling back to gemini-2.5-flash-lite...');
+                result = await tryGenerate("gemini-2.5-flash-lite");
+            } catch (fallbackError) {
+                console.error(`❌ [AI] Both models failed for workspace ${workspaceId}. Primary: ${e.message}, Fallback: ${fallbackError.message}`);
+                if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
+                return null;
+            }
         }
 
         const responseText = result.response.text();
@@ -2277,13 +2291,16 @@ JSON:`;
 
         let extracted;
         try {
-            extracted = await tryModel("gemini-2.0-flash");
+            extracted = await tryModel("gemini-2.5-flash-lite");
         } catch (err) {
-            console.warn(`⚠️ [AI Auto-Extract] gemini-2.0-flash failed, trying fallback: ${err.message}`);
+            console.warn(`⚠️ [AI Auto-Extract] gemini-2.5-flash-lite failed, trying fallback: ${err.message}`);
+            if (err.message.includes('429') || err.message.includes('Resource exhausted')) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
             try {
                 extracted = await tryModel("gemini-2.0-flash");
             } catch (err2) {
-                console.error(`❌ [AI Auto-Extract] All models failed: ${err2.message}`);
+                console.error(`❌ [AI Auto-Extract] All models failed for workspace ${workspaceId}: ${err2.message}`);
                 return null;
             }
         }
@@ -2460,7 +2477,7 @@ Mesaj: "${firstMessage.substring(0, 500)}"
 Konu başlığı:`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
         const result = await model.generateContent(prompt);
         const topic = result.response.text().trim().replace(/^["']|["']$/g, '').substring(0, 120);
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -18,6 +18,7 @@ const Sidebar = () => {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [isSalesOpen, setIsSalesOpen] = useState(false);
+    const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
 
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -30,6 +31,13 @@ const Sidebar = () => {
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
         { path: '/calendar', icon: Calendar, label: t('nav.calendar') },
         { path: '/users', icon: Layers, label: t('users.title') }
+    ];
+
+    const realEstateSubItems = [
+        { path: '/real-estate/offers', icon: ClipboardList, label: 'Teklifler' },
+        { path: '/real-estate/portfolio', icon: Home, label: 'Portföy' },
+        { path: '/real-estate/campaigns', icon: Tag, label: 'Kampanyalar' },
+        { path: '/real-estate', icon: Settings, label: 'Genel Ayarlar' },
     ];
 
     const analyticsSubItems = [
@@ -209,12 +217,43 @@ const Sidebar = () => {
                                 );
                             })}
 
+                            {/* Gayrimenkul */}
+                            {(workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (
+                                <div className="nav-category">
+                                    <button
+                                        className={`nav-category-header ${location.pathname.startsWith('/real-estate') ? 'active' : ''}`}
+                                        onClick={() => { setIsRealEstateOpen(v => !v); setIsSalesOpen(false); setIsAnalyticsOpen(false); setIsSettingsOpen(false); }}
+                                        title="Gayrimenkul"
+                                    >
+                                        <Building2 size={20} className="nav-icon" />
+                                        {!isCollapsed && <span>Gayrimenkul</span>}
+                                        {!isCollapsed && <ChevronDown size={16} className={`category-arrow ${isRealEstateOpen ? 'open' : ''}`} />}
+                                    </button>
+                                    {isRealEstateOpen && !isCollapsed && (
+                                        <div className="nav-submenu">
+                                            {realEstateSubItems.map(item => {
+                                                const [itemPath, itemQuery] = item.path.split('?');
+                                                const isActive = location.pathname === itemPath &&
+                                                    (!itemQuery || location.search === `?${itemQuery}`);
+                                                return (
+                                                    <Link key={item.path} to={item.path}
+                                                        className={`sidebar-nav-item submenu-item ${isActive ? 'active' : ''}`}>
+                                                        <item.icon size={18} className="nav-icon" />
+                                                        <span>{item.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {/* Sales */}
                             {(workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (
                                 <div className="nav-category">
                                     <button
                                         className={`nav-category-header ${salesSubItems.some(i => location.pathname === i.path) ? 'active' : ''}`}
-                                        onClick={() => { setIsSalesOpen(v => !v); setIsAnalyticsOpen(false); setIsSettingsOpen(false); }}
+                                        onClick={() => { setIsSalesOpen(v => !v); setIsRealEstateOpen(false); setIsAnalyticsOpen(false); setIsSettingsOpen(false); }}
                                         title="Satışlar"
                                     >
                                         <FileText size={20} className="nav-icon" />
@@ -240,7 +279,7 @@ const Sidebar = () => {
                                 <div className="nav-category">
                                     <button
                                         className={`nav-category-header ${analyticsSubItems.some(i => location.pathname === i.path) ? 'active' : ''}`}
-                                        onClick={() => { setIsAnalyticsOpen(v => !v); setIsSalesOpen(false); setIsSettingsOpen(false); }}
+                                        onClick={() => { setIsAnalyticsOpen(v => !v); setIsSalesOpen(false); setIsRealEstateOpen(false); setIsSettingsOpen(false); }}
                                         title={t('analytics.title')}
                                     >
                                         <BarChart3 size={20} className="nav-icon" />
@@ -266,7 +305,7 @@ const Sidebar = () => {
                                 <div className="nav-category">
                                     <button
                                         className={`nav-category-header ${settingsSubItems.some(i => location.pathname === i.path) ? 'active' : ''}`}
-                                        onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsAnalyticsOpen(false); }}
+                                        onClick={() => { setIsSettingsOpen(v => !v); setIsSalesOpen(false); setIsRealEstateOpen(false); setIsAnalyticsOpen(false); }}
                                         title={t('settings.title')}
                                     >
                                         <Settings size={20} className="nav-icon" />

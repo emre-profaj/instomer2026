@@ -27,7 +27,8 @@ import {
     updateGlobalSettings,
     checkFacebookPagesHealth,
     getActivityLogs,
-    fixDatabaseFunnelStages
+    fixDatabaseFunnelStages,
+    toggleRealEstateModule
 } from '../controllers/admin.controller.js';
 import { authenticateJWT, requireRole } from '../middleware/auth.middleware.js';
 
@@ -70,6 +71,9 @@ router.get('/subscription-plans', getSubscriptionPlans);
 router.get('/workspaces/:workspaceId/ai-usage', getWorkspaceAiUsage);
 router.put('/workspaces/:workspaceId/ai-limit', updateWorkspaceAiLimit);
 router.post('/workspaces/:workspaceId/ai-reset', resetWorkspaceAiCounter);
+
+// Modül Erişim Kontrolleri
+router.patch('/workspaces/:workspaceId/modules/realestate', toggleRealEstateModule);
 
 // System Email Management
 router.get('/email/check', checkSystemEmail);

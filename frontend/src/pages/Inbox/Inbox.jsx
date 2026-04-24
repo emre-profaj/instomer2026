@@ -10,7 +10,7 @@ import {
     Check, CheckCheck, Phone, Calendar, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot
+    UserRoundPlus, CheckCircle2, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
@@ -832,15 +832,22 @@ const Inbox = () => {
         loadAppointments();
     }, [currentWorkspace]);
 
+
     // =====================================================================
     // CHAT CALL DETECTION — frontend-driven, no server webhook needed
     // Detects "beni ara", "saat 15:00 de ara" etc. in incoming contact messages
-    // and calls retellAPI.scheduleCall directly.
+    // NOT triggered by form data (e.g. "Sizi Ne Zaman Arayalım?: 12:00-15:00")
     // =====================================================================
     const detectCallIntentFrontend = useCallback((text) => {
         if (!text || typeof text !== 'string') return null;
         const t = text.toLowerCase().trim();
         const now = new Date();
+
+        // === SKIP STRUCTURED FORM DATA ===
+        // Form messages have multiple "Label?: value" lines — not real call requests
+        const formLineCount = (text.match(/[a-zA-ZçğıöşüÇĞİÖŞÜ\s]+\?:\s/g) || []).length;
+        if (formLineCount >= 2) return null;
+
         let scheduledAt = null;
 
         // === CHECK FOR SPECIFIC TIME FIRST ===
@@ -868,8 +875,10 @@ const Inbox = () => {
                 }
             }
         }
-        const hasCallVerb = /\bara\b|\barayın\b|\barayabilir\b|\barar\b|\bcall\b|\btelefon\b/.test(t);
-        if (scheduledAt && hasCallVerb) return { type: 'scheduled', scheduledAt };
+
+        // For scheduled calls: require an EXPLICIT directed request (not passive "arayalım")
+        const hasExplicitCallRequest = /\bbeni\s+ara\b|\bbeni\s+arayın\b|\barayın\b|\barar\s+mısınız\b|\barar\s+mısın\b|\barayabilir\s+misiniz\b|\barayabilir\s+misin\b|\bcall\s+me\b|\bplease\s+call\b/.test(t);
+        if (scheduledAt && hasExplicitCallRequest) return { type: 'scheduled', scheduledAt };
 
         // === IMMEDIATE CALL KEYWORDS (no time found) ===
         const immediatePatterns = [
@@ -877,16 +886,14 @@ const Inbox = () => {
             /\bbeni\s+arayabilir\s+misiniz\b/, /\bbeni\s+arayabilir\s+misin\b/,
             /\bhemen\s+ara\b/, /\bhemen\s+arayın\b/, /\bşimdi\s+ara\b/, /\bşimdi\s+arayın\b/,
             /\blütfen\s+ara\b/, /\blütfen\s+arayın\b/, /\blütfen\s+arar\s+mısınız\b/,
-            /\barayın\b/, /\barayabilir\s+misiniz\b/, /\barayabilir\s+misin\b/,
+            /\barayabilir\s+misiniz\b/, /\barayabilir\s+misin\b/,
             /\barar\s+mısınız\b/, /\barar\s+mısın\b/, /\barar\s+misiniz\b/,
-            /\barayabilir\b/, /\baramı\s+bekle\b/, /\baramı\s+bekleyin\b/,
+            /\baramı\s+bekle\b/, /\baramı\s+bekleyin\b/,
             /\btelefon\s+et\b/, /\btelefon\s+eder\s+misiniz\b/, /\btelefon\s+eder\s+misin\b/,
             /\btelefon\s+açar\s+mısınız\b/, /\btelefon\s+açar\s+mısın\b/,
             /\btelefonla\s+ara\b/, /\btelefonla\s+arayın\b/,
-            /\bsizi\s+arayın\b/, /\biletişime\s+geç\b/, /\biletişime\s+geçin\b/,
-            /\bgörüşelim\b/, /\bkonuşalım\b/, /\bsöyleşelim\b/,
             /\bcall\s+me\b/, /\bcall\s+now\b/, /\bplease\s+call\b/, /\bgive\s+me\s+a\s+call\b/,
-            /\bcan\s+you\s+call\b/, /\bcould\s+you\s+call\b/, /\breach\s+out\b/, /\bphone\s+me\b/,
+            /\bcan\s+you\s+call\b/, /\bcould\s+you\s+call\b/, /\bphone\s+me\b/,
         ];
         for (const p of immediatePatterns) { if (p.test(t)) return { type: 'immediate' }; }
         return null;
@@ -961,12 +968,10 @@ const Inbox = () => {
                 if (data.message?.isFromContact && data.message?.content) {
                     const callIntent = detectCallIntentFrontend(data.message.content);
                     if (callIntent) {
-                        // Get phone number: from contact data or parse from message
                         const contactPhone = data.contact?.phone;
                         const msgText = data.message.content;
                         let phoneToCall = contactPhone;
 
-                        // Try to extract phone from message text if contact has no phone
                         if (!phoneToCall) {
                             const phoneMatch = msgText.match(/(?:\+90|0090|90)?[\s]?(?:5\d{2})[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
                             if (phoneMatch) {
@@ -979,18 +984,16 @@ const Inbox = () => {
 
                         if (phoneToCall) {
                             if (callIntent.type === 'immediate') {
-                                // IMMEDIATE: call right now via makeCall endpoint
                                 console.log(`📞 [ChatCallDetect] Immediate call → ${phoneToCall}`);
                                 retellAPI.makeCall(currentWorkspace.id, {
                                     toNumber: phoneToCall,
                                     contactName: data.contact?.name || 'Müşteri',
                                     contactId: data.contact?.id || null,
-                                    conversationId: data.conversationId || null,  // link to existing chat
+                                    conversationId: data.conversationId || null,
                                 }).then(() => {
                                     console.log(`✅ [ChatCallDetect] Immediate call initiated`);
                                 }).catch(e => {
                                     console.warn('⚠️ [ChatCallDetect] Immediate call failed:', e.message);
-                                    // Fallback: save to calendar for next cron run (2 min from now)
                                     retellAPI.scheduleCall(currentWorkspace.id, {
                                         toNumber: phoneToCall,
                                         contactName: data.contact?.name || 'Müşteri',
@@ -999,7 +1002,6 @@ const Inbox = () => {
                                     }).catch(() => {});
                                 });
                             } else if (callIntent.type === 'scheduled') {
-                                // SCHEDULED: save to calendar — cron will call at the right time
                                 console.log(`📅 [ChatCallDetect] Scheduled call → ${phoneToCall} at ${callIntent.scheduledAt.toLocaleTimeString('tr-TR')}`);
                                 retellAPI.scheduleCall(currentWorkspace.id, {
                                     toNumber: phoneToCall,
@@ -1007,7 +1009,7 @@ const Inbox = () => {
                                     contactId: data.contact?.id || null,
                                     scheduledAt: callIntent.scheduledAt.toISOString(),
                                 }).then(() => {
-                                    console.log(`✅ [ChatCallDetect] Scheduled call saved to calendar`);
+                                    console.log(`✅ [ChatCallDetect] Scheduled call saved`);
                                 }).catch(e => {
                                     console.warn('⚠️ [ChatCallDetect] Could not save scheduled call:', e.message);
                                 });
@@ -1018,6 +1020,7 @@ const Inbox = () => {
                     }
                 }
                 // === END CHAT CALL DETECTION ===
+
 
 
             } else {
@@ -3493,6 +3496,15 @@ const Inbox = () => {
                                                                 ));
                                                             })()}
                                                         </select>
+                                                        {(!selectedItem.assignedToId || selectedItem.assignedToId !== user?.id) && (
+                                                            <button 
+                                                                className="assignment-claim-btn"
+                                                                onClick={handleTakeOver}
+                                                                title="Sohbeti Üzerime Al"
+                                                            >
+                                                                <UserPlus size={14} /> Üstlen
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </>
                                             )}

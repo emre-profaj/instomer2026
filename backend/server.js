@@ -55,6 +55,7 @@ import rulesRoutes from './routes/rules.routes.js';
 import funnelRoutes from './routes/funnel.routes.js';
 import resourceRoutes from './routes/resource.routes.js';
 import flowRoutes from './routes/flow.routes.js';
+import realEstateRoutes from './routes/realestate.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -181,6 +182,7 @@ app.use('/api/rules', rulesRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/workspaces', flowRoutes);
+app.use('/api/real-estate', realEstateRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {

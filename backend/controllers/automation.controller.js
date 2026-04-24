@@ -3,6 +3,52 @@ import axios from 'axios';
 
 const WHATSAPP_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v21.0';
 
+/**
+ * Convert Google Drive sharing links to direct download links.
+ * 
+ * Google Drive share links (e.g. /file/d/FILE_ID/view?usp=sharing) return
+ * an HTML preview page, which WhatsApp rejects as "Unsupported mime type text/html".
+ * This converts them to the direct download format: /uc?export=download&id=FILE_ID
+ * 
+ * Non-Google-Drive URLs are returned unchanged.
+ */
+function convertGoogleDriveLink(url) {
+    if (!url) return url;
+
+    let fileId = null;
+
+    // Pattern 1: https://drive.google.com/file/d/FILE_ID/view...
+    const filePattern = /https?:\/\/drive\.google\.com\/file\/d\/([^/]+)\/.*/;
+    const match = url.match(filePattern);
+    if (match) fileId = match[1];
+
+    // Pattern 2: https://drive.google.com/open?id=FILE_ID
+    if (!fileId) {
+        const openPattern = /https?:\/\/drive\.google\.com\/open\?id=([^&]+)/;
+        const openMatch = url.match(openPattern);
+        if (openMatch) fileId = openMatch[1];
+    }
+
+    // Pattern 3: https://drive.google.com/uc?export=download&id=FILE_ID
+    if (!fileId) {
+        const ucPattern = /https?:\/\/drive\.google\.com\/uc\?.*id=([^&]+)/;
+        const ucMatch = url.match(ucPattern);
+        if (ucMatch) fileId = ucMatch[1];
+    }
+
+    if (fileId) {
+        // Use drive.usercontent.google.com - this is the FINAL redirect target
+        // that serves the actual file with correct Content-Type (e.g. video/mp4)
+        // without any 303 redirect. The /uc?export=download format does a 303 redirect
+        // which WhatsApp API may not follow.
+        const directUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
+        console.log(`🔗 [GDrive] Converted to direct content URL: ${directUrl}`);
+        return directUrl;
+    }
+
+    return url;
+}
+
 // ============================================
 // WhatsApp Template Management
 // ============================================
@@ -299,7 +345,8 @@ export const sendTemplateMessage = async (req, res) => {
         // Add header component for media templates (IMAGE, VIDEO, DOCUMENT)
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
             // Use provided headerMediaUrl or fall back to template's headerContent
-            const mediaUrl = headerMediaUrl || template.headerContent;
+            const rawMediaUrl = headerMediaUrl || template.headerContent;
+            const mediaUrl = convertGoogleDriveLink(rawMediaUrl);
 
             if (!mediaUrl) {
                 return res.status(400).json({
@@ -670,7 +717,7 @@ export const sendTemplateDynamic = async (req, res) => {
 
         // 4a. HEADER COMPONENT (for IMAGE, VIDEO, DOCUMENT templates)
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            const mediaUrl = headerMediaUrl || template.headerContent;
+            const mediaUrl = convertGoogleDriveLink(headerMediaUrl || template.headerContent);
 
             if (mediaUrl) {
                 components.push({
@@ -1248,7 +1295,7 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
         // Add header component for media templates (IMAGE, VIDEO, DOCUMENT, LOCATION)
         if (template.headerType) {
             if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-                const mediaUrl = template.headerContent;
+                const mediaUrl = convertGoogleDriveLink(template.headerContent);
                 if (mediaUrl) {
                     const headerComponent = {
                         type: 'header',

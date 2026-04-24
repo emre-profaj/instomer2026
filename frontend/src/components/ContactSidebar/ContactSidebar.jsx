@@ -1156,12 +1156,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 )}
                             </div>
 
-                            {/* Görüşme Geçmişi - Arama + Sohbet (birleşik) */}
+                            {/* Aktivite Geçmişi - Arama + Sohbet (birleşik) */}
                             <div className="call-history-section" style={{ marginTop: '12px' }}>
                                 <div className="section-header">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <History size={18} style={{ color: '#6366f1' }} />
-                                        <h3>GÖRÜŞME GEÇMİŞİ</h3>
+                                        <h3>AKTİVİTE GEÇMİŞİ</h3>
                                     </div>
                                 </div>
 

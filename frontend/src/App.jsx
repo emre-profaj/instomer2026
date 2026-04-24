@@ -29,6 +29,11 @@ import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
 import Invoices from './pages/Sales/Invoices';
 import Funnels from './pages/Funnels/Funnels';
+import RealEstateAdmin from './pages/RealEstate/RealEstateAdmin';
+import RealEstateWizard from './pages/RealEstate/RealEstateWizard';
+import RealEstateOffers from './pages/RealEstate/RealEstateOffers';
+import RealEstatePortfolio from './pages/RealEstate/RealEstatePortfolio';
+import RealEstateCampaigns from './pages/RealEstate/RealEstateCampaigns';
 import './index.css';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -94,6 +99,11 @@ function App() {
               <Route path="invoices" element={<Invoices />} />
               <Route path="pipeline" element={<Navigate to="/inbox" replace />} />
               <Route path="funnels" element={<Funnels />} />
+              <Route path="real-estate" element={<RealEstateAdmin />} />
+              <Route path="real-estate/wizard" element={<RealEstateWizard />} />
+              <Route path="real-estate/offers" element={<RealEstateOffers />} />
+              <Route path="real-estate/portfolio" element={<RealEstatePortfolio />} />
+              <Route path="real-estate/campaigns" element={<RealEstateCampaigns />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

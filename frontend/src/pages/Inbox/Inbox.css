@@ -1429,6 +1429,29 @@
     overflow: hidden;
 }
 
+.assignment-claim-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #3b82f6;
+    background: #eff6ff;
+    color: #2563eb;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.assignment-claim-btn:hover {
+    background: #3b82f6;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+}
+
 /* Funnel dropdown - sabit dar genişlik */
 .funnel-dropdown-compact select {
     max-width: 75px;

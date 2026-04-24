@@ -481,7 +481,7 @@ const Customers = () => {
             });
 
             // Create CSV content
-            const headers = ['İsim', 'Telefon', 'E-posta', 'İlk Yazma Tarihi', 'Durum', 'Son Not'];
+            const headers = ['İsim', 'Telefon', 'E-posta', 'İlk Yazma Tarihi', 'Durum', 'Kime Atandığı', 'Son Not'];
 
             const rows = filteredContacts.map(contact => {
                 // Get last note from notes
@@ -518,12 +518,19 @@ const Customers = () => {
                     displayLabel = getStatusInfo(contact.status).label;
                 }
 
+                // Get assigned agent
+                let assignedTo = '---';
+                if (contact.conversations && contact.conversations.length > 0 && contact.conversations[0]?.assignedTo?.name) {
+                    assignedTo = contact.conversations[0].assignedTo.name;
+                }
+
                 return [
                     contact.name || '',
                     contact.phone || '',
                     contact.email || '',
                     contact.firstMessageAt ? new Date(contact.firstMessageAt).toLocaleDateString('tr-TR') : '',
                     displayLabel,
+                    assignedTo,
                     lastNote
                 ];
             });

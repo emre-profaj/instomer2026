@@ -740,6 +740,48 @@ export const getWorkspaceAiUsage = async (req, res) => {
     }
 };
 
+// ============================================
+// MODÜL ERİŞİM KONTROLÜ — Gayrimenkul
+// ============================================
+
+// Gayrimenkul modülünü workspace bazında aç/kapat
+export const toggleRealEstateModule = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { enabled } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled alanı boolean olmalıdır.' });
+        }
+
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { realEstateEnabled: enabled },
+            select: { id: true, name: true, realEstateEnabled: true },
+        });
+
+        await logAdminActivity(
+            req,
+            enabled ? 'ENABLE_REALESTATE' : 'DISABLE_REALESTATE',
+            'WORKSPACE',
+            workspaceId,
+            workspace.name,
+            { realEstateEnabled: enabled }
+        );
+
+        res.json({
+            success: true,
+            message: enabled
+                ? `"${workspace.name}" için Gayrimenkul Modülü aktif edildi.`
+                : `"${workspace.name}" için Gayrimenkul Modülü devre dışı bırakıldı.`,
+            workspace,
+        });
+    } catch (error) {
+        console.error('toggleRealEstateModule error:', error);
+        res.status(500).json({ error: 'Modül durumu güncellenemedi.' });
+    }
+};
+
 // Update AI limits for a workspace
 export const updateWorkspaceAiLimit = async (req, res) => {
     try {

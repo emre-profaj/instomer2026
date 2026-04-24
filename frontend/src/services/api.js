@@ -583,3 +583,66 @@ export const flowAPI = {
     delete: (workspaceId, flowId) => api.delete(`/workspaces/${workspaceId}/flows/${flowId}`),
     toggle: (workspaceId, flowId, isActive) => api.patch(`/workspaces/${workspaceId}/flows/${flowId}/toggle`, { isActive })
 };
+
+// Real Estate API
+export const realEstateAPI = {
+    // Modül Ayarları
+    getModule: (workspaceId) => api.get(`/realestate/${workspaceId}/module`),
+    updateModule: (workspaceId, data) => api.put(`/realestate/${workspaceId}/module`, data),
+
+    // Projeler
+    getProjects: (workspaceId) => api.get(`/realestate/${workspaceId}/projects`),
+    createProject: (workspaceId, data) => api.post(`/realestate/${workspaceId}/projects`, data),
+    updateProject: (workspaceId, projectId, data) => api.put(`/realestate/${workspaceId}/projects/${projectId}`, data),
+    deleteProject: (workspaceId, projectId) => api.delete(`/realestate/${workspaceId}/projects/${projectId}`),
+
+    // Daire Tipleri
+    getApartmentTypes: (workspaceId, projectId) => api.get(`/realestate/${workspaceId}/projects/${projectId}/apartment-types`),
+    createApartmentType: (workspaceId, projectId, data) => api.post(`/realestate/${workspaceId}/projects/${projectId}/apartment-types`, data),
+    updateApartmentType: (workspaceId, projectId, typeId, data) => api.put(`/realestate/${workspaceId}/projects/${projectId}/apartment-types/${typeId}`, data),
+    deleteApartmentType: (workspaceId, projectId, typeId) => api.delete(`/realestate/${workspaceId}/projects/${projectId}/apartment-types/${typeId}`),
+
+    // Görsel Yükleme
+    uploadImage: (workspaceId, formData) => api.post(`/realestate/${workspaceId}/upload-image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+
+    // Bağımsız Bölümler (Birimler)
+    getUnits: (workspaceId, projectId) => api.get(`/realestate/${workspaceId}/projects/${projectId}/units`),
+    createUnit: (workspaceId, projectId, data) => api.post(`/realestate/${workspaceId}/projects/${projectId}/units`, data),
+    updateUnit: (workspaceId, projectId, unitId, data) => api.put(`/realestate/${workspaceId}/projects/${projectId}/units/${unitId}`, data),
+    deleteUnit: (workspaceId, projectId, unitId) => api.delete(`/realestate/${workspaceId}/projects/${projectId}/units/${unitId}`),
+
+    // Kampanyalar
+    getCampaigns: (workspaceId, projectId) => api.get(`/realestate/${workspaceId}/projects/${projectId}/campaigns`),
+    createCampaign: (workspaceId, projectId, data) => api.post(`/realestate/${workspaceId}/projects/${projectId}/campaigns`, data),
+    updateCampaign: (workspaceId, projectId, campaignId, data) => api.put(`/realestate/${workspaceId}/projects/${projectId}/campaigns/${campaignId}`, data),
+    deleteCampaign: (workspaceId, projectId, campaignId) => api.delete(`/realestate/${workspaceId}/projects/${projectId}/campaigns/${campaignId}`),
+
+    // Hesaplama Motoru
+    calculate: (workspaceId, data) => api.post(`/realestate/${workspaceId}/calculate`, data),
+
+    // Teklifler
+    getOffers: (workspaceId, params = {}) => api.get(`/realestate/${workspaceId}/offers`, { params }),
+    createOffer: (workspaceId, data) => api.post(`/realestate/${workspaceId}/offers`, data),
+    getOfferById: (workspaceId, offerId) => api.get(`/realestate/${workspaceId}/offers/${offerId}`),
+    updateOfferStatus: (workspaceId, offerId, status) => api.patch(`/realestate/${workspaceId}/offers/${offerId}/status`, { status }),
+    sendOfferEmail: (workspaceId, offerId) => api.post(`/realestate/${workspaceId}/offers/${offerId}/send-email`),
+    deleteOffer: (workspaceId, offerId) => api.delete(`/realestate/${workspaceId}/offers/${offerId}`)
+};
+
+// ─── Sağlık Modülü (Probel HBYS) ──────────────────────────────────────────
+export const healthAPI = {
+    getSettings: (workspaceId) => api.get(`/health/${workspaceId}/settings`),
+    updateSettings: (workspaceId, data) => api.put(`/health/${workspaceId}/settings`, data),
+    testConnection: (workspaceId, data) => api.post(`/health/${workspaceId}/test-connection`, data),
+    getPatientToken: (workspaceId, data) => api.post(`/health/${workspaceId}/patient-token`, data),
+    getBranches: (workspaceId, params) => api.get(`/health/${workspaceId}/branches`, { params }),
+    getDepartments: (workspaceId, data) => api.post(`/health/${workspaceId}/departments`, data),
+    getPolyclinics: (workspaceId, data) => api.post(`/health/${workspaceId}/polyclinics`, data),
+    getAvailableDays: (workspaceId, data) => api.post(`/health/${workspaceId}/available-days`, data),
+    getAvailableHours: (workspaceId, data) => api.post(`/health/${workspaceId}/available-hours`, data),
+    createAppointment: (workspaceId, data) => api.post(`/health/${workspaceId}/appointments/create`, data),
+    cancelAppointment: (workspaceId, data) => api.post(`/health/${workspaceId}/appointments/cancel`, data),
+    listAppointments: (workspaceId, data) => api.post(`/health/${workspaceId}/appointments/list`, data),
+};

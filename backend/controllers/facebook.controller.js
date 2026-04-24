@@ -1131,7 +1131,7 @@ async function processWebhookAsync(body) {
 
             // Find ALL workspaces that have this Facebook page or Instagram account connected
             // Try multiple ID matches for better compatibility
-            const allConnectedPages = await prisma.facebookPage.findMany({
+            const allConnectedPagesRaw = await prisma.facebookPage.findMany({
                 where: {
                     OR: [
                         { pageId: recipientId },
@@ -1148,6 +1148,14 @@ async function processWebhookAsync(body) {
                         ] : [])
                     ]
                 }
+            });
+
+            // DEDUPLICATION: OR sorgusu aynı kaydı birden fazla kez döndürebilir, ID bazında tekilleştir
+            const seenPageIds = new Set();
+            const allConnectedPages = allConnectedPagesRaw.filter(p => {
+                if (seenPageIds.has(p.id)) return false;
+                seenPageIds.add(p.id);
+                return true;
             });
 
             if (allConnectedPages.length === 0) {
@@ -1169,6 +1177,10 @@ async function processWebhookAsync(body) {
 
                 releaseMessageLock(lockKey);
                 continue;
+            }
+
+            if (allConnectedPagesRaw.length !== allConnectedPages.length) {
+                console.log(`⚠️ [Dedup] Removed ${allConnectedPagesRaw.length - allConnectedPages.length} duplicate page record(s) from query results`);
             }
 
             console.log(`📦 Found ${allConnectedPages.length} workspace(s) with this page connected`);
@@ -1668,9 +1680,22 @@ async function processWebhookAsync(body) {
                     // --- AI AUTO REPLY START ---
                     // ONLY for incoming messages (from contact)
                     if (!isOutgoingMessage) {
-                        try {
-                            // First check if there's a bot assigned to this channel
-                            const channelBotId = isInstagram ? facebookPage.instagramBotId : facebookPage.assignedBotId;
+                        // 🛡️ Bot-to-bot loop koruması: Gönderen başka bir Instomer sayfasıysa bot cevabı verme
+                        const senderIsInstomerPage = await prisma.facebookPage.findFirst({
+                            where: {
+                                OR: [
+                                    { pageId: senderId },
+                                    { instagramBusinessId: senderId }
+                                ]
+                            },
+                            select: { id: true, pageName: true, workspaceId: true }
+                        });
+                        if (senderIsInstomerPage) {
+                            console.log(`🔄 [Bot-Loop] Sender ${senderId} is Instomer page "${senderIsInstomerPage.pageName}" (ws: ${senderIsInstomerPage.workspaceId}). Skipping AI reply to prevent bot-to-bot loop.`);
+                        } else {
+                            try {
+                                // First check if there's a bot assigned to this channel
+                                const channelBotId = isInstagram ? facebookPage.instagramBotId : facebookPage.assignedBotId;
 
                             if (!channelBotId) {
                                 console.log(`ℹ️ [${isInstagram ? 'Instagram' : 'Facebook'}] No bot assigned to channel - Manual mode active, skipping AI reply`);
@@ -1696,76 +1721,70 @@ async function processWebhookAsync(body) {
                                     console.log(`⏱️ [${isInstagram ? 'Instagram' : 'Facebook'}] Bot has delay enabled (${assignedBot.autoReplyDelaySeconds}s), scheduling check`);
                                     scheduleAutoReplyCheck(conversation.id, facebookPage.workspaceId, isInstagram ? 'instagram' : 'facebook', message.text);
                                 } else {
-                                    // Check for duplicate auto-reply within last 5 seconds (short window)
-                                    const fiveSecondsAgo = new Date(Date.now() - 5000);
-                                    const recentBotReply = await prisma.message.findFirst({
-                                        where: {
-                                            conversationId: conversation.id,
-                                            isFromContact: false,
-                                            senderId: null, // Bot message
-                                            createdAt: { gte: fiveSecondsAgo }
-                                        },
-                                        orderBy: { createdAt: 'desc' }
-                                    });
+                                    const aiResponse = await getAutoReply(
+                                        facebookPage.workspaceId,
+                                        conversation.id,
+                                        message.text,
+                                        isInstagram ? 'instagram' : 'facebook',
+                                        'CHATS'
+                                    );
 
-                                    if (recentBotReply) {
-                                        console.log(`⏭️ [${isInstagram ? 'Instagram' : 'Facebook'}] Skipping AI reply - recent bot message exists (within 5s)`);
-                                    } else {
-                                        const aiResponse = await getAutoReply(
-                                            facebookPage.workspaceId,
-                                            conversation.id,
-                                            message.text,
-                                            isInstagram ? 'instagram' : 'facebook',
-                                            'CHATS'
-                                        );
+                                    if (aiResponse) {
+                                        // 🛡️ RACE CONDITION PROTECTION: Content-based duplicate detection
+                                        // Ensures identical AI replies are not sent multiple times if concurrent webhooks fire.
+                                        const fiveSecondsAgo2 = new Date(Date.now() - 5000);
+                                        const duplicateContent = await prisma.message.findFirst({
+                                            where: {
+                                                conversationId: conversation.id,
+                                                content: aiResponse,
+                                                isFromContact: false,
+                                                createdAt: { gte: fiveSecondsAgo2 }
+                                            }
+                                        });
 
-                                        if (aiResponse) {
-                                            // Triple-check before sending: 
-                                            // 1. No bot reply in last 5 seconds (race condition protection)
-                                            // 2. No message with same content sent recently (content-based duplicate detection)
-                                            const fiveSecondsAgo2 = new Date(Date.now() - 5000);
-                                            const veryRecentBotReply = await prisma.message.findFirst({
-                                                where: {
-                                                    conversationId: conversation.id,
-                                                    isFromContact: false,
-                                                    senderId: null,
-                                                    createdAt: { gte: fiveSecondsAgo2 }
+                                        if (duplicateContent) {
+                                            console.log(`⏭️ [${isInstagram ? 'Instagram' : 'Facebook'}] Duplicate content detected - same AI response already sent, skipping`);
+                                            continue;
+                                        }
+                                            // --- META 1000 CHARACTER LIMIT FIX ---
+                                            // Split message if > 950 characters
+                                            const chunks = [];
+                                            let currentText = aiResponse;
+                                            while (currentText.length > 0) {
+                                                if (currentText.length <= 950) {
+                                                    chunks.push(currentText);
+                                                    break;
                                                 }
-                                            });
-
-                                            if (veryRecentBotReply) {
-                                                console.log(`⏭️ [${isInstagram ? 'Instagram' : 'Facebook'}] Race condition detected - bot already replied within 5s, skipping`);
-                                                continue;
+                                                let breakPoint = currentText.lastIndexOf('\n', 950);
+                                                if (breakPoint === -1) breakPoint = currentText.lastIndexOf('. ', 950);
+                                                if (breakPoint === -1) breakPoint = currentText.lastIndexOf(' ', 950);
+                                                if (breakPoint === -1) breakPoint = 950;
+                                                
+                                                chunks.push(currentText.substring(0, breakPoint + 1).trim());
+                                                currentText = currentText.substring(breakPoint + 1).trim();
                                             }
 
-                                            // Check if same content was already sent (content-based duplicate detection)
-                                            const duplicateContent = await prisma.message.findFirst({
-                                                where: {
-                                                    conversationId: conversation.id,
-                                                    content: aiResponse,
-                                                    isFromContact: false,
-                                                    createdAt: { gte: fiveSecondsAgo2 }
+                                            let sentMessageId = null;
+                                            for (let i = 0; i < chunks.length; i++) {
+                                                const sendResponse = await axios.post(
+                                                    `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                                                    {
+                                                        recipient: { id: senderId },
+                                                        message: { text: chunks[i] }
+                                                    },
+                                                    {
+                                                        params: { access_token: facebookPage.pageAccessToken }
+                                                    }
+                                                );
+                                                if (i === chunks.length - 1) {
+                                                    // Save the ID of the last chunk to associate with our DB record
+                                                    sentMessageId = sendResponse.data?.message_id;
                                                 }
-                                            });
-
-                                            if (duplicateContent) {
-                                                console.log(`⏭️ [${isInstagram ? 'Instagram' : 'Facebook'}] Duplicate content detected - same AI response already sent, skipping`);
-                                                continue;
+                                                if (chunks.length > 1 && i < chunks.length - 1) {
+                                                    // Add 500ms delay between chunks to ensure they arrive in order
+                                                    await new Promise(r => setTimeout(r, 500));
+                                                }
                                             }
-
-                                            const sendResponse = await axios.post(
-                                                `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
-                                                {
-                                                    recipient: { id: senderId },
-                                                    message: { text: aiResponse }
-                                                },
-                                                {
-                                                    params: { access_token: facebookPage.pageAccessToken }
-                                                }
-                                            );
-
-                                            // Get message ID from Meta response
-                                            const sentMessageId = sendResponse.data?.message_id;
                                             let botMessage;
 
                                             // 🚀 RACE CONDITION HANDLING:
@@ -1818,17 +1837,48 @@ async function processWebhookAsync(body) {
                                                 channel: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
                                             });
                                         }
-                                    }
                                 } // Close autoReplyDelayEnabled else
-                            }
+                            } // Close channelBotId else
                         } catch (aiError) {
-                            // Silently skip Instagram "user not found" errors (code 100)
                             const errorCode = aiError.response?.data?.error?.code;
-                            if (errorCode !== 100) {
-                                console.error('❌ AI Auto-Reply failed:', aiError);
+                            const errorSubcode = aiError.response?.data?.error?.error_subcode;
+                            if (errorCode === 100) {
+                                console.warn(`⚠️ [${isInstagram ? 'Instagram' : 'Facebook'}] Auto-Reply send failed (code 100, subcode ${errorSubcode}) for workspace ${facebookPage.workspaceId}, conv: ${conversation.id}, recipient: ${senderId}`);
+
+                                // 2534038: Kullanıcı Instagram gizlilik ayarı nedeniyle API mesajını engelliyor
+                                // Konuşmaya sistem notu ekle, ekip manuel dönüş yapabilsin
+                                if (errorSubcode === 2534038 && isInstagram) {
+                                    try {
+                                        const systemNote = await prisma.message.create({
+                                            data: {
+                                                conversationId: conversation.id,
+                                                content: '⚠️ Bot bu kullanıcıya otomatik yanıt gönderemedi. Kullanıcının Instagram gizlilik ayarları API üzerinden mesajı engelliyor (hata 2534038). Lütfen manuel dönüş yapın.',
+                                                isFromContact: false,
+                                                messageType: 'TEXT',
+                                                senderId: null,
+                                                status: 'DELIVERED'
+                                            }
+                                        });
+                                        emitToWorkspace(facebookPage.workspaceId, 'new_message', {
+                                            workspaceId: facebookPage.workspaceId,
+                                            conversationId: conversation.id,
+                                            message: systemNote,
+                                            contact: contact,
+                                            channel: 'INSTAGRAM'
+                                        });
+                                        console.log(`📝 [Instagram] 2534038 sistem notu eklendi → conv: ${conversation.id}`);
+                                    } catch (noteErr) {
+                                        console.error('❌ [Instagram] Sistem notu eklenemedi:', noteErr.message);
+                                    }
+                                }
+                            } else {
+                                console.error(`❌ [${isInstagram ? 'Instagram' : 'Facebook'}] AI Auto-Reply failed for workspace ${facebookPage.workspaceId}:`, aiError.response?.data || aiError.message);
                             }
                         }
+                        } // End of else (senderIsInstomerPage check)
                         // --- AI AUTO REPLY END ---
+
+
 
                         // --- AUTO EXTRACT START ---
                         try {

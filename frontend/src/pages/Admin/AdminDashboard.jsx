@@ -18,7 +18,9 @@ import {
     ChevronDown,
     ChevronRight,
     ExternalLink,
-    Briefcase
+    Briefcase,
+    ToggleLeft,
+    ToggleRight
 } from 'lucide-react';
 
 const AdminDashboard = () => {
@@ -92,6 +94,9 @@ const AdminDashboard = () => {
     const [loadingAiUsage, setLoadingAiUsage] = useState(false);
     const [isEditAiLimitModalOpen, setIsEditAiLimitModalOpen] = useState(false);
     const [aiLimitForm, setAiLimitForm] = useState({ dailyAiChatLimit: 50, aiSubscriptionType: 'FREE' });
+
+    // Modül Toggle States
+    const [togglingRealEstate, setTogglingRealEstate] = useState(false);
 
 
     useEffect(() => {
@@ -353,6 +358,22 @@ const AdminDashboard = () => {
         navigate('/');
     };
 
+    // Gayrimenkul Modülü toggle
+    const handleToggleRealEstate = async (currentEnabled) => {
+        if (togglingRealEstate) return;
+        const newValue = !currentEnabled;
+        setTogglingRealEstate(true);
+        try {
+            await adminAPI.toggleRealEstateModule(workspaceId, newValue);
+            // Workspace state'ini güncelle
+            setSelectedWorkspace(prev => ({ ...prev, realEstateEnabled: newValue }));
+        } catch (error) {
+            alert('Modül durumu güncellenemedi: ' + (error.response?.data?.error || error.message));
+        } finally {
+            setTogglingRealEstate(false);
+        }
+    };
+
     // Workspace'i firmaya taşı
     const handleMoveWorkspaceToCompany = async () => {
         if (!selectedWorkspaceToMove || !targetCompanyId) return;
@@ -514,6 +535,66 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Modül Erişim Kontrolleri */}
+                <div className="ai-usage-card" style={{ marginTop: '16px' }}>
+                    <div className="ai-usage-header" style={{ marginBottom: 0 }}>
+                        <h3>🏢 Modül Erişim Kontrolleri</h3>
+                        <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>SuperAdmin tarafından yönetilir</span>
+                    </div>
+                    <div style={{ marginTop: '16px' }}>
+                        {/* Gayrimenkul Toggle */}
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '14px 0',
+                            borderBottom: '1px solid var(--border-color, #e5e7eb)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                    width: 40, height: 40, borderRadius: 10,
+                                    background: selectedWorkspace.realEstateEnabled
+                                        ? 'linear-gradient(135deg, #1a5276, #2980b9)'
+                                        : '#f3f4f6',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transition: 'background 0.2s'
+                                }}>
+                                    <Building2 size={18} color={selectedWorkspace.realEstateEnabled ? '#fff' : '#9ca3af'} />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827' }}>
+                                        Gayrimenkul Teklif Modülü
+                                    </div>
+                                    <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: 2 }}>
+                                        {selectedWorkspace.realEstateEnabled
+                                            ? 'Aktif — Firma bu modülü kullanabilir'
+                                            : 'Pasif — Firma bu modülü göremez'}
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => handleToggleRealEstate(selectedWorkspace.realEstateEnabled)}
+                                disabled={togglingRealEstate}
+                                style={{
+                                    background: 'none', border: 'none', cursor: togglingRealEstate ? 'not-allowed' : 'pointer',
+                                    opacity: togglingRealEstate ? 0.5 : 1,
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '8px 16px', borderRadius: 8,
+                                    backgroundColor: selectedWorkspace.realEstateEnabled ? '#dbeafe' : '#f3f4f6',
+                                    color: selectedWorkspace.realEstateEnabled ? '#1d4ed8' : '#6b7280',
+                                    fontSize: '0.875rem', fontWeight: 600,
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                {selectedWorkspace.realEstateEnabled
+                                    ? <><ToggleRight size={20} /> Aktif</>
+                                    : <><ToggleLeft size={20} /> Pasif</>}
+                            </button>
+                        </div>
+                        {/* İleride buraya diğer modüller eklenebilir */}
+                    </div>
+                </div>
 
                 {/* Members Section */}
                 <div className="section-header">

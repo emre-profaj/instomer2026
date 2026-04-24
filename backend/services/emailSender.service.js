@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import prisma from '../config/db.js';
+import prisma from '../lib/prisma.js';
 import { google } from 'googleapis';
 
 /**

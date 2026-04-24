@@ -2,6 +2,7 @@
 .contacts-page {
     display: flex;
     height: calc(100vh - 60px);
+    height: calc(100dvh - 60px);
     background: #ffffff;
     overflow: hidden;
 }
@@ -12,6 +13,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-height: 0;
+    min-width: 0;
     border-right: 1px solid #e5e7eb;
 }
 
@@ -404,12 +407,16 @@
 /* Table Container */
 .contacts-table-container {
     flex: 1;
-    overflow-y: auto;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+    min-width: 0;
 }
 
 /* Contacts Table */
 .contacts-table {
     width: 100%;
+    min-width: max-content;
     border-collapse: collapse;
 }
 
@@ -429,6 +436,7 @@
     letter-spacing: 0.05em;
     color: #6b7280;
     border-bottom: 1px solid #e5e7eb;
+    white-space: nowrap;
 }
 
 .contacts-table td {
@@ -436,6 +444,7 @@
     border-bottom: 1px solid #f3f4f6;
     font-size: 14px;
     color: #374151;
+    white-space: nowrap;
 }
 
 .contacts-table tbody tr {
@@ -1442,7 +1451,54 @@
     }
 }
 
+@media (max-width: 640px) {
+    .contacts-pagination {
+        padding: 12px 8px;
+        gap: 8px;
+    }
+    .pagination-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+    .pagination-info {
+        font-size: 12px;
+    }
+}
+
 @media (max-width: 768px) {
+    .contacts-header {
+        flex-wrap: wrap;
+        padding: 16px;
+    }
+    .contacts-search {
+        order: 3;
+        width: 100%;
+        max-width: 100%;
+        margin-top: 8px;
+    }
+    .header-right-actions {
+        margin-left: auto;
+    }
+    
+    .filter-dropdowns-row {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .filter-dropdown-item {
+        width: calc(50% - 6px);
+        min-width: 0;
+    }
+    .export-csv-btn, .import-csv-btn {
+        width: calc(50% - 6px);
+        justify-content: center;
+        margin-left: 0;
+    }
+
+    .contacts-main {
+        /* Prevent the fixed bottom nav (60px) from obscuring pagination and table bottom */
+        padding-bottom: 65px;
+    }
+
     .contact-sidebar {
         position: fixed;
         top: 0;

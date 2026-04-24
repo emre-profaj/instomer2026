@@ -41,8 +41,9 @@
 @media (max-width: 768px) {
     .main-content {
         margin-left: 0 !important;
-        /* 100vh kullan — bottom nav position:fixed olduğundan flex yüksekliği etkilenmiyor */
-        height: 100vh;
+        /* 100dvh kullan — Safari alt bar sorununu çözmek için */
+        height: 100vh; /* fallback */
+        height: 100dvh;
     }
 
     .layout.sidebar-collapsed .main-content {

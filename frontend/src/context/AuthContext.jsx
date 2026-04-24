@@ -40,10 +40,33 @@ export const AuthProvider = ({ children }) => {
                     setUser(freshUser);
                     getStorage().setItem('user', JSON.stringify(freshUser));
 
+                    // Önce localStorage'daki workspace'i hemen göster (hızlı render için)
                     if (savedWorkspace) {
-                        setCurrentWorkspace(JSON.parse(savedWorkspace));
-                    } else {
-                        await loadUserWorkspace();
+                        try {
+                            setCurrentWorkspace(JSON.parse(savedWorkspace));
+                        } catch {}
+                    }
+
+                    // Sonra API'den taze workspace listesini çek — realEstateEnabled gibi
+                    // sonradan eklenen alanların güncel değerleri yansısın
+                    try {
+                        const wsResponse = await workspaceAPI.getAll();
+                        const workspaces = wsResponse.data.workspaces || [];
+                        if (workspaces.length > 0) {
+                            let parsed = null;
+                            try { parsed = savedWorkspace ? JSON.parse(savedWorkspace) : null; } catch {}
+                            const match = parsed?.id
+                                ? workspaces.find(w => w.id === parsed.id) || workspaces[0]
+                                : workspaces[0];
+                            setCurrentWorkspace(match);
+                            getStorage().setItem('currentWorkspace', JSON.stringify(match));
+                        }
+                    } catch (wsErr) {
+                        // API hatası: localStorage verisiyle devam et
+                        console.warn('Workspace refresh failed, using cached data:', wsErr.message);
+                        if (!savedWorkspace) {
+                            await loadUserWorkspace();
+                        }
                     }
                 } catch (error) {
                     console.error('Auth initialization error:', error);

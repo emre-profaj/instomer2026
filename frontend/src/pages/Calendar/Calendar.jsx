@@ -37,6 +37,7 @@ const Calendar = () => {
     const [appointments, setAppointments] = useState([]);
     const [upcomingAppointments, setUpcomingAppointments] = useState([]);
     const [scheduledCalls, setScheduledCalls] = useState([]);
+    const [layoutMode, setLayoutMode] = useState('grid'); // 'grid' | 'list'
     const [agents, setAgents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedAgent, setSelectedAgent] = useState('');
@@ -734,6 +735,29 @@ const Calendar = () => {
                             {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
                         </span>
 
+                        <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                            <button
+                                onClick={() => setLayoutMode('grid')}
+                                style={{
+                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                    background: layoutMode === 'grid' ? 'white' : 'transparent',
+                                    color: layoutMode === 'grid' ? '#3b82f6' : '#64748b',
+                                    boxShadow: layoutMode === 'grid' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >Takvim</button>
+                            <button
+                                onClick={() => setLayoutMode('list')}
+                                style={{
+                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                    background: layoutMode === 'list' ? 'white' : 'transparent',
+                                    color: layoutMode === 'list' ? '#3b82f6' : '#64748b',
+                                    boxShadow: layoutMode === 'list' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >Liste</button>
+                        </div>
+
                         <button className="add-appointment-btn" onClick={() => openCreateModal()}>
                             <Plus size={18} />
                             {t('calendar.newAppointment')}
@@ -741,6 +765,7 @@ const Calendar = () => {
                     </div>
                 </div>
 
+                {layoutMode === 'grid' ? (
                 <div className="calendar-grid">
                     <div className="calendar-weekdays">
                         {dayNames.map(day => (
@@ -846,6 +871,44 @@ const Calendar = () => {
                         ))}
                     </div>
                 </div>
+                ) : (
+                    <div className="calendar-list-view" style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
+                        {appointments.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Bu ay için planlanmış bir etkinlik bulunmuyor.</div>
+                        ) : (
+                            [...appointments].sort((a,b) => new Date(a.startTime) - new Date(b.startTime)).map((apt, idx) => {
+                                if (!apt) return null;
+                                const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
+                                const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
+                                return (
+                                    <div key={apt.id} className={`upcoming-item ${apt.status === 'COMPLETED' ? 'completed' : ''}`} style={{ marginBottom: '12px', borderLeftColor: aptResource?.color || apt.color }} onClick={() => openEditModal(apt)}>
+                                        <div className="upcoming-date-badge">
+                                            <span className="upcoming-day">{new Date(apt.startTime).getDate()} {monthNames[new Date(apt.startTime).getMonth()].substring(0,3)}</span>
+                                            <span className="upcoming-time">{formatTime(apt.startTime)}</span>
+                                        </div>
+                                        <div className="upcoming-info">
+                                            <h4>{apt.title}</h4>
+                                            <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                {apt.contactName && (
+                                                    <span className="upcoming-contact"><User size={12} /> {apt.contactName}</span>
+                                                )}
+                                                {apt.assignedTo && (
+                                                    <span className="upcoming-agent">Temsilci: {apt.assignedTo.name}</span>
+                                                )}
+                                                {aptResource && (
+                                                    <span className="upcoming-resource"><Building2 size={12} /> {aptResource.name}</span>
+                                                )}
+                                                <span className="upcoming-status" style={{ background: status?.color + '20', color: status?.color, padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                                                    {status?.label}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                )}
             </div> {/* End calendar-main */}
 
             {/* Appointment Modal */}
