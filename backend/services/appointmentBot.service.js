@@ -385,7 +385,7 @@ async function executeGetBranches(workspaceId, conversationId, args) {
         const { getBranches } = await import('./probel_appointment.service.js');
         const res = await getBranches(workspaceId, args?.cinsiyet || 1, args?.dogum_tarihi || '01011990');
         if (res.success && res.branches) {
-            await updateAppointmentState(conversationId, { branches: res.branches });
+            await updateAppointmentState(conversationId, { branches: res.branches, doctors: null, days: null, hours: null, patient_name: null });
         }
         return res;
     }
@@ -464,7 +464,7 @@ async function executeGetDoctors(workspaceId, conversationId, args) {
         const { getDoctors } = await import('./probel_appointment.service.js');
         const res = await getDoctors(workspaceId, realBransKodu);
         if (res.success && res.doctors) {
-            await updateAppointmentState(conversationId, { doctors: res.doctors });
+            await updateAppointmentState(conversationId, { doctors: res.doctors, days: null, hours: null, patient_name: null });
         }
         return res;
     }
@@ -560,7 +560,7 @@ async function executeGetAvailableDays(workspaceId, conversationId, args) {
             servis_kodu: realServisKodu
         });
         if (res.success && res.days) {
-            await updateAppointmentState(conversationId, { days: res.days });
+            await updateAppointmentState(conversationId, { days: res.days, hours: null, patient_name: null });
         }
         return res;
     }
