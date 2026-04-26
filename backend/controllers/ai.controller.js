@@ -1833,16 +1833,82 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 }
                 
                 // Determine action based on state
-                if (aptState.branches && aptState.branches.length > 0 && !aptState.doctors) {
+                const userInput = (userMessage || '').trim();
+                
+                if (aptState.hours && aptState.hours.length > 0 && !aptState.patient_name) {
+                    // Hours shown, user selecting hour
+                    const selectedHour = aptState.hours.find(h => 
+                        String(h.sira) === userInput || 
+                        h.saat === userInput
+                    );
+                    if (selectedHour) {
+                        responseText = `Harika, randevunuzu ${selectedHour.saat} olarak işaretledim. İşlemi tamamlamak için lütfen Adınızı ve Soyadınızı yazar mısınız?`;
+                    } else {
+                        const hourList = aptState.hours.map(h => `${h.sira}. ${h.saat}`).join('\n');
+                        responseText = `Lütfen listeden uygun bir saat seçin:\n\n${hourList}`;
+                    }
+                } else if (aptState.days && aptState.days.length > 0 && !aptState.hours) {
+                    // Days shown, user selecting day
+                    const selectedDay = aptState.days.find(d => 
+                        String(d.sira) === userInput || 
+                        d.tarih === userInput || 
+                        (d.tarih_str && d.tarih_str.toLowerCase().includes(userInput.toLowerCase()))
+                    );
+                    if (selectedDay) {
+                        console.log(`🏥 [AI][${convShort}] Auto-matching day: ${selectedDay.tarih}`);
+                        const hourResult = await executeAppointmentFunction('get_available_hours', { 
+                            servis_kodu: aptState.selected_service_code || aptState.doctors?.[0]?.servis_kodu,
+                            tarih: selectedDay.tarih
+                        }, workspaceId, conversationId);
+                        if (hourResult && hourResult.success && hourResult.hours) {
+                            const hourList = hourResult.hours.map(h => `${h.sira}. ${h.saat}`).join('\n');
+                            responseText = `${selectedDay.tarih} tarihi için müsait saatler:\n\n${hourList}\n\nHangi saati tercih edersiniz?`;
+                        } else {
+                            responseText = hourResult?.message || 'Bu tarihte uygun saat bulunamadı.';
+                        }
+                    } else {
+                        const dayList = aptState.days.map(d => `${d.sira}. ${d.tarih}`).join('\n');
+                        responseText = `Lütfen listeden bir tarih seçin:\n\n${dayList}`;
+                    }
+                } else if (aptState.doctors && aptState.doctors.length > 0 && !aptState.days) {
+                    // Doctors shown, user selecting doctor
+                    const selectedDoc = aptState.doctors.find(d => 
+                        String(d.sira) === userInput || 
+                        d.doktor_adi.toLowerCase().includes(userInput.toLowerCase())
+                    );
+                    if (selectedDoc) {
+                        console.log(`🏥 [AI][${convShort}] Auto-matching doctor: ${selectedDoc.doktor_adi}`);
+                        // Update state to remember selected service code for get_available_hours
+                        try {
+                            const { updateAppointmentState } = await import('../services/appointmentBot.service.js');
+                            await updateAppointmentState(conversationId, { selected_service_code: selectedDoc.servis_kodu });
+                        } catch(e) {}
+                        
+                        const dayResult = await executeAppointmentFunction('get_available_days', { 
+                            brans_kodu: selectedDoc.brans_kodu,
+                            doktor_kodu: selectedDoc.doktor_kodu,
+                            servis_kodu: selectedDoc.servis_kodu
+                        }, workspaceId, conversationId);
+                        
+                        if (dayResult && dayResult.success && dayResult.days) {
+                            const dayList = dayResult.days.map(d => `${d.sira}. ${d.tarih}`).join('\n');
+                            responseText = `${selectedDoc.doktor_adi} için müsait günler:\n\n${dayList}\n\nHangi gün randevu almak istersiniz?`;
+                        } else {
+                            responseText = dayResult?.message || 'Bu doktor için uygun gün bulunamadı.';
+                        }
+                    } else {
+                        const docList = aptState.doctors.map(d => `${d.sira}. ${d.doktor_adi}`).join('\n');
+                        responseText = `Lütfen listeden doktor numarasını veya adını yazın:\n\n${docList}`;
+                    }
+                } else if (aptState.branches && aptState.branches.length > 0 && !aptState.doctors) {
                     // Branches already shown — user is selecting a branch
-                    const userInput = (userMessage || '').trim();
                     const selectedBranch = aptState.branches.find(b => 
                         String(b.sira) === userInput || 
                         b.brans_adi.toLowerCase().includes(userInput.toLowerCase())
                     );
                     
                     if (selectedBranch) {
-                        console.log(`🏥 [AI][${convShort}] Auto-matching branch: ${selectedBranch.brans_adi} (${selectedBranch.brans_kodu})`);
+                        console.log(`🏥 [AI][${convShort}] Auto-matching branch: ${selectedBranch.brans_adi}`);
                         const docResult = await executeAppointmentFunction('get_doctors', { brans_kodu: selectedBranch.brans_kodu, brans_adi: selectedBranch.brans_adi }, workspaceId, conversationId);
                         if (docResult && docResult.success && docResult.doctors) {
                             const docList = docResult.doctors.map(d => `${d.sira}. ${d.doktor_adi}`).join('\n');
