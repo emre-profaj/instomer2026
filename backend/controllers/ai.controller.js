@@ -1377,15 +1377,10 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`⚠️ [AI] No document context available!`);
         }
 
-        // 🚀 Add Dynamic Appointment Prompt if injected
+        // 🚀 Appointment bot: ALWAYS use the code-defined prompt (DB prompt may be outdated)
         if (isAppointmentBot) {
             const { DEFAULT_APPOINTMENT_PROMPT } = await import('../services/appointmentBot.service.js');
-            // If the user already has a custom prompt, we APPEND the strict appointment rules to it.
-            if (systemPrompt && systemPrompt !== DEFAULT_APPOINTMENT_PROMPT) {
-                systemPrompt += "\n\n" + DEFAULT_APPOINTMENT_PROMPT;
-            } else {
-                systemPrompt = DEFAULT_APPOINTMENT_PROMPT;
-            }
+            systemPrompt = DEFAULT_APPOINTMENT_PROMPT;
         }
 
         console.log(`🤖 [AI] System Prompt (first 200 chars): ${systemPrompt.substring(0, 200)}...`);
