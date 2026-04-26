@@ -1527,20 +1527,37 @@ ${documentContext || "Bilgi bankası boş."}
 9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
 10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.`;
 
-        // 🏥 APPOINTMENT BOT — Inject appointment state into prompt
-        let appointmentContextPrompt = '';
-        if (isAppointmentBot && conversation?.appointmentState) {
-            try {
-                const aptState = JSON.parse(conversation.appointmentState);
-                if (aptState.step !== 'COMPLETED') {
-                    appointmentContextPrompt = `\n\n### 🏥 RANDEVU AKIŞI DURUMU ###\nBu müşteri ile randevu akışı devam ediyor.\nMevcut durum: ${JSON.stringify(aptState)}\nZaten toplanan bilgileri TEKRAR SORMA, eksik bilgileri toplamaya devam et.`;
-                }
-            } catch (e) { }
-        }
+        // 🏥 APPOINTMENT BOT — Build a clean, focused system instruction
+        let finalSystemInstruction;
+        if (isAppointmentBot) {
+            let appointmentContextPrompt = '';
+            if (conversation?.appointmentState) {
+                try {
+                    const aptState = JSON.parse(conversation.appointmentState);
+                    if (aptState.step !== 'COMPLETED') {
+                        appointmentContextPrompt = `\n\n### 🏥 RANDEVU AKIŞI DURUMU ###\nBu müşteri ile randevu akışı devam ediyor.\nMevcut durum: ${JSON.stringify(aptState)}\nZaten toplanan bilgileri TEKRAR SORMA, eksik bilgileri toplamaya devam et.`;
+                    }
+                } catch (e) { }
+            }
+            
+            // Randevu botu için SADECE randevu prompt'u + tarih bilgisi kullan
+            // Genel kurallar ([HANDOFF], bilgi bankası, vb.) randevu akışını bozuyor!
+            finalSystemInstruction = `### GÜNCEL TARİH VE SAAT ###
+Bugün: ${currentDay}, ${currentDate}
+Saat: ${currentTime} (Türkiye Saati)
+Yıl: ${now.getFullYear()}
 
-        const finalSystemInstruction = appointmentContextPrompt
-            ? fullSystemInstruction + appointmentContextPrompt
-            : fullSystemInstruction;
+### MÜŞTERİ BİLGİLERİ ###
+${customerInfo}
+
+### RANDEVU ASİSTANI TALİMATI ###
+${systemPrompt}${appointmentContextPrompt}`;
+            
+            console.log(`🏥 [AI][${convShort}] Using clean appointment-only system instruction`);
+        } else {
+            // Normal bot — use full system instruction with all rules
+            finalSystemInstruction = fullSystemInstruction;
+        }
 
         // Build chat history WITHOUT the system instruction embedded in it.
         // The system instruction is passed via the systemInstruction parameter instead,
