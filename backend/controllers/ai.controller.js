@@ -1182,6 +1182,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     botEnabled: true,
                     teamIds: true,
                     routingState: true,
+                    appointmentState: true,
                     assignedBot: { include: { documents: true } },
                     facebookPage: {
                         include: {
