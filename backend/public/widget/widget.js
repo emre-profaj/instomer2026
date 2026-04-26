@@ -651,9 +651,8 @@
                 typingIndicator.style.display = 'none';
                 if (data.reply) {
                     addMessage(data.reply, 'bot');
-                } else {
-                    addMessage('Mesajınız alındı. Kısa süre içinde size geri döneceğiz. 🙏', 'bot');
                 }
+                // If reply is empty, don't show any fallback - the function call is processing
             } catch (err) {
                 console.error('Widget send error:', err);
                 typingIndicator.style.display = 'none';

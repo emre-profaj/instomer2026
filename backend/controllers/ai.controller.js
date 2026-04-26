@@ -1780,8 +1780,17 @@ ${documentContext || "Bilgi bankası boş."}
             console.log(`✅ [AI] Final Response Text length: ${responseText.length}`);
             if (!responseText || responseText.trim() === '') {
                 console.warn(`⚠️ [AI] Response text is empty! Candidates:`, JSON.stringify(result.response.candidates));
-                // Don't show fallback text — empty text after function calls is normal
-                responseText = "";
+                
+                // Retry once if response is completely empty (Gemini sometimes freezes)
+                try {
+                    console.log(`🔄 [AI] Retrying with same message due to empty response...`);
+                    result = await tryGenerate("gemini-2.5-flash");
+                    responseText = result.response.text();
+                    console.log(`✅ [AI] Retry Response Text length: ${responseText.length}`);
+                } catch (retryErr) {
+                    console.error(`❌ [AI] Retry also failed:`, retryErr.message);
+                    responseText = "";
+                }
             }
         } catch (e) {
             console.error(`❌ [AI] Error extracting text from response:`, e.message);

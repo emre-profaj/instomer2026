@@ -301,8 +301,50 @@ async function executeGetDoctors(workspaceId, conversationId, args) {
     const hasConnection = await checkHealthConnection(workspaceId);
     
     if (hasConnection) {
+        // State'den doğru brans_kodu çek
+        let realBransKodu = args.brans_kodu;
+        
+        if (conversationId) {
+            try {
+                const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
+                if (conv?.appointmentState) {
+                    const state = JSON.parse(conv.appointmentState);
+                    if (state.branches && state.branches.length > 0) {
+                        // AI'ın gönderdiği brans_kodu ile eşleştir
+                        let selectedBranch = state.branches.find(b => 
+                            String(b.brans_kodu) === String(args.brans_kodu)
+                        );
+                        
+                        // Eşleşme bulunamazsa, branş adıyla dene
+                        if (!selectedBranch && args.brans_adi) {
+                            selectedBranch = state.branches.find(b => 
+                                b.brans_adi.toLowerCase().includes(args.brans_adi.toLowerCase())
+                            );
+                        }
+                        
+                        // Hâlâ bulunamazsa sıra numarası ile dene
+                        if (!selectedBranch) {
+                            const branchIndex = parseInt(args.brans_kodu) - 1;
+                            if (!isNaN(branchIndex) && branchIndex >= 0 && branchIndex < state.branches.length) {
+                                selectedBranch = state.branches[branchIndex];
+                            }
+                        }
+                        
+                        if (selectedBranch) {
+                            realBransKodu = selectedBranch.brans_kodu;
+                            console.log(`🔄 [AppointmentBot] Overriding AI brans_kodu with state — brans: ${realBransKodu} (${selectedBranch.brans_adi})`);
+                        } else {
+                            console.warn(`⚠️ [AppointmentBot] AI sent brans_kodu ${args.brans_kodu}, no match found in state`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('⚠️ [AppointmentBot] Error reading state for get_doctors:', e.message);
+            }
+        }
+        
         const { getDoctors } = await import('./probel_appointment.service.js');
-        const res = await getDoctors(workspaceId, args.brans_kodu);
+        const res = await getDoctors(workspaceId, realBransKodu);
         if (res.success && res.doctors) {
             await updateAppointmentState(conversationId, { doctors: res.doctors });
         }
