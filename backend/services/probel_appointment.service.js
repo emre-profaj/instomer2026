@@ -126,15 +126,28 @@ export async function validatePatient(workspaceId, patientData) {
     try {
         const { tc, adi, soyadi, cinsiyet, dogum_tarihi, telefon } = patientData;
 
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_hasta_token', {
-            KIMLIK_TIPI: 1,
-            KIMLIK_NO: tc,
+        // Build input dynamically — only send non-empty fields
+        const inputData = {
             ADI: adi,
             SOYADI: soyadi,
-            CINSIYET: cinsiyet,
-            DOGUM_TARIHI: dogum_tarihi,
             TELEFON: telefon
-        });
+        };
+        
+        // Optional fields — only add if provided
+        if (tc && tc.trim() !== '') {
+            inputData.KIMLIK_TIPI = 1;
+            inputData.KIMLIK_NO = tc;
+        }
+        if (cinsiyet) {
+            inputData.CINSIYET = cinsiyet;
+        }
+        if (dogum_tarihi && dogum_tarihi.trim() !== '') {
+            inputData.DOGUM_TARIHI = dogum_tarihi;
+        }
+        
+        console.log(`🏥 [Probel] validatePatient with fields:`, Object.keys(inputData).join(', '));
+
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_hasta_token', inputData);
 
         const hastaToken = result.length > 0 ? (result[0].TOKEN || result[0].HASTA_TOKEN) : null;
 

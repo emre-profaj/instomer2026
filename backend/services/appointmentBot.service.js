@@ -130,8 +130,8 @@ Uygun saatleri listele ve müşteriye sor.
 Randevu detayları tamamen belirlendikten sonra hasta bilgilerini topla. Sırasıyla şunları sor (TEKER TEKER, aynı anda birden fazla soru sorma):
 1. Ad Soyad
 2. Telefon Numarası
-3. TC Kimlik Numarası (11 haneli)
-4. Doğum Tarihi (istediği formatta yazabilir: 6 mayıs 1984, 06.05.1984 vb.)
+Bu iki bilgi yeterli! Ad soyad ve telefon alındıktan sonra HİÇBİR ŞEY SORMADAN doğrudan 'validate_patient' fonksiyonunu çağır.
+TC Kimlik ve Doğum Tarihi SORMA — sadece sistem hata verirse o zaman ek bilgi iste.
 NOT: Cinsiyet bilgisini isimden otomatik belirle, SORMA! (Erkek isimleri: Gökhan, Mehmet, Ali vb. → "Erkek" / Kadın isimleri: Ayşe, Fatma vb. → "Kadın")
 
 🔹 ADIM 6 — DOĞRULAMA VE RANDEVU OLUŞTURMA:
@@ -160,17 +160,17 @@ export function getAppointmentToolDeclarations() {
     return [
         {
             name: 'validate_patient',
-            description: 'Hasta bilgilerini doğrular ve sisteme kaydeder. Tüm hasta bilgileri toplandıktan sonra çağrılmalıdır.',
+            description: 'Hasta bilgilerini doğrular ve sisteme kaydeder. Ad soyad ve telefon yeterlidir. TC ve doğum tarihi opsiyoneldir — sadece sistem hata verirse iste.',
             parameters: {
                 type: 'object',
                 properties: {
-                    tc: { type: 'string', description: 'TC Kimlik Numarası (11 haneli)' },
+                    tc: { type: 'string', description: 'TC Kimlik Numarası (11 haneli) — opsiyonel, sadece gerekirse sor' },
                     ad_soyad: { type: 'string', description: 'Hasta ad ve soyadı' },
                     cinsiyet: { type: 'string', description: 'Erkek veya Kadın' },
                     telefon: { type: 'string', description: 'Telefon numarası' },
-                    dogum_tarihi: { type: 'string', description: 'GG.AA.YYYY formatında doğum tarihi' }
+                    dogum_tarihi: { type: 'string', description: 'Doğum tarihi — opsiyonel, sadece gerekirse sor' }
                 },
-                required: ['tc', 'ad_soyad', 'cinsiyet', 'telefon', 'dogum_tarihi']
+                required: ['ad_soyad', 'telefon']
             }
         },
         {
