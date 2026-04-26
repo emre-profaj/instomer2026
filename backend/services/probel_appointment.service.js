@@ -154,7 +154,7 @@ export async function validatePatient(workspaceId, patientData) {
         if (!hastaToken) {
             return {
                 success: false,
-                message: 'Girdiğiniz bilgilere ait sistemde hasta kaydı bulunamadı. Lütfen bilgilerinizi kontrol ediniz.'
+                message: 'Girdiğiniz bilgilere ait sistemde hasta kaydı bulunamadı. Lütfen müşteriye sistemde kaydının bulunamadığını söyleyin ve işlemi tamamlamak için TC Kimlik Numarasını VE Doğum Tarihini (Gün/Ay/Yıl) AYNI ANDA İSTEYİN. (Sadece birini değil, ikisini birden sorun!).'
             };
         }
 
