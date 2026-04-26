@@ -19,6 +19,90 @@
 
 import prisma from '../lib/prisma.js';
 
+// ─── TURKISH DATE PARSER ────────────────────────────────────────────────────
+/**
+ * Her türlü Türkçe tarih formatını DDMMYYYY'ye dönüştürür.
+ * Desteklenen formatlar:
+ *   "06.05.1984", "6.5.1984", "06/05/1984", "06-05-1984"
+ *   "6 mayıs 1984", "6 Mayıs 1984", "mayıs 6, 1984"
+ *   "1984-05-06" (ISO), "06051984" (zaten düz)
+ *   "6 may 1984", "6 ağu 1984" (kısaltmalar)
+ */
+function parseTurkishDate(raw) {
+    if (!raw || raw.trim() === '') return '';
+    
+    let input = raw.trim().toLowerCase();
+    
+    // Zaten DDMMYYYY formatındaysa (8 haneli sayı)
+    if (/^\d{8}$/.test(input)) {
+        return input;
+    }
+    
+    // Türkçe ay isimleri → ay numarası
+    const turkishMonths = {
+        'ocak': '01', 'oca': '01',
+        'şubat': '02', 'şub': '02',
+        'mart': '03', 'mar': '03',
+        'nisan': '04', 'nis': '04',
+        'mayıs': '05', 'may': '05',
+        'haziran': '06', 'haz': '06',
+        'temmuz': '07', 'tem': '07',
+        'ağustos': '08', 'ağu': '08',
+        'eylül': '09', 'eyl': '09',
+        'ekim': '10', 'eki': '10',
+        'kasım': '11', 'kas': '11',
+        'aralık': '12', 'ara': '12'
+    };
+    
+    // Türkçe ay ismi içeriyor mu kontrol et
+    for (const [monthName, monthNum] of Object.entries(turkishMonths)) {
+        if (input.includes(monthName)) {
+            // "6 mayıs 1984" veya "mayıs 6, 1984" veya "6 mayıs, 1984"
+            const numbers = input.match(/\d+/g);
+            if (numbers && numbers.length >= 2) {
+                let day, year;
+                if (numbers[0].length === 4) {
+                    // "1984 mayıs 6" formatı
+                    year = numbers[0];
+                    day = numbers[1];
+                } else {
+                    day = numbers[0];
+                    year = numbers.find(n => n.length === 4) || numbers[numbers.length - 1];
+                }
+                return String(day).padStart(2, '0') + monthNum + year;
+            }
+        }
+    }
+    
+    // Ayırıcılı formatlar: "06.05.1984", "06/05/1984", "06-05-1984"
+    const separatorMatch = input.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+    if (separatorMatch) {
+        const day = separatorMatch[1].padStart(2, '0');
+        const month = separatorMatch[2].padStart(2, '0');
+        const year = separatorMatch[3];
+        return day + month + year;
+    }
+    
+    // ISO format: "1984-05-06"
+    const isoMatch = input.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+    if (isoMatch) {
+        const year = isoMatch[1];
+        const month = isoMatch[2].padStart(2, '0');
+        const day = isoMatch[3].padStart(2, '0');
+        return day + month + year;
+    }
+    
+    // Son çare: noktaları ve ayırıcıları sil
+    const cleaned = input.replace(/[.\-/\s]/g, '');
+    if (/^\d{8}$/.test(cleaned)) {
+        return cleaned;
+    }
+    
+    // Hiçbir format eşleşmediyse olduğu gibi döndür (AI'ın verdiğini Probel'e gönder)
+    console.warn(`⚠️ [AppointmentBot] Could not parse date: "${raw}", sending as-is`);
+    return raw.replace(/[.\-/\s]/g, '');
+}
+
 // ─── DEFAULT APPOINTMENT PROMPT ─────────────────────────────────────────────
 
 export const DEFAULT_APPOINTMENT_PROMPT = `Sen nazik ve profesyonel bir hastane randevu asistanısın. Görevin müşterilerden bilgileri tek tek toplayarak randevu oluşturmaktır.
@@ -214,9 +298,9 @@ async function executeValidatePatient(workspaceId, conversationId, args) {
             mappedCinsiyet = 2;
         }
 
-        // Format birthdate from GG.AA.YYYY to GGAAYYYY
-        let mappedDogumTarihi = args.dogum_tarihi || '';
-        mappedDogumTarihi = mappedDogumTarihi.replace(/\./g, '');
+        // Smart date parser — her formattan DDMMYYYY'ye dönüştür
+        let mappedDogumTarihi = parseTurkishDate(args.dogum_tarihi || '');
+        console.log(`📅 [AppointmentBot] Date parsed: "${args.dogum_tarihi}" → "${mappedDogumTarihi}"`);
 
         const { validatePatient, getBranches } = await import('./probel_appointment.service.js');
         const res = await validatePatient(workspaceId, {
