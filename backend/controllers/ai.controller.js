@@ -1817,19 +1817,55 @@ ${systemPrompt}${appointmentContextPrompt}`;
             responseText = "";
         }
 
-        // 🏥 Appointment bot empty response fallback — directly call get_branches
+        // 🏥 Appointment bot empty response fallback — state-aware auto-action
         if ((!responseText || responseText.trim() === '') && isAppointmentBot && conversationId) {
-            console.log(`🏥 [AI][${convShort}] Empty response for appointment bot — auto-calling get_branches`);
+            console.log(`🏥 [AI][${convShort}] Empty response for appointment bot — checking state for smart fallback`);
             try {
                 const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
-                const branchResult = await executeAppointmentFunction('get_branches', {}, workspaceId, conversationId);
-                if (branchResult && branchResult.success && branchResult.branches) {
-                    const branchList = branchResult.branches.map(b => `${b.sira}. ${b.brans_adi}`).join('\n');
-                    responseText = `Merhaba! 😊 Randevu almak istediğiniz bölümü seçebilirsiniz:\n\n${branchList}\n\nHangi bölümden randevu almak istersiniz?`;
-                    console.log(`✅ [AI][${convShort}] Auto-generated branch list response (${branchResult.branches.length} branches)`);
+                
+                // Check current appointment state
+                let aptState = {};
+                if (conversation?.appointmentState) {
+                    try { aptState = JSON.parse(conversation.appointmentState); } catch(e) {}
                 }
-            } catch (branchErr) {
-                console.error(`❌ [AI] Auto get_branches failed:`, branchErr.message);
+                
+                // Determine action based on state
+                if (aptState.branches && aptState.branches.length > 0 && !aptState.doctors) {
+                    // Branches already shown — user is selecting a branch
+                    const userInput = (userMessage || '').trim();
+                    const selectedBranch = aptState.branches.find(b => 
+                        String(b.sira) === userInput || 
+                        b.brans_adi.toLowerCase().includes(userInput.toLowerCase())
+                    );
+                    
+                    if (selectedBranch) {
+                        console.log(`🏥 [AI][${convShort}] Auto-matching branch: ${selectedBranch.brans_adi} (${selectedBranch.brans_kodu})`);
+                        const docResult = await executeAppointmentFunction('get_doctors', { brans_kodu: selectedBranch.brans_kodu, brans_adi: selectedBranch.brans_adi }, workspaceId, conversationId);
+                        if (docResult && docResult.success && docResult.doctors) {
+                            const docList = docResult.doctors.map(d => `${d.sira}. ${d.doktor_adi}`).join('\n');
+                            responseText = `${selectedBranch.brans_adi} bölümündeki doktorlarımız:\n\n${docList}\n\nHangi doktoru tercih edersiniz?`;
+                        } else {
+                            responseText = docResult?.message || 'Bu bölümde uygun doktor bulunamadı.';
+                        }
+                    } else {
+                        // Couldn't match — re-show branches
+                        const branchList = aptState.branches.map(b => `${b.sira}. ${b.brans_adi}`).join('\n');
+                        responseText = `Lütfen listeden bölüm numarasını veya adını yazın:\n\n${branchList}`;
+                    }
+                } else if (!aptState.branches || aptState.branches.length === 0) {
+                    // No branches yet — fetch them
+                    const branchResult = await executeAppointmentFunction('get_branches', {}, workspaceId, conversationId);
+                    if (branchResult && branchResult.success && branchResult.branches) {
+                        const branchList = branchResult.branches.map(b => `${b.sira}. ${b.brans_adi}`).join('\n');
+                        responseText = `Merhaba! 😊 Randevu almak istediğiniz bölümü seçebilirsiniz:\n\n${branchList}\n\nHangi bölümden randevu almak istersiniz?`;
+                        console.log(`✅ [AI][${convShort}] Auto-generated branch list (${branchResult.branches.length} branches)`);
+                    }
+                } else {
+                    // Other state — generic fallback
+                    responseText = 'Devam edebilmem için lütfen bir seçim yapın veya bilgi verin. 😊';
+                }
+            } catch (fallbackErr) {
+                console.error(`❌ [AI] Smart fallback failed:`, fallbackErr.message);
             }
         }
 
