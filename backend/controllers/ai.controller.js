@@ -1323,11 +1323,13 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true }
         });
 
+        let isProbelBot = false; // Probel-specific logic only for workspaces with health API
         if (activeBot.botType === 'APPOINTMENT' || hasHealthApi) {
             isAppointmentBot = true;
+            if (hasHealthApi) isProbelBot = true; // Only Probel-connected workspaces get special treatment
             const { getAppointmentToolDeclarations } = await import('../services/appointmentBot.service.js');
             activeBot._appointmentTools = getAppointmentToolDeclarations();
-            console.log(`🏥 [AI] Appointment bot capability detected: ${activeBot.name}, ${activeBot._appointmentTools.length} built-in tools loaded`);
+            console.log(`🏥 [AI] Appointment bot capability detected: ${activeBot.name}, ${activeBot._appointmentTools.length} built-in tools loaded${isProbelBot ? ' (Probel)' : ''}`);
         }
 
         // 🔄 BOT ROUTING CHECK - Silent background analysis (never blocks normal AI)
@@ -1377,8 +1379,8 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`⚠️ [AI] No document context available!`);
         }
 
-        // 🚀 Appointment bot: Use code-defined prompt as BASE, preserve bot's custom info as supplement
-        if (isAppointmentBot) {
+        // 🚀 Probel appointment bot: Use code-defined prompt as BASE, preserve bot's custom info as supplement
+        if (isProbelBot) {
             const { DEFAULT_APPOINTMENT_PROMPT } = await import('../services/appointmentBot.service.js');
             // Bot'un DB'deki özel prompt'u varsa, randevu kurallarından SONRA ek bilgi olarak ekle
             const botCustomPrompt = systemPrompt || '';
@@ -1527,9 +1529,9 @@ ${documentContext || "Bilgi bankası boş."}
 9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
 10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.`;
 
-        // 🏥 APPOINTMENT BOT — Build a clean, focused system instruction
+        // 🏥 PROBEL BOT — Build a clean, focused system instruction
         let finalSystemInstruction;
-        if (isAppointmentBot) {
+        if (isProbelBot) {
             let appointmentContextPrompt = '';
             if (conversation?.appointmentState) {
                 try {
@@ -1817,8 +1819,8 @@ ${systemPrompt}${appointmentContextPrompt}`;
             responseText = "";
         }
 
-        // 🏥 Appointment bot empty response fallback — state-aware auto-action
-        if ((!responseText || responseText.trim() === '') && isAppointmentBot && conversationId) {
+        // 🏥 Probel bot empty response fallback — state-aware auto-action
+        if ((!responseText || responseText.trim() === '') && isProbelBot && conversationId) {
             console.log(`🏥 [AI][${convShort}] Empty response for appointment bot — checking state for smart fallback`);
             try {
                 const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
