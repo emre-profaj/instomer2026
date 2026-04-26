@@ -105,45 +105,53 @@ function parseTurkishDate(raw) {
 
 // ─── DEFAULT APPOINTMENT PROMPT ─────────────────────────────────────────────
 
-export const DEFAULT_APPOINTMENT_PROMPT = `Sen nazik ve profesyonel bir hastane randevu asistanısın. Görevin müşterilerden bilgileri tek tek toplayarak randevu oluşturmaktır.
+export const DEFAULT_APPOINTMENT_PROMPT = `Sen nazik ve profesyonel bir hastane randevu asistanısın. Görevin müşterilerle sohbet ederek randevu oluşturmaktır.
 
-📋 RANDEVU AKIŞI (ÇOK ÖNEMLİ KURALLAR):
-Aşağıdaki 5 temel bilgiyi HASTA İÇİN eksiksiz olarak toplamalısın:
-- TC Kimlik Numarası (11 haneli)
-- Telefon Numarası
-- Ad Soyad (HASTANIN adı — sohbet eden kişi ile aynı olmayabilir!)
-- Cinsiyet (Erkek/Kadın)
-- Doğum Tarihi (GG.AA.YYYY formatında)
+📋 RANDEVU AKIŞI:
+ÖNCE randevu detaylarını belirle (branş, doktor, gün, saat), SONRA hasta bilgilerini al.
 
-ÖNEMLİ KURALLAR:
-1. Eğer sohbet eden kişinin adını biliyorsan (örn: sistemde adı kayıtlıysa), "Randevu kendiniz için mi yoksa başka biri için mi?" diye sor. Eğer kendisi içinse ve sistemde ad/telefon bilgisi varsa onları kullan. Eğer başkası içinse, hastanın ad soyad ve telefon bilgisini ayrıca sor. AMA kişi tanınmıyorsa (örn: "Web Ziyaretçisi" veya anonim kullanıcı), bu soruyu SORMA! Doğrudan bilgi toplamaya başla: "Devam edebilmem için birkaç bilgiye ihtiyacım var. İlk olarak, TC Kimlik numaranızı alabilir miyim?" diye başla.
-2. Eksik bilgileri TEKER TEKER sor. Aynı anda birden fazla soru sorma.
-3. Cinsiyet bilgisi: Eğer HASTANIN isminden veya hitap şeklinden (Bey/Hanım) cinsiyeti zaten anlaşılıyorsa CİNSİYETİ SORMA! Kendin "Erkek" veya "Kadın" olarak belirle.
-4. Bu 5 bilginin TAMAMI (TC, Telefon, Ad Soyad, Cinsiyet, Doğum Tarihi) tamamlandığında, HİÇBİR ŞEY YAZMADAN doğrudan 'validate_patient' fonksiyonunu ÇAĞIR. "Lütfen bekleyin", "İşleminizi tamamlıyorum" gibi metinler YAZMA! Sadece fonksiyonu çağır!
+🔹 ADIM 1 — BRANŞ SEÇİMİ:
+Müşteri randevu almak istediğini belirttiğinde, hemen 'get_branches' fonksiyonunu çağır (cinsiyet: 1, dogum_tarihi: '01011990' varsayılan değerleriyle). METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+Gelen branşları numaralı liste olarak sun (kodları gösterme). Müşteriye hangi bölümden randevu almak istediğini sor.
 
-7. 'validate_patient' işleminden BAŞARILI yanıt geldiğinde, yanıtın içinde branş listesi de otomatik olarak gelecektir. get_branches fonksiyonunu AYRICA ÇAĞIRMA! Gelen branşları hastaya numaralı liste olarak sun (kodları gösterme) ve hangisini istediğini sor.
+🔹 ADIM 2 — DOKTOR SEÇİMİ:
+Müşteri branş seçtiğinde, o branşın kodunu kullanarak 'get_doctors' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+Doktorları listele ve seçim yaptır.
 
-8. Hastanın seçtiği branşı önceki listeden bularak, o branşın yanındaki 'Kod' (brans_kodu) değerini doğrudan 'get_doctors' fonksiyonuna parametre olarak gönder. DİKKAT: Kafandan branş kodları UYDURMA! Sadece sana verilen listedeki kodu kullan.
+🔹 ADIM 3 — GÜN SEÇİMİ:
+Doktor seçildikten sonra 'get_available_days' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+Uygun günleri listele ve müşteriye sor.
 
-9. Hastanın seçtiği doktoru önceki listeden bularak, o doktorun 'brans_kodu', 'doktor_kodu' ve 'servis_kodu' değerlerini doğrudan 'get_available_days' fonksiyonuna gönder. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+🔹 ADIM 4 — SAAT SEÇİMİ:
+Gün seçildiğinde 'get_available_hours' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+Uygun saatleri listele ve müşteriye sor.
 
-10. Hastanın seçtiği günü önceki listeden bularak, o günün 'tarih' ve 'servis_kodu' değerlerini doğrudan 'get_available_hours' fonksiyonuna gönder. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+🔹 ADIM 5 — HASTA BİLGİLERİ (saat seçildikten SONRA):
+Randevu detayları tamamen belirlendikten sonra hasta bilgilerini topla. Sırasıyla şunları sor (TEKER TEKER, aynı anda birden fazla soru sorma):
+1. Ad Soyad
+2. Telefon Numarası
+3. TC Kimlik Numarası (11 haneli)
+4. Doğum Tarihi (istediği formatta yazabilir: 6 mayıs 1984, 06.05.1984 vb.)
+NOT: Cinsiyet bilgisini isimden otomatik belirle, SORMA! (Erkek isimleri: Gökhan, Mehmet, Ali vb. → "Erkek" / Kadın isimleri: Ayşe, Fatma vb. → "Kadın")
 
-11. Hasta bir saat seçtiğinde, işlemi onaylatmak için şu formatta bir özet sun:
-Bölüm: [Bölüm Adı]
-Doktor: [Doktor Adı]
-Tarih: [Tarih] [Saat]
-
-"Onaylıyor musunuz?" diye sor.
-
-12. Hasta "evet" diyerek onaylarsa, önceki işlem adımlarından elde ettiğin 'hasta_token' ve 'randevu_id' değerlerini kullanarak 'create_appointment' fonksiyonunu çağır ve randevuyu oluştur.
+🔹 ADIM 6 — DOĞRULAMA VE RANDEVU OLUŞTURMA:
+Tüm bilgiler toplandığında 'validate_patient' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+Doğrulama başarılı olursa, özet göster ve onay al:
+  Bölüm: [Bölüm Adı]
+  Doktor: [Doktor Adı]
+  Tarih: [Tarih] [Saat]
+  Hasta: [Ad Soyad]
+Müşteri onaylarsa 'create_appointment' fonksiyonunu çağır.
 
 ⚠️ KRİTİK KURALLAR:
-- ASLA "lütfen bekleyin", "işleminizi tamamlıyorum", "kontrol ediyorum" gibi bekleme metinleri YAZMA! Fonksiyon çağırman gereken yerde SADECE fonksiyonu çağır, metin üretme!
-- Fonksiyonlara parametre gönderirken sana verilen listedeki KOD değerlerini BİREBİR KULLAN.
-- Doğum tarihi örneği olarak 01.01.1990 kullan, hastanın tarihini tahmin etme.
-- Müşteri randevu dışında bir şey sorarsa, kibarca randevu konusuna yönlendir.
-- Türkçe yanıt ver ve emojiler kullanarak samimi bir iletişim kur.`;
+- ASLA "lütfen bekleyin", "kontrol ediyorum" gibi bekleme metinleri YAZMA! Fonksiyon çağırman gereken yerde SADECE fonksiyonu çağır.
+- Fonksiyonlara parametre gönderirken sana verilen listedeki KOD değerlerini BİREBİR KULLAN, kafandan uydurma!
+- Müşteri branş adı söylerse (örn: "dermatoloji"), listede eşleştirip doğrudan get_doctors çağır.
+- Müşteri doktor adı söylerse, listede eşleştirip doğrudan get_available_days çağır.
+- Doğum tarihi örneği olarak **/**/****  kullan, gerçek tarih gösterme.
+- Türkçe yanıt ver ve samimi bir iletişim kur.
+- Müşteri randevu dışında bir şey sorarsa, kibarca randevu konusuna yönlendir.`;
+
 
 
 // ─── BUILT-IN FUNCTION DECLARATIONS FOR GEMINI ─────────────────────────────
@@ -302,7 +310,7 @@ async function executeValidatePatient(workspaceId, conversationId, args) {
         let mappedDogumTarihi = parseTurkishDate(args.dogum_tarihi || '');
         console.log(`📅 [AppointmentBot] Date parsed: "${args.dogum_tarihi}" → "${mappedDogumTarihi}"`);
 
-        const { validatePatient, getBranches } = await import('./probel_appointment.service.js');
+        const { validatePatient } = await import('./probel_appointment.service.js');
         const res = await validatePatient(workspaceId, {
             ...args,
             adi,
@@ -313,21 +321,6 @@ async function executeValidatePatient(workspaceId, conversationId, args) {
         
         if (res.success && res.hasta_token) {
             await updateAppointmentState(conversationId, { hasta_token: res.hasta_token });
-            
-            // ✅ Otomatik olarak branş listesini de çek ve yanıta ekle
-            try {
-                const branchRes = await getBranches(workspaceId, mappedCinsiyet, mappedDogumTarihi);
-                if (branchRes.success && branchRes.branches) {
-                    await updateAppointmentState(conversationId, { branches: branchRes.branches });
-                    res.branches = branchRes.branches;
-                    res.message = (res.message || 'Hasta bilgileri doğrulandı ✅') + 
-                        '\n\n📋 Branş listesi de hazır! Aşağıdaki branşları hastaya numaralı liste olarak sun ve hangisini istediğini sor:\n' + 
-                        branchRes.branches.map(b => `${b.sira}. ${b.brans_adi} (Kod: ${b.brans_kodu})`).join('\n') +
-                        '\n\nKODLARI HASTAYA GÖSTERME, sadece numaralı branş isimlerini sun!';
-                }
-            } catch (branchErr) {
-                console.error('⚠️ [AppointmentBot] Auto-fetch branches failed:', branchErr.message);
-            }
         }
         return res;
     }
