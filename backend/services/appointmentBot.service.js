@@ -310,13 +310,21 @@ async function executeValidatePatient(workspaceId, conversationId, args) {
         let mappedDogumTarihi = parseTurkishDate(args.dogum_tarihi || '');
         console.log(`📅 [AppointmentBot] Date parsed: "${args.dogum_tarihi}" → "${mappedDogumTarihi}"`);
 
+        // Phone normalization — Probel expects 10-digit format: 5XXXXXXXXX
+        let cleanPhone = (args.telefon || '').replace(/[\s\-\(\)]/g, '');
+        if (cleanPhone.startsWith('+90')) cleanPhone = cleanPhone.substring(3);
+        if (cleanPhone.startsWith('90') && cleanPhone.length === 12) cleanPhone = cleanPhone.substring(2);
+        if (cleanPhone.startsWith('0') && cleanPhone.length === 11) cleanPhone = cleanPhone.substring(1);
+        console.log(`📱 [AppointmentBot] Phone normalized: "${args.telefon}" → "${cleanPhone}"`);
+
         const { validatePatient } = await import('./probel_appointment.service.js');
         const res = await validatePatient(workspaceId, {
             ...args,
             adi,
             soyadi,
             cinsiyet: mappedCinsiyet,
-            dogum_tarihi: mappedDogumTarihi
+            dogum_tarihi: mappedDogumTarihi,
+            telefon: cleanPhone
         });
         
         if (res.success && res.hasta_token) {
