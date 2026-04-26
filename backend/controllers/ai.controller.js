@@ -1800,6 +1800,22 @@ ${documentContext || "Bilgi bankası boş."}
             responseText = "";
         }
 
+        // 🏥 Appointment bot empty response fallback — directly call get_branches
+        if ((!responseText || responseText.trim() === '') && isAppointmentBot && conversationId) {
+            console.log(`🏥 [AI][${convShort}] Empty response for appointment bot — auto-calling get_branches`);
+            try {
+                const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
+                const branchResult = await executeAppointmentFunction('get_branches', {}, workspaceId, conversationId);
+                if (branchResult && branchResult.success && branchResult.branches) {
+                    const branchList = branchResult.branches.map(b => `${b.sira}. ${b.brans_adi}`).join('\n');
+                    responseText = `Merhaba! 😊 Randevu almak istediğiniz bölümü seçebilirsiniz:\n\n${branchList}\n\nHangi bölümden randevu almak istersiniz?`;
+                    console.log(`✅ [AI][${convShort}] Auto-generated branch list response (${branchResult.branches.length} branches)`);
+                }
+            } catch (branchErr) {
+                console.error(`❌ [AI] Auto get_branches failed:`, branchErr.message);
+            }
+        }
+
         // Release lock after generating response
         if (type === 'CHATS' && conversationId) {
             releaseAiReplyLock(conversationId);
