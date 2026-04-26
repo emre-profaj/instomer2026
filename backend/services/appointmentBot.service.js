@@ -628,7 +628,11 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                         
                         // AI'ın gönderdiği saat ile eşleştir
                         if (args.time) {
-                            selectedHour = state.hours.find(h => h.saat === args.time);
+                            selectedHour = state.hours.find(h => 
+                                h.saat === args.time || 
+                                h.saat.startsWith(args.time) || 
+                                (args.time.length === 5 && h.saat.startsWith(args.time))
+                            );
                         }
                         
                         // Saat ile bulunamazsa sıra numarasıyla dene
@@ -647,6 +651,8 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
                         
                         if (selectedHour) {
                             randevuId = selectedHour.randevu_id;
+                            // OVERRIDE args.time so that the final message shows the EXACT booked time!
+                            args.time = selectedHour.saat;
                             console.log(`🔄 [AppointmentBot] randevu_id from state: ${randevuId} (saat: ${selectedHour.saat})`);
                         }
                     }

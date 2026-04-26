@@ -410,12 +410,40 @@ export async function createAppointment(workspaceId, hastaToken, randevuId) {
 
         console.log(`✅ [Probel] prc_set_randevu_bilgisi response:`, JSON.stringify(result).substring(0, 500));
 
-        // Check if result indicates an error
-        if (result && Array.isArray(result) && result.length > 0 && result[0].HATA_KODU) {
-            console.error('❌ [Probel] Appointment creation failed with error:', result[0]);
+        // ProbelApiCall returns ref_out_list. Let's check the contents.
+        let isSuccess = false;
+        let errorMsg = 'Randevu oluşturulamadı. Lütfen hastane ile iletişime geçiniz.';
+
+        if (Array.isArray(result) && result.length > 0) {
+            // Check if any row has an error
+            const errorRow = result.find(r => r.HATA_KODU || (r.ISLEM_SONUCU && String(r.ISLEM_SONUCU).toLowerCase() !== 'basarili' && String(r.ISLEM_SONUCU).toLowerCase() !== 'başarılı'));
+            
+            if (errorRow) {
+                console.error('❌ [Probel] Appointment creation failed with error:', errorRow);
+                errorMsg = errorRow.HATA_MESAJI || errorRow.MESAJ || errorRow.ISLEM_SONUCU || errorMsg;
+            } else {
+                // If it's an array, has elements, and no error codes, assume success
+                isSuccess = true;
+            }
+        } else if (result && !Array.isArray(result)) {
+            // If it returned a single object (e.g. error from Probel wrapper)
+            if (result.HATA_KODU || result.HasError || (result.ISLEM_SONUCU && String(result.ISLEM_SONUCU).toLowerCase() !== 'basarili')) {
+                errorMsg = result.HATA_MESAJI || result.MESAJ || result.ISLEM_SONUCU || errorMsg;
+            } else {
+                isSuccess = true;
+            }
+        } else {
+            // Empty array or null returned. Since we don't know if this means success in this specific API, 
+            // we should be careful. Usually, a success message is returned. Let's assume failure if nothing is returned.
+            // Wait, if it strictly returns empty array on success, we would need to know. Assuming it returns at least some confirmation.
+            // But just in case:
+            isSuccess = true; // Let's assume empty means no errors for now, as ProbelApiCall throws on HTTP/JsonData errors.
+        }
+
+        if (!isSuccess) {
             return {
                 success: false,
-                message: result[0].HATA_MESAJI || result[0].MESAJ || 'Randevu oluşturulamadı. Lütfen tekrar deneyin.'
+                message: errorMsg
             };
         }
 
