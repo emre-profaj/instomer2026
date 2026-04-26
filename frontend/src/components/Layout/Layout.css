@@ -1,0 +1,52 @@
+.layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.main-content {
+    flex: 1;
+    margin-left: 225px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    transition: margin-left 0.2s ease;
+    /* Prevent window scroll */
+}
+
+.layout.sidebar-collapsed .main-content {
+    margin-left: 70px;
+}
+
+.content {
+    flex: 1;
+    padding: 0;
+    background-color: var(--bg-secondary);
+    position: relative;
+    overflow-y: auto;
+    /* Important: Force child to handle scroll */
+    display: flex;
+    /* Ensure child fills height */
+    flex-direction: column;
+}
+
+/* Force contacts-page to fill content area */
+.content>.contacts-page {
+    flex: 1 !important;
+    height: 100% !important;
+    min-height: 100% !important;
+}
+
+/* ── MOBİL LAYOUT ── */
+@media (max-width: 768px) {
+    .main-content {
+        margin-left: 0 !important;
+        /* 100dvh kullan — Safari alt bar sorununu çözmek için */
+        height: 100vh; /* fallback */
+        height: 100dvh;
+    }
+
+    .layout.sidebar-collapsed .main-content {
+        margin-left: 0 !important;
+    }
+}

@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Backup & misc
+instomer_backup/
+healthmodule/
+*.cjs
+check_*.js
+debug_*.js
+debug_*.cjs
+
+# Docs (optional - keep only README)
+DEPLOYMENT*.md
+DOMAIN_CONFIG.md
+MULTI_TENANT_SYSTEM.md
+PM2_DEPLOYMENT.md
+ADMIN_FACEBOOK_SETUP.md
+"Fix Facebook Pages Display.md"
+
+# Prisma generated
+backend/prisma/*.db
+backend/prisma/*.db-journal

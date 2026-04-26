@@ -1,0 +1,1820 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI } from '../../services/api';
+import { io } from 'socket.io-client';
+import DOMPurify from 'dompurify';
+import {
+    MessageSquare, MessageCircle, Facebook, Instagram, Mail, UserCheck,
+    Search, User, Users, Bot, Trash2, Send, StickyNote, RefreshCw,
+    Check, CheckCheck, Phone, Calendar, Tag, FileText, TrendingUp,
+    Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
+    Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap
+} from 'lucide-react';
+import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
+import notificationService from '../../services/notificationService';
+import './Inbox.css';
+
+// Inbox item types
+const INBOX_TYPES = {
+    MESSAGE: 'message',
+    COMMENT: 'comment',
+    EMAIL: 'email'
+};
+
+// Helper to check if content is HTML
+const isHtmlContent = (content) => {
+    if (!content) return false;
+    return /<[a-z][\s\S]*>/i.test(content);
+};
+
+// Sanitize and prepare HTML content for safe rendering
+const sanitizeHtml = (html) => {
+    return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'a', 'ul', 'ol', 'li', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'blockquote', 'pre', 'code', 'hr'],
+        ALLOWED_ATTR: ['href', 'target', 'src', 'alt', 'style', 'class', 'width', 'height'],
+        ADD_ATTR: ['target'], // All links open in new tab
+        ALLOW_DATA_ATTR: false
+    });
+};
+
+// Lead status options
+const LEAD_STATUS_OPTIONS = [
+    { value: 'NEW', label: 'Yeni', color: '#6b7280', bg: '#f3f4f6' },
+    { value: 'CONTACTED', label: 'İletişime Geçildi', color: '#3b82f6', bg: '#eff6ff' },
+    { value: 'QUALIFIED', label: 'Nitelikli', color: '#8b5cf6', bg: '#f5f3ff' },
+    { value: 'CONVERTED', label: 'Dönüştürüldü', color: '#10b981', bg: '#ecfdf5' },
+    { value: 'LOST', label: 'Kaybedildi', color: '#ef4444', bg: '#fef2f2' }
+];
+
+// Conversation status options
+const CONVERSATION_STATUS_OPTIONS = [
+    { value: 'OPEN', label: 'Açık', color: '#3b82f6', bg: '#eff6ff', icon: '🔵' },
+    { value: 'PENDING', label: 'Beklemede', color: '#f59e0b', bg: '#fffbeb', icon: '🟡' },
+    { value: 'RESOLVED', label: 'Çözüldü', color: '#10b981', bg: '#ecfdf5', icon: '✅' }
+];
+
+const getStatusInfo = (status) => {
+    return LEAD_STATUS_OPTIONS.find(s => s.value === status) || LEAD_STATUS_OPTIONS[0];
+};
+
+const getConversationStatusInfo = (status) => {
+    return CONVERSATION_STATUS_OPTIONS.find(s => s.value === status) || CONVERSATION_STATUS_OPTIONS[0];
+};
+
+const Inbox = () => {
+    const { currentWorkspace, user, setUnreadCount } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
+    
+    // Filter states
+    const [activeFilters, setActiveFilters] = useState([]); // Array of active filters: ['messages', 'comments', 'emails', 'leads']
+    const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
+    const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
+    const [searchTerm, setSearchTerm] = useState('');
+    const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'MINE', 'PENDING', 'ALL'
+    const [showResolved, setShowResolved] = useState(false); // Hide resolved conversations by default
+    const filterDropdownRef = useRef(null);
+    
+    // Filter labels for display
+    const filterLabels = {
+        whatsapp: 'WhatsApp',
+        facebook: 'Facebook',
+        instagram: 'Instagram',
+        fb_comments: 'FB Yorumları',
+        ig_comments: 'IG Yorumları',
+        emails: 'E-postalar',
+        leads: 'Leads'
+    };
+    
+    // Toggle filter function
+    const toggleFilter = (filter) => {
+        setActiveFilters(prev => {
+            if (prev.includes(filter)) {
+                return prev.filter(f => f !== filter);
+            } else {
+                return [...prev, filter];
+            }
+        });
+    };
+    
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+                setFilterDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+    
+    // Data states
+    const [inboxItems, setInboxItems] = useState([]);
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [selectedItemType, setSelectedItemType] = useState(null);
+    const [loading, setLoading] = useState(true);
+    
+    // Message conversation states
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
+    
+    // AI Suggestion states
+    const [aiSuggestions, setAiSuggestions] = useState([]);
+    const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    
+    
+    // Comment states
+    const [comments, setComments] = useState([]);
+    const [posts, setPosts] = useState([]);
+    const [selectedPost, setSelectedPost] = useState(null);
+    const [replyText, setReplyText] = useState('');
+    
+    // Email reply states
+    const [emailReplyMode, setEmailReplyMode] = useState('reply'); // 'reply' or 'note'
+    const [emailCc, setEmailCc] = useState('');
+    const [emailBcc, setEmailBcc] = useState('');
+    const [showBcc, setShowBcc] = useState(false);
+    
+    // Shared states
+    const [members, setMembers] = useState([]);
+    const [teams, setTeams] = useState([]);
+    const [bots, setBots] = useState([]);
+    const [pages, setPages] = useState([]);
+    
+    // WhatsApp Template states
+    const [templates, setTemplates] = useState([]);
+    const [showTemplateModal, setShowTemplateModal] = useState(false);
+    const [selectedTemplate, setSelectedTemplate] = useState(null);
+    const [templateVariables, setTemplateVariables] = useState([]);
+    const [sendingTemplate, setSendingTemplate] = useState(false);
+    const [headerMediaUrl, setHeaderMediaUrl] = useState('');
+    
+    const messagesContainerRef = useRef(null);
+    const socketRef = useRef(null);
+    
+    // Get workspace member role - check both members array and global user role
+    const workspaceMemberRole = currentWorkspace?.members?.[0]?.role;
+    const globalUserRole = user?.role;
+    // Use workspace role first, fallback to global role (for SUPER_ADMIN who might not be in members)
+    const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(workspaceMemberRole) || globalUserRole === 'SUPER_ADMIN';
+
+    // Scroll to bottom for messages
+    const scrollToBottom = () => {
+        if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    // Load support data first (pages needed for comments)
+    useEffect(() => {
+        if (currentWorkspace) {
+            loadSupportData();
+        }
+    }, [currentWorkspace]);
+
+    // Load inbox items after pages are loaded
+    useEffect(() => {
+        if (currentWorkspace) {
+            loadInboxItems();
+        }
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved]);
+
+    // Listen for new conversation created event
+    useEffect(() => {
+        const handleNewConversation = () => {
+            loadInboxItems();
+        };
+        
+        window.addEventListener('newConversationCreated', handleNewConversation);
+        return () => window.removeEventListener('newConversationCreated', handleNewConversation);
+    }, [currentWorkspace]);
+
+    // Handle conversationId from URL query params
+    useEffect(() => {
+        const conversationId = searchParams.get('conversationId');
+        const contactId = searchParams.get('contactId');
+        
+        if (conversationId && inboxItems.length > 0) {
+            // Find the conversation in inbox items
+            const targetItem = inboxItems.find(item => item.id === conversationId);
+            if (targetItem) {
+                handleSelectItem(targetItem);
+                // Clear the query param after selecting
+                setSearchParams({});
+            }
+        } else if (contactId && inboxItems.length > 0) {
+            // Find the first conversation for this contact
+            const targetItem = inboxItems.find(item => item.contactId === contactId || item.contact?.id === contactId);
+            if (targetItem) {
+                handleSelectItem(targetItem);
+                setSearchParams({});
+            }
+        }
+    }, [inboxItems, searchParams]);
+
+    // WebSocket for real-time updates
+    useEffect(() => {
+        if (!currentWorkspace) return;
+
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5008';
+        const socketUrl = API_URL.replace('/api', '');
+        
+        const socket = io(socketUrl, {
+            transports: ['polling', 'websocket'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            console.log('✅ Inbox WebSocket connected, workspace:', currentWorkspace?.id);
+        });
+
+        // Listen for new conversations (e.g., from Widget)
+        socket.on('new_conversation', (data) => {
+            console.log('📥 new_conversation event received:', data);
+            if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
+                console.log('✅ new_conversation - reloading inbox items');
+                loadInboxItems(false);
+            }
+        });
+
+        socket.on('new_message', (data) => {
+            console.log('📥 new_message event received:', data);
+            if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
+                console.log('✅ new_message - workspace match, reloading');
+                loadInboxItems(false);
+                
+                // Add message to chat if conversation is open
+                // For incoming messages (from contact) and bot messages (auto-reply)
+                if (selectedItem?.id === data.conversationId && selectedItemType === INBOX_TYPES.MESSAGE) {
+                    // Add message if it's from contact OR if it's a bot message (senderId is null)
+                    if (data.message?.isFromContact || data.message?.senderId === null) {
+                        setMessages(prev => {
+                            if (prev.some(m => m.id === data.message.id)) return prev;
+                            return [...prev, data.message];
+                        });
+                        
+                        // Only decrement unread for incoming messages
+                        if (data.message?.isFromContact) {
+                            setUnreadCount(prev => Math.max(0, prev - 1));
+                        }
+                    }
+                }
+                
+                // Show browser notification for incoming messages (from contact)
+                if (data.message?.isFromContact && document.hidden) {
+                    notificationService.showNewMessageNotification(
+                        data.message,
+                        { id: data.conversationId, channel: data.channel },
+                        data.contact || { name: 'Yeni Mesaj' }
+                    );
+                }
+            } else {
+                console.log('⚠️ new_message - workspace mismatch:', data.workspaceId, 'vs', currentWorkspace?.id);
+            }
+        });
+
+        socket.on('new_comment', (data) => {
+            if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
+                loadInboxItems(false);
+                
+                // Show browser notification for new comments
+                if (document.hidden) {
+                    notificationService.showNotification('💬 Yeni Yorum', {
+                        body: data.comment?.message?.substring(0, 100) || 'Yeni bir yorum geldi',
+                        tag: `comment-${data.comment?.id}`,
+                        data: { url: '/inbox' }
+                    });
+                }
+            }
+        });
+
+        socket.on('new_lead', (data) => {
+            if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
+                loadInboxItems(false);
+                
+                // Show browser notification for new leads
+                if (document.hidden) {
+                    notificationService.showNotification('🎯 Yeni Lead', {
+                        body: data.lead?.name || 'Yeni bir potansiyel müşteri',
+                        tag: `lead-${data.lead?.id}`,
+                        data: { url: '/inbox' }
+                    });
+                }
+            }
+        });
+
+        socket.on('new_email', (data) => {
+            if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
+                loadInboxItems(false);
+                
+                // Show browser notification for new emails
+                if (document.hidden) {
+                    notificationService.showNotification('📧 Yeni E-posta', {
+                        body: data.email?.subject || 'Yeni bir e-posta geldi',
+                        tag: `email-${data.email?.id}`,
+                        data: { url: '/inbox' }
+                    });
+                }
+            }
+        });
+
+        // Listen for message status updates (delivered, read)
+        socket.on('message_status', (data) => {
+            console.log('📊 Message status update:', data);
+            const { messageId, dbMessageId, conversationId, status } = data;
+            
+            // Only update if this is for the currently selected conversation
+            if (selectedItem?.id === conversationId) {
+                setMessages(prev => prev.map(msg => {
+                    // Match by database ID, WhatsApp message ID, or Facebook message ID
+                    if (msg.id === dbMessageId || 
+                        msg.whatsappMessageId === messageId || 
+                        msg.facebookMessageId === messageId) {
+                        console.log(`✅ Updating message ${msg.id} status to ${status}`);
+                        return { ...msg, status };
+                    }
+                    return msg;
+                }));
+            }
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [currentWorkspace, selectedItem, selectedItemType]);
+
+    const loadSupportData = async () => {
+        try {
+            const [membersRes, teamsRes, botsRes, pagesRes, templatesRes] = await Promise.all([
+                isOwner ? workspaceAPI.getMembers(currentWorkspace.id) : Promise.resolve({ data: { members: [] } }),
+                teamAPI.getWorkspaceTeams(currentWorkspace.id),
+                aiAPI.getBots(currentWorkspace.id),
+                facebookAPI.getPages(currentWorkspace.id),
+                automationAPI.getTemplates(currentWorkspace.id).catch(() => ({ data: { templates: [] } }))
+            ]);
+            
+            setMembers(membersRes.data.members || []);
+            setTeams(teamsRes.data.teams || []);
+            setBots(botsRes.data.bots || []);
+            setPages(pagesRes.data.pages || []);
+            setTemplates(templatesRes.data.templates || []);
+        } catch (error) {
+            console.error('Error loading support data:', error);
+        }
+    };
+
+    const loadInboxItems = async (showLoading = true) => {
+        try {
+            if (showLoading) setLoading(true);
+            
+            let items = [];
+            
+            // Load based on active filters (empty array means all)
+            const loadAll = activeFilters.length === 0;
+            
+            // Check which channel filters are active (DM channels)
+            const channelFilters = ['whatsapp', 'facebook', 'instagram', 'emails', 'leads'];
+            const hasChannelFilter = channelFilters.some(f => activeFilters.includes(f));
+            
+            // Check which comment filters are active
+            const commentFilters = ['fb_comments', 'ig_comments'];
+            const hasCommentFilter = commentFilters.some(f => activeFilters.includes(f));
+            
+            // Determine what to load:
+            // - If no filter selected (loadAll): load everything
+            // - If channel filter selected: load only those channels, NOT comments (unless comment filter also selected)
+            // - If comment filter selected: load only those comments, NOT channels (unless channel filter also selected)
+            
+            // Comments should only load if:
+            // 1. No filters at all (loadAll) OR
+            // 2. Specifically the comment filter is selected
+            // NOT when only channel filters (whatsapp, facebook, instagram, emails, leads) are selected
+            const loadFbComments = loadAll || activeFilters.includes('fb_comments');
+            const loadIgComments = loadAll || activeFilters.includes('ig_comments');
+            
+            // But if a channel filter is selected WITHOUT comment filters, don't load comments
+            // Also, if activeChannel is set (top buttons), don't load comments unless explicitly filtered
+            const shouldLoadFbComments = loadFbComments && (!hasChannelFilter || activeFilters.includes('fb_comments')) && !activeChannel;
+            const shouldLoadIgComments = loadIgComments && (!hasChannelFilter || activeFilters.includes('ig_comments')) && !activeChannel;
+            
+            const loadConversations = loadAll || hasChannelFilter || activeChannel;
+            
+            // Load all conversations in one API call to avoid duplicates
+            if (loadConversations) {
+                const params = {};
+                if (assignmentTab === 'MINE') params.assignedToId = 'mine';
+                else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+                
+                const response = await conversationAPI.getAll(currentWorkspace.id, params);
+                const allConversations = response.data.conversations || [];
+                
+                // Filter conversations based on channel and resolved status
+                allConversations.forEach(conv => {
+                    // Check if resolved filter applies
+                    if (!showResolved && conv.status === 'RESOLVED') {
+                        return; // Skip resolved conversations if showResolved is false
+                    }
+                    
+                    // Check activeChannel filter (top buttons: Tümü, WhatsApp, Facebook, Instagram)
+                    if (activeChannel && conv.channel !== activeChannel) {
+                        return; // Skip if channel doesn't match the active channel button
+                    }
+                    
+                    // Check dropdown channel filter
+                    // If no channel filter is selected (loadAll), show all conversation channels
+                    // If specific channel filters are selected, only show matching channels
+                    let channelMatch = false;
+                    
+                    if (!hasChannelFilter) {
+                        // No channel filter active - show all conversations
+                        channelMatch = true;
+                    } else {
+                        // Specific channel filter(s) active - check if conversation matches
+                        channelMatch = 
+                            (activeFilters.includes('whatsapp') && conv.channel === 'WHATSAPP') ||
+                            (activeFilters.includes('facebook') && conv.channel === 'FACEBOOK') ||
+                            (activeFilters.includes('instagram') && conv.channel === 'INSTAGRAM') ||
+                            (activeFilters.includes('emails') && conv.channel === 'EMAIL') ||
+                            (activeFilters.includes('leads') && conv.channel === 'LEAD');
+                    }
+                    
+                    if (channelMatch) {
+                        items.push({
+                            ...conv,
+                            inboxType: conv.channel === 'EMAIL' ? INBOX_TYPES.EMAIL : INBOX_TYPES.MESSAGE,
+                            sortDate: new Date(conv.lastMessageAt || conv.createdAt)
+                        });
+                    }
+                });
+            }
+            
+            if (shouldLoadFbComments) {
+                // For Facebook comments, we load posts which contain comments
+                if (pages.length > 0) {
+                    const postsPromises = pages.map(page => 
+                        facebookAPI.getPosts(page.pageId).catch(() => ({ data: { posts: [] } }))
+                    );
+                    const postsResponses = await Promise.all(postsPromises);
+                    const allPosts = postsResponses.flatMap((res, idx) => 
+                        (res.data.posts || []).map(post => ({
+                            ...post,
+                            pageId: pages[idx].pageId,
+                            pageName: pages[idx].pageName,
+                            inboxType: INBOX_TYPES.COMMENT,
+                            platform: 'FACEBOOK',
+                            sortDate: new Date(post.created_time)
+                        }))
+                    );
+                    items = [...items, ...allPosts];
+                }
+            }
+            
+            if (shouldLoadIgComments) {
+                // For Instagram comments, we load Instagram posts which contain comments
+                if (pages.length > 0) {
+                    const instagramPages = pages.filter(p => p.instagramBusinessId);
+                    const igPostsPromises = instagramPages.map(page => 
+                        facebookAPI.getInstagramPosts(page.instagramBusinessId, currentWorkspace.id).catch(() => ({ data: { posts: [] } }))
+                    );
+                    const igPostsResponses = await Promise.all(igPostsPromises);
+                    const allIgPosts = igPostsResponses.flatMap((res, idx) => 
+                        (res.data.posts || []).map(post => ({
+                            ...post,
+                            pageId: instagramPages[idx].pageId,
+                            pageName: instagramPages[idx].instagramUsername ? `@${instagramPages[idx].instagramUsername}` : instagramPages[idx].pageName,
+                            instagramBusinessId: instagramPages[idx].instagramBusinessId,
+                            inboxType: INBOX_TYPES.COMMENT,
+                            platform: 'INSTAGRAM',
+                            sortDate: new Date(post.created_time)
+                        }))
+                    );
+                    items = [...items, ...allIgPosts];
+                }
+            }
+            
+            // Sort by date (most recent first)
+            items.sort((a, b) => b.sortDate - a.sortDate);
+            
+            // Apply search filter
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                items = items.filter(item => {
+                    if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
+                        return item.contact?.name?.toLowerCase().includes(term) ||
+                               item.contact?.email?.toLowerCase().includes(term) ||
+                               item.contact?.phone?.includes(term);
+                    } else if (item.inboxType === INBOX_TYPES.COMMENT) {
+                        return item.message?.toLowerCase().includes(term);
+                    }
+                    return true;
+                });
+            }
+            
+            setInboxItems(items);
+        } catch (error) {
+            console.error('Error loading inbox items:', error);
+        } finally {
+            if (showLoading) setLoading(false);
+        }
+    };
+
+    const handleSelectItem = async (item) => {
+        setSelectedItem(item);
+        setSelectedItemType(item.inboxType);
+        
+        if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
+            await loadConversationDetails(item.id);
+        } else if (item.inboxType === INBOX_TYPES.COMMENT) {
+            setSelectedPost(item);
+            await loadComments(item.id, item);
+        }
+        // For leads, data is already in the item
+    };
+
+    const loadConversationDetails = async (conversationId) => {
+        try {
+            // First, get the unread count BEFORE marking as read
+            const currentItem = inboxItems.find(i => i.id === conversationId);
+            const unreadForThis = currentItem?.unreadCount || 0;
+            
+            // Call API - this marks conversation as read in backend
+            const response = await conversationAPI.getById(currentWorkspace.id, conversationId);
+            setSelectedItem(response.data.conversation);
+            
+            // Update local inbox items to show 0 unread
+            setInboxItems(prev => prev.map(i =>
+                i.id === conversationId ? { ...i, unreadCount: 0 } : i
+            ));
+            
+            // Decrease global unread count only for message channels
+            const messageChannels = ['FACEBOOK', 'INSTAGRAM', 'WHATSAPP'];
+            if (unreadForThis > 0 && messageChannels.includes(currentItem?.channel)) {
+                setUnreadCount(prev => Math.max(0, prev - unreadForThis));
+            }
+            
+            const msgs = response.data.conversation.messages || [];
+            const notes = response.data.conversation.internalNotes || [];
+            
+            const formattedNotes = notes.map(n => ({
+                ...n,
+                isInternalNote: true,
+                messageType: 'NOTE',
+                sender: n.user,
+                isFromContact: false
+            }));
+            
+            const combined = [...msgs, ...formattedNotes].sort((a, b) => 
+                new Date(a.createdAt) - new Date(b.createdAt)
+            );
+            setMessages(combined);
+        } catch (error) {
+            console.error('Error loading conversation:', error);
+        }
+    };
+
+    const loadComments = async (postId, item = null) => {
+        try {
+            const targetItem = item || selectedPost;
+            const page = pages.find(p => p.pageId === targetItem?.pageId) || pages[0];
+            // For Instagram posts, pass instagramBusinessId
+            const instagramBusinessId = targetItem?.instagramBusinessId || targetItem?.platform === 'INSTAGRAM' ? page?.instagramBusinessId : null;
+            const response = await facebookAPI.getPostComments(postId, currentWorkspace.id, page?.pageId, instagramBusinessId);
+            setComments(response.data.comments || []);
+        } catch (error) {
+            console.error('Error loading comments:', error);
+        }
+    };
+
+    // Fetch AI suggested replies
+    const fetchAiSuggestions = async () => {
+        if (!selectedItem || !currentWorkspace) return;
+        
+        setLoadingSuggestions(true);
+        setShowSuggestions(true);
+        
+        try {
+            const response = await aiAPI.getSuggestedReplies(currentWorkspace.id, selectedItem.id);
+            setAiSuggestions(response.data.suggestions || []);
+        } catch (error) {
+            console.error('AI suggestions error:', error);
+            setAiSuggestions([]);
+        } finally {
+            setLoadingSuggestions(false);
+        }
+    };
+
+    // Apply suggestion to input
+    const applySuggestion = (suggestion) => {
+        setNewMessage(suggestion.text);
+        setShowSuggestions(false);
+        setAiSuggestions([]);
+    };
+
+    const handleSendMessage = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || !selectedItem) return;
+
+        try {
+            // Check if this is an email and in note mode
+            const isEmailNote = selectedItemType === INBOX_TYPES.EMAIL && emailReplyMode === 'note';
+            const shouldSendNote = isInternalNoteMode || isEmailNote;
+            
+            if (shouldSendNote) {
+                const response = await conversationAPI.addNote(
+                    currentWorkspace.id,
+                    selectedItem.id,
+                    { content: newMessage }
+                );
+                const newNote = {
+                    ...response.data.note,
+                    isInternalNote: true,
+                    messageType: 'NOTE',
+                    sender: user,
+                    isFromContact: false
+                };
+                setMessages([...messages, newNote]);
+            } else {
+                // For email, include CC/BCC
+                const messageData = { content: newMessage };
+                if (selectedItemType === INBOX_TYPES.EMAIL) {
+                    if (emailCc.trim()) messageData.cc = emailCc.trim();
+                    if (emailBcc.trim()) messageData.bcc = emailBcc.trim();
+                }
+                
+                const response = await conversationAPI.sendMessage(
+                    currentWorkspace.id,
+                    selectedItem.id,
+                    messageData
+                );
+                // Only add if not a duplicate
+                if (!response.data.duplicate) {
+                    setMessages(prev => {
+                        // Extra check to prevent duplicates
+                        if (prev.some(m => m.id === response.data.message.id)) return prev;
+                        return [...prev, response.data.message];
+                    });
+                }
+                
+                // Clear CC/BCC after sending
+                if (selectedItemType === INBOX_TYPES.EMAIL) {
+                    setEmailCc('');
+                    setEmailBcc('');
+                    setShowBcc(false);
+                }
+            }
+            setNewMessage('');
+        } catch (error) {
+            console.error('Error sending message:', error);
+            alert('Mesaj gönderilemedi.');
+        }
+    };
+
+    const handleSendComment = async () => {
+        if (!replyText.trim() || !selectedPost) return;
+
+        try {
+            await facebookAPI.createComment(selectedPost.id, {
+                message: replyText,
+                workspaceId: currentWorkspace.id,
+                pageId: selectedPost.pageId
+            });
+            setReplyText('');
+            loadComments(selectedPost.id, selectedPost);
+        } catch (error) {
+            console.error('Error sending comment:', error);
+            alert('Yorum gönderilemedi.');
+        }
+    };
+
+    const handleAssignUser = async (conversationId, userId) => {
+        try {
+            const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { userId: userId || null });
+            // Update selectedItem with new assignment
+            if (selectedItem?.id === conversationId) {
+                setSelectedItem(prev => ({
+                    ...prev,
+                    assignedToId: userId || null,
+                    assignedTo: response.data.conversation?.assignedTo || null
+                }));
+            }
+            loadInboxItems(false);
+        } catch (error) {
+            console.error('Assign user error:', error);
+        }
+    };
+
+    // WhatsApp Template functions
+    const openTemplateModal = (template) => {
+        setSelectedTemplate(template);
+        // Parse variables from template body
+        const matches = template.bodyText?.match(/\{\{(\d+)\}\}/g) || [];
+        const uniqueVars = [...new Set(matches)].map((v) => ({
+            placeholder: v,
+            value: ''
+        }));
+        setTemplateVariables(uniqueVars);
+        // Reset header media URL
+        setHeaderMediaUrl(template.headerContent || '');
+        setShowTemplateModal(true);
+    };
+
+    const handleSendTemplate = async () => {
+        if (!selectedItem?.contact?.phone) {
+            alert('Bu kişinin telefon numarası yok');
+            return;
+        }
+
+        // Check if header media is required but not provided
+        const needsHeaderMedia = selectedTemplate?.headerType && 
+            ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(selectedTemplate.headerType);
+        if (needsHeaderMedia && !headerMediaUrl) {
+            alert('Bu şablon için medya URL\'si gereklidir');
+            return;
+        }
+        
+        setSendingTemplate(true);
+        try {
+            const variables = templateVariables.map(v => v.value);
+            await automationAPI.sendTemplate(currentWorkspace.id, {
+                templateId: selectedTemplate.id,
+                contactId: selectedItem.contact?.id,
+                variables: variables.length > 0 ? variables : undefined,
+                headerMediaUrl: needsHeaderMedia ? headerMediaUrl : undefined
+            });
+            alert('Şablon mesajı gönderildi!');
+            setShowTemplateModal(false);
+            setSelectedTemplate(null);
+            setHeaderMediaUrl('');
+            // Reload messages
+            loadConversationDetails(selectedItem.id);
+        } catch (error) {
+            console.error('Send template error:', error);
+            alert(error.response?.data?.error || 'Mesaj gönderilemedi');
+        } finally {
+            setSendingTemplate(false);
+        }
+    };
+
+    const handleAssignTeam = async (conversationId, teamId) => {
+        try {
+            await conversationAPI.assign(currentWorkspace.id, conversationId, { teamId: teamId || null });
+            // Update selectedItem with new team assignment
+            if (selectedItem?.id === conversationId) {
+                setSelectedItem(prev => ({
+                    ...prev,
+                    teamIds: teamId ? JSON.stringify([teamId]) : '[]'
+                }));
+            }
+            loadInboxItems(false);
+        } catch (error) {
+            console.error('Assign team error:', error);
+        }
+    };
+
+    const handleAssignBot = async (conversationId, botId) => {
+        try {
+            const response = await conversationAPI.assign(currentWorkspace.id, conversationId, { botId: botId || null });
+            // Update selectedItem with new bot assignment
+            if (selectedItem?.id === conversationId) {
+                setSelectedItem(prev => ({
+                    ...prev,
+                    assignedBotId: botId || null,
+                    assignedBot: response.data.conversation?.assignedBot || null,
+                    // Bot assignment clears user assignment
+                    assignedToId: botId ? null : prev.assignedToId,
+                    assignedTo: botId ? null : prev.assignedTo
+                }));
+            }
+            loadInboxItems(false);
+        } catch (error) {
+            console.error('Assign bot error:', error);
+        }
+    };
+
+    const handleLeadStatusChange = async (leadId, newStatus) => {
+        try {
+            await leadsAPI.updateStatus(leadId, { status: newStatus });
+            setInboxItems(prev => prev.map(i => 
+                i.id === leadId ? { ...i, status: newStatus } : i
+            ));
+            if (selectedItem?.id === leadId) {
+                setSelectedItem(prev => ({ ...prev, status: newStatus }));
+            }
+        } catch (error) {
+            console.error('Error updating lead status:', error);
+        }
+    };
+
+    const handleConversationStatusChange = async (conversationId, newStatus) => {
+        console.log(`🔄 Attempting to update conversation ${conversationId} to status: ${newStatus}`);
+        console.log(`📌 Workspace ID: ${currentWorkspace?.id}`);
+        
+        try {
+            const response = await conversationAPI.updateStatus(currentWorkspace.id, conversationId, { status: newStatus });
+            console.log('📡 API Response:', response);
+            
+            // Update inbox items
+            setInboxItems(prev => prev.map(i => 
+                i.id === conversationId ? { ...i, status: newStatus } : i
+            ));
+            
+            // Update selected item
+            if (selectedItem?.id === conversationId) {
+                setSelectedItem(prev => ({ ...prev, status: newStatus }));
+            }
+            
+            // Refresh inbox to get updated data
+            loadInboxItems(false);
+            
+            console.log(`✅ Conversation ${conversationId} status updated to ${newStatus}`);
+        } catch (error) {
+            console.error('❌ Error updating conversation status:', error);
+            console.error('Error details:', error.response?.data || error.message);
+            alert('Sohbet durumu güncellenemedi: ' + (error.response?.data?.error || error.message));
+        }
+    };
+
+    const handleDeleteItem = async (item) => {
+        if (!confirm('Bu öğeyi silmek istediğinize emin misiniz?')) return;
+
+        try {
+            console.log('🗑️ Deleting item:', item.id, 'Type:', item.inboxType, 'Channel:', item.channel);
+            
+            // Comments are not deletable
+            if (item.inboxType === INBOX_TYPES.COMMENT) {
+                alert('Yorumlar silinemez.');
+                return;
+            }
+            
+            // All conversations (MESSAGE, EMAIL, LEAD channel) - use conversation delete API
+            const response = await conversationAPI.delete(currentWorkspace.id, item.id);
+            console.log('✅ Delete response:', response.data);
+            
+            // Clear selection if deleted item was selected
+            if (selectedItem?.id === item.id) {
+                setSelectedItem(null);
+                setSelectedItemType(null);
+                setMessages([]);
+            }
+            
+            // Remove from local state immediately for better UX
+            setInboxItems(prev => prev.filter(i => i.id !== item.id));
+            
+        } catch (error) {
+            console.error('❌ Error deleting item:', error);
+            alert('Silme işlemi başarısız: ' + (error.response?.data?.error || error.message));
+        }
+    };
+
+    const formatTime = (date) => {
+        if (!date) return '';
+        const d = new Date(date);
+        const now = new Date();
+        const diffDays = Math.floor((now - d) / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) {
+            return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        } else if (diffDays === 1) {
+            return 'Dün';
+        } else if (diffDays < 7) {
+            return d.toLocaleDateString('tr-TR', { weekday: 'short' });
+        } else {
+            return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+        }
+    };
+
+    const getItemIcon = (item) => {
+        if (item.inboxType === INBOX_TYPES.EMAIL || item.channel === 'EMAIL') {
+            return <Mail size={14} className="item-type-icon email" />;
+        } else if (item.inboxType === INBOX_TYPES.COMMENT && item.platform === 'INSTAGRAM') {
+            return <Instagram size={14} className="item-type-icon instagram" />;
+        } else if (item.inboxType === INBOX_TYPES.COMMENT) {
+            return <Facebook size={14} className="item-type-icon facebook" />;
+        } else if (item.instagramBusinessId || item.channel === 'INSTAGRAM') {
+            return <Instagram size={14} className="item-type-icon instagram" />;
+        } else if (item.whatsappPhoneNumberId || item.channel === 'WHATSAPP') {
+            return <MessageCircle size={14} className="item-type-icon whatsapp" />;
+        } else if (item.channel === 'WIDGET') {
+            return <MessageSquare size={14} className="item-type-icon widget" />;
+        } else if (item.facebookPageId || item.channel === 'FACEBOOK' || item.channel === 'LEAD') {
+            // Lead conversations also show Facebook icon since they come from Facebook Lead Ads
+            return <Facebook size={14} className="item-type-icon facebook" />;
+        } else {
+            // Fallback - unknown channel
+            return <MessageSquare size={14} className="item-type-icon" />;
+        }
+    };
+
+    const getItemName = (item) => {
+        if (item.inboxType === INBOX_TYPES.COMMENT) {
+            return item.message?.substring(0, 40) || 'Gönderi';
+        } else {
+            return item.contact?.name || item.contact?.email?.split('@')[0] || 'Bilinmeyen';
+        }
+    };
+
+    const getItemPreview = (item) => {
+        if (item.inboxType === INBOX_TYPES.COMMENT) {
+            return `${item.comments?.summary?.total_count || 0} yorum`;
+        } else {
+            return item.messages?.[0]?.content?.substring(0, 60) || 'Mesaj yok';
+        }
+    };
+
+    const getFilterCounts = () => {
+        const counts = {
+            all: inboxItems.length,
+            messages: inboxItems.filter(i => i.inboxType === INBOX_TYPES.MESSAGE).length,
+            comments: inboxItems.filter(i => i.inboxType === INBOX_TYPES.COMMENT).length,
+            emails: inboxItems.filter(i => i.inboxType === INBOX_TYPES.EMAIL).length,
+            leads: inboxItems.filter(i => i.channel === 'LEAD').length // Count by channel, not inboxType
+        };
+        return counts;
+    };
+
+    if (!currentWorkspace) {
+        return (
+            <div className="inbox-empty-state">
+                <InboxIcon size={48} />
+                <p>Lütfen bir workspace seçin</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="inbox-page">
+            {/* Left Panel - Inbox List */}
+            <div className="inbox-list-panel">
+                <div className="inbox-header">
+                    <div className="inbox-header-top">
+                        <h2>
+                            <InboxIcon size={20} />
+                            Inbox
+                        </h2>
+                        <button 
+                            className="inbox-refresh-btn"
+                            onClick={() => loadInboxItems()}
+                            disabled={loading}
+                        >
+                            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+                        </button>
+                    </div>
+
+                    {/* Filter Dropdown */}
+                    <div className="inbox-filter-multiselect" ref={filterDropdownRef}>
+                        <button 
+                            className={`filter-multiselect-trigger ${showResolved ? 'has-resolved' : ''}`}
+                            onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
+                        >
+                            <Filter size={16} />
+                            <span>
+                                {activeFilters.length === 0 && !showResolved
+                                    ? 'Tümü' 
+                                    : activeFilters.length === 0 && showResolved
+                                        ? 'Çözülenler dahil'
+                                        : activeFilters.length === 1 
+                                            ? filterLabels[activeFilters[0]]
+                                            : `${activeFilters.length} filtre seçili`
+                                }
+                            </span>
+                            <ChevronDown size={16} className={`chevron ${filterDropdownOpen ? 'open' : ''}`} />
+                        </button>
+                        
+                        {filterDropdownOpen && (
+                            <div className="filter-dropdown-menu">
+                                <div className="filter-section-title">Kanallar</div>
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('whatsapp')}
+                                        onChange={() => toggleFilter('whatsapp')}
+                                    />
+                                    <MessageCircle size={18} className="icon-whatsapp" />
+                                    <span>WhatsApp</span>
+                                </label>
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('facebook')}
+                                        onChange={() => toggleFilter('facebook')}
+                                    />
+                                    <Facebook size={18} className="icon-facebook" />
+                                    <span>Facebook</span>
+                                </label>
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('instagram')}
+                                        onChange={() => toggleFilter('instagram')}
+                                    />
+                                    <Instagram size={18} className="icon-instagram" />
+                                    <span>Instagram</span>
+                                </label>
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('emails')}
+                                        onChange={() => toggleFilter('emails')}
+                                    />
+                                    <Mail size={18} className="icon-email" />
+                                    <span>E-postalar</span>
+                                </label>
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('leads')}
+                                        onChange={() => toggleFilter('leads')}
+                                    />
+                                    <UserCheck size={18} className="icon-leads" />
+                                    <span>Leads</span>
+                                </label>
+                                
+                                <div className="filter-divider" />
+                                <div className="filter-section-title">Yorumlar</div>
+                                
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('fb_comments')}
+                                        onChange={() => toggleFilter('fb_comments')}
+                                    />
+                                    <Facebook size={18} className="icon-facebook" />
+                                    <span>FB Yorumları</span>
+                                </label>
+                                <label className="filter-option">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={activeFilters.includes('ig_comments')}
+                                        onChange={() => toggleFilter('ig_comments')}
+                                    />
+                                    <Instagram size={18} className="icon-instagram" />
+                                    <span>IG Yorumları</span>
+                                </label>
+                                
+                                <div className="filter-divider" />
+                                
+                                <label className="filter-option resolved-toggle">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showResolved}
+                                        onChange={() => setShowResolved(!showResolved)}
+                                    />
+                                    <Check size={18} className="icon-resolved" />
+                                    <span>Çözülenleri Göster</span>
+                                </label>
+                                
+                                {(activeFilters.length > 0 || showResolved) && (
+                                    <button 
+                                        className="filter-clear-btn"
+                                        onClick={() => {
+                                            setActiveFilters([]);
+                                            setShowResolved(false);
+                                        }}
+                                    >
+                                        Filtreleri Temizle
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Search */}
+                    <div className="inbox-search">
+                        <Search size={16} className="search-icon" />
+                        <input
+                            type="text"
+                            placeholder="Ara..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Channel filters (only for messages) */}
+                    {(activeFilters.length === 0 || activeFilters.includes('messages')) && (
+                        <div className="inbox-channel-filters">
+                            <button
+                                className={`channel-btn ${activeChannel === null ? 'active' : ''}`}
+                                onClick={() => setActiveChannel(null)}
+                            >
+                                Tümü
+                            </button>
+                            <button
+                                className={`channel-btn whatsapp ${activeChannel === 'WHATSAPP' ? 'active' : ''}`}
+                                onClick={() => setActiveChannel('WHATSAPP')}
+                            >
+                                <MessageCircle size={14} />
+                            </button>
+                            <button
+                                className={`channel-btn facebook ${activeChannel === 'FACEBOOK' ? 'active' : ''}`}
+                                onClick={() => setActiveChannel('FACEBOOK')}
+                            >
+                                <Facebook size={14} />
+                            </button>
+                            <button
+                                className={`channel-btn instagram ${activeChannel === 'INSTAGRAM' ? 'active' : ''}`}
+                                onClick={() => setActiveChannel('INSTAGRAM')}
+                            >
+                                <Instagram size={14} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Assignment tabs (only for messages) */}
+                    {(activeFilters.length === 0 || activeFilters.includes('messages')) && (
+                        <div className="inbox-assignment-tabs">
+                            <button
+                                className={`assignment-tab ${assignmentTab === 'MINE' ? 'active' : ''}`}
+                                onClick={() => setAssignmentTab('MINE')}
+                            >
+                                Bana Atanan
+                            </button>
+                            {isOwner && (
+                                <button
+                                    className={`assignment-tab ${assignmentTab === 'PENDING' ? 'active' : ''}`}
+                                    onClick={() => setAssignmentTab('PENDING')}
+                                >
+                                    Bekleyen
+                                </button>
+                            )}
+                            <button
+                                className={`assignment-tab ${assignmentTab === 'ALL' ? 'active' : ''}`}
+                                onClick={() => setAssignmentTab('ALL')}
+                            >
+                                Tümü
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Inbox Items List */}
+                <div className="inbox-items">
+                    {loading ? (
+                        <div className="inbox-loading">
+                            <RefreshCw size={24} className="spin" />
+                            <p>Yükleniyor...</p>
+                        </div>
+                    ) : inboxItems.filter(item => {
+                        // Hide resolved conversations unless showResolved is true
+                        if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
+                            return false;
+                        }
+                        return true;
+                    }).length === 0 ? (
+                        <div className="inbox-empty">
+                            <InboxIcon size={40} />
+                            <p>Öğe bulunamadı</p>
+                            {!showResolved && (
+                                <button 
+                                    className="show-resolved-btn"
+                                    onClick={() => setShowResolved(true)}
+                                >
+                                    Çözülenleri Göster
+                                </button>
+                            )}
+                        </div>
+                    ) : (
+                        inboxItems.filter(item => {
+                            // Hide resolved conversations unless showResolved is true
+                            if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
+                                return false;
+                            }
+                            return true;
+                        }).map((item) => (
+                            <div
+                                key={`${item.inboxType}-${item.id}`}
+                                className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''}`}
+                                onClick={() => handleSelectItem(item)}
+                            >
+                                <div className="inbox-item-avatar">
+                                    {item.inboxType === INBOX_TYPES.COMMENT && item.full_picture ? (
+                                        <img src={item.full_picture} alt="post" className="post-thumb" />
+                                    ) : (
+                                        <User size={18} />
+                                    )}
+                                </div>
+                                <div className="inbox-item-content">
+                                    <div className="inbox-item-header">
+                                        <span className="inbox-item-name">
+                                            {getItemIcon(item)}
+                                            {getItemName(item)}
+                                        </span>
+                                        <span className="inbox-item-time">
+                                            {formatTime(item.sortDate)}
+                                        </span>
+                                    </div>
+                                    <div className="inbox-item-preview">
+                                        {getItemPreview(item)}
+                                    </div>
+                                    <div className="inbox-item-footer">
+                                        {item.channel === 'LEAD' && (
+                                            <span className="lead-channel-badge">Lead</span>
+                                        )}
+                                        {(item.unreadCount || 0) > 0 && (
+                                            <span className="unread-badge">{item.unreadCount}</span>
+                                        )}
+                                        {item.assignedTo && (
+                                            <div className="assignee-badge" title={`Atanan: ${item.assignedTo.name}`}>
+                                                {item.assignedTo.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
+            {/* Middle Panel - Detail View */}
+            <div className="inbox-detail-panel">
+                {selectedItem ? (
+                    <>
+                        {/* Message/Email Detail View */}
+                        {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
+                            <>
+                                <div className="detail-header">
+                                    {/* Profile Bar */}
+                                    <div className="profile-bar">
+                                        <div className="profile-bar-left">
+                                            <div className="detail-avatar">
+                                                {selectedItem.contact?.avatar ? (
+                                                    <img src={selectedItem.contact.avatar} alt={selectedItem.contact.name} />
+                                                ) : (
+                                                    <User size={24} />
+                                                )}
+                                            </div>
+                                            <div className="profile-info">
+                                                <h3>{selectedItem.contact?.name || 'Bilinmeyen'}</h3>
+                                                <div className="detail-channel-info">
+                                                    {getItemIcon(selectedItem)}
+                                                    <span>
+                                                        {selectedItem.instagramBusinessId ? 'Instagram' :
+                                                         selectedItem.whatsappPhoneNumberId ? 'WhatsApp' :
+                                                         selectedItem.channel === 'EMAIL' ? 'E-posta' : 'Facebook'}
+                                                    </span>
+                                                    {/* Hangi hesaptan geldiğini göster */}
+                                                    {selectedItem.facebookPage && (
+                                                        <span className="page-source">
+                                                            • {selectedItem.facebookPage.instagramUsername 
+                                                                ? `@${selectedItem.facebookPage.instagramUsername}` 
+                                                                : selectedItem.facebookPage.pageName}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="profile-bar-actions">
+                                            <button 
+                                                className="profile-action-btn delete"
+                                                onClick={() => handleDeleteItem(selectedItem)}
+                                                title="Sohbeti Sil"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Assignment Bar */}
+                                    <div className="assignment-bar">
+                                        {isOwner && (
+                                            <div className="assignment-items">
+                                                <div className="assignment-item">
+                                                    <User size={14} />
+                                                    <select
+                                                        value={selectedItem.assignedToId || ''}
+                                                        onChange={(e) => handleAssignUser(selectedItem.id, e.target.value)}
+                                                    >
+                                                        <option value="">Agent Seç</option>
+                                                        {members.filter(m => m.role !== 'OWNER').map(m => (
+                                                            <option key={m.id} value={m.user.id}>{m.user.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="assignment-item">
+                                                    <Users size={14} />
+                                                    <select
+                                                        value={selectedItem.teamIds ? JSON.parse(selectedItem.teamIds)[0] || '' : ''}
+                                                        onChange={(e) => handleAssignTeam(selectedItem.id, e.target.value)}
+                                                    >
+                                                        <option value="">Takım Seç</option>
+                                                        {teams.map(t => (
+                                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Status Badge - Right aligned */}
+                                        {selectedItemType === INBOX_TYPES.MESSAGE && (
+                                            <div className="assignment-item status-item">
+                                                <span 
+                                                    className="status-dot"
+                                                    style={{ backgroundColor: getConversationStatusInfo(selectedItem.status).color }}
+                                                />
+                                                <select
+                                                    value={selectedItem.status || 'OPEN'}
+                                                    onChange={(e) => handleConversationStatusChange(selectedItem.id, e.target.value)}
+                                                >
+                                                    {CONVERSATION_STATUS_OPTIONS.map(opt => (
+                                                        <option key={opt.value} value={opt.value}>
+                                                            {opt.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                </div>
+
+                                <div className="messages-container" ref={messagesContainerRef}>
+                                    {messages.map((msg) => {
+                                        // Check if this is a lead form message
+                                        const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead');
+                                        
+                                        return (
+                                            <div
+                                                key={msg.id}
+                                                className={`message ${msg.isInternalNote ? 'internal-note' : (msg.isFromContact ? 'incoming' : 'outgoing')} ${isLeadMessage ? 'lead-message' : ''}`}
+                                            >
+                                                <div className="message-content">
+                                                    {/* Render HTML content for emails, plain text for others */}
+                                                    {isHtmlContent(msg.content) ? (
+                                                        <div 
+                                                            className="email-html-content"
+                                                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(msg.content) }}
+                                                        />
+                                                    ) : (
+                                                        <p>{msg.content}</p>
+                                                    )}
+                                                    <div className="message-meta">
+                                                        <span className="message-time">{formatTime(msg.createdAt)}</span>
+                                                        {!msg.isFromContact && !msg.isInternalNote && (
+                                                            <span className={`message-status ${msg.status?.toLowerCase() || 'sent'}`}>
+                                                                {msg.status === 'READ' ? (
+                                                                    <CheckCheck size={14} className="status-read" />
+                                                                ) : msg.status === 'DELIVERED' ? (
+                                                                    <CheckCheck size={14} className="status-delivered" />
+                                                                ) : msg.status === 'FAILED' ? (
+                                                                    <AlertCircle size={14} className="status-failed" />
+                                                                ) : (
+                                                                    <Check size={14} className="status-sent" />
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {msg.isInternalNote && (
+                                                        <div className="note-footer">
+                                                            <StickyNote size={10} />
+                                                            <span>Dahili Not ({msg.sender?.name || 'Gizli'})</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Email Reply Form */}
+                                {selectedItemType === INBOX_TYPES.EMAIL ? (
+                                    <form onSubmit={handleSendMessage} className="email-reply-form">
+                                        <div className="email-reply-tabs">
+                                            <button
+                                                type="button"
+                                                className={`email-tab ${emailReplyMode === 'reply' ? 'active' : ''}`}
+                                                onClick={() => { setEmailReplyMode('reply'); setIsInternalNoteMode(false); }}
+                                            >
+                                                Yanıtla
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={`email-tab ${emailReplyMode === 'note' ? 'active' : ''}`}
+                                                onClick={() => { setEmailReplyMode('note'); setIsInternalNoteMode(true); }}
+                                            >
+                                                Dahili Not
+                                            </button>
+                                        </div>
+                                        
+                                        {emailReplyMode === 'reply' && (
+                                            <div className="email-reply-fields">
+                                                <div className="email-field-row">
+                                                    <span className="email-field-label">TO</span>
+                                                    <span className="email-field-value">
+                                                        {selectedItem?.contact?.email || 'Alıcı yok'}
+                                                    </span>
+                                                </div>
+                                                <div className="email-field-row">
+                                                    <span className="email-field-label">CC</span>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Virgülle ayrılmış e-postalar"
+                                                        value={emailCc}
+                                                        onChange={(e) => setEmailCc(e.target.value)}
+                                                        className="email-cc-input"
+                                                    />
+                                                    {!showBcc && (
+                                                        <button
+                                                            type="button"
+                                                            className="add-bcc-btn"
+                                                            onClick={() => setShowBcc(true)}
+                                                        >
+                                                            Bcc ekle
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                {showBcc && (
+                                                    <div className="email-field-row">
+                                                        <span className="email-field-label">BCC</span>
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Virgülle ayrılmış e-postalar"
+                                                            value={emailBcc}
+                                                            onChange={(e) => setEmailBcc(e.target.value)}
+                                                            className="email-cc-input"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        
+                                        <div className="email-reply-body">
+                                            <textarea
+                                                value={newMessage}
+                                                onChange={(e) => setNewMessage(e.target.value)}
+                                                placeholder={emailReplyMode === 'note' ? "Dahili not yazın..." : "Yeni satır için Shift + Enter. Hazır yanıt seçmek için '/' ile başlayın."}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        handleSendMessage(e);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                        
+                                        <div className="email-reply-actions">
+                                            <button type="submit" className={`send-btn ${emailReplyMode === 'note' ? 'note-mode' : ''}`}>
+                                                <Send size={18} />
+                                            </button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    /* Regular Message Form */
+                                    <form onSubmit={handleSendMessage} className="message-input-form">
+                                        {/* AI Suggestions Panel */}
+                                        {showSuggestions && (
+                                            <div className="ai-suggestions-panel">
+                                                <div className="ai-suggestions-header">
+                                                    <Sparkles size={14} />
+                                                    <span>AI Yanıt Önerileri</span>
+                                                    <button 
+                                                        type="button"
+                                                        className="close-suggestions"
+                                                        onClick={() => setShowSuggestions(false)}
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                                {loadingSuggestions ? (
+                                                    <div className="suggestions-loading">
+                                                        <Loader size={16} className="spin" />
+                                                        <span>Öneriler hazırlanıyor...</span>
+                                                    </div>
+                                                ) : aiSuggestions.length > 0 ? (
+                                                    <div className="suggestions-list">
+                                                        {aiSuggestions.map((suggestion) => (
+                                                            <button
+                                                                key={suggestion.id}
+                                                                type="button"
+                                                                className="suggestion-item"
+                                                                onClick={() => applySuggestion(suggestion)}
+                                                            >
+                                                                <span className="suggestion-tone">{suggestion.tone}</span>
+                                                                <span className="suggestion-text">{suggestion.text}</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="no-suggestions">
+                                                        Öneri bulunamadı
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                        
+                                        <div className="message-input-container">
+                                            <textarea
+                                                value={newMessage}
+                                                onChange={(e) => setNewMessage(e.target.value)}
+                                                placeholder="Yanıtınızı yazın..."
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        handleSendMessage(e);
+                                                    }
+                                                }}
+                                            />
+                                            <div className="input-actions">
+                                                {/* WhatsApp Template Button - show for Lead or WhatsApp channel */}
+                                                {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP') && templates.length > 0 && (
+                                                    <div className="template-dropdown">
+                                                        <button
+                                                            type="button"
+                                                            className="template-btn"
+                                                            title="WhatsApp Şablon Gönder"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                const dropdown = e.currentTarget.nextElementSibling;
+                                                                dropdown.classList.toggle('show');
+                                                            }}
+                                                        >
+                                                            <Zap size={14} />
+                                                            Şablon
+                                                        </button>
+                                                        <div className="template-dropdown-menu">
+                                                            {templates.filter(t => t.status === 'APPROVED').map(template => (
+                                                                <div 
+                                                                    key={template.id}
+                                                                    className="template-dropdown-item"
+                                                                    onClick={() => {
+                                                                        openTemplateModal(template);
+                                                                        document.querySelector('.template-dropdown-menu.show')?.classList.remove('show');
+                                                                    }}
+                                                                >
+                                                                    <span className="template-item-name">{template.name}</span>
+                                                                    <span className="template-item-category">{template.category}</span>
+                                                                </div>
+                                                            ))}
+                                                            {templates.filter(t => t.status === 'APPROVED').length === 0 && (
+                                                                <div className="template-dropdown-empty">
+                                                                    Onaylı şablon yok
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    className="ai-suggest-btn"
+                                                    onClick={fetchAiSuggestions}
+                                                    disabled={loadingSuggestions}
+                                                    title="AI Yanıt Önerileri"
+                                                >
+                                                    {loadingSuggestions ? (
+                                                        <Loader size={14} className="spin" />
+                                                    ) : (
+                                                        <Sparkles size={14} />
+                                                    )}
+                                                    AI
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={`note-toggle ${isInternalNoteMode ? 'active' : ''}`}
+                                                    onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                                                >
+                                                    <StickyNote size={14} />
+                                                    Not
+                                                </button>
+                                                <button type="submit" className={`send-btn ${isInternalNoteMode ? 'note-mode' : ''}`}>
+                                                    <Send size={18} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                )}
+                            </>
+                        )}
+
+                        {/* Comment Detail View */}
+                        {selectedItemType === INBOX_TYPES.COMMENT && (
+                            <>
+                                <div className="detail-header comment-header">
+                                    <div className="detail-contact-info">
+                                        {selectedPost?.full_picture && (
+                                            <img src={selectedPost.full_picture} alt="post" className="post-image-preview" />
+                                        )}
+                                        <div>
+                                            <h3>{selectedPost?.message?.substring(0, 50) || 'Gönderi'}</h3>
+                                            <span className="comment-count">{comments.length} yorum</span>
+                                        </div>
+                                    </div>
+                                    <div className="detail-header-actions">
+                                        {selectedPost?.permalink_url && (
+                                            <a 
+                                                href={selectedPost.permalink_url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="view-post-link-btn"
+                                            >
+                                                <ExternalLink size={16} />
+                                                <span>Gönderiye Git</span>
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="messages-container" ref={messagesContainerRef}>
+                                    {comments.map((comment) => (
+                                        <React.Fragment key={comment.id}>
+                                            {/* Incoming comment - left side */}
+                                            <div className="message incoming">
+                                                <div className="message-content">
+                                                    <p>{comment.message}</p>
+                                                    <div className="message-meta">
+                                                        <span className="message-time">{formatTime(comment.created_time)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* Bot/Page Replies - right side (outgoing) */}
+                                            {comment.comments?.data?.map(reply => (
+                                                <div key={reply.id} className="message outgoing">
+                                                    <div className="message-content">
+                                                        <p>{reply.message}</p>
+                                                        <div className="message-meta">
+                                                            <span className="message-time">{formatTime(reply.created_time)}</span>
+                                                            <CheckCheck size={14} className="read-icon" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+
+                                <div className="comment-input-area">
+                                    <div className="comment-input-wrapper">
+                                        <textarea
+                                            value={replyText}
+                                            onChange={(e) => setReplyText(e.target.value)}
+                                            placeholder="Yorum yazın..."
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleSendComment();
+                                                }
+                                            }}
+                                        />
+                                        <button 
+                                            className="comment-send-btn" 
+                                            onClick={handleSendComment}
+                                            disabled={!replyText.trim()}
+                                        >
+                                            <Send size={16} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                    </>
+                ) : (
+                    <div className="inbox-detail-empty">
+                        <InboxIcon size={48} />
+                        <h3>Öğe Seçin</h3>
+                        <p>Detayları görüntülemek için soldan bir öğe seçin</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Right Panel - Contact Sidebar (for all types) */}
+            {selectedItem && (selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
+                <div className="inbox-contact-sidebar-wrapper">
+                    <ContactSidebar
+                        conversationId={selectedItem.id}
+                        isOpen={true}
+                        members={members}
+                        onAssign={userId => handleAssignUser(selectedItem.id, userId)}
+                        isOwner={isOwner}
+                    />
+                </div>
+            )}
+            
+            {/* Right Panel - Contact Sidebar for Comments */}
+            {selectedItemType === INBOX_TYPES.COMMENT && selectedPost && (
+                <div className="inbox-contact-sidebar-wrapper">
+                    <ContactSidebar
+                        isOpen={true}
+                        members={members}
+                        isOwner={isOwner}
+                        readOnly={true}
+                        externalProfile={{
+                            name: selectedPost.from?.name || 'Facebook Kullanıcısı',
+                            profilePic: selectedPost.from?.id 
+                                ? `https://graph.facebook.com/${selectedPost.from.id}/picture?type=large`
+                                : null,
+                            facebookId: selectedPost.from?.id,
+                            channel: 'FACEBOOK',
+                            tags: [],
+                            // Post info
+                            postMessage: selectedPost.message?.substring(0, 100),
+                            postDate: selectedPost.created_time
+                        }}
+                    />
+                </div>
+            )}
+
+            {/* WhatsApp Template Send Modal */}
+            {showTemplateModal && selectedTemplate && (
+                <div className="modal-overlay" onClick={() => setShowTemplateModal(false)}>
+                    <div className="template-send-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>📨 WhatsApp Şablon Gönder</h3>
+                            <button className="modal-close" onClick={() => setShowTemplateModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body">
+                            <div className="template-info">
+                                <span className="template-name">{selectedTemplate.name}</span>
+                                <span className="template-category">{selectedTemplate.category}</span>
+                            </div>
+                            <div className="template-preview">
+                                <p>{selectedTemplate.bodyText}</p>
+                            </div>
+                            
+                            {selectedItem?.contact?.phone ? (
+                                <div className="recipient-info">
+                                    <Phone size={16} />
+                                    <span>Alıcı: {selectedItem.contact.name} ({selectedItem.contact.phone})</span>
+                                </div>
+                            ) : (
+                                <div className="recipient-warning">
+                                    <AlertCircle size={16} />
+                                    <span>Bu kişinin telefon numarası yok!</span>
+                                </div>
+                            )}
+                            
+                            {/* Header Media URL for IMAGE/VIDEO/DOCUMENT templates */}
+                            {selectedTemplate?.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(selectedTemplate.headerType) && (
+                                <div className="template-header-media">
+                                    <h4>
+                                        {selectedTemplate.headerType === 'IMAGE' && '🖼️ Resim URL\'si'}
+                                        {selectedTemplate.headerType === 'VIDEO' && '🎬 Video URL\'si'}
+                                        {selectedTemplate.headerType === 'DOCUMENT' && '📄 Döküman URL\'si'}
+                                        <span className="required">*</span>
+                                    </h4>
+                                    <input
+                                        type="url"
+                                        value={headerMediaUrl}
+                                        onChange={(e) => setHeaderMediaUrl(e.target.value)}
+                                        placeholder={`https://example.com/${selectedTemplate.headerType.toLowerCase()}.${selectedTemplate.headerType === 'IMAGE' ? 'jpg' : selectedTemplate.headerType === 'VIDEO' ? 'mp4' : 'pdf'}`}
+                                    />
+                                    <p className="hint">Herkese açık bir URL olmalıdır</p>
+                                </div>
+                            )}
+
+                            {templateVariables.length > 0 && (
+                                <div className="template-variables">
+                                    <h4>Değişkenler</h4>
+                                    {templateVariables.map((v, idx) => (
+                                        <div key={idx} className="variable-input">
+                                            <label>{v.placeholder}</label>
+                                            <input
+                                                type="text"
+                                                value={v.value}
+                                                onChange={(e) => {
+                                                    const newVars = [...templateVariables];
+                                                    newVars[idx].value = e.target.value;
+                                                    setTemplateVariables(newVars);
+                                                }}
+                                                placeholder={`Değer ${idx + 1}`}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn-cancel" onClick={() => setShowTemplateModal(false)}>
+                                İptal
+                            </button>
+                            <button 
+                                className="btn-send-template"
+                                onClick={handleSendTemplate}
+                                disabled={sendingTemplate || !selectedItem?.contact?.phone}
+                            >
+                                {sendingTemplate ? <Loader className="spinning" size={16} /> : <Send size={16} />}
+                                {sendingTemplate ? 'Gönderiliyor...' : 'Gönder'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            
+        </div>
+    );
+};
+
+export default Inbox;
+
