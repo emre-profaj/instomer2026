@@ -300,32 +300,65 @@ async function executeValidatePatient(workspaceId, conversationId, args) {
             }
         }
         
+        // Turkish upper case for Oracle DB matching
+        const trUpper = (str) => {
+            if (!str) return '';
+            return str.replace(/i/g, 'İ').replace(/ı/g, 'I').toLocaleUpperCase('tr-TR');
+        };
+        
+        const safeAdi = trUpper(adi);
+        const safeSoyadi = trUpper(soyadi);
+
         // Map 'Erkek' -> 1, 'Kadın' -> 2
         let mappedCinsiyet = 1;
         if (args.cinsiyet && args.cinsiyet.toLowerCase().includes('kadın')) {
             mappedCinsiyet = 2;
         }
 
-        // Smart date parser — her formattan DDMMYYYY'ye dönüştür
+        // Smart date parser
         let mappedDogumTarihi = parseTurkishDate(args.dogum_tarihi || '');
         console.log(`📅 [AppointmentBot] Date parsed: "${args.dogum_tarihi}" → "${mappedDogumTarihi}"`);
 
-        // Phone normalization — Probel expects 10-digit format: 5XXXXXXXXX
+        // Phone normalization
         let cleanPhone = (args.telefon || '').replace(/[\s\-\(\)]/g, '');
         if (cleanPhone.startsWith('+90')) cleanPhone = cleanPhone.substring(3);
         if (cleanPhone.startsWith('90') && cleanPhone.length === 12) cleanPhone = cleanPhone.substring(2);
-        if (cleanPhone.startsWith('0') && cleanPhone.length === 11) cleanPhone = cleanPhone.substring(1);
-        console.log(`📱 [AppointmentBot] Phone normalized: "${args.telefon}" → "${cleanPhone}"`);
+        
+        let phoneWithZero = cleanPhone;
+        let phoneWithoutZero = cleanPhone;
+        
+        if (cleanPhone.startsWith('0') && cleanPhone.length === 11) {
+            phoneWithoutZero = cleanPhone.substring(1);
+        } else if (!cleanPhone.startsWith('0') && cleanPhone.length === 10) {
+            phoneWithZero = '0' + cleanPhone;
+        }
+
+        console.log(`📱 [AppointmentBot] Phone variations: "${phoneWithZero}" or "${phoneWithoutZero}"`);
 
         const { validatePatient } = await import('./probel_appointment.service.js');
-        const res = await validatePatient(workspaceId, {
+        
+        // Try with 10-digit phone first
+        let res = await validatePatient(workspaceId, {
             ...args,
-            adi,
-            soyadi,
+            adi: safeAdi,
+            soyadi: safeSoyadi,
             cinsiyet: mappedCinsiyet,
             dogum_tarihi: mappedDogumTarihi,
-            telefon: cleanPhone
+            telefon: phoneWithoutZero
         });
+        
+        // If it failed and we didn't provide a TC, try with 11-digit phone
+        if (!res.success && (!args.tc || args.tc.trim() === '')) {
+            console.log(`🔄 [AppointmentBot] 10-digit phone failed, trying 11-digit phone...`);
+            res = await validatePatient(workspaceId, {
+                ...args,
+                adi: safeAdi,
+                soyadi: safeSoyadi,
+                cinsiyet: mappedCinsiyet,
+                dogum_tarihi: mappedDogumTarihi,
+                telefon: phoneWithZero
+            });
+        }
         
         if (res.success && res.hasta_token) {
             await updateAppointmentState(conversationId, { hasta_token: res.hasta_token });
