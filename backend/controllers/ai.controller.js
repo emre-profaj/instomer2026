@@ -1377,13 +1377,20 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`⚠️ [AI] No document context available!`);
         }
 
-        // 🚀 Appointment bot: ALWAYS use the code-defined prompt (DB prompt may be outdated)
+        // 🚀 Appointment bot: Use code-defined prompt as BASE, preserve bot's custom info as supplement
         if (isAppointmentBot) {
             const { DEFAULT_APPOINTMENT_PROMPT } = await import('../services/appointmentBot.service.js');
+            // Bot'un DB'deki özel prompt'u varsa, randevu kurallarından SONRA ek bilgi olarak ekle
+            const botCustomPrompt = systemPrompt || '';
             systemPrompt = DEFAULT_APPOINTMENT_PROMPT;
+            if (botCustomPrompt && !botCustomPrompt.includes('RANDEVU AKIŞI')) {
+                // Sadece randevu akışı kuralları DEĞİLSE ek bilgi olarak ekle (hastane adı, özel talimatlar vb.)
+                systemPrompt += '\n\nEK BİLGİLER (Bot yöneticisi tarafından eklenen):\n' + botCustomPrompt;
+            }
         }
 
-        console.log(`🤖 [AI] System Prompt (first 200 chars): ${systemPrompt.substring(0, 200)}...`);
+        const convShort = conversationId ? conversationId.substring(0, 8) : 'N/A';
+        console.log(`🤖 [AI][${convShort}] System Prompt (first 200 chars): ${systemPrompt.substring(0, 200)}...`);
         // For COMMENTS type, there's no conversation history - just respond to the single comment
         const validMessages = (type === 'COMMENTS' || !conversation?.messages)
             ? []
