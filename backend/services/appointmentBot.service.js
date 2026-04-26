@@ -175,12 +175,12 @@ export function getAppointmentToolDeclarations() {
         },
         {
             name: 'get_branches',
-            description: 'Mevcut randevu branşlarını/bölümlerini listeler. Hasta doğrulandıktan sonra çağır. Cinsiyet ve doğum tarihi bilgisi vererek uygun branşları getirir.',
+            description: 'Mevcut randevu branşlarını/bölümlerini listeler. Müşteri randevu almak istediğini belirttiğinde İLK ÇAĞRILACAK fonksiyondur. Parametresiz çağrılabilir.',
             parameters: {
                 type: 'object',
                 properties: {
-                    cinsiyet: { type: 'number', description: 'Hastanın cinsiyeti: 1=Erkek, 2=Kadın' },
-                    dogum_tarihi: { type: 'string', description: 'Hastanın doğum tarihi DDMMYYYY formatında' }
+                    cinsiyet: { type: 'number', description: 'Hastanın cinsiyeti: 1=Erkek, 2=Kadın (varsayılan: 1)' },
+                    dogum_tarihi: { type: 'string', description: 'Hastanın doğum tarihi DDMMYYYY formatında (opsiyonel)' }
                 },
                 required: []
             }
@@ -350,7 +350,7 @@ async function executeGetBranches(workspaceId, conversationId, args) {
     
     if (hasConnection) {
         const { getBranches } = await import('./probel_appointment.service.js');
-        const res = await getBranches(workspaceId, args?.cinsiyet || 1, args?.dogum_tarihi || '');
+        const res = await getBranches(workspaceId, args?.cinsiyet || 1, args?.dogum_tarihi || '01011990');
         if (res.success && res.branches) {
             await updateAppointmentState(conversationId, { branches: res.branches });
         }
