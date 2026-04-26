@@ -1437,9 +1437,11 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             }
             if (infoParts.length > 0) {
                 customerInfo = infoParts.join('\n');
-                customerInfo += isEnglish
-                    ? '\n\n⚠️ WARNING: The above information is ALREADY AVAILABLE! Do NOT ask for it again!'
-                    : '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
+                if (!isProbelBot) {
+                    customerInfo += isEnglish
+                        ? '\n\n⚠️ WARNING: The above information is ALREADY AVAILABLE! Do NOT ask for it again!'
+                        : '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
+                }
             } else {
                 customerInfo = isEnglish ? 'No customer information available.' : 'Müşteri bilgisi mevcut değil.';
             }
