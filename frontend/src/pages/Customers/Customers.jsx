@@ -195,7 +195,7 @@ const Customers = () => {
         }
         if (funnelFilter !== 'ALL') {
             const funnel = availableFunnels.find(f => f.id === funnelFilter);
-            return funnel ? funnel.name : 'Funnel';
+            return funnel ? funnel.name : 'Akış';
         }
         return 'Tüm Durumlar';
     };
@@ -896,6 +896,29 @@ const Customers = () => {
         return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=ef4444&color=fff&size=150`;
     };
 
+    const getActiveTab = () => {
+        if (categoryFilter === 'CUSTOMER') return 'customers';
+        if (funnelFilter !== 'ALL') return `funnel-${funnelFilter}`;
+        return 'all';
+    };
+
+    const handleTabClick = (tabId, funnelId = null) => {
+        if (tabId === 'all') {
+            setCategoryFilter('ALL');
+            setFunnelFilter('ALL');
+            setFunnelStageFilter('ALL');
+        } else if (tabId === 'customers') {
+            setCategoryFilter('CUSTOMER');
+            setFunnelFilter('ALL');
+            setFunnelStageFilter('ALL');
+        } else if (tabId.startsWith('funnel-')) {
+            setCategoryFilter('ALL');
+            setFunnelFilter(funnelId);
+            setFunnelStageFilter('ALL');
+        }
+        setPage(1);
+    };
+
     if (!currentWorkspace) {
         return (
             <div className="empty-state">
@@ -937,6 +960,33 @@ const Customers = () => {
                                 <Plus size={18} />
                             </button>
                         </div>
+                    </div>
+
+                    {/* Dynamic Tabs */}
+                    <div className="contacts-tabs" style={{ display: 'flex', gap: '8px', padding: '0 24px', marginBottom: '16px', overflowX: 'auto' }}>
+                        <button 
+                            style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: getActiveTab() === 'all' ? '#1f2937' : '#f3f4f6', color: getActiveTab() === 'all' ? '#fff' : '#4b5563', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+                            onClick={() => handleTabClick('all')}
+                        >
+                            Tüm Kişiler
+                        </button>
+                        
+                        {availableFunnels.map(funnel => (
+                            <button 
+                                key={funnel.id}
+                                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: getActiveTab() === `funnel-${funnel.id}` ? funnel.color || '#3b82f6' : '#f3f4f6', color: getActiveTab() === `funnel-${funnel.id}` ? '#fff' : '#4b5563', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+                                onClick={() => handleTabClick(`funnel-${funnel.id}`, funnel.id)}
+                            >
+                                {funnel.name}
+                            </button>
+                        ))}
+
+                        <button 
+                            style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: getActiveTab() === 'customers' ? '#10b981' : '#f3f4f6', color: getActiveTab() === 'customers' ? '#fff' : '#4b5563', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+                            onClick={() => handleTabClick('customers')}
+                        >
+                            Müşteriler
+                        </button>
                     </div>
 
                     {/* Compact Filter Dropdowns */}
@@ -1049,20 +1099,20 @@ const Customers = () => {
                             </div>
 
 
-                            {availableImportGroups.length > 0 && (
+                            {availableTags.length > 0 && (
                                 <div className="filter-dropdown-item">
-                                    <label><Tag size={12} /> İçe Aktarma Grubu</label>
+                                    <label><Tag size={12} /> Etiket</label>
                                     <select
-                                        value={importGroupFilter}
+                                        value={tagFilter}
                                         onChange={(e) => {
-                                            setImportGroupFilter(e.target.value);
+                                            setTagFilter(e.target.value);
                                             setPage(1);
                                         }}
                                         className="filter-select"
                                     >
-                                        <option value="ALL">Tüm Gruplar</option>
-                                        {availableImportGroups.map(group => (
-                                            <option key={group} value={group}>{group}</option>
+                                        <option value="ALL">Tüm Etiketler</option>
+                                        {availableTags.map(tag => (
+                                            <option key={tag} value={tag}>{tag}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -1120,6 +1170,7 @@ const Customers = () => {
                                         <th>ATANAN</th>
                                         <th>TELEFON</th>
                                         <th>FİRMA</th>
+                                        <th>ETİKETLER</th>
                                         <th>DURUM</th>
                                         <th>SOHBETLER</th>
                                         <th>İLK YAZMA</th>
@@ -1187,6 +1238,23 @@ const Customers = () => {
                                                 </td>
                                                 <td className="contact-company">
                                                     {contact.company || '---'}
+                                                </td>
+                                                <td className="contact-tags">
+                                                    {(() => {
+                                                        try {
+                                                            const tagsArray = JSON.parse(contact.tags || '[]');
+                                                            if (!Array.isArray(tagsArray) || tagsArray.length === 0) return <span style={{color: '#94a3b8'}}>-</span>;
+                                                            return (
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                                    {tagsArray.map((t, idx) => (
+                                                                        <span key={idx} style={{ padding: '2px 6px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '4px', fontSize: '11px', fontWeight: 500 }}>
+                                                                            {t}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            );
+                                                        } catch(e) { return <span style={{color: '#94a3b8'}}>-</span>; }
+                                                    })()}
                                                 </td>
                                                 <td className="contact-status">
                                                     {(() => {
@@ -1830,16 +1898,16 @@ const Customers = () => {
                                 {/* Tag Input */}
                                 <div className="form-group" style={{ marginBottom: '16px' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '13px', marginBottom: '6px' }}>
-                                        <Tag size={14} /> Grup Adı (Zorunlu)
+                                        <Tag size={14} /> Etiket Ekle (Zorunlu)
                                     </label>
                                     <input
                                         type="text"
                                         className="form-input"
-                                        placeholder="Örn: Facebook Leads Mart 2026"
+                                        placeholder="Örn: FUAR_2024 veya Müşteri Listesi"
                                         value={importTag}
                                         onChange={(e) => setImportTag(e.target.value)}
                                     />
-                                    <small style={{ color: '#94a3b8', fontSize: '11px' }}>Bu grup adı, aktarılan kişileri filtrelemek için kullanılacaktır.</small>
+                                    <small style={{ color: '#94a3b8', fontSize: '11px' }}>Bu etiket, içe aktarılan kişilere eklenecek ve daha sonra listeyi filtrelemenizi sağlayacaktır.</small>
                                 </div>
 
                                 {/* File Input */}

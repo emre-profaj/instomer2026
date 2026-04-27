@@ -143,29 +143,7 @@ const Pipeline = () => {
             ]);
             let loadedFunnels = fRes.data.funnels || [];
 
-            // Auto-create default stages for funnels that have none
-            const DEFAULT_STAGES = [
-                { name: 'New', color: '#3b82f6' },
-                { name: 'In Progress', color: '#f59e0b' },
-                { name: 'Closed', color: '#10b981' }
-            ];
-            let needsReload = false;
-            for (const funnel of loadedFunnels) {
-                if (!funnel.stages || funnel.stages.length === 0) {
-                    try {
-                        for (const s of DEFAULT_STAGES) {
-                            await funnelAPI.createStage(currentWorkspace.id, funnel.id, s);
-                        }
-                        needsReload = true;
-                    } catch (err) {
-                        console.error('Auto-create stages error:', err);
-                    }
-                }
-            }
-            if (needsReload) {
-                const refreshed = await funnelAPI.getAll(currentWorkspace.id);
-                loadedFunnels = refreshed.data.funnels || [];
-            }
+            // Backend handles auto-creation of default funnels + stages
 
             setFunnels(loadedFunnels);
 
@@ -277,7 +255,7 @@ const Pipeline = () => {
                     <div>
                         <h1 className="pl-title">Pipeline</h1>
                         <span className="pl-subtitle">
-                            {loading ? 'Yükleniyor...' : `${funnels.length} funnel • ${conversations.length} sohbet`}
+                            {loading ? 'Yükleniyor...' : `${funnels.length} akış • ${conversations.length} sohbet`}
                         </span>
                     </div>
                 </div>
@@ -347,20 +325,20 @@ const Pipeline = () => {
             ) : funnels.length === 0 ? (
                 <div className="pl-empty-state">
                     <Kanban size={52} />
-                    <h2>No funnels yet</h2>
-                    <p>Ayarlar → Funnel Yönetimi sayfasından<br />ilk funnel'ınızı oluşturun.</p>
+                    <h2>Henüz akış yok</h2>
+                    <p>Ayarlar → Akış Yönetimi sayfasından<br />ilk akışınızı oluşturun.</p>
                 </div>
             ) : !selectedFunnel ? (
                 <div className="pl-empty-state">
                     <Kanban size={52} />
                     <h2>{t('pipeline.selectFunnelTitle')}</h2>
-                    <p>Yukarıdaki seçiciden bir funnel seçerek<br />durumlarını görüntüleyin.</p>
+                    <p>Yukarıdaki seçiciden bir akış seçerek<br />durumlarını görüntüleyin.</p>
                 </div>
             ) : stages.length === 0 ? (
                 <div className="pl-empty-state">
                     <Kanban size={52} />
-                    <h2>Bu funnel'da durum yok</h2>
-                    <p>Ayarlar → Funnel Yönetimi sayfasından<br />bu funnel'a durumlar ekleyin.</p>
+                    <h2>Bu akışta durum yok</h2>
+                    <p>Ayarlar → Akış Yönetimi sayfasından<br />bu akışa durumlar ekleyin.</p>
                 </div>
             ) : (
                 <div className="pl-board">

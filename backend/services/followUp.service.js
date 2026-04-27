@@ -292,7 +292,7 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                 await axios.post(
                     `https://graph.facebook.com/v21.0/me/messages`,
                     {
-                        recipient: { id: recipientId },
+                        recipient: { id: String(recipientId) },
                         message: { text: message }
                     },
                     {

@@ -134,12 +134,14 @@ const Analytics = () => {
 
     const getStatusColor = (status) => {
         const colors = {
-            NEW: '#ef4444',
-            POTENTIAL: '#f97316',
+            NEW: '#3b82f6',
+            OPPORTUNITY: '#8b5cf6',
+            HOT_OPPORTUNITY: '#f97316',
             INFORMED: '#eab308',
-            NEGOTIATING: '#22c55e',
+            MEETING_PLANNED: '#22c55e',
+            PROPOSAL: '#06b6d4',
             CONVERTED: '#10b981',
-            NEGATIVE: '#6b7280',
+            UNREACHABLE: '#6b7280',
             LOST: '#374151'
         };
         return colors[status] || '#6b7280';
@@ -152,7 +154,11 @@ const Analytics = () => {
             INSTAGRAM: '#E4405F',
             EMAIL: '#EA4335',
             WIDGET: '#ef4444',
+            PHONE: '#6366f1',
+            FORM: '#f59e0b',
+            LEAD: '#10b981',
             MANUAL: '#8b5cf6',
+            IMPORT: '#0ea5e9',
             UNKNOWN: '#6b7280'
         };
         return colors[channel] || '#6b7280';
@@ -170,8 +176,16 @@ const Analytics = () => {
                 return <EmailIcon size={18} />;
             case 'WIDGET':
                 return <WidgetIcon size={18} />;
+            case 'PHONE':
+                return <MessageCircle size={18} color="#6366f1" />;
+            case 'FORM':
+                return <FileText size={18} color="#f59e0b" />;
+            case 'LEAD':
+                return <Target size={18} color="#10b981" />;
             case 'MANUAL':
                 return <ManualIcon size={18} />;
+            case 'IMPORT':
+                return <Users size={18} color="#0ea5e9" />;
             default:
                 return <HelpCircle size={18} color="#6b7280" />;
         }
@@ -182,10 +196,14 @@ const Analytics = () => {
             WHATSAPP: 'WhatsApp',
             FACEBOOK: 'Facebook',
             INSTAGRAM: 'Instagram',
-            EMAIL: t('analytics.emailLabel'),
+            EMAIL: 'E-posta',
             WIDGET: 'Web Widget',
-            MANUAL: t('analytics.manualEntry'),
-            UNKNOWN: t('analytics.other')
+            PHONE: 'Sesli Arama',
+            FORM: 'Web Form',
+            LEAD: 'Lead',
+            MANUAL: 'Manuel Ekleme',
+            IMPORT: 'İçe Aktarma',
+            UNKNOWN: 'Diğer'
         };
         return labels[channel] || channel;
     };

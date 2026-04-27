@@ -47,6 +47,7 @@ import formWebhookRoutes from './routes/formWebhook.routes.js';
 import channelRoutingRoutes from './routes/channelRouting.routes.js';
 import companyRoutes from './routes/company.routes.js';
 import webwidgetRoutes from './routes/webwidget.routes.js';
+import apiIntegrationRoutes from './routes/apiIntegration.routes.js';
 
 import notificationRoutes from './routes/notification.routes.js';
 import retellRoutes from './routes/retell.routes.js';
@@ -56,6 +57,9 @@ import funnelRoutes from './routes/funnel.routes.js';
 import resourceRoutes from './routes/resource.routes.js';
 import flowRoutes from './routes/flow.routes.js';
 import realEstateRoutes from './routes/realestate.routes.js';
+import activityRoutes from './routes/activity.routes.js';
+import appointmentConfigRoutes from './routes/appointmentConfig.routes.js';
+import healthSystemRoutes from './routes/probel_proxy.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -174,6 +178,7 @@ app.use('/api/channel-routing', channelRoutingRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/webwidgets', webwidgetRoutes);
 app.use('/api/workspaces', dealRoutes);
+app.use('/api/integrations', apiIntegrationRoutes);
 
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/retell', retellRoutes);
@@ -183,6 +188,9 @@ app.use('/api/funnels', funnelRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/workspaces', flowRoutes);
 app.use('/api/real-estate', realEstateRoutes);
+app.use('/api/activities', activityRoutes);
+app.use('/api/appointment-config', appointmentConfigRoutes);
+app.use('/api/health-system', healthSystemRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
@@ -379,9 +387,23 @@ setTimeout(() => {
 
 // NO_REPLY Flow Cron: check every 5 minutes for silent conversations
 import { processNoReplyFlows } from './services/noReply.cron.js';
+import { startHealthSystemCron } from './services/healthSystem.cron.js';
 setTimeout(() => {
   console.log('⏰ [NO_REPLY] Starting no-reply flow cron (every 5 minutes)');
   processNoReplyFlows();
   setInterval(processNoReplyFlows, 5 * 60 * 1000);
+  
+  startHealthSystemCron();
 }, 60000);
 
+// Knowledge Base URL/Feed Sync Cron
+import { initKnowledgeCron } from './services/knowledgeSync.service.js';
+setTimeout(() => {
+  initKnowledgeCron();
+}, 65000);
+
+// Sentiment Analyzer Cron
+import { startSentimentAnalyzer } from './services/sentiment.service.js';
+setTimeout(() => {
+  startSentimentAnalyzer();
+}, 70000);

@@ -468,6 +468,30 @@ export const syncEmailsInternal = async (channelId) => {
                 orderBy: { lastMessageAt: 'desc' }
             });
 
+            // 24 saat birleştirme: Aynı contact için herhangi bir kanaldan son 24 saatte açık konuşma ara
+            if (!conversation) {
+                const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                conversation = await prisma.conversation.findFirst({
+                    where: {
+                        contactId: contact.id,
+                        workspaceId: channel.workspaceId,
+                        lastMessageAt: { gte: mergeWindow },
+                        status: { not: 'RESOLVED' }
+                    },
+                    orderBy: { lastMessageAt: 'desc' }
+                });
+                if (conversation) {
+                    console.log(`🔗 [Email Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+                    // Email bilgilerini güncelle
+                    if (!conversation.emailChannelId) {
+                        conversation = await prisma.conversation.update({
+                            where: { id: conversation.id },
+                            data: { emailChannelId: channelId }
+                        });
+                    }
+                }
+            }
+
             if (!conversation) {
                 conversation = await prisma.conversation.create({
                     data: {
@@ -683,16 +707,37 @@ export const sendNewEmail = async (req, res) => {
             });
         }
 
-        // Create conversation
-        const conversation = await prisma.conversation.create({
-            data: {
+        // 24 saat birleştirme: Mevcut açık konuşma ara
+        const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        let conversation = await prisma.conversation.findFirst({
+            where: {
                 contactId: contact.id,
                 workspaceId: channel.workspaceId,
-                emailChannelId: channelId,
-                channel: 'EMAIL',
-                status: 'OPEN'
-            }
+                lastMessageAt: { gte: mergeWindow },
+                status: { not: 'RESOLVED' }
+            },
+            orderBy: { lastMessageAt: 'desc' }
         });
+
+        if (conversation) {
+            console.log(`🔗 [Email Send Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+            if (!conversation.emailChannelId) {
+                conversation = await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { emailChannelId: channelId }
+                });
+            }
+        } else {
+            conversation = await prisma.conversation.create({
+                data: {
+                    contactId: contact.id,
+                    workspaceId: channel.workspaceId,
+                    emailChannelId: channelId,
+                    channel: 'EMAIL',
+                    status: 'OPEN'
+                }
+            });
+        }
 
         // Create sent message
         await prisma.message.create({

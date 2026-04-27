@@ -2,11 +2,12 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
+import ApiIntegrationSettings from '../../components/Settings/ApiIntegrationSettings';
 import './Channels.css';
 
 
@@ -35,6 +36,15 @@ const Channels = () => {
     const [aiBots, setAiBots] = useState([]);
     const [retellSettings, setRetellSettings] = useState(null);
     const [assigningBot, setAssigningBot] = useState(null);
+
+    // Health System states
+    const [showHealthModal, setShowHealthModal] = useState(false);
+    const [healthConnection, setHealthConnection] = useState(null);
+    const [healthConnecting, setHealthConnecting] = useState(false);
+    const [healthTesting, setHealthTesting] = useState(false);
+    const [healthForm, setHealthForm] = useState({ apiUrl: '', username: '', password: '', name: 'Sağlık Sistemi API' });
+    const [healthError, setHealthError] = useState('');
+    const [healthSuccess, setHealthSuccess] = useState('');
 
     // Routing states
     const [channelRoutings, setChannelRoutings] = useState([]);
@@ -99,7 +109,7 @@ const Channels = () => {
     const loadAllChannels = async () => {
         setLoading(true);
         try {
-            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes] = await Promise.all([
+            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes] = await Promise.all([
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
@@ -108,7 +118,8 @@ const Channels = () => {
                 channelRoutingAPI.getAll(currentWorkspace.id).catch(() => ({ data: { routings: [] } })),
                 whatsappAPI.getPhoneNumbers(currentWorkspace.id).catch(() => ({ data: { phoneNumbers: [] } })),
                 webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } })),
-                retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } }))
+                retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } })),
+                healthSystemAPI.getStatus(currentWorkspace.id).catch(() => ({ data: { connected: false } }))
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -127,6 +138,7 @@ const Channels = () => {
             setWhatsappNumbers(whatsappRes.data.phoneNumbers || []);
             setWebWidgets(widgetsRes.data.widgets || []);
             setRetellSettings(retellRes.data.isConfigured ? retellRes.data : null);
+            setHealthConnection(healthRes.data.connected ? healthRes.data.integration : null);
         } catch (error) {
             console.error('Error loading channels:', error);
         } finally {
@@ -309,6 +321,8 @@ const Channels = () => {
                 await emailAPI.updateBot(id, data);
             } else if (type === 'webwidget') {
                 await webWidgetAPI.updateBot(id, botId);
+            } else if (type === 'health-system') {
+                await healthSystemAPI.updateBot(currentWorkspace.id, id, { assignedBotId: botId || null });
             }
             loadAllChannels();
         } catch (error) {
@@ -711,6 +725,24 @@ const Channels = () => {
             });
         }
 
+        // Health System
+        if (healthConnection) {
+            channels.push({
+                id: healthConnection.id,
+                type: 'health-system',
+                routingChannel: 'HEALTH_SYSTEM',
+                icon: Activity,
+                color: '#7c3aed',
+                bgColor: '#f5f3ff',
+                name: healthConnection.name || 'Sağlık Sistemi API',
+                subtitle: healthConnection.baseUrl,
+                data: healthConnection,
+                hasRouting: false,
+                hasChatBot: false,
+                chatBotId: healthConnection.assignedBotId || null
+            });
+        }
+
         return channels;
     };
 
@@ -754,6 +786,10 @@ const Channels = () => {
                     <button className="quick-add-btn webwidget" onClick={() => { setWidgetModalMode('create'); setSelectedWidget(null); setShowWidgetModal(true); }}>
                         <Globe size={16} />
                         Web Widget
+                    </button>
+                    <button className="quick-add-btn health-system" onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }}>
+                        <Activity size={16} />
+                        Sağlık Sistemi
                     </button>
                 </div>
             </div>
@@ -833,7 +869,17 @@ const Channels = () => {
                                                     <Settings size={14} />
                                                 </button>
                                             )}
-                                            {channel.type !== 'retell' && (
+                                            {channel.type === 'health-system' && (
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }}
+                                                    title="Bağlantı Ayarları"
+                                                    style={{ background: '#f5f3ff', color: '#7c3aed' }}
+                                                >
+                                                    <Settings size={14} />
+                                                </button>
+                                            )}
+                                            {channel.type !== 'retell' && channel.type !== 'health-system' && (
                                                 <button
                                                     className="channel-delete-btn"
                                                     style={{
@@ -1069,6 +1115,9 @@ const Channels = () => {
                     </div>
                 )}
             </div>
+
+            {/* API Integrations Settings */}
+            <ApiIntegrationSettings />
 
             {/* Form Webhook Modal */}
             {showFormModal && (
@@ -1431,6 +1480,177 @@ const Channels = () => {
                                     disabled={connectingEmail || !imapForm.email || !imapForm.password}
                                 >
                                     {connectingEmail ? 'Bağlanıyor...' : 'Bağlan'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Health System Connection Modal */}
+            {showHealthModal && (
+                <div className="modal-overlay" onClick={() => setShowHealthModal(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                        <div className="modal-header">
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Activity size={20} color="#7c3aed" />
+                                Sağlık Sistemi API Bağlantısı
+                            </h2>
+                            <button className="btn-icon" onClick={() => setShowHealthModal(false)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '24px' }}>
+                            {healthConnection ? (
+                                <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #d1fae5, #a7f3d0)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                                        <CheckCircle size={28} color="#059669" />
+                                    </div>
+                                    <h3 style={{ margin: '0 0 4px', color: '#1f2937', fontSize: '16px' }}>Bağlantı Aktif</h3>
+                                    <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: '13px' }}>{healthConnection.baseUrl}</p>
+                                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                        <button
+                                            className="btn btn-secondary"
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                                            disabled={healthTesting}
+                                            onClick={async () => {
+                                                setHealthTesting(true);
+                                                try {
+                                                    const res = await healthSystemAPI.test(currentWorkspace.id, { integrationId: healthConnection.id });
+                                                    alert(res.data.success ? '✅ ' + res.data.message : '❌ ' + res.data.message);
+                                                } catch (e) {
+                                                    alert('❌ Bağlantı testi başarısız.');
+                                                } finally {
+                                                    setHealthTesting(false);
+                                                }
+                                            }}
+                                        >
+                                            {healthTesting ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
+                                            Test Et
+                                        </button>
+                                        <button
+                                            className="btn btn-secondary"
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#ef4444' }}
+                                            onClick={async () => {
+                                                if (!window.confirm('Sağlık sistemi bağlantısını kesmek istediğinize emin misiniz?')) return;
+                                                try {
+                                                    await healthSystemAPI.disconnect(currentWorkspace.id, healthConnection.id);
+                                                    setHealthConnection(null);
+                                                    loadAllChannels();
+                                                    alert('Bağlantı kesildi.');
+                                                } catch (e) {
+                                                    alert('Bağlantı kesilirken hata oluştu.');
+                                                }
+                                            }}
+                                        >
+                                            <Unplug size={14} />
+                                            Bağlantıyı Kes
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '20px', lineHeight: '1.6' }}>
+                                        Hastane bilgi yönetim sisteminize (HBYS) bağlanmak için API bilgilerinizi girin.
+                                        Bağlantı kurulduktan sonra AI asistanınız bu sistem üzerinden randevu işlemlerini gerçekleştirebilir.
+                                    </p>
+
+                                    {healthError && (
+                                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#dc2626' }}>
+                                            <AlertCircle size={16} />
+                                            {healthError}
+                                        </div>
+                                    )}
+
+                                    {healthSuccess && (
+                                        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#16a34a' }}>
+                                            <CheckCircle size={16} />
+                                            {healthSuccess}
+                                        </div>
+                                    )}
+
+                                    <div className="form-group" style={{ marginBottom: '14px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>API Adresi *</label>
+                                        <input
+                                            type="url"
+                                            className="form-input"
+                                            placeholder="https://example.com/DynamicDataApi"
+                                            value={healthForm.apiUrl}
+                                            onChange={e => setHealthForm(prev => ({ ...prev, apiUrl: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '14px', boxSizing: 'border-box' }}
+                                        />
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '14px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Kullanıcı Adı *</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="API kullanıcı adı"
+                                            value={healthForm.username}
+                                            onChange={e => setHealthForm(prev => ({ ...prev, username: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '14px', boxSizing: 'border-box' }}
+                                        />
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '14px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Şifre *</label>
+                                        <input
+                                            type="password"
+                                            className="form-input"
+                                            placeholder="API şifresi"
+                                            value={healthForm.password}
+                                            onChange={e => setHealthForm(prev => ({ ...prev, password: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '14px', boxSizing: 'border-box' }}
+                                        />
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '6px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>Bağlantı Adı</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            placeholder="Sağlık Sistemi API"
+                                            value={healthForm.name}
+                                            onChange={e => setHealthForm(prev => ({ ...prev, name: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '14px', boxSizing: 'border-box' }}
+                                        />
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {!healthConnection && (
+                            <div className="modal-footer" style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f9fafb' }}>
+                                <button className="btn btn-secondary" onClick={() => setShowHealthModal(false)}>İptal</button>
+                                <button
+                                    className="btn btn-primary"
+                                    disabled={healthConnecting || !healthForm.apiUrl || !healthForm.username || !healthForm.password}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}
+                                    onClick={async () => {
+                                        setHealthConnecting(true);
+                                        setHealthError('');
+                                        setHealthSuccess('');
+                                        try {
+                                            const res = await healthSystemAPI.connect(currentWorkspace.id, healthForm);
+                                            if (res.data.success) {
+                                                setHealthSuccess(res.data.message);
+                                                setHealthConnection(res.data.integration);
+                                                setTimeout(() => {
+                                                    setShowHealthModal(false);
+                                                    loadAllChannels();
+                                                }, 1500);
+                                            } else {
+                                                setHealthError(res.data.error || 'Bağlantı kurulamadı.');
+                                            }
+                                        } catch (e) {
+                                            setHealthError(e.response?.data?.error || 'Bağlantı kurulamadı. Bilgilerinizi kontrol edin.');
+                                        } finally {
+                                            setHealthConnecting(false);
+                                        }
+                                    }}
+                                >
+                                    {healthConnecting ? <><Loader2 size={16} className="spin" /> Bağlanıyor...</> : <><Shield size={16} /> Bağlan</>}
                                 </button>
                             </div>
                         )}

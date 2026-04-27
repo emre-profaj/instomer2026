@@ -1050,6 +1050,29 @@
     color: white;
 }
 
+.quick-add-btn.health-system {
+    color: #7c3aed;
+    border-color: #7c3aed;
+    background: linear-gradient(135deg, rgba(124,58,237,0.04), rgba(124,58,237,0.08));
+}
+
+.quick-add-btn.health-system:hover {
+    background: linear-gradient(135deg, #7c3aed, #6d28d9);
+    color: white;
+    border-color: #7c3aed;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.3);
+}
+
+.quick-add-btn.webwidget {
+    color: #3B82F6;
+    border-color: #3B82F6;
+}
+
+.quick-add-btn.webwidget:hover {
+    background: #3B82F6;
+    color: white;
+}
+
 /* Routing Panel */
 .routing-panel {
     background: white;

@@ -32,6 +32,13 @@ api.interceptors.response.use(
     async (error) => {
         const originalRequest = error.config;
 
+        // Login endpoint returns 401 for wrong credentials — this is expected,
+        // don't retry or redirect, just let the error propagate to the form.
+        const isLoginRequest = originalRequest?.url?.includes('/auth/login');
+        if (isLoginRequest && error.response?.status === 401) {
+            return Promise.reject(error);
+        }
+
         // Handle network errors (server down/restarting) — retry once after delay
         if (!error.response && !originalRequest._networkRetried) {
             originalRequest._networkRetried = true;
@@ -411,11 +418,25 @@ export const leadsAPI = {
 export const knowledgeBaseAPI = {
     getAll: (workspaceId) => api.get(`/knowledgebase/${workspaceId}`),
     addText: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/text`, data),
+    addUrl: (workspaceId, data) => api.post(`/knowledgebase/${workspaceId}/url`, data),
     uploadFile: (workspaceId, formData) => api.post(`/knowledgebase/${workspaceId}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     }),
     update: (workspaceId, id, data) => api.put(`/knowledgebase/${workspaceId}/${id}`, data),
+    sync: (workspaceId, id) => api.post(`/knowledgebase/${workspaceId}/${id}/sync`),
     delete: (workspaceId, id) => api.delete(`/knowledgebase/${workspaceId}/${id}`)
+};
+
+export const apiIntegrationAPI = {
+    getAll: (workspaceId) => api.get(`/integrations/workspace/${workspaceId}`),
+    create: (workspaceId, data) => api.post(`/integrations/workspace/${workspaceId}`, data),
+    update: (workspaceId, id, data) => api.put(`/integrations/workspace/${workspaceId}/${id}`, data),
+    delete: (workspaceId, id) => api.delete(`/integrations/workspace/${workspaceId}/${id}`),
+    
+    getBotTools: (botId) => api.get(`/integrations/bot/${botId}`),
+    createBotTool: (botId, data) => api.post(`/integrations/bot/${botId}`, data),
+    updateBotTool: (botId, toolId, data) => api.put(`/integrations/bot/${botId}/${toolId}`, data),
+    deleteBotTool: (botId, toolId) => api.delete(`/integrations/bot/${botId}/${toolId}`)
 };
 
 export const appointmentAPI = {
@@ -426,6 +447,26 @@ export const appointmentAPI = {
     delete: (workspaceId, id) => api.delete(`/appointments/${workspaceId}/${id}`),
     getAvailability: (workspaceId, params) => api.get(`/appointments/${workspaceId}/availability`, { params }),
     getAgents: (workspaceId) => api.get(`/appointments/${workspaceId}/agents`)
+};
+
+// Appointment Config API (Branch & Doctor Management)
+export const appointmentConfigAPI = {
+    getBranches: (workspaceId) => api.get(`/appointment-config/${workspaceId}/branches`),
+    createBranch: (workspaceId, data) => api.post(`/appointment-config/${workspaceId}/branches`, data),
+    updateBranch: (workspaceId, id, data) => api.put(`/appointment-config/${workspaceId}/branches/${id}`, data),
+    deleteBranch: (workspaceId, id) => api.delete(`/appointment-config/${workspaceId}/branches/${id}`),
+    createDoctor: (workspaceId, data) => api.post(`/appointment-config/${workspaceId}/doctors`, data),
+    updateDoctor: (workspaceId, id, data) => api.put(`/appointment-config/${workspaceId}/doctors/${id}`, data),
+    deleteDoctor: (workspaceId, id) => api.delete(`/appointment-config/${workspaceId}/doctors/${id}`)
+};
+
+// Health System (HBYS) API
+export const healthSystemAPI = {
+    connect: (workspaceId, data) => api.post(`/health-system/${workspaceId}/connect`, data),
+    test: (workspaceId, data) => api.post(`/health-system/${workspaceId}/test`, data),
+    getStatus: (workspaceId) => api.get(`/health-system/${workspaceId}/status`),
+    disconnect: (workspaceId, id) => api.delete(`/health-system/${workspaceId}/disconnect/${id}`),
+    updateBot: (workspaceId, id, data) => api.put(`/health-system/${workspaceId}/bot/${id}`, data)
 };
 
 // Calendar Resource API
@@ -575,6 +616,7 @@ export const rulesAPI = {
     upsert: (workspaceId, ruleType, data) => api.put(`/rules/${workspaceId}/rules/${ruleType}`, data)
 };
 
+
 // Flow Builder API
 export const flowAPI = {
     getAll: (workspaceId) => api.get(`/workspaces/${workspaceId}/flows`),
@@ -629,20 +671,4 @@ export const realEstateAPI = {
     updateOfferStatus: (workspaceId, offerId, status) => api.patch(`/realestate/${workspaceId}/offers/${offerId}/status`, { status }),
     sendOfferEmail: (workspaceId, offerId) => api.post(`/realestate/${workspaceId}/offers/${offerId}/send-email`),
     deleteOffer: (workspaceId, offerId) => api.delete(`/realestate/${workspaceId}/offers/${offerId}`)
-};
-
-// ─── Sağlık Modülü (Probel HBYS) ──────────────────────────────────────────
-export const healthAPI = {
-    getSettings: (workspaceId) => api.get(`/health/${workspaceId}/settings`),
-    updateSettings: (workspaceId, data) => api.put(`/health/${workspaceId}/settings`, data),
-    testConnection: (workspaceId, data) => api.post(`/health/${workspaceId}/test-connection`, data),
-    getPatientToken: (workspaceId, data) => api.post(`/health/${workspaceId}/patient-token`, data),
-    getBranches: (workspaceId, params) => api.get(`/health/${workspaceId}/branches`, { params }),
-    getDepartments: (workspaceId, data) => api.post(`/health/${workspaceId}/departments`, data),
-    getPolyclinics: (workspaceId, data) => api.post(`/health/${workspaceId}/polyclinics`, data),
-    getAvailableDays: (workspaceId, data) => api.post(`/health/${workspaceId}/available-days`, data),
-    getAvailableHours: (workspaceId, data) => api.post(`/health/${workspaceId}/available-hours`, data),
-    createAppointment: (workspaceId, data) => api.post(`/health/${workspaceId}/appointments/create`, data),
-    cancelAppointment: (workspaceId, data) => api.post(`/health/${workspaceId}/appointments/cancel`, data),
-    listAppointments: (workspaceId, data) => api.post(`/health/${workspaceId}/appointments/list`, data),
 };

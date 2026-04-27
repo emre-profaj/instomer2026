@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { automationAPI, rulesAPI, teamAPI, emailAPI } from '../../services/api';
+import { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, ArrowRight, Search, X,
@@ -54,7 +54,15 @@ const Automations = () => {
         emailChannelId: '',
         emailSubject: '',
         emailBody: '',
-        emailIsHtml: false
+        emailIsHtml: false,
+        // New actions
+        targetTeamId: '',
+        targetFlowId: '',
+        reminderMessage: '',
+        reminderDelayMin: 60,
+        callAgentId: '',
+        appointmentType: 'GENERAL',
+        marketingTplId: ''
     });
 
     // Send Template Modal
@@ -69,6 +77,10 @@ const Automations = () => {
 
     // Email channels for SEND_EMAIL action
     const [emailChannels, setEmailChannels] = useState([]);
+
+    // Data for new actions
+    const [funnels, setFunnels] = useState([]);
+    const [retellAgents, setRetellAgents] = useState([]);
 
     // --- Rules (Rules) state ---
     const [rules, setRules] = useState([]);
@@ -88,18 +100,22 @@ const Automations = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [templatesRes, automationsRes, emailRes, rulesRes, teamsRes] = await Promise.all([
+            const [templatesRes, automationsRes, emailRes, rulesRes, teamsRes, funnelsRes, agentsRes] = await Promise.all([
                 automationAPI.getTemplates(currentWorkspace.id),
                 automationAPI.getAutomations(currentWorkspace.id),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 rulesAPI.getAll(currentWorkspace.id).catch(() => ({ data: { rules: [] } })),
-                teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } }))
+                teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
+                funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: { funnels: [] } })),
+                retellAPI.getAgents(currentWorkspace.id).catch(() => ({ data: { agents: [] } }))
             ]);
             setTemplates(templatesRes.data.templates || []);
             setAutomations(automationsRes.data.automations || []);
             setEmailChannels(emailRes.data?.emailChannels || []);
             setRules(rulesRes.data.rules || []);
             setTeams(teamsRes.data.teams || []);
+            setFunnels(funnelsRes.data.funnels || []);
+            setRetellAgents(agentsRes.data.agents || []);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -259,7 +275,14 @@ const Automations = () => {
             emailChannelId: automation.emailChannelId || '',
             emailSubject: automation.emailSubject || '',
             emailBody: automation.emailBody || '',
-            emailIsHtml: automation.emailIsHtml || false
+            emailIsHtml: automation.emailIsHtml || false,
+            targetTeamId: automation.targetTeamId || '',
+            targetFlowId: automation.targetFlowId || '',
+            reminderMessage: automation.reminderMessage || '',
+            reminderDelayMin: automation.reminderDelayMin || 60,
+            callAgentId: automation.callAgentId || '',
+            appointmentType: automation.appointmentType || 'GENERAL',
+            marketingTplId: automation.marketingTplId || ''
         });
         setShowAutomationModal(true);
     };
@@ -279,7 +302,14 @@ const Automations = () => {
             emailChannelId: '',
             emailSubject: '',
             emailBody: '',
-            emailIsHtml: false
+            emailIsHtml: false,
+            targetTeamId: '',
+            targetFlowId: '',
+            reminderMessage: '',
+            reminderDelayMin: 60,
+            callAgentId: '',
+            appointmentType: 'GENERAL',
+            marketingTplId: ''
         });
     };
 
@@ -366,10 +396,16 @@ const Automations = () => {
 
     const getActionLabel = (action) => {
         switch (action) {
-            case 'SEND_TEMPLATE': return '📨 Şablon Send';
-            case 'SEND_MESSAGE': return '💬 Mesaj Send';
-            case 'SEND_EMAIL': return '📧 E-posta Send';
+            case 'SEND_TEMPLATE': return '📨 Şablon Gönder';
+            case 'SEND_MESSAGE': return '💬 Mesaj Gönder';
+            case 'SEND_EMAIL': return '📧 E-posta Gönder';
             case 'ASSIGN_AGENT': return '👤 Temsilci Ata';
+            case 'ASSIGN_TEAM': return '👥 Takıma Ata';
+            case 'SCHEDULE_APPOINTMENT': return '🗓️ Randevu Oluştur';
+            case 'START_CALL': return '📞 Arama Başlat';
+            case 'SEND_MARKETING': return '📢 Pazarlama Mesajı';
+            case 'CHANGE_FLOW': return '🔀 Akış Değiştir';
+            case 'SEND_REMINDER': return '🔔 Hatırlatma Gönder';
             default: return action;
         }
     };
@@ -445,18 +481,18 @@ const Automations = () => {
                         <>
                             <button className="btn btn-secondary" onClick={handleSyncTemplates} disabled={syncing}>
                                 <RefreshCw size={16} className={syncing ? 'spinning' : ''} />
-                                {syncing ? 'Senkronize ediliyor...' : 'Sync from WhatsApp'}
+                                {syncing ? 'Senkronize ediliyor...' : "WhatsApp'tan Senkronize Et"}
                             </button>
                             <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
                                 <Plus size={16} />
-                                Add Template
+                                Şablon Ekle
                             </button>
                         </>
                     )}
                     {activeTab === 'automations' && (
                         <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setEditingAutomation(null); setShowAutomationModal(true); }}>
                             <Plus size={16} />
-                            Add Automation
+                            Otomasyon Ekle
                         </button>
                     )}
                 </div>
@@ -469,30 +505,22 @@ const Automations = () => {
                     onClick={() => setActiveTab('templates')}
                 >
                     <MessageSquare size={18} />
-                    WhatsApp Templates ({templates.length})
+                    Şablonlar ({templates.length})
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'automations' ? 'active' : ''}`}
                     onClick={() => setActiveTab('automations')}
                 >
                     <Zap size={18} />
-                    Automations ({automations.length})
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'rules' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('rules')}
-                >
-                    <Shield size={18} />
-                    Rules
+                    Basit Otomasyonlar ({automations.length})
                 </button>
                 <button
                     className={`tab-btn ${activeTab === 'flows' ? 'active' : ''}`}
                     onClick={() => setActiveTab('flows')}
                 >
                     <GitBranch size={18} />
-                    Akışlar
+                    Dinamik Otomasyonlar
                 </button>
-
             </div>
 
             {/* Content */}
@@ -503,11 +531,11 @@ const Automations = () => {
                         {templates.length === 0 ? (
                             <div className="empty-state">
                                 <div className="icon">📝</div>
-                                <h3>No templates yet</h3>
-                                <p>{t('automations.syncDesc')}</p>
+                                <h3>Henüz şablon yok</h3>
+                                <p>{t('automations.syncDesc') || "WhatsApp şablonlarınızı görmek için senkronize edin."}</p>
                                 <button className="btn btn-primary" onClick={handleSyncTemplates}>
                                     <RefreshCw size={18} />
-                                    Sync Templates
+                                    Şablonları Senkronize Et
                                 </button>
                             </div>
                         ) : (
@@ -520,12 +548,14 @@ const Automations = () => {
                                         </div>
                                         <span className={`template-status ${template.status.toLowerCase()}`}>
                                             {getStatusIcon(template.status)}
-                                            {template.status}
+                                            {template.status === 'APPROVED' ? 'ONAYLI' : template.status === 'PENDING' ? 'BEKLİYOR' : template.status === 'REJECTED' ? 'REDDEDİLDİ' : template.status}
                                         </span>
                                     </div>
 
                                     <div className="template-tags">
-                                        <span className="template-tag">{template.category}</span>
+                                        <span className="template-tag">
+                                            {template.category === 'MARKETING' ? 'PAZARLAMA' : template.category === 'UTILITY' ? 'HİZMET' : template.category === 'AUTHENTICATION' ? 'DOĞRULAMA' : template.category}
+                                        </span>
                                         {template.headerType && (
                                             <span className="template-tag media">
                                                 {template.headerType === 'IMAGE' && '🖼️ Resim'}
@@ -548,7 +578,7 @@ const Automations = () => {
 
                                     <div className="template-actions">
                                         <button className="btn btn-success btn-sm" onClick={() => openSendModal(template)}>
-                                            <Send size={14} /> Send
+                                            <Send size={14} /> Gönder
                                         </button>
                                         <button className="btn btn-secondary btn-sm btn-icon" onClick={() => openEditTemplate(template)}>
                                             <Edit2 size={14} />
@@ -563,59 +593,63 @@ const Automations = () => {
                     </div>
                 )}
 
-                {/* Automations Tab */}
+                {/* Basit Otomasyonlar Tab (Automations + Rules merged) */}
                 {activeTab === 'automations' && (
-                    <div className="automations-grid">
-                        {automations.length === 0 ? (
-                            <div className="empty-state">
-                                <div className="icon">⚡</div>
-                                <h3>No automations yet</h3>
-                                <p>{t('automations.createDesc')}</p>
-                                <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setShowAutomationModal(true); }}>
-                                    <Plus size={18} /> Create Automation
-                                </button>
-                            </div>
-                        ) : (
-                            automations.map(automation => (
-                                <div key={automation.id} className={`automation-card ${!automation.isActive ? 'inactive' : ''}`}>
-                                    <div className="automation-header">
-                                        <h3 className="automation-name">{automation.name}</h3>
-                                        <div
-                                            className={`automation-toggle ${automation.isActive ? 'active' : ''}`}
-                                            onClick={() => handleToggleAutomation(automation)}
-                                        />
-                                    </div>
-
-                                    <div className="automation-flow">
-                                        <span className="flow-item trigger">
-                                            {getTriggerLabel(automation.trigger)}
-                                        </span>
-                                        <ArrowRight className="flow-arrow" size={20} />
-                                        <span className="flow-item action">
-                                            {getActionLabel(automation.action)}
-                                        </span>
-                                    </div>
-
-                                    {automation.description && (
-                                        <p className="automation-description">{automation.description}</p>
-                                    )}
-
-                                    <div className="automation-actions">
-                                        <button className="btn btn-secondary btn-sm" onClick={() => openEditAutomation(automation)}>
-                                            <Edit2 size={14} /> Edit
-                                        </button>
-                                        <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteAutomation(automation.id)}>
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
+                    <div>
+                        <div className="automations-grid">
+                            {automations.length === 0 ? (
+                                <div className="empty-state">
+                                    <div className="icon">⚡</div>
+                                    <h3>Henüz otomasyon yok</h3>
+                                    <p>Tetikleyici ve aksiyon seçerek ilk otomasyonunuzu oluşturun.</p>
+                                    <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setShowAutomationModal(true); }}>
+                                        <Plus size={18} /> Otomasyon Oluştur
+                                    </button>
                                 </div>
-                            ))
-                        )}
-                    </div>
-                )}
+                            ) : (
+                                automations.map(automation => (
+                                    <div key={automation.id} className={`automation-card ${!automation.isActive ? 'inactive' : ''}`}>
+                                        <div className="automation-header">
+                                            <h3 className="automation-name">{automation.name}</h3>
+                                            <div
+                                                className={`automation-toggle ${automation.isActive ? 'active' : ''}`}
+                                                onClick={() => handleToggleAutomation(automation)}
+                                            />
+                                        </div>
 
-                {/* Rules Tab */}
-                {activeTab === 'rules' && (
+                                        <div className="automation-flow">
+                                            <span className="flow-item trigger">
+                                                {getTriggerLabel(automation.trigger)}
+                                            </span>
+                                            <ArrowRight className="flow-arrow" size={20} />
+                                            <span className="flow-item action">
+                                                {getActionLabel(automation.action)}
+                                            </span>
+                                        </div>
+
+                                        {automation.description && (
+                                            <p className="automation-description">{automation.description}</p>
+                                        )}
+
+                                        <div className="automation-actions">
+                                            <button className="btn btn-secondary btn-sm" onClick={() => openEditAutomation(automation)}>
+                                                <Edit2 size={14} /> Düzenle
+                                            </button>
+                                            <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteAutomation(automation.id)}>
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* ──── Kurallar Bölümü ──── */}
+                        <div className="rules-header-container" style={{ marginTop: '40px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb', paddingBottom: '10px' }}>
+                            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+                                <Shield size={24} color="#3b82f6" /> Kurallar
+                            </h2>
+                        </div>
                     <div className="rules-section">
                         <div className="rules-intro">
                             <Shield size={20} />
@@ -758,9 +792,10 @@ const Automations = () => {
                             </div>
                         </div>
                     </div>
+                    </div>
                 )}
 
-                {/* Akışlar Tab */}
+                {/* Dinamik Otomasyonlar Tab */}
                 {activeTab === 'flows' && (
                     <FlowBuilder workspaceId={currentWorkspace?.id} />
                 )}
@@ -870,10 +905,10 @@ const Automations = () => {
                             </div>
                             <div className="modal-footer">
                                 <button className="btn btn-secondary" onClick={() => setShowTemplateModal(false)}>
-                                    Cancel
+                                    İptal
                                 </button>
                                 <button className="btn btn-primary" onClick={handleSaveTemplate}>
-                                    {editingTemplate ? 'Güncelle' : 'Save'}
+                                    {editingTemplate ? 'Güncelle' : 'Kaydet'}
                                 </button>
                             </div>
                         </div>
@@ -885,7 +920,7 @@ const Automations = () => {
                     <div className="modal-overlay" onClick={() => setShowAutomationModal(false)}>
                         <div className="modal" onClick={(e) => e.stopPropagation()}>
                             <div className="modal-header">
-                                <h2>{editingAutomation ? 'Otomasyon Edit' : 'Create Automation'}</h2>
+                                <h2>{editingAutomation ? 'Otomasyonu Düzenle' : 'Otomasyon Oluştur'}</h2>
                                 <button className="modal-close" onClick={() => setShowAutomationModal(false)}>×</button>
                             </div>
                             <div className="modal-body">
@@ -972,7 +1007,7 @@ const Automations = () => {
                                                 }}
                                             />
                                             <span className="action-icon">💬</span>
-                                            <span className="action-label">Mesaj Send</span>
+                                            <span className="action-label">Mesaj Gönder</span>
                                         </label>
                                         <label className={`action-card ${automationForm.selectedActions?.includes('SEND_EMAIL') ? 'selected' : ''}`}>
                                             <input
@@ -988,7 +1023,103 @@ const Automations = () => {
                                                 }}
                                             />
                                             <span className="action-icon">📧</span>
-                                            <span className="action-label">E-posta Send</span>
+                                            <span className="action-label">E-posta Gönder</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('ASSIGN_TEAM') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('ASSIGN_TEAM')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'ASSIGN_TEAM'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'ASSIGN_TEAM') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">👥</span>
+                                            <span className="action-label">Takıma Ata</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('SCHEDULE_APPOINTMENT') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('SCHEDULE_APPOINTMENT')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SCHEDULE_APPOINTMENT'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SCHEDULE_APPOINTMENT') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">🗓️</span>
+                                            <span className="action-label">Randevu Oluştur</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('START_CALL') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('START_CALL')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'START_CALL'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'START_CALL') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">📞</span>
+                                            <span className="action-label">Arama Başlat</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('SEND_MARKETING') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('SEND_MARKETING')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_MARKETING'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_MARKETING') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">📢</span>
+                                            <span className="action-label">Pazarlama Mesajı</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('CHANGE_FLOW') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('CHANGE_FLOW')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'CHANGE_FLOW'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'CHANGE_FLOW') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">🔀</span>
+                                            <span className="action-label">Akış Değiştir</span>
+                                        </label>
+                                        <label className={`action-card ${automationForm.selectedActions?.includes('SEND_REMINDER') ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={automationForm.selectedActions?.includes('SEND_REMINDER')}
+                                                onChange={(e) => {
+                                                    const actions = automationForm.selectedActions || [];
+                                                    if (e.target.checked) {
+                                                        setAutomationForm({ ...automationForm, selectedActions: [...actions, 'SEND_REMINDER'] });
+                                                    } else {
+                                                        setAutomationForm({ ...automationForm, selectedActions: actions.filter(a => a !== 'SEND_REMINDER') });
+                                                    }
+                                                }}
+                                            />
+                                            <span className="action-icon">🔔</span>
+                                            <span className="action-label">Hatırlatma</span>
                                         </label>
                                     </div>
                                     {automationForm.selectedActions?.length > 1 && (
@@ -1095,6 +1226,106 @@ const Automations = () => {
                                                 />
                                                 HTML olarak gönder
                                             </label>
+                                        </div>
+                                    </>
+                                )}
+
+                                {automationForm.selectedActions?.includes('ASSIGN_TEAM') && (
+                                    <div className="form-group">
+                                        <label>Hedef Takım *</label>
+                                        <select
+                                            value={automationForm.targetTeamId}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, targetTeamId: e.target.value })}
+                                        >
+                                            <option value="">Takım seçin...</option>
+                                            {teams.map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('SCHEDULE_APPOINTMENT') && (
+                                    <div className="form-group">
+                                        <label>Randevu Tipi *</label>
+                                        <select
+                                            value={automationForm.appointmentType}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, appointmentType: e.target.value })}
+                                        >
+                                            <option value="GENERAL">Genel</option>
+                                            <option value="SALES">Satış / Fırsat</option>
+                                            <option value="SUPPORT">Destek / Şikayet</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('START_CALL') && (
+                                    <div className="form-group">
+                                        <label>Arama Yapacak AI Agent *</label>
+                                        <select
+                                            value={automationForm.callAgentId}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, callAgentId: e.target.value })}
+                                        >
+                                            <option value="">Agent seçin...</option>
+                                            {retellAgents.map(a => (
+                                                <option key={a.agent_id} value={a.agent_id}>{a.agent_name}</option>
+                                            ))}
+                                        </select>
+                                        {retellAgents.length === 0 && (
+                                            <div className="form-hint" style={{color: '#e74c3c'}}>Kayıtlı Retell agent bulunamadı. Lütfen sesli asistan oluşturun.</div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('SEND_MARKETING') && (
+                                    <div className="form-group">
+                                        <label>Pazarlama Şablonu *</label>
+                                        <select
+                                            value={automationForm.marketingTplId}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, marketingTplId: e.target.value })}
+                                        >
+                                            <option value="">Şablon seçin...</option>
+                                            {templates.filter(t => t.category === 'MARKETING' && t.status === 'APPROVED').map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('CHANGE_FLOW') && (
+                                    <div className="form-group">
+                                        <label>Hedef Akış *</label>
+                                        <select
+                                            value={automationForm.targetFlowId}
+                                            onChange={(e) => setAutomationForm({ ...automationForm, targetFlowId: e.target.value })}
+                                        >
+                                            <option value="">Akış seçin...</option>
+                                            {funnels.map(f => (
+                                                <option key={f.id} value={f.id}>{f.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {automationForm.selectedActions?.includes('SEND_REMINDER') && (
+                                    <>
+                                        <div className="form-group">
+                                            <label>Hatırlatma Gecikmesi (Dakika) *</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                value={automationForm.reminderDelayMin}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, reminderDelayMin: parseInt(e.target.value) || 60 })}
+                                            />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>Hatırlatma Mesajı *</label>
+                                            <textarea
+                                                value={automationForm.reminderMessage}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, reminderMessage: e.target.value })}
+                                                placeholder="Randevunuza 1 saat kaldı..."
+                                                rows={3}
+                                            />
                                         </div>
                                     </>
                                 )}

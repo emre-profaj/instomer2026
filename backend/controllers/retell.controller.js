@@ -1248,7 +1248,13 @@ async function handleCallStarted(call) {
                         // Update temp record with real call_id
                         const tempRec = await prisma.retellCall.findUnique({ where: { callId: tempCallId } });
                         if (tempRec) {
-                            await prisma.retellCall.update({ where: { id: tempRec.id }, data: { callId: realCallId } });
+                            const existingReal = await prisma.retellCall.findUnique({ where: { callId: realCallId } });
+                            if (existingReal) {
+                                await prisma.retellCall.delete({ where: { id: tempRec.id } });
+                                console.log(`📞 [Watcher] Webhook already created real call ${realCallId}. Deleted temp record.`);
+                            } else {
+                                await prisma.retellCall.update({ where: { id: tempRec.id }, data: { callId: realCallId } });
+                            }
                         }
 
                         // Step 2: check every 30s until call ends (max 20 checks = ~10 min)

@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -22,6 +22,12 @@ const KnowledgeBase = () => {
     const [editTitle, setEditTitle] = useState('');
     const [editContent, setEditContent] = useState('');
     const [saving, setSaving] = useState(false);
+
+    // URL/Feed States
+    const [newUrl, setNewUrl] = useState('');
+    const [urlSyncInterval, setUrlSyncInterval] = useState('');
+    const [scraping, setScraping] = useState(false);
+    const [syncingEntry, setSyncingEntry] = useState(null);
 
     // Company Info States
     const [companyInfo, setCompanyInfo] = useState({
@@ -224,6 +230,45 @@ const KnowledgeBase = () => {
         setEditContent('');
     };
 
+    const handleAddUrlEntry = async () => {
+        if (!newUrl.trim()) {
+            alert('URL alanı gereklidir');
+            return;
+        }
+
+        try {
+            setScraping(true);
+            await knowledgeBaseAPI.addUrl(currentWorkspace.id, {
+                url: newUrl,
+                syncInterval: urlSyncInterval || null
+            });
+            setNewUrl('');
+            setUrlSyncInterval('');
+            loadKnowledgeBase();
+            alert('Web sayfası başarıyla tarandı ve bilgi eklendi');
+            setActiveTab('list');
+        } catch (error) {
+            console.error('Error scanning URL:', error);
+            alert(error.response?.data?.error || 'Sayfa taranırken hata oluştu');
+        } finally {
+            setScraping(false);
+        }
+    };
+
+    const handleSyncEntry = async (entryId) => {
+        try {
+            setSyncingEntry(entryId);
+            await knowledgeBaseAPI.sync(currentWorkspace.id, entryId);
+            loadKnowledgeBase();
+            alert('İçerik başarıyla senkronize edildi');
+        } catch (error) {
+            console.error('Error syncing entry:', error);
+            alert('Senkronizasyon sırasında hata oluştu');
+        } finally {
+            setSyncingEntry(null);
+        }
+    };
+
     const handleDeleteEntry = async (entryId) => {
         if (!confirm('Bu bilgiyi silmek istediğinize emin misiniz?')) return;
 
@@ -275,6 +320,20 @@ const KnowledgeBase = () => {
                 >
                     <Upload size={16} />
                     Dosya Yükle
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'url' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('url')}
+                >
+                    <Globe size={16} />
+                    Web Sayfası Tara
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'feed' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('feed')}
+                >
+                    <Link size={16} />
+                    Dinamik Feed
                 </button>
                 <button
                     className={`kb-tab ${activeTab === 'list' ? 'active' : ''}`}
@@ -503,6 +562,90 @@ const KnowledgeBase = () => {
                 </div>
             )}
 
+            {/* URL / Web Scratch Tab */}
+            {activeTab === 'url' && (
+                <div className="card kb-add-form">
+                    <div className="form-group">
+                        <label>Web Sayfası URL'si</label>
+                        <input
+                            type="url"
+                            className="input"
+                            placeholder="https://www.metropolhastanesi.com/hakkimizda"
+                            value={newUrl}
+                            onChange={(e) => setNewUrl(e.target.value)}
+                        />
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                            * Sistem belirtilen sayfaya giderek sadece okunabilir metinleri çıkartacaktır.
+                        </p>
+                    </div>
+                    <div className="form-group" style={{ marginTop: '16px' }}>
+                        <label>Otomatik Güncelleme Sıklığı</label>
+                        <select
+                            className="input"
+                            value={urlSyncInterval}
+                            onChange={(e) => setUrlSyncInterval(e.target.value)}
+                        >
+                            <option value="">Sadece Bir Kez Tara (Manuel Güncelleme)</option>
+                            <option value="24">Her Gün (24 Saatte Bir)</option>
+                            <option value="48">İki Günde Bir (48 Saatte Bir)</option>
+                            <option value="168">Haftada Bir (168 Saatte Bir)</option>
+                        </select>
+                    </div>
+                    <div className="kb-form-actions">
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleAddUrlEntry}
+                            disabled={scraping || !newUrl.trim()}
+                        >
+                            {scraping ? <RefreshCw className="spinning" size={16} /> : <Globe size={16} />}
+                            {scraping ? 'Sayfa Taranıyor...' : 'Sayfayı Tara ve Ekle'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Dynamic Feed Tab */}
+            {activeTab === 'feed' && (
+                <div className="card kb-add-form">
+                    <div className="form-group">
+                        <label>JSON API veya Feed URL'si</label>
+                        <input
+                            type="url"
+                            className="input"
+                            placeholder="https://api.hastane.com/doktorlar.json"
+                            value={newUrl}
+                            onChange={(e) => setNewUrl(e.target.value)}
+                        />
+                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                            * Girdiğiniz JSON verisi Yapay Zekanın anlayacağı düz metinlere dönüştürülüp eklenecektir. (Stok, Fiyat veya Doktor listeleri için idealdir)
+                        </p>
+                    </div>
+                    <div className="form-group" style={{ marginTop: '16px' }}>
+                        <label>Otomatik Güncelleme Sıklığı</label>
+                        <select
+                            className="input"
+                            value={urlSyncInterval}
+                            onChange={(e) => setUrlSyncInterval(e.target.value)}
+                        >
+                            <option value="">Sadece Bir Kez Çek</option>
+                            <option value="1">Her Saat</option>
+                            <option value="12">Günde 2 Kez (12 Saat)</option>
+                            <option value="24">Her Gün (24 Saat)</option>
+                        </select>
+                    </div>
+                    <div className="kb-form-actions">
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleAddUrlEntry}
+                            disabled={scraping || !newUrl.trim()}
+                        >
+                            {scraping ? <RefreshCw className="spinning" size={16} /> : <Link size={16} />}
+                            {scraping ? 'Veri Çekiliyor...' : 'Feed Bağla ve Ekle'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* List Tab */}
             {activeTab === 'list' && (
                 <>
@@ -529,11 +672,22 @@ const KnowledgeBase = () => {
                                         <div className="kb-entry-info">
                                             <h4>{entry.title}</h4>
                                             <span className="kb-entry-meta">
-                                                {entry.sourceType === 'FILE' ? entry.fileType?.toUpperCase() : 'Metin'} •
+                                                {entry.sourceType === 'FILE' ? entry.fileType?.toUpperCase() : entry.sourceType === 'URL' ? '🌐 Web URL' : entry.sourceType === 'FEED' ? '🔗 Dinamik Feed' : 'Metin'} •
                                                 {new Date(entry.createdAt).toLocaleDateString('tr-TR')}
+                                                {entry.lastSyncedAt && ` • Son Senkronize: ${new Date(entry.lastSyncedAt).toLocaleString('tr-TR')}`}
                                             </span>
                                         </div>
                                         <div className="kb-entry-actions">
+                                            {(entry.sourceType === 'URL' || entry.sourceType === 'FEED') && (
+                                                <button
+                                                    className="btn-icon"
+                                                    onClick={() => handleSyncEntry(entry.id)}
+                                                    title="Manuel Senkronize Et"
+                                                    disabled={syncingEntry === entry.id}
+                                                >
+                                                    <RefreshCw size={16} className={syncingEntry === entry.id ? 'spinning' : ''} />
+                                                </button>
+                                            )}
                                             {entry.sourceType === 'TEXT' && (
                                                 <button
                                                     className="btn-icon btn-edit"

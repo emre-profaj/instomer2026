@@ -225,3 +225,58 @@ export const getKnowledgeContent = async (workspaceId) => {
     }
 };
 
+// Import scraper for URL/Feed functionalities
+import { scrapeUrlContent } from '../services/scraper.service.js';
+import { syncKnowledgeEntry } from '../services/knowledgeSync.service.js';
+
+// Add URL or Feed entry to knowledge base
+export const addUrlEntry = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { url, syncInterval } = req.body;
+
+        if (!url) {
+            return res.status(400).json({ error: 'URL gereklidir' });
+        }
+
+        // İlk veriyi çek
+        const scrapedData = await scrapeUrlContent(url);
+
+        const entry = await prisma.knowledgeBase.create({
+            data: {
+                workspaceId,
+                title: scrapedData.title,
+                content: scrapedData.content,
+                sourceType: scrapedData.type === 'FEED' ? 'FEED' : 'URL',
+                sourceUrl: url,
+                syncInterval: syncInterval ? parseInt(syncInterval) : null,
+                lastSyncedAt: new Date()
+            }
+        });
+
+        res.status(201).json({ entry });
+    } catch (error) {
+        console.error('Add URL entry error:', error);
+        res.status(500).json({ error: error.message || 'URL taraması sırasında hata oluştu' });
+    }
+};
+
+// Manually sync a specific knowledge entry
+export const syncEntryManually = async (req, res) => {
+    try {
+        const { id } = req.params; // entryId
+        
+        const success = await syncKnowledgeEntry(id);
+        
+        if (success) {
+            const entry = await prisma.knowledgeBase.findUnique({ where: { id } });
+            return res.json({ success: true, entry });
+        } else {
+            return res.status(400).json({ error: 'Senkronizasyon başarısız oldu' });
+        }
+    } catch (error) {
+        console.error('Sync entry error:', error);
+        res.status(500).json({ error: 'Senkronizasyon sırasında hata oluştu' });
+    }
+};
+

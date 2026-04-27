@@ -4,6 +4,7 @@ import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting } from '../services/conversationRouting.service.js';
 import { executeWebFormAutomation } from './automation.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { maskSensitiveInfo } from '../utils/masking.js';
 
 
 // Get widget settings for a workspace
@@ -184,6 +185,23 @@ export const handleWidgetChat = async (req, res) => {
             }
         });
 
+        // 24 saat birleştirme: Herhangi bir kanaldan son 24 saatte konuşma ara
+        if (!conversation) {
+            const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            conversation = await prisma.conversation.findFirst({
+                where: {
+                    contactId: contact.id,
+                    workspaceId,
+                    lastMessageAt: { gte: mergeWindow },
+                    status: { not: 'RESOLVED' }
+                },
+                orderBy: { lastMessageAt: 'desc' }
+            });
+            if (conversation) {
+                console.log(`🔗 [Widget Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+            }
+        }
+
         let isNewConversation = false;
         if (!conversation) {
             // Get widget settings for assignedBotId
@@ -222,7 +240,7 @@ export const handleWidgetChat = async (req, res) => {
                     'WEB_WIDGET',
                     true
                 );
-                if (routingResult.teamId) {
+                if (routingResult?.teamId) {
                     console.log(`📍 [Widget] Routed to team ${routingResult.teamId}`);
                 }
             } catch (routingError) {
@@ -308,7 +326,7 @@ export const handleWidgetChat = async (req, res) => {
             emitToWorkspace(workspaceId, 'new_message', {
                 workspaceId,
                 conversationId: conversation.id,
-                message: visitorMessage,
+                message: { ...visitorMessage, content: maskSensitiveInfo(visitorMessage.content) },
                 conversation: updatedConversation,
                 contact: updatedConversation.contact,
                 channel: 'WIDGET'
@@ -427,6 +445,23 @@ export const handlePrechat = async (req, res) => {
             }
         });
 
+        // 24 saat birleştirme: Herhangi bir kanaldan son 24 saatte konuşma ara
+        if (!conversation) {
+            const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            conversation = await prisma.conversation.findFirst({
+                where: {
+                    contactId: contact.id,
+                    workspaceId,
+                    lastMessageAt: { gte: mergeWindow },
+                    status: { not: 'RESOLVED' }
+                },
+                orderBy: { lastMessageAt: 'desc' }
+            });
+            if (conversation) {
+                console.log(`🔗 [Widget Prechat Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+            }
+        }
+
         let isNewConversation = false;
         if (!conversation) {
             // Get widget settings for assignedBotId
@@ -456,7 +491,7 @@ export const handlePrechat = async (req, res) => {
                     'WEB_WIDGET',
                     true
                 );
-                if (routingResult.teamId) {
+                if (routingResult?.teamId) {
                     console.log(`📍 [Widget Prechat] Routed to team ${routingResult.teamId}`);
                 }
             } catch (routingError) {

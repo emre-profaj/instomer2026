@@ -991,16 +991,28 @@ export const webhookHandler = async (req, res) => {
                         orderBy: { lastMessageAt: 'desc' }
                     });
 
-                    // Fallback: find any open conversation for this contact (e.g., LEAD)
+                    // 24 saat birleştirme: Aynı contact için herhangi bir kanaldan son 24 saatte açık konuşma ara
                     if (!conversation) {
+                        const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
                         conversation = await prisma.conversation.findFirst({
                             where: {
                                 contactId: contact.id,
                                 workspaceId: waNumber.workspaceId,
-                                status: 'OPEN'
+                                lastMessageAt: { gte: mergeWindow },
+                                status: { not: 'RESOLVED' }
                             },
                             orderBy: { lastMessageAt: 'desc' }
                         });
+                        if (conversation) {
+                            console.log(`🔗 [WA Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+                            // WhatsApp bilgilerini güncelle
+                            if (!conversation.whatsappPhoneNumberId) {
+                                conversation = await prisma.conversation.update({
+                                    where: { id: conversation.id },
+                                    data: { whatsappPhoneNumberId: waNumber.id, channel: 'WHATSAPP' }
+                                });
+                            }
+                        }
                     }
 
                     let isNewConversation = false;

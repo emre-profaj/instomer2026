@@ -1,91 +1,307 @@
 import prisma from '../lib/prisma.js';
 
-// Predefined stages per funnel name (case-insensitive match)
-const FUNNEL_STAGE_PRESETS = {
-    'fırsat': [
-        { name: 'Yeni Başvuru',       color: '#3b82f6', order: 0 },
-        { name: 'Bilgi Verildi',      color: '#06b6d4', order: 1 },
-        { name: 'Fırsat',             color: '#8b5cf6', order: 2 },
-        { name: 'Sıcak Fırsat',       color: '#f97316', order: 3 },
-        { name: 'Ulaşılamadı',        color: '#94a3b8', order: 4 },
-        { name: 'Tekrar Ara',         color: '#f59e0b', order: 5 },
-        { name: 'Teklif Verildi',     color: '#ec4899', order: 6 },
-        { name: 'Randevu Planlandı',  color: '#14b8a6', order: 7 },
-        { name: 'Pazarlık',           color: '#a855f7', order: 8 },
-        { name: 'Sözleşme',           color: '#14b8a6', order: 9 },
-        { name: 'Satış',              color: '#10b981', order: 10 },
-        { name: 'Kayıp',              color: '#ef4444', order: 11 },
-        { name: 'İlgisiz',            color: '#64748b', order: 12 }
-    ],
-    'iş başvurusu': [
-        { name: 'CV Alındı',              color: '#3b82f6', order: 0 },
-        { name: 'CV İnceleniyor',         color: '#06b6d4', order: 1 },
-        { name: 'Ön Görüşme',             color: '#8b5cf6', order: 2 },
-        { name: 'Mülakat',                color: '#f59e0b', order: 3 },
-        { name: 'Teknik Değerlendirme',   color: '#f97316', order: 4 },
-        { name: 'Referans Kontrolü',      color: '#ec4899', order: 5 },
-        { name: 'Teklif Yapıldı',         color: '#0ea5e9', order: 6 },
-        { name: 'İşe Alındı',             color: '#10b981', order: 7 },
-        { name: 'Reddedildi',             color: '#ef4444', order: 8 },
-        { name: 'Vazgeçti',               color: '#94a3b8', order: 9 }
-    ],
-    'destek': [
-        { name: 'Yeni Talep',   color: '#3b82f6', order: 0 },
-        { name: 'İnceleniyor',  color: '#f59e0b', order: 1 },
-        { name: 'İşlemde',      color: '#8b5cf6', order: 2 },
-        { name: 'Yanıt Bekleniyor', color: '#f97316', order: 3 },
-        { name: 'Çözüldü',      color: '#10b981', order: 4 },
-        { name: 'Kapatıldı',    color: '#64748b', order: 5 }
-    ],
-    'şikayet': [
-        { name: 'Yeni Şikayet', color: '#ef4444', order: 0 },
-        { name: 'İnceleniyor',  color: '#f59e0b', order: 1 },
-        { name: 'İşlemde',      color: '#8b5cf6', order: 2 },
-        { name: 'Yanıt Verildi',color: '#06b6d4', order: 3 },
-        { name: 'Çözüldü',      color: '#10b981', order: 4 },
-        { name: 'Kapatıldı',    color: '#64748b', order: 5 }
-    ]
-};
+// ────────────────────────────────────────────────────────────────────────────
+// DEFAULT FUNNELS & STAGES (her yeni workspace için otomatik oluşturulur)
+// ────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_STAGES = [
-    { name: 'Yeni',     color: '#3b82f6', order: 0 },
-    { name: 'İşlemde',  color: '#f59e0b', order: 1 },
-    { name: 'Kapandı',  color: '#10b981', order: 2 }
+const DEFAULT_FUNNELS = [
+    {
+        name: 'Randevu',
+        color: '#06b6d4',
+        icon: '📅',
+        order: 1,
+        stages: [
+            { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
+            { name: 'Randevu Veriliyor',    color: '#f59e0b', order: 1 },
+            { name: 'Randevu Verildi',      color: '#8b5cf6', order: 2 },
+            { name: 'Randevu Tamamlandı',   color: '#10b981', order: 3 },
+            { name: 'Randevu İptal',        color: '#ef4444', order: 4 }
+        ]
+    },
+    {
+        name: 'Satış Akışı',
+        color: '#3b82f6',
+        icon: '💰',
+        order: 2,
+        stages: [
+            { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
+            { name: 'Fırsat',               color: '#8b5cf6', order: 1 },
+            { name: 'Bilgi Verildi',        color: '#06b6d4', order: 2 },
+            { name: 'Sıcak Fırsat',         color: '#f97316', order: 3 },
+            { name: 'Görüşme Planlandı',    color: '#14b8a6', order: 4 },
+            { name: 'Teklif Aşaması',       color: '#ec4899', order: 5 },
+            { name: 'Satış',                color: '#10b981', order: 6 },
+            { name: 'Ulaşılamadı',          color: '#94a3b8', order: 7 },
+            { name: 'Kayıp',                color: '#ef4444', order: 8 }
+        ]
+    },
+    {
+        name: 'İş ve Taşeron',
+        color: '#10b981',
+        icon: '👔',
+        order: 3,
+        stages: [
+            { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
+            { name: 'Değerlendirmede',      color: '#f59e0b', order: 1 },
+            { name: 'Aday Havuzunda',       color: '#8b5cf6', order: 2 },
+            { name: 'Kabul',                color: '#10b981', order: 3 },
+            { name: 'Red',                  color: '#ef4444', order: 4 }
+        ]
+    },
+    {
+        name: 'Destek',
+        color: '#f59e0b',
+        icon: '🎧',
+        order: 4,
+        stages: [
+            { name: 'Yeni Başvuru',    color: '#3b82f6', order: 0 },
+            { name: 'Değerlendirme',   color: '#f59e0b', order: 1 },
+            { name: 'İşlemde',         color: '#8b5cf6', order: 2 },
+            { name: 'Çözüldü',        color: '#10b981', order: 3 },
+            { name: 'Kapandı',         color: '#64748b', order: 4 }
+        ]
+    },
+    {
+        name: 'Kurumsal Satış',
+        color: '#a855f7',
+        icon: '🏢',
+        order: 5,
+        stages: [
+            { name: 'Yeni Başvuru',        color: '#3b82f6', order: 0 },
+            { name: 'Görüşme Aşaması',     color: '#f59e0b', order: 1 },
+            { name: 'Kazanıldı',           color: '#10b981', order: 2 },
+            { name: 'Kayıp',               color: '#ef4444', order: 3 }
+        ]
+    }
 ];
 
-// Normalize Turkish characters to ASCII for reliable comparison
+// ── Stage isim eşleştirmesi: eski akış preset'leri → yeni default stages
+const STAGE_PRESETS = {};
+for (const f of DEFAULT_FUNNELS) {
+    STAGE_PRESETS[f.name.toLowerCase()] = f.stages;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// MIGRASYON: Eski aşama isimlerini yenilerine taşı
+// ────────────────────────────────────────────────────────────────────────────
+
+// Aşama bazlı rename map: { eskiAd → yeniAd }
+const STAGE_RENAME_MAP = {
+    'Pazarlık':           'Teklif Aşaması',
+    'Sözleşme':           'Teklif Aşaması',
+    'İlgisiz':            'Kayıp',
+    'Randevu Planlandı':  'Görüşme Planlandı',
+    'Tekrar Ara':         'Fırsat',
+    'Teklif Verildi':     'Teklif Aşaması'
+};
+
+// Funnel ismi rename map: { eskiFunnelAdı → yeniFunnelAdı }
+const FUNNEL_RENAME_MAP = {
+    'Fırsat':              'Satış Akışı',
+    'İş Başvurusu':        'İş ve Taşeron',
+    'Destek / Şikayet':    'Destek'
+};
+
+// Normalize Turkish characters for comparison
 const normalizeTR = (s) => (s || '').toLowerCase()
-    .replace(/\u0130/g, 'i').replace(/\u0131/g, 'i').replace(/i\u0307/g, 'i') // İ, ı, i+combining dot
-    .replace(/\u015f/g, 's').replace(/\u0015f/g, 's') // ş
-    .replace(/\u011f/g, 'g') // ğ
-    .replace(/\u00fc/g, 'u') // ü
-    .replace(/\u00f6/g, 'o') // ö
-    .replace(/\u00e7/g, 'c') // ç
+    .replace(/\u0130/g, 'i').replace(/\u0131/g, 'i').replace(/i\u0307/g, 'i')
+    .replace(/\u015f/g, 's').replace(/\u015e/g, 's')
+    .replace(/\u011f/g, 'g').replace(/\u011e/g, 'g')
+    .replace(/\u00fc/g, 'u').replace(/\u00dc/g, 'u')
+    .replace(/\u00f6/g, 'o').replace(/\u00d6/g, 'o')
+    .replace(/\u00e7/g, 'c').replace(/\u00c7/g, 'c')
     .trim();
 
-// Get the appropriate stage list for a funnel based on its name
-const getStagesForFunnel = (funnelName) => {
-    const normalized = normalizeTR(funnelName);
-    // Check each preset key (also normalized)
-    for (const [key, stages] of Object.entries(FUNNEL_STAGE_PRESETS)) {
-        if (normalized.includes(normalizeTR(key))) return stages;
+// ────────────────────────────────────────────────────────────────────────────
+// migrateStageName: DB'deki eski aşama isimlerini yenilerine taşır
+// ────────────────────────────────────────────────────────────────────────────
+const migrateStageNames = async (funnelId) => {
+    const stages = await prisma.funnelStage.findMany({ where: { funnelId } });
+    for (const stage of stages) {
+        const newName = STAGE_RENAME_MAP[stage.name];
+        if (newName) {
+            // Eğer hedef aşama zaten varsa, conversation/contact referanslarını taşı ve eski aşamayı sil
+            const targetStage = stages.find(s => s.name === newName && s.id !== stage.id);
+            if (targetStage) {
+                // Conversation'ları hedef aşamaya taşı
+                await prisma.conversation.updateMany({
+                    where: { funnelStageId: stage.id },
+                    data: { funnelStageId: targetStage.id }
+                });
+                // Contact'ları hedef aşamaya taşı
+                await prisma.contact.updateMany({
+                    where: { funnelStageId: stage.id },
+                    data: { funnelStageId: targetStage.id }
+                });
+                // Eski aşamayı sil
+                await prisma.funnelStage.delete({ where: { id: stage.id } });
+                console.log(`🔄 [Migration] Stage "${stage.name}" → merged into "${newName}" (funnel ${funnelId})`);
+            } else {
+                // Hedef yoksa sadece aşama adını değiştir
+                await prisma.funnelStage.update({
+                    where: { id: stage.id },
+                    data: { name: newName }
+                });
+                console.log(`🔄 [Migration] Stage "${stage.name}" → renamed to "${newName}" (funnel ${funnelId})`);
+            }
+        }
     }
-    return DEFAULT_STAGES;
 };
 
-// 3 default funnels auto-seeded for every workspace on first visit
-const DEFAULT_FUNNELS = [
-    { name: 'Fırsat',           color: '#3b82f6', icon: '💰', order: 0 },
-    { name: 'İş Başvurusu',     color: '#10b981', icon: '👔', order: 1 },
-    { name: 'Destek / Şikayet', color: '#f59e0b', icon: '🎧', order: 2 }
-];
+// ────────────────────────────────────────────────────────────────────────────
+// ensureDefaultFunnels: Workspace'in eksik default akışlarını oluşturur
+// ────────────────────────────────────────────────────────────────────────────
+const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
+    const existingNames = existingFunnels.map(f => normalizeTR(f.name));
+    let created = false;
+
+    for (const def of DEFAULT_FUNNELS) {
+        const defNormalized = normalizeTR(def.name);
+        if (!existingNames.includes(defNormalized)) {
+            await prisma.funnel.create({
+                data: {
+                    workspaceId,
+                    name: def.name,
+                    color: def.color,
+                    icon: def.icon,
+                    order: def.order,
+                    stages: { create: def.stages }
+                }
+            });
+            console.log(`🌱 [Funnels] Created default funnel "${def.name}" for workspace ${workspaceId}`);
+            created = true;
+        }
+    }
+
+    return created;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// migrateFunnelNames: Eski funnel isimlerini yeni isimlere taşır
+// ────────────────────────────────────────────────────────────────────────────
+const migrateFunnelNames = async (workspaceId) => {
+    let migrated = false;
+
+    for (const [oldName, newName] of Object.entries(FUNNEL_RENAME_MAP)) {
+        const oldFunnel = await prisma.funnel.findFirst({
+            where: { workspaceId, name: oldName }
+        });
+        if (oldFunnel) {
+            // Yeni ad zaten varsa çakışma olmasın diye kontrol et
+            const newExists = await prisma.funnel.findFirst({
+                where: { workspaceId, name: newName }
+            });
+            if (!newExists) {
+                await prisma.funnel.update({
+                    where: { id: oldFunnel.id },
+                    data: { name: newName }
+                });
+                console.log(`🔄 [Funnels] Renamed "${oldName}" → "${newName}" for workspace ${workspaceId}`);
+                migrated = true;
+            }
+        }
+    }
+
+    return migrated;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// ensureCorrectStages: Akışların doğru aşamalara sahip olduğunu kontrol eder
+// Eksik aşamaları ekler ama mevcut verileri silmez
+// ────────────────────────────────────────────────────────────────────────────
+const ensureCorrectStages = async (funnel) => {
+    const normalizedName = normalizeTR(funnel.name);
+    const matchingDefault = DEFAULT_FUNNELS.find(d => normalizeTR(d.name) === normalizedName);
+    if (!matchingDefault) return false;
+
+    const currentStages = funnel.stages || [];
+    const currentNames = currentStages.map(s => normalizeTR(s.name));
+    let added = false;
+
+    for (const expectedStage of matchingDefault.stages) {
+        if (!currentNames.includes(normalizeTR(expectedStage.name))) {
+            await prisma.funnelStage.create({
+                data: {
+                    funnelId: funnel.id,
+                    name: expectedStage.name,
+                    color: expectedStage.color,
+                    order: expectedStage.order
+                }
+            });
+            console.log(`➕ [Funnels] Added missing stage "${expectedStage.name}" to funnel "${funnel.name}"`);
+            added = true;
+        }
+    }
+
+    return added;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────
+// deduplicateStages: Aynı funnel içinde aynı isimde birden fazla stage varsa
+// referansları ilk kayda taşıyıp diğerlerini siler
+// ────────────────────────────────────────────────────────────────────────────
+const deduplicateStages = async (funnelId) => {
+    const stages = await prisma.funnelStage.findMany({ where: { funnelId }, orderBy: { order: 'asc' } });
+    const seen = {};
+    let cleaned = false;
+
+    for (const stage of stages) {
+        const normalized = normalizeTR(stage.name);
+        if (seen[normalized]) {
+            // Bu isimde zaten bir stage var — referansları taşı ve bu duplicate'ı sil
+            const keepId = seen[normalized];
+            await prisma.conversation.updateMany({
+                where: { funnelStageId: stage.id },
+                data: { funnelStageId: keepId }
+            });
+            await prisma.contact.updateMany({
+                where: { funnelStageId: stage.id },
+                data: { funnelStageId: keepId }
+            });
+            await prisma.funnelStage.delete({ where: { id: stage.id } });
+            console.log(`🧹 [Dedup] Removed duplicate stage "${stage.name}" from funnel ${funnelId}`);
+            cleaned = true;
+        } else {
+            seen[normalized] = stage.id;
+        }
+    }
+    return cleaned;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// reorderStages: Default tanımına göre stage sıralamasını düzeltir
+// ────────────────────────────────────────────────────────────────────────────
+const reorderStages = async (funnel) => {
+    const normalizedName = normalizeTR(funnel.name);
+    const matchingDefault = DEFAULT_FUNNELS.find(d => normalizeTR(d.name) === normalizedName);
+    if (!matchingDefault) return false;
+
+    const currentStages = await prisma.funnelStage.findMany({ where: { funnelId: funnel.id } });
+    let reordered = false;
+
+    for (const stage of currentStages) {
+        const defaultMatch = matchingDefault.stages.find(d => normalizeTR(d.name) === normalizeTR(stage.name));
+        if (defaultMatch && stage.order !== defaultMatch.order) {
+            await prisma.funnelStage.update({
+                where: { id: stage.id },
+                data: { order: defaultMatch.order, color: defaultMatch.color }
+            });
+            reordered = true;
+        }
+    }
+    return reordered;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONTROLLERS
+// ════════════════════════════════════════════════════════════════════════════
 
 // GET /funnels/:workspaceId
 export const getFunnels = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        // Try loading with stages; fall back to without if table doesn't exist yet
         let funnels;
         try {
             funnels = await prisma.funnel.findMany({
@@ -94,72 +310,59 @@ export const getFunnels = async (req, res) => {
                 include: { stages: { orderBy: { order: 'asc' } } }
             });
 
-            // ── AUTO-SEED: if workspace has NO funnels, create the 3 defaults ──
-            if (funnels.length === 0) {
-                console.log(`🌱 [Funnels] Seeding default funnels for workspace ${workspaceId}`);
-                for (const def of DEFAULT_FUNNELS) {
-                    const stages = getStagesForFunnel(def.name);
-                    await prisma.funnel.create({
-                        data: {
-                            workspaceId,
-                            name: def.name,
-                            color: def.color,
-                            icon: def.icon,
-                            order: def.order,
-                            stages: { create: stages }
-                        }
-                    });
+            // ── 1) Migrate eski funnel isimlerini ──
+            const didRenameFunnels = await migrateFunnelNames(workspaceId);
+
+            // ── 2) Migrate eski aşama isimlerini ──
+            if (funnels.length > 0) {
+                for (const funnel of funnels) {
+                    await migrateStageNames(funnel.id);
                 }
-                funnels = await prisma.funnel.findMany({
-                    where: { workspaceId },
-                    orderBy: { order: 'asc' },
-                    include: { stages: { orderBy: { order: 'asc' } } }
-                });
-                console.log(`✅ [Funnels] Seeded ${funnels.length} default funnels`);
             }
 
-            // ── MIGRATE: rename 'Satış Akışı' → 'Fırsat' in existing workspaces ──
-            const satisFunnel = funnels.find(f => f.name === 'Satış Akışı');
-            if (satisFunnel) {
-                await prisma.funnel.update({
-                    where: { id: satisFunnel.id },
-                    data: { name: 'Fırsat' }
-                });
-                // Delete existing stages so the re-seed loop below can create the correct 12
-                await prisma.funnelStage.deleteMany({ where: { funnelId: satisFunnel.id } });
-                // Refresh list so subsequent loops see the updated name & empty stages
-                funnels = await prisma.funnel.findMany({
-                    where: { workspaceId },
-                    orderBy: { order: 'asc' },
-                    include: { stages: { orderBy: { order: 'asc' } } }
-                });
-                console.log(`🔄 [Funnels] Renamed 'Satış Akışı' → 'Fırsat' for workspace ${workspaceId}`);
-            }
-
-            // Auto-seed stages: if a funnel exists but has wrong stage count, re-seed
-            let needsRefresh = false;
+            // ── 3) Duplicate stage'leri temizle ──
+            let didDedup = false;
             for (const funnel of funnels) {
-                const expectedStages = getStagesForFunnel(funnel.name);
-                const needsReset = funnel.stages.length === 0 || funnel.stages.length !== expectedStages.length;
-                if (needsReset) {
-                    if (funnel.stages.length > 0) {
-                        await prisma.funnelStage.deleteMany({ where: { funnelId: funnel.id } });
-                    }
-                    await prisma.funnelStage.createMany({
-                        data: expectedStages.map(s => ({ ...s, funnelId: funnel.id }))
-                    });
-                    needsRefresh = true;
-                }
+                const cleaned = await deduplicateStages(funnel.id);
+                if (cleaned) didDedup = true;
             }
-            if (needsRefresh) {
+
+            // ── 4) Yeniden yükle (rename/dedup sonrasında) ──
+            if (didRenameFunnels || didDedup) {
                 funnels = await prisma.funnel.findMany({
                     where: { workspaceId },
                     orderBy: { order: 'asc' },
                     include: { stages: { orderBy: { order: 'asc' } } }
                 });
             }
+
+            // ── 5) AUTO-SEED: eksik default akışları oluştur ──
+            const didCreate = await ensureDefaultFunnels(workspaceId, funnels);
+
+            // ── 6) Eksik aşamaları ekle ──
+            let didAddStages = false;
+            for (const funnel of funnels) {
+                const added = await ensureCorrectStages(funnel);
+                if (added) didAddStages = true;
+            }
+
+            // ── 7) Stage sıralamasını düzelt ──
+            let didReorder = false;
+            for (const funnel of funnels) {
+                const reordered = await reorderStages(funnel);
+                if (reordered) didReorder = true;
+            }
+
+            // ── 8) Son hali yükle ──
+            if (didCreate || didAddStages || didRenameFunnels || didDedup || didReorder) {
+                funnels = await prisma.funnel.findMany({
+                    where: { workspaceId },
+                    orderBy: { order: 'asc' },
+                    include: { stages: { orderBy: { order: 'asc' } } }
+                });
+            }
+
         } catch (stageErr) {
-            // funnel_stages table may not exist yet — load without stages
             console.warn('⚠️ FunnelStage table not available, loading funnels without stages:', stageErr.message);
             funnels = await prisma.funnel.findMany({
                 where: { workspaceId },
@@ -171,7 +374,7 @@ export const getFunnels = async (req, res) => {
         res.json({ funnels });
     } catch (error) {
         console.error('Get funnels error:', error);
-        res.status(500).json({ error: 'Funnellar alınamadı' });
+        res.status(500).json({ error: 'Akışlar alınamadı' });
     }
 };
 
@@ -179,11 +382,20 @@ export const getFunnels = async (req, res) => {
 export const createFunnel = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, color, icon } = req.body;
-        if (!name?.trim()) return res.status(400).json({ error: 'Funnel adı zorunludur' });
+        const { name, color, icon, assignedUserId, assignedTeamId } = req.body;
+        if (!name?.trim()) return res.status(400).json({ error: 'Akış adı zorunludur' });
 
         const maxOrder = await prisma.funnel.aggregate({ where: { workspaceId }, _max: { order: true } });
         const nextOrder = (maxOrder._max.order || 0) + 1;
+
+        // Eşleşen default preset varsa onun aşamalarını kullan
+        const normalizedName = normalizeTR(name);
+        const matchingDefault = DEFAULT_FUNNELS.find(d => normalizeTR(d.name) === normalizedName);
+        const stages = matchingDefault ? matchingDefault.stages : [
+            { name: 'Yeni',     color: '#3b82f6', order: 0 },
+            { name: 'İşlemde',  color: '#f59e0b', order: 1 },
+            { name: 'Kapandı',  color: '#10b981', order: 2 }
+        ];
 
         let funnel;
         try {
@@ -194,19 +406,22 @@ export const createFunnel = async (req, res) => {
                     color: color || '#3b82f6',
                     icon: icon || '📁',
                     order: nextOrder,
-                    stages: { create: getStagesForFunnel(name) }
+                    assignedUserId: assignedUserId || null,
+                    assignedTeamId: assignedTeamId || null,
+                    stages: { create: stages }
                 },
                 include: { stages: { orderBy: { order: 'asc' } } }
             });
         } catch {
-            // stages table may not exist — create without stages
             funnel = await prisma.funnel.create({
                 data: {
                     workspaceId,
                     name: name.trim(),
                     color: color || '#3b82f6',
                     icon: icon || '📁',
-                    order: nextOrder
+                    order: nextOrder,
+                    assignedUserId: assignedUserId || null,
+                    assignedTeamId: assignedTeamId || null
                 }
             });
             funnel.stages = [];
@@ -214,7 +429,7 @@ export const createFunnel = async (req, res) => {
         res.status(201).json({ funnel });
     } catch (error) {
         console.error('Create funnel error:', error);
-        res.status(500).json({ error: 'Funnel oluşturulamadı' });
+        res.status(500).json({ error: 'Akış oluşturulamadı' });
     }
 };
 
@@ -222,15 +437,17 @@ export const createFunnel = async (req, res) => {
 export const updateFunnel = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color, icon, order } = req.body;
+        const { name, color, icon, order, assignedUserId, assignedTeamId } = req.body;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
-        if (!existing) return res.status(404).json({ error: 'Funnel bulunamadı' });
+        if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
 
         const updateData = {
             ...(name && { name: name.trim() }),
             ...(color && { color }),
             ...(icon && { icon }),
-            ...(order !== undefined && { order })
+            ...(order !== undefined && { order }),
+            ...(assignedUserId !== undefined && { assignedUserId }),
+            ...(assignedTeamId !== undefined && { assignedTeamId })
         };
 
         let funnel;
@@ -250,7 +467,7 @@ export const updateFunnel = async (req, res) => {
         res.json({ funnel });
     } catch (error) {
         console.error('Update funnel error:', error);
-        res.status(500).json({ error: 'Funnel güncellenemedi' });
+        res.status(500).json({ error: 'Akış güncellenemedi' });
     }
 };
 
@@ -259,12 +476,12 @@ export const deleteFunnel = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
-        if (!existing) return res.status(404).json({ error: 'Funnel bulunamadı' });
+        if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
         await prisma.funnel.delete({ where: { id: funnelId } });
         res.json({ success: true });
     } catch (error) {
         console.error('Delete funnel error:', error);
-        res.status(500).json({ error: 'Funnel silinemedi' });
+        res.status(500).json({ error: 'Akış silinemedi' });
     }
 };
 
@@ -274,17 +491,24 @@ export const deleteFunnel = async (req, res) => {
 export const createStage = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color } = req.body;
+        const { name, color, assignedUserId, assignedTeamId } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'Durum adı zorunludur' });
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
-        if (!funnel) return res.status(404).json({ error: 'Funnel bulunamadı' });
+        if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
 
         const maxOrder = await prisma.funnelStage.aggregate({ where: { funnelId }, _max: { order: true } });
         const nextOrder = (maxOrder._max.order ?? -1) + 1;
 
         const stage = await prisma.funnelStage.create({
-            data: { funnelId, name: name.trim(), color: color || '#6b7280', order: nextOrder }
+            data: { 
+                funnelId, 
+                name: name.trim(), 
+                color: color || '#6b7280', 
+                order: nextOrder,
+                assignedUserId: assignedUserId || null,
+                assignedTeamId: assignedTeamId || null
+            }
         });
         res.status(201).json({ stage });
     } catch (error) {
@@ -297,10 +521,10 @@ export const createStage = async (req, res) => {
 export const updateStage = async (req, res) => {
     try {
         const { workspaceId, funnelId, stageId } = req.params;
-        const { name, color, order } = req.body;
+        const { name, color, order, assignedUserId, assignedTeamId } = req.body;
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
-        if (!funnel) return res.status(404).json({ error: 'Funnel bulunamadı' });
+        if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
 
         const existing = await prisma.funnelStage.findFirst({ where: { id: stageId, funnelId } });
         if (!existing) return res.status(404).json({ error: 'Durum bulunamadı' });
@@ -310,7 +534,9 @@ export const updateStage = async (req, res) => {
             data: {
                 ...(name && { name: name.trim() }),
                 ...(color && { color }),
-                ...(order !== undefined && { order })
+                ...(order !== undefined && { order }),
+                ...(assignedUserId !== undefined && { assignedUserId }),
+                ...(assignedTeamId !== undefined && { assignedTeamId })
             }
         });
         res.json({ stage });
@@ -326,7 +552,7 @@ export const deleteStage = async (req, res) => {
         const { workspaceId, funnelId, stageId } = req.params;
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
-        if (!funnel) return res.status(404).json({ error: 'Funnel bulunamadı' });
+        if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
 
         const existing = await prisma.funnelStage.findFirst({ where: { id: stageId, funnelId } });
         if (!existing) return res.status(404).json({ error: 'Durum bulunamadı' });
@@ -345,28 +571,36 @@ export const deleteStage = async (req, res) => {
     }
 };
 
-// ── Helper: auto-assign the Fırsat funnel to a new conversation ──
-// Call fire-and-forget from webhook handlers: autoAssignDefaultFunnel(workspaceId, conversationId)
+// ── Helper: auto-assign the Satış Akışı funnel to a new conversation ──
 export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
     try {
-        // Skip if already has a funnel
         const conv = await prisma.conversation.findUnique({
             where: { id: conversationId },
             select: { funnelType: true }
         });
-        if (!conv || conv.funnelType) return; // already set
+        if (!conv || conv.funnelType) return;
 
-        // Find the 'Fırsat' funnel for this workspace
-        const fursatFunnel = await prisma.funnel.findFirst({
-            where: { workspaceId, name: 'Fırsat' }
+        // Önce "Satış Akışı", yoksa "Genel CRM (Otomatik İşlem)" akışını bul
+        let defaultFunnel = await prisma.funnel.findFirst({
+            where: { workspaceId, name: 'Satış Akışı' }
         });
-        if (!fursatFunnel) return;
+        if (!defaultFunnel) {
+            defaultFunnel = await prisma.funnel.findFirst({
+                where: { workspaceId, name: 'Genel CRM (Otomatik İşlem)' }
+            });
+        }
+        if (!defaultFunnel) {
+            defaultFunnel = await prisma.funnel.findFirst({
+                where: { workspaceId }
+            });
+        }
+        if (!defaultFunnel) return;
 
         await prisma.conversation.update({
             where: { id: conversationId },
-            data: { funnelType: fursatFunnel.id }
+            data: { funnelType: defaultFunnel.id }
         });
-        console.log(`✅ [AutoFunnel] Assigned Fırsat funnel to conversation ${conversationId}`);
+        console.log(`✅ [AutoFunnel] Assigned "${defaultFunnel.name}" funnel to conversation ${conversationId}`);
     } catch (err) {
         console.error('❌ [AutoFunnel] Error:', err.message);
     }

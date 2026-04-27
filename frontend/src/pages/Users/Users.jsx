@@ -484,7 +484,8 @@ const UsersTeams = () => {
 
         const type = e.dataTransfer.getData('type');
 
-        if (type === 'bot' && dragBot.current) {
+        // Bot drop: type 'bot' olabilir veya dataTransfer okunduktan sonra boş kalabilir (re-entrant call)
+        if ((type === 'bot' || dragBot.current) && dragBot.current) {
             const bot = dragBot.current;
             dragBot.current = null;
             const alreadyIn = team.members?.some(m => m.botId === bot.id);
@@ -528,7 +529,7 @@ const UsersTeams = () => {
         e.stopPropagation();
         setDragOverTeamParent(null);
         const type = e.dataTransfer.getData('type');
-        if (type === 'user') return handleTeamDrop(e, targetTeam);
+        if (type === 'user' || type === 'bot') return handleTeamDrop(e, targetTeam);
         if (type !== 'team' || !dragTeamRef.current) return;
         const moved = dragTeamRef.current;
         dragTeamRef.current = null;
@@ -670,8 +671,8 @@ const UsersTeams = () => {
                 <div className="ut-header-left">
                     <Layers size={20} className="ut-header-icon" />
                     <div>
-                        <h1 className="ut-page-title">Users & Teams</h1>
-                        <span className="ut-page-subtitle">Kullanıcıları takımlara sürükleyip bırakarak atayın</span>
+                        <h1 className="ut-page-title">Takımlar ve Temsilciler</h1>
+                        <span className="ut-page-subtitle">Kullanıcıları ve AI asistanları takımlara sürükleyip bırakarak atayın</span>
                     </div>
                 </div>
                 <div className="ut-header-actions">
@@ -690,7 +691,7 @@ const UsersTeams = () => {
                 <div className="ut-panel ut-users-panel">
                     <div className="ut-panel-header">
                         <UsersIcon size={16} />
-                        <span>Users & Asistanlar</span>
+                        <span>Temsilciler</span>
                         <span className="ut-panel-count">{members.length + bots.length}</span>
                     </div>
                     <div className="ut-panel-body">
@@ -793,7 +794,7 @@ const UsersTeams = () => {
                 <div className="ut-panel ut-teams-panel">
                     <div className="ut-panel-header">
                         <Shield size={16} />
-                        <span>Teams</span>
+                        <span>Takımlar</span>
                         <span className="ut-panel-count">{teams.length}</span>
                     </div>
                 <div className="ut-panel-body ut-teams-grid">

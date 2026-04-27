@@ -3,6 +3,7 @@ import prisma from '../lib/prisma.js';
 import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
+import { maskSensitiveInfo } from '../utils/masking.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -236,8 +237,16 @@ export const getConversations = async (req, res) => {
             console.log(`📋 [MINE] Where clause:`, JSON.stringify(where, null, 2));
         }
 
+        // Mask sensitive info in preview messages
+        const maskedConversations = conversations.map(c => {
+            if (c.messages && c.messages.length > 0) {
+                c.messages[0].content = maskSensitiveInfo(c.messages[0].content);
+            }
+            return c;
+        });
+
         res.json({
-            conversations,
+            conversations: maskedConversations,
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),
@@ -427,6 +436,14 @@ export const getConversation = async (req, res) => {
         }
 
         console.log(`✅ [getConversation] Returning conversation with ${conversation.messages?.length || 0} messages, ${conversation.internalNotes?.length || 0} notes`);
+
+        if (conversation.messages) {
+            conversation.messages = conversation.messages.map(msg => ({
+                ...msg,
+                content: maskSensitiveInfo(msg.content)
+            }));
+        }
+
         res.json({ conversation });
     } catch (error) {
         console.error('Get conversation error:', error);
@@ -528,7 +545,7 @@ export const sendMessage = async (req, res) => {
                 const fbResponse = await axios.post(
                     `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
                     {
-                        recipient: { id: conversation.contact.facebookId },
+                        recipient: { id: String(conversation.contact.facebookId) },
                         message: { text: content }
                     },
                     {

@@ -123,14 +123,14 @@ export const login = async (req, res) => {
         });
 
         if (!user || !user.password) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'E-posta veya şifre hatalı' });
         }
 
         // Check password
         const isValidPassword = await bcrypt.compare(password, user.password);
 
         if (!isValidPassword) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(401).json({ error: 'E-posta veya şifre hatalı' });
         }
 
         // Generate token

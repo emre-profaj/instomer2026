@@ -1,6 +1,6 @@
 .notification-banner {
     position: fixed;
-    bottom: 24px;
+    bottom: 90px;
     right: 24px;
     display: flex;
     align-items: center;
@@ -10,7 +10,7 @@
     background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
     border-radius: 12px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    z-index: 9999;
+    z-index: 99999;
     animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     max-width: 420px;
 }
@@ -136,7 +136,7 @@
 /* Mobile responsive */
 @media (max-width: 480px) {
     .notification-banner {
-        bottom: 16px;
+        bottom: 80px;
         right: 16px;
         left: 16px;
         max-width: none;

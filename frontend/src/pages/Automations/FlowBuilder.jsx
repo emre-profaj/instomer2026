@@ -410,7 +410,7 @@ function SettingsPanel({ step, onChange, onClose, templates = [] }) {
             {/* CONVERT_TO_OPP */}
             {step.type === 'CONVERT_TO_OPP' && (
                 <div className="fb-field-group">
-                    <label>Hedef Funnel Aşaması</label>
+                    <label>Hedef Akış Aşaması</label>
                     <input
                         type="text"
                         placeholder="örn: Fırsat / Yeni Teklif"

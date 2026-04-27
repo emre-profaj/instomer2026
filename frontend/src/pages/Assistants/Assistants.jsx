@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
-import { aiAPI, workspaceAPI } from '../../services/api';
-import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2 } from 'lucide-react';
+import { aiAPI, workspaceAPI, automationAPI } from '../../services/api';
+import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import BotRoutingSettings from '../../components/Settings/BotRoutingSettings';
+import BotToolsSettings from '../../components/Settings/BotToolsSettings';
+import AppointmentBotConfig from '../../components/Settings/AppointmentBotConfig';
 import './Assistants.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
@@ -121,14 +123,38 @@ const BotDocumentManager = ({ workspaceId, botId }) => {
 };
 
 // Sub-component for individual Bot Item
-const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
+const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => {
     const { t } = useTranslation();
     const [name, setName] = useState(bot.name || '');
     const [role, setRole] = useState(bot.role || '');
     const [isEditingTitle, setIsEditingTitle] = useState(false);
+    
+    const [isActive, setIsActive] = useState(bot.isActive !== undefined ? bot.isActive : true);
+
+    const handleToggleStatus = async () => {
+        try {
+            const newStatus = !isActive;
+            setIsActive(newStatus);
+            await aiAPI.toggleStatus(workspaceId, bot.id, newStatus);
+            if (onRefresh) onRefresh();
+        } catch (error) {
+            console.error('Update status error:', error);
+            setIsActive(!newStatus); // revert
+            alert('Durum güncellenemedi.');
+        }
+    };
 
     const [prompt, setPrompt] = useState(bot.prompt || '');
     const [updating, setUpdating] = useState(false);
+
+    // Automations state
+    const [selectedAutomations, setSelectedAutomations] = useState(() => {
+        try {
+            return bot.automations ? JSON.parse(bot.automations) : [];
+        } catch {
+            return [];
+        }
+    });
 
     // Scheduler states
     const [schedulerEnabled, setSchedulerEnabled] = useState(bot.schedulerEnabled || false);
@@ -159,6 +185,22 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
     const [dailyReminderHours, setDailyReminderHours] = useState(bot.dailyReminderHours || 24);
     const [dailyReminderMessage, setDailyReminderMessage] = useState(bot.dailyReminderMessage || '');
 
+    // Routing configuration
+    const [routingConfig, setRoutingConfig] = useState(() => {
+        let questions = [];
+        let rules = [];
+        try { questions = JSON.parse(bot.routingQuestions || '[]'); } catch (e) { }
+        try { rules = JSON.parse(bot.routingRules || '[]'); } catch (e) { }
+        return {
+            routingEnabled: bot.routingEnabled || false,
+            routingQuestions: questions,
+            routingDefaultTeamId: bot.routingDefaultTeamId || '',
+            routingDefaultUserId: bot.routingDefaultUserId || '',
+            routingConditionalEnabled: bot.routingConditionalEnabled || false,
+            routingRules: rules
+        };
+    });
+
     useEffect(() => {
         setName(bot.name || '');
         setRole(bot.role || '');
@@ -182,6 +224,25 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
         setDailyReminderEnabled(bot.dailyReminderEnabled || false);
         setDailyReminderHours(bot.dailyReminderHours || 24);
         setDailyReminderMessage(bot.dailyReminderMessage || '');
+
+        let questions = [];
+        let rules = [];
+        try { questions = JSON.parse(bot.routingQuestions || '[]'); } catch (e) { }
+        try { rules = JSON.parse(bot.routingRules || '[]'); } catch (e) { }
+        setRoutingConfig({
+            routingEnabled: bot.routingEnabled || false,
+            routingQuestions: questions,
+            routingDefaultTeamId: bot.routingDefaultTeamId || '',
+            routingDefaultUserId: bot.routingDefaultUserId || '',
+            routingConditionalEnabled: bot.routingConditionalEnabled || false,
+            routingRules: rules
+        });
+        
+        try {
+            setSelectedAutomations(bot.automations ? JSON.parse(bot.automations) : []);
+        } catch {
+            setSelectedAutomations([]);
+        }
     }, [bot]);
 
     const daysOfWeek = [
@@ -227,7 +288,16 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                 // Daily reminder
                 dailyReminderEnabled,
                 dailyReminderHours: dailyReminderEnabled ? dailyReminderHours : 24,
-                dailyReminderMessage: dailyReminderEnabled ? dailyReminderMessage : null
+                dailyReminderMessage: dailyReminderEnabled ? dailyReminderMessage : null,
+                // Routing Config
+                routingEnabled: routingConfig.routingEnabled,
+                routingQuestions: routingConfig.routingEnabled ? JSON.stringify(routingConfig.routingQuestions) : null,
+                routingDefaultTeamId: routingConfig.routingEnabled ? routingConfig.routingDefaultTeamId || null : null,
+                routingDefaultUserId: routingConfig.routingEnabled ? routingConfig.routingDefaultUserId || null : null,
+                routingConditionalEnabled: routingConfig.routingConditionalEnabled,
+                routingRules: routingConfig.routingConditionalEnabled ? JSON.stringify(routingConfig.routingRules) : null,
+                // Linked automations
+                automations: selectedAutomations.length > 0 ? selectedAutomations : null
             });
             alert('Bot ayarları güncellendi!');
             if (onRefresh) onRefresh();
@@ -243,9 +313,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
         <div className="bot-card">
             <div className="bot-card-header">
                 <div className="bot-info">
-                    <div className="bot-avatar">
-                        <Bot size={24} />
-                    </div>
+                <div className="bot-avatar">
+                    {bot.botType === 'APPOINTMENT' ? <Stethoscope size={24} /> : <Bot size={24} />}
+                </div>
                     <div className="bot-title-group">
                         {isEditingTitle ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -270,12 +340,25 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                         ) : (
                             <>
                                 <h4>{name}</h4>
-                                <span className="bot-role-badge">{role}</span>
+                                <span className="bot-role-badge">{bot.botType === 'APPOINTMENT' ? '🏥 Randevu Asistanı' : role}</span>
                             </>
                         )}
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '8px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: isActive ? '#10b981' : '#64748b' }}>
+                            {isActive ? 'Aktif' : 'Pasif'}
+                        </span>
+                        <label className="toggle-switch" title={isActive ? "Botu Pasife Al" : "Botu Aktifleştir"}>
+                            <input
+                                type="checkbox"
+                                checked={isActive}
+                                onChange={handleToggleStatus}
+                            />
+                            <span className="toggle-slider"></span>
+                        </label>
+                    </div>
                     <button
                         className={`btn-modern ${isEditingTitle ? 'btn-primary' : 'btn-outline-primary'}`}
                         onClick={() => {
@@ -584,6 +667,63 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
                 )}
             </div>
 
+            <BotRoutingSettings
+                routingConfig={routingConfig}
+                onChange={setRoutingConfig}
+            />
+
+            <BotToolsSettings 
+                botId={bot.id} 
+                workspaceId={workspaceId} 
+            />
+
+            {/* Appointment Bot Config — Branş & Doktor Yönetimi */}
+            {bot.botType === 'APPOINTMENT' && (
+                <AppointmentBotConfig workspaceId={workspaceId} />
+            )}
+
+            {/* Bot Automations Section */}
+            <div className="bot-settings-section">
+                <div className="section-header-toggle">
+                    <div className="section-title-group">
+                        <Zap size={18} />
+                        <span>Bot Otomasyonları</span>
+                    </div>
+                </div>
+                <div className="section-content">
+                    <p className="section-description">Bu asistanın dahil olacağı otomasyonları seçin.</p>
+                    
+                    {(!automationsList || automationsList.length === 0) ? (
+                        <p className="text-muted text-sm">Henüz otomasyon bulunmuyor. Otomasyonlar sayfasından oluşturabilirsiniz.</p>
+                    ) : (
+                        <div className="action-cards" style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                            {automationsList.map(auto => {
+                                const isSelected = selectedAutomations.includes(auto.id);
+                                return (
+                                    <label key={auto.id} className={`action-card ${isSelected ? 'selected' : ''}`} style={{ width: 'calc(50% - 8px)' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setSelectedAutomations(prev => [...prev, auto.id]);
+                                                } else {
+                                                    setSelectedAutomations(prev => prev.filter(id => id !== auto.id));
+                                                }
+                                            }}
+                                        />
+                                        <span className="action-icon">⚡</span>
+                                        <span className="action-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {auto.name}
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', marginBottom: '16px' }}>
                 <button
                     className="btn-modern btn-primary"
@@ -601,77 +741,6 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh }) => {
     );
 };
 
-// Sub-component for Bot Routing Tab Item
-const BotRoutingCard = ({ bot, workspaceId, onRefresh }) => {
-    const [routingConfig, setRoutingConfig] = useState(() => {
-        let questions = [];
-        let rules = [];
-        try { questions = JSON.parse(bot.routingQuestions || '[]'); } catch (e) { }
-        try { rules = JSON.parse(bot.routingRules || '[]'); } catch (e) { }
-        return {
-            routingEnabled: bot.routingEnabled || false,
-            routingQuestions: questions,
-            routingDefaultTeamId: bot.routingDefaultTeamId || '',
-            routingDefaultUserId: bot.routingDefaultUserId || '',
-            routingConditionalEnabled: bot.routingConditionalEnabled || false,
-            routingRules: rules
-        };
-    });
-    const [saving, setSaving] = useState(false);
-
-    const handleSaveRouting = async () => {
-        try {
-            setSaving(true);
-            await aiAPI.updateBot(workspaceId, bot.id, {
-                routingEnabled: routingConfig.routingEnabled,
-                routingQuestions: routingConfig.routingEnabled ? JSON.stringify(routingConfig.routingQuestions) : null,
-                routingDefaultTeamId: routingConfig.routingEnabled ? routingConfig.routingDefaultTeamId || null : null,
-                routingDefaultUserId: routingConfig.routingEnabled ? routingConfig.routingDefaultUserId || null : null,
-                routingConditionalEnabled: routingConfig.routingConditionalEnabled,
-                routingRules: routingConfig.routingConditionalEnabled ? JSON.stringify(routingConfig.routingRules) : null
-            });
-            alert('Yönlendirme ayarları kaydedildi!');
-            if (onRefresh) onRefresh();
-        } catch (err) {
-            console.error('Routing save error:', err);
-            alert('Hata oluştu.');
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div className="routing-card">
-            <div className="routing-card-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Bot size={20} color="#6366f1" />
-                    <div>
-                        <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '600' }}>{bot.name}</h4>
-                        <span className="bot-role-badge">{bot.role}</span>
-                    </div>
-                </div>
-                {routingConfig.routingEnabled && (
-                    <span className="status-badge active" style={{ fontSize: '11px' }}>Active</span>
-                )}
-            </div>
-            <BotRoutingSettings
-                routingConfig={routingConfig}
-                onChange={setRoutingConfig}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <button
-                    className="btn-modern btn-primary"
-                    onClick={handleSaveRouting}
-                    disabled={saving}
-                    style={{ fontSize: '13px', padding: '8px 16px' }}
-                >
-                    <Save size={14} />
-                    {saving ? 'Kaydediliyor...' : 'Kaydet'}
-                </button>
-            </div>
-        </div>
-    );
-};
 
 const Assistants = () => {
     const { t } = useTranslation();
@@ -679,8 +748,8 @@ const Assistants = () => {
     const workspaceId = currentWorkspace?.id;
 
     const [bots, setBots] = useState([]);
+    const [automationsList, setAutomationsList] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState('assistants');
 
     // Bot form state
     const [showAddBot, setShowAddBot] = useState(false);
@@ -691,6 +760,7 @@ const Assistants = () => {
     const [newFacebookEnabled, setNewFacebookEnabled] = useState(false);
     const [newInstagramEnabled, setNewInstagramEnabled] = useState(false);
     const [newWidgetEnabled, setNewWidgetEnabled] = useState(false);
+    const [newBotType, setNewBotType] = useState('CHATS');
 
     // AI Usage State
     const [aiUsage, setAiUsage] = useState(null);
@@ -700,8 +770,19 @@ const Assistants = () => {
         if (workspaceId) {
             loadBots();
             loadAiUsage();
+            loadAutomations();
         }
     }, [workspaceId]);
+
+    const loadAutomations = async () => {
+        if (!workspaceId) return;
+        try {
+            const res = await automationAPI.getAutomations(workspaceId);
+            setAutomationsList(res.data.automations || []);
+        } catch (error) {
+            console.error('Automations load error:', error);
+        }
+    };
 
     const loadAiUsage = async () => {
         if (!workspaceId) return;
@@ -735,7 +816,8 @@ const Assistants = () => {
             await aiAPI.createBot(workspaceId, {
                 name: newBotName,
                 role: newBotRole,
-                prompt: newBotPrompt
+                prompt: newBotPrompt,
+                botType: newBotType
             });
             setShowAddBot(false);
             setNewBotName('');
@@ -743,6 +825,7 @@ const Assistants = () => {
             setNewWhatsappEnabled(false);
             setNewFacebookEnabled(false);
             setNewInstagramEnabled(false);
+            setNewBotType('CHATS');
             loadBots();
         } catch (error) {
             console.error('Error creating bot:', error);
@@ -783,38 +866,21 @@ const Assistants = () => {
                 <div style={{ display: 'flex', gap: '12px' }}>
                     {!showAddBot && (
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            {activeTab === 'assistants' && (
-                                <button
-                                    className="btn-modern btn-primary"
-                                    onClick={() => setShowAddBot(true)}
-                                >
-                                    <Plus size={18} />
-                                    Yeni Asistan Ekle
-                                </button>
-                            )}
+                            <button
+                                className="btn-modern btn-primary"
+                                onClick={() => setShowAddBot(true)}
+                            >
+                                <Plus size={18} />
+                                Yeni Asistan Ekle
+                            </button>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="assistants-tabs">
-                <button
-                    className={`tab-btn ${activeTab === 'assistants' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('assistants')}
-                >
-                    <Bot size={16} /> Asistanlar
-                </button>
-                <button
-                    className={`tab-btn ${activeTab === 'routing' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('routing')}
-                >
-                    <GitBranch size={16} /> Yönlendirme
-                </button>
-            </div>
 
-            {activeTab === 'assistants' && (
-                <>
+
+
                     {/* AI Usage Limit Card */}
                     <div className="ai-usage-card-wrapper">
                         {aiUsageLoading ? (
@@ -890,13 +956,45 @@ const Assistants = () => {
                                 </div>
 
                                 <div className="form-group" style={{ marginBottom: '16px' }}>
+                                    <label className="form-label">Asistan Tipi</label>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            className={`btn-modern ${newBotType === 'CHATS' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            style={{ flex: 1, padding: '10px', fontSize: '13px' }}
+                                            onClick={() => {
+                                                setNewBotType('CHATS');
+                                                setNewBotPrompt('Sen yardımsever bir müşteri temsilcisisin.');
+                                                setNewBotRole('Teknik Servis');
+                                            }}
+                                        >
+                                            <Bot size={16} style={{ marginRight: '6px' }} />
+                                            Sohbet Asistanı
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn-modern ${newBotType === 'APPOINTMENT' ? 'btn-primary' : 'btn-outline-primary'}`}
+                                            style={{ flex: 1, padding: '10px', fontSize: '13px' }}
+                                            onClick={() => {
+                                                setNewBotType('APPOINTMENT');
+                                                setNewBotRole('Randevu Asistanı');
+                                                setNewBotPrompt(`Sen bir randevu asistanısın. Görevin müşterilerden randevu bilgilerini toplamak ve randevu oluşturmaktır.\n\n📋 RANDEVU AKIŞI:\n1. Müşteri randevu almak istediğini belirttiğinde, nazikçe gerekli bilgileri topla\n2. Sırasıyla: Hasta adı, Telefon, Branş, Şikayet/İşlem, Doktor tercihi, Tarih/Saat\n3. Müsait saatleri kontrol et ve öner\n4. Onay alınca randevuyu oluştur\n\n⚠️ Kurallar:\n- Zaten bilinen bilgileri tekrar sorma\n- Kısa ve net ol\n- Sorun olursa insana aktar`);
+                                            }}
+                                        >
+                                            <Stethoscope size={16} style={{ marginRight: '6px' }} />
+                                            Randevu Asistanı
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="form-group" style={{ marginBottom: '16px' }}>
                                     <label className="form-label">Assistant Name</label>
                                     <input
                                         type="text"
                                         className="input-modern"
                                         value={newBotName}
                                         onChange={(e) => setNewBotName(e.target.value)}
-                                        placeholder="Örn: Satış Temsilcisi Ali"
+                                        placeholder={newBotType === 'APPOINTMENT' ? 'Örn: Randevu Asistanı' : 'Örn: Satış Temsilcisi Ali'}
                                     />
                                 </div>
                                 <div className="form-group" style={{ marginBottom: '16px' }}>
@@ -909,6 +1007,7 @@ const Assistants = () => {
                                         <option value="Teknik Servis">Teknik Servis</option>
                                         <option value="Satış">Satış</option>
                                         <option value="Bilgi">Bilgi / Info</option>
+                                        <option value="Randevu Alma">Randevu Alma</option>
                                         <option value="Diğer">Diğer</option>
                                     </select>
                                 </div>
@@ -955,40 +1054,13 @@ const Assistants = () => {
                                         workspaceId={workspaceId}
                                         onDelete={handleDeleteBot}
                                         onRefresh={loadBots}
+                                        automationsList={automationsList}
                                     />
                                 ))}
                             </div>
                         )}
                     </div>
-                </>
-            )}
 
-            {/* Routing Tab */}
-            {activeTab === 'routing' && (
-                <div className="routing-tab-content">
-                    <div className="assistants-info-box">
-                        <p>🔄 Her bot için yönlendirme ayarlarını ayrı ayrı yapılandırabilirsiniz. Bot müşteriden bilgi topladıktan sonra belirlenen takıma otomatik atama yapar.</p>
-                    </div>
-                    {bots.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
-                            <GitBranch size={48} color="#9ca3af" style={{ marginBottom: '16px' }} />
-                            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Henüz Asistan Yok</h3>
-                            <p className="text-muted">Yönlendirme yapılandırmak için önce bir asistan oluşturun.</p>
-                        </div>
-                    ) : (
-                        <div className="routing-cards-grid">
-                            {bots.map(bot => (
-                                <BotRoutingCard
-                                    key={bot.id}
-                                    bot={bot}
-                                    workspaceId={workspaceId}
-                                    onRefresh={loadBots}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
 
             {/* Spacer */}
             <div style={{ height: '100px', width: '100%' }}></div>

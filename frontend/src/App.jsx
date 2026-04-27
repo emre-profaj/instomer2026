@@ -84,8 +84,8 @@ function App() {
               <Route path="assistants" element={<Assistants />} />
               <Route path="channels" element={<Channels />} />
 
-              <Route path="users" element={<Users />} />
-              <Route path="teams" element={<Navigate to="/users" replace />} />
+              <Route path="teams" element={<Users />} />
+              <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="analytics" element={<Analytics />} />

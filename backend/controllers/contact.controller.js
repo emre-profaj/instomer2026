@@ -622,12 +622,16 @@ export const bulkImportContacts = async (req, res) => {
                 });
 
                 if (existing) {
-                    // If existing, set importGroup if not already set
-                    if (tag && !existing.importGroup) {
-                        await prisma.contact.update({
-                            where: { id: existing.id },
-                            data: { importGroup: tag }
-                        });
+                    if (tag) {
+                        let existingTags = [];
+                        try { existingTags = JSON.parse(existing.tags || '[]'); } catch(e){}
+                        if (!existingTags.includes(tag)) {
+                            existingTags.push(tag);
+                            await prisma.contact.update({
+                                where: { id: existing.id },
+                                data: { tags: JSON.stringify(existingTags) }
+                            });
+                        }
                     }
                     skipped++;
                     continue;
@@ -646,6 +650,7 @@ export const bulkImportContacts = async (req, res) => {
                     }]);
                 }
 
+                const tagsArray = tag ? [tag] : [];
                 const contact = await prisma.contact.create({
                     data: {
                         workspaceId,
@@ -653,7 +658,7 @@ export const bulkImportContacts = async (req, res) => {
                         phone: phone || null,
                         email: email || null,
                         notes: notesJson,
-                        importGroup: tag || null,
+                        tags: JSON.stringify(tagsArray),
                         status: initialStatus,
                         source: 'IMPORT',
                         createdAt: contactDate
@@ -803,25 +808,31 @@ export const getContactAnalytics = async (req, res) => {
             where: conversationFilter
         });
 
-        // Count by status
+        // Count by status — yeni satış funnel aşamaları
         const statusCounts = {
             NEW: 0,
+            OPPORTUNITY: 0,
             HOT_OPPORTUNITY: 0,
             INFORMED: 0,
-            NEGOTIATING: 0,
+            MEETING_PLANNED: 0,
+            PROPOSAL: 0,
             CONVERTED: 0,
-            NEGATIVE: 0,
+            UNREACHABLE: 0,
             LOST: 0
         };
 
-        // Count by channel
+        // Count by channel — tüm kanalları tanımla
         const channelCounts = {
             WHATSAPP: 0,
             FACEBOOK: 0,
             INSTAGRAM: 0,
             EMAIL: 0,
             WIDGET: 0,
+            PHONE: 0,
+            FORM: 0,
+            LEAD: 0,
             MANUAL: 0,
+            IMPORT: 0,
             UNKNOWN: 0
         };
 
@@ -867,15 +878,17 @@ export const getContactAnalytics = async (req, res) => {
             monthlyData.push({ month: monthName, count });
         }
 
-        // Status labels in Turkish
+        // Status labels in Turkish — yeni satış funnel aşamaları
         const statusLabels = {
-            NEW: 'Yeni Müşteri',
-            HOT_OPPORTUNITY: 'Potansiyel Müşteri',
+            NEW: 'Yeni Başvuru',
+            OPPORTUNITY: 'Fırsat',
+            HOT_OPPORTUNITY: 'Sıcak Fırsat',
             INFORMED: 'Bilgi Verildi',
-            NEGOTIATING: 'Görüşme Aşamasında',
-            CONVERTED: 'Müşteri Oldu',
-            NEGATIVE: 'Negatif Müşteri',
-            LOST: 'Kaybedildi'
+            MEETING_PLANNED: 'Görüşme Planlandı',
+            PROPOSAL: 'Teklif Aşaması',
+            CONVERTED: 'Satış',
+            UNREACHABLE: 'Ulaşılamadı',
+            LOST: 'Kayıp'
         };
 
         const statusData = Object.entries(statusCounts).map(([key, value]) => ({
@@ -897,8 +910,8 @@ export const getContactAnalytics = async (req, res) => {
             totalLeads,
             totalConversations,
             conversionRate: parseFloat(conversionRate),
-            positiveContacts: statusCounts.CONVERTED + statusCounts.NEGOTIATING + statusCounts.HOT_OPPORTUNITY,
-            negativeContacts: statusCounts.NEGATIVE + statusCounts.LOST,
+            positiveContacts: statusCounts.CONVERTED + statusCounts.PROPOSAL + statusCounts.HOT_OPPORTUNITY + statusCounts.MEETING_PLANNED,
+            negativeContacts: statusCounts.UNREACHABLE + statusCounts.LOST,
             statusData,
             channelData,
             monthlyData

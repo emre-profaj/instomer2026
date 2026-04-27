@@ -207,7 +207,7 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                 const response = await axios.post(
                     `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
                     {
-                        recipient: { id: recipientId },
+                        recipient: { id: String(recipientId) },
                         message: { text: message }
                     },
                     { params: { access_token: page.pageAccessToken } }

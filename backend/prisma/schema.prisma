@@ -42,6 +42,8 @@ model User {
   assignedDeals         Deal[]                 @relation("DealAssignee")
   notifications         Notification[]
   workingHours          Json?
+  assignedActivities    ContactActivity[]      @relation("ActivityAssignee")
+  createdActivities     ContactActivity[]      @relation("ActivityCreator")
 
   @@map("users")
 }
@@ -115,6 +117,7 @@ model Workspace {
   whatsappPhoneNumbers WhatsappPhoneNumber[]
   members              WorkspaceMember[]
   knowledgeBase        KnowledgeBase[]
+  apiIntegrations      ApiIntegration[]
   whatsappTemplates    WhatsappTemplate[]
   automations          Automation[]
   formWebhooks         FormWebhook[]
@@ -128,6 +131,8 @@ model Workspace {
   funnels              Funnel[]
   calendarResources    CalendarResource[]
   flows                Flow[]
+  contactActivities    ContactActivity[]
+  appointmentBranches  AppointmentBranch[]
 
   // Retell AI Voice
   retellApiKey     String?
@@ -148,16 +153,19 @@ model Workspace {
 }
 
 model KnowledgeBase {
-  id          String    @id @default(uuid())
-  workspaceId String
-  title       String
-  content     String
-  sourceType  String    @default("TEXT")
-  filename    String?
-  fileType    String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  workspaceId  String
+  title        String
+  content      String
+  sourceType   String    @default("TEXT")
+  sourceUrl    String?   // Web url ya da API url'si
+  syncInterval Int?      // Güncelleme sıklığı (saat cinsinden)
+  lastSyncedAt DateTime? // Son güncelleme zamanı
+  filename     String?
+  fileType     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@map("knowledge_base")
@@ -212,6 +220,7 @@ model AIBot {
   webWidgets            WebWidget[]
   teams                 Team[]
   teamMemberships       TeamMember[]
+  tools                 AIBotTool[]
   workspace             Workspace             @relation(fields: [workspaceId], references: [id])
 
   // Routing Configuration
@@ -221,6 +230,12 @@ model AIBot {
   routingDefaultUserId      String?  // Varsayılan kişi
   routingConditionalEnabled Boolean  @default(false)
   routingRules              String?  // JSON: [{ id, field, operator, value, teamId, userId, priority }]
+
+  // Linked Automations
+  automations               String?  // JSON array of automation IDs: ["id1", "id2"]
+
+  // Health System API integrations assigned to this bot
+  apiIntegrations           ApiIntegration[] @relation("ApiIntegrationBot")
 
   @@index([workspaceId])
   @@map("ai_bots")
@@ -315,6 +330,7 @@ model Contact {
   company           String?
   notes             String?
   importGroup       String?
+  activities        ContactActivity[]
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -345,11 +361,14 @@ model Conversation {
   assignedTeamId        String? // Team assigned to this conversation
   aiTopic               String? // AI-generated conversation topic
   aiSummary             String? // AI-generated conversation summary
+  sentiment             String? // AI-generated sentiment (e.g., YÜKSEK İLGİLİ, KIZGIN vb.)
+  sentimentScore        Int?    // AI-generated sentiment score (0-100)
   funnelType            String? // Funnel category (e.g., SATIS, DESTEK, SIKAYET)
   funnelStageId         String? // Current stage within the funnel
   handoffPending        Boolean                @default(false) // Bot awaiting user confirmation for handoff
 
   routingState          String? // JSON: { currentQuestionIndex, answers: { fieldName: value }, completed }
+  appointmentState      String? // JSON: { step, data: { patientName, phone, branch, procedure, doctor, preferredDate, preferredTime } }
   // Follow-up tracking
   lastBotMessageAt      DateTime? // When bot last sent a message
   inactivityWarningSent Boolean                @default(false) // 40s inactivity warning sent?
@@ -529,6 +548,7 @@ model Team {
   members         TeamMember[]
   workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   channelRoutings ChannelRouting[]
+  activities      ContactActivity[]
 
   @@index([workspaceId])
   @@index([parentId])
@@ -619,25 +639,31 @@ model FacebookLead {
 }
 
 model Appointment {
-  id           String   @id @default(uuid())
-  workspaceId  String
-  title        String
-  description  String?
-  startTime    DateTime
-  endTime      DateTime
-  assignedToId String?
-  resourceId   String?
-  contactId    String?
-  contactName  String?
-  contactPhone String?
-  contactEmail String?
-  status       String   @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
-  color        String   @default("#3b82f6")
-  reminderSent Boolean  @default(false)
-  notes        String?
-  createdById  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(uuid())
+  workspaceId     String
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  assignedToId    String?
+  resourceId      String?
+  contactId       String?
+  contactName     String?
+  contactPhone    String?
+  contactEmail    String?
+  status          String   @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
+  color           String   @default("#3b82f6")
+  reminderSent    Boolean  @default(false)
+  notes           String?
+  createdById     String
+  // Bot-created appointment fields
+  createdByBotId  String?  // Which bot created this appointment
+  conversationId  String?  // Which conversation it came from
+  branch          String?  // Branch name (Dahiliye, Ortopedi, etc.)
+  procedure       String?  // Procedure type
+  doctorName      String?  // Doctor name
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([workspaceId])
   @@index([assignedToId])
@@ -645,6 +671,41 @@ model Appointment {
   @@index([startTime])
   @@index([status])
   @@map("appointments")
+}
+
+// Randevu Asistanı — Branş Tanımları
+model AppointmentBranch {
+  id          String              @id @default(uuid())
+  workspaceId String
+  name        String              // "Dahiliye", "Ortopedi", "Göz"
+  isActive    Boolean             @default(true)
+  order       Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  doctors     AppointmentDoctor[]
+
+  @@index([workspaceId])
+  @@map("appointment_branches")
+}
+
+// Randevu Asistanı — Doktor Tanımları
+model AppointmentDoctor {
+  id          String            @id @default(uuid())
+  branchId    String
+  name        String            // "Dr. Ahmet Yılmaz"
+  title       String?           // "Prof. Dr.", "Uzm. Dr."
+  workingDays String?           // JSON: ["monday","tuesday","wednesday","thursday","friday"]
+  workStart   String?           // "09:00"
+  workEnd     String?           // "17:00"
+  slotMinutes Int               @default(30)
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  branch      AppointmentBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([branchId])
+  @@map("appointment_doctors")
 }
 
 model CalendarResource {
@@ -718,6 +779,14 @@ model Automation {
   emailIsHtml    Boolean  @default(false) // Send as HTML or plain text
   delayMinutes   Int      @default(0) // Delay before executing action
   conditions     String? // JSON conditions for when to trigger
+  // New action type fields
+  targetFlowId     String?  // CHANGE_FLOW: target flow/funnel ID
+  targetTeamId     String?  // ASSIGN_TEAM: target team ID
+  reminderMessage  String?  // SEND_REMINDER: reminder message content
+  reminderDelayMin Int?     // SEND_REMINDER: delay in minutes
+  callAgentId      String?  // START_CALL: Retell agent ID
+  appointmentType  String?  // SCHEDULE_APPOINTMENT: appointment type
+  marketingTplId   String?  // SEND_MARKETING: marketing template ID
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -992,15 +1061,17 @@ model ScheduledCall {
 
 // Funnel: User-defined pipeline categories
 model Funnel {
-  id          String        @id @default(cuid())
-  workspaceId String
-  name        String
-  color       String        @default("#3b82f6")
-  icon        String        @default("📁")
-  order       Int           @default(0)
-  createdAt   DateTime      @default(now())
-  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  stages      FunnelStage[]
+  id             String        @id @default(cuid())
+  workspaceId    String
+  name           String
+  color          String        @default("#3b82f6")
+  icon           String        @default("📁")
+  order          Int           @default(0)
+  assignedUserId String?
+  assignedTeamId String?
+  createdAt      DateTime      @default(now())
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stages         FunnelStage[]
 
   @@index([workspaceId])
   @@map("funnels")
@@ -1008,13 +1079,15 @@ model Funnel {
 
 // FunnelStage: Stages within a funnel (e.g., Yeni, İşlemde, Kapandı)
 model FunnelStage {
-  id        String   @id @default(cuid())
-  funnelId  String
-  name      String
-  color     String   @default("#6b7280")
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  funnel    Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  funnelId       String
+  name           String
+  color          String   @default("#6b7280")
+  order          Int      @default(0)
+  assignedUserId String?
+  assignedTeamId String?
+  createdAt      DateTime @default(now())
+  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 
   @@index([funnelId])
   @@map("funnel_stages")
@@ -1193,20 +1266,72 @@ model PaymentOffer {
   @@map("payment_offers")
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SAĞLIK MODÜLÜ (Probel HBYS Entegrasyonu)
-// ─────────────────────────────────────────────────────────────────────────────
+model ApiIntegration {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  name           String
+  baseUrl        String
+  authType       String    @default("NONE") // NONE, BEARER, BASIC, API_KEY, OAUTH_PASSWORD
+  authToken      String?   // Encrypted
+  apiKey         String?   // Encrypted
+  apiSecret      String?   // Encrypted
+  headers        String?   // JSON string formatında özel header'lar
+  assignedBotId  String?   // Atanmış AI bot
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-model HealthModule {
-  id          String   @id @default(uuid())
-  workspaceId String   @unique
-  apiUrl      String   // "http://195.87.67.254/DynamicDataApi"
-  username    String
-  password    String
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignedBot    AIBot?    @relation("ApiIntegrationBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
+  botTools       AIBotTool[]
 
-  @@map("health_modules")
+  @@index([workspaceId])
+  @@map("api_integrations")
 }
 
+model AIBotTool {
+  id               String         @id @default(uuid())
+  botId            String
+  apiIntegrationId String?
+  name             String
+  description      String
+  method           String         @default("GET")
+  endpoint         String
+  parametersSchema String?        // JSON string
+  isActive         Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  bot              AIBot          @relation(fields: [botId], references: [id], onDelete: Cascade)
+  apiIntegration   ApiIntegration? @relation(fields: [apiIntegrationId], references: [id], onDelete: Cascade)
+
+  @@index([botId])
+  @@index([apiIntegrationId])
+  @@map("ai_bot_tools")
+}
+
+model ContactActivity {
+  id              String       @id @default(uuid())
+  contactId       String
+  workspaceId     String
+  type            String       // "NOTE", "REMINDER", "TASK", "MEETING" vb.
+  title           String?      // Görev veya etkinlik başlığı
+  description     String?      @db.Text // Detaylı not veya içerik
+  dueDate         DateTime?    // Hatırlatıcı, görev veya toplantı tarihi
+  isCompleted     Boolean      @default(false)
+  assignedToId    String?      // Atanan agent
+  teamId          String?      // Atanan takım
+  createdBy       String?      // Oluşturan user id (Sistem/Bot ise null)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  contact         Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  workspace       Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignee        User?        @relation("ActivityAssignee", fields: [assignedToId], references: [id])
+  creator         User?        @relation("ActivityCreator", fields: [createdBy], references: [id])
+  team            Team?        @relation(fields: [teamId], references: [id])
+
+  @@index([contactId, createdAt])
+  @@index([workspaceId])
+  @@map("contact_activities")
+}

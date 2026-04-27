@@ -1454,6 +1454,33 @@ async function processWebhookAsync(body) {
                     orderBy: { lastMessageAt: 'desc' }
                 });
 
+                // 24 saat birleştirme: Aynı contact için herhangi bir kanaldan son 24 saatte açık konuşma ara
+                if (!conversation) {
+                    const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                    conversation = await prisma.conversation.findFirst({
+                        where: {
+                            contactId: contact.id,
+                            workspaceId: facebookPage.workspaceId,
+                            lastMessageAt: { gte: mergeWindow },
+                            status: { not: 'RESOLVED' }
+                        },
+                        orderBy: { lastMessageAt: 'desc' }
+                    });
+                    if (conversation) {
+                        console.log(`🔗 [FB/IG Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+                        // Facebook/Instagram bilgilerini güncelle
+                        const updateData = { facebookPageId: facebookPage.id };
+                        if (isInstagram) updateData.instagramBusinessId = facebookPage.instagramBusinessId;
+                        if (!conversation.facebookPageId) {
+                            updateData.channel = isInstagram ? 'INSTAGRAM' : 'FACEBOOK';
+                        }
+                        conversation = await prisma.conversation.update({
+                            where: { id: conversation.id },
+                            data: updateData
+                        });
+                    }
+                }
+
                 let isNewConversation = false;
                 if (!conversation) {
                     isNewConversation = true;
@@ -1769,7 +1796,7 @@ async function processWebhookAsync(body) {
                                                 const sendResponse = await axios.post(
                                                     `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
                                                     {
-                                                        recipient: { id: senderId },
+                                                        recipient: { id: String(senderId) },
                                                         message: { text: chunks[i] }
                                                     },
                                                     {

@@ -5565,3 +5565,77 @@
 }
 .lead-card-schedule-btn:hover { background: var(--primary-dark, #dc2626); }
 .lead-card-schedule-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+
+/* Sentiment Badge */
+.sentiment-badge {
+    margin-left: 6px;
+    font-size: 0.8rem;
+    cursor: help;
+}
+.sentiment-detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 0.8rem;
+}
+.sentiment-detail-score {
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #4b5563;
+}
+.sentiment-yüksek, .sentiment-yüksek.ilgili {
+    color: #f59e0b; /* Altýn Sarýsý */
+}
+.sentiment-olumlu {
+    color: #10b981; /* Yeþil */
+}
+.sentiment-nötr {
+    color: #6b7280; /* Gri */
+}
+.sentiment-kýzgýn, .sentiment-þikayet, .sentiment-kýzgýn.þikayet {
+    color: #ef4444; /* Kýrmýzý */
+}
+.sentiment-ilgisiz {
+    color: #9ca3af; /* Soluk gri */
+}
+
+/* Arsivle / Cozuldu toggle butonu */
+.conversation-archive-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #e5e7eb;
+    transition: all 0.2s;
+}
+
+.conversation-archive-btn.open {
+    background: #f9fafb;
+    color: #6b7280;
+    border-color: #e5e7eb;
+}
+
+.conversation-archive-btn.open:hover {
+    background: #ecfdf5;
+    color: #10b981;
+    border-color: #10b981;
+}
+
+.conversation-archive-btn.resolved {
+    background: #ecfdf5;
+    color: #10b981;
+    border-color: #10b981;
+}
+
+.conversation-archive-btn.resolved:hover {
+    background: #eff6ff;
+    color: #3b82f6;
+    border-color: #3b82f6;
+}

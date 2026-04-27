@@ -314,15 +314,33 @@ export const handleFormSubmission = async (req, res) => {
             }
         });
 
-        // Create conversation for this form submission
-        const conversation = await prisma.conversation.create({
-            data: {
-                workspaceId: webhook.workspaceId,
+        // 24 saat birleştirme: Aynı contact için herhangi bir kanaldan son 24 saatte açık konuşma ara
+        const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        let conversation = await prisma.conversation.findFirst({
+            where: {
                 contactId: contact?.id,
-                channel: 'FORM',
-                status: 'OPEN'
-            }
+                workspaceId: webhook.workspaceId,
+                lastMessageAt: { gte: mergeWindow },
+                status: { not: 'RESOLVED' }
+            },
+            orderBy: { lastMessageAt: 'desc' }
         });
+
+        let isNewConversation = false;
+        if (conversation) {
+            console.log(`🔗 [Form Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+        } else {
+            // Create conversation for this form submission
+            conversation = await prisma.conversation.create({
+                data: {
+                    workspaceId: webhook.workspaceId,
+                    contactId: contact?.id,
+                    channel: 'FORM',
+                    status: 'OPEN'
+                }
+            });
+            isNewConversation = true;
+        }
 
         // Link submission to conversation
         await prisma.formSubmission.update({

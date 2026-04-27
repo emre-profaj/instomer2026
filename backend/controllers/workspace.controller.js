@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { getAiUsageStats } from '../services/aiUsage.service.js';
 import { logAdminActivity } from '../services/activityLog.service.js';
+import { seedDefaultTeams } from '../utils/teamSeeder.js';
 
 
 // Configure multer for logo upload
@@ -84,6 +85,9 @@ export const createWorkspace = async (req, res) => {
                 }
             }
         });
+
+        // Seed default teams for the new workspace
+        await seedDefaultTeams(workspace.id);
 
         res.status(201).json({ workspace });
         

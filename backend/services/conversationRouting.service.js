@@ -323,7 +323,7 @@ export async function processPendingBotResponses() {
                             const sendResponse = await axios.post(
                                 `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
                                 {
-                                    recipient: { id: recipientId },
+                                    recipient: { id: String(recipientId) },
                                     message: { text: aiResponse }
                                 },
                                 {

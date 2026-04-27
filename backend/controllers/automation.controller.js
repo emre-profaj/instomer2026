@@ -858,8 +858,12 @@ export const createAutomation = async (req, res) => {
         const { workspaceId } = req.params;
         const {
             name, description, isActive, trigger, triggerChannel,
-            action, templateId, messageContent, assignToUserId,
-            delayMinutes, conditions
+            action, actions, actionLogic, templateId, messageContent, assignToUserId,
+            emailChannelId, emailSubject, emailBody, emailIsHtml,
+            delayMinutes, conditions,
+            // New action-specific fields
+            targetFlowId, targetTeamId, reminderMessage, reminderDelayMin,
+            callAgentId, appointmentType, marketingTplId
         } = req.body;
 
         if (!name || !trigger || !action) {
@@ -877,11 +881,24 @@ export const createAutomation = async (req, res) => {
                 trigger,
                 triggerChannel,
                 action,
+                actions: actions || null,
+                actionLogic: actionLogic || 'AND',
                 templateId,
                 messageContent,
                 assignToUserId,
+                emailChannelId,
+                emailSubject,
+                emailBody,
+                emailIsHtml: emailIsHtml || false,
                 delayMinutes: delayMinutes || 0,
-                conditions: conditions ? JSON.stringify(conditions) : null
+                conditions: conditions ? JSON.stringify(conditions) : null,
+                targetFlowId,
+                targetTeamId,
+                reminderMessage,
+                reminderDelayMin,
+                callAgentId,
+                appointmentType,
+                marketingTplId
             }
         });
 

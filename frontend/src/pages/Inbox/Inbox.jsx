@@ -308,7 +308,7 @@ const CUSTOMER_STATUS_OPTIONS = [
 // Funnel tipi seçenekleri — dinamik olarak API'den yüklenir (bkz. useFunnels)
 // Bu sabit boş bir fallback'tir; gerçek liste Inbox bileşeni içinde state'e yüklenir.
 const FUNNEL_TYPE_OPTIONS_DEFAULT = [
-    { value: '', label: 'Funnel Seç', color: '#9ca3af' },
+    { value: '', label: 'Akış Seç', color: '#9ca3af' },
 ];
 
 // Customer category options (synced with Customers page)
@@ -441,7 +441,7 @@ const Inbox = () => {
         funnelAPI.getAll(currentWorkspace.id).then(res => {
             const list = res.data.funnels || [];
             setFunnelOptions([
-                { value: '', label: 'Funnel Seç', color: '#9ca3af', stages: null },
+                { value: '', label: 'Akış Seç', color: '#9ca3af', stages: null },
                 ...list.map(f => ({
                     value: f.id,
                     label: f.name,
@@ -728,15 +728,14 @@ const Inbox = () => {
         const conversationId = searchParams.get('conversationId');
         const contactId = searchParams.get('contactId');
 
-        if (conversationId && inboxItems.length > 0) {
-            // Find the conversation in inbox items
+        if (conversationId && currentWorkspace) {
+            // First check if it's already in loaded items
             const targetItem = inboxItems.find(item => item.id === conversationId);
             if (targetItem) {
                 handleSelectItem(targetItem);
-                // Clear the query param (replace current entry so back button goes to previous page)
                 setSearchParams({}, { replace: true });
-            } else if (currentWorkspace) {
-                // Conversation not in loaded list — fetch it directly
+            } else {
+                // Conversation not in loaded list — fetch it directly from API
                 (async () => {
                     try {
                         const response = await conversationAPI.getById(currentWorkspace.id, conversationId);
@@ -747,7 +746,7 @@ const Inbox = () => {
                                 ...conv,
                                 inboxType: itemType,
                             };
-                            setInboxItems(prev => [injectedItem, ...prev]);
+                            setInboxItems(prev => [injectedItem, ...prev.filter(i => i.id !== conv.id)]);
                             // Directly set the selected item and messages
                             setSelectedItem(conv);
                             setSelectedItemType(itemType);
@@ -779,7 +778,7 @@ const Inbox = () => {
                 setSearchParams({}, { replace: true });
             }
         }
-    }, [inboxItems, searchParams]);
+    }, [inboxItems, searchParams, currentWorkspace]);
 
 
     // Load quick replies
@@ -3177,6 +3176,11 @@ const Inbox = () => {
                                             <span className="inbox-item-name">
                                                 {getItemIcon(item)}
                                                 {getItemName(item)}
+                                                {item.sentiment && (
+                                                    <span className="sentiment-badge" title={`${item.sentiment} (Skor: ${item.sentimentScore}/100)`}>
+                                                        {item.sentiment.includes('YÜKSEK') ? '🔥' : item.sentiment.includes('OLUMLU') ? '😊' : item.sentiment.includes('NÖTR') ? '😐' : item.sentiment.includes('KIZGIN') || item.sentiment.includes('ŞİKAYET') ? '😡' : '❄️'}
+                                                    </span>
+                                                )}
                                             </span>
                                             <span className="inbox-item-time">
                                                 {formatTime(item.sortDate)}
@@ -3300,6 +3304,13 @@ const Inbox = () => {
                                             </div>
                                             <div className="profile-info">
                                                 <h3>{selectedItem.contact?.name || 'Bilinmeyen'}</h3>
+                                                {selectedItem.sentiment && (
+                                                    <div className="sentiment-detail">
+                                                        <span>{selectedItem.sentiment.includes('YÜKSEK') ? '🔥' : selectedItem.sentiment.includes('OLUMLU') ? '😊' : selectedItem.sentiment.includes('NÖTR') ? '😐' : selectedItem.sentiment.includes('KIZGIN') || selectedItem.sentiment.includes('ŞİKAYET') ? '😡' : '❄️'}</span>
+                                                        <span style={{fontWeight: 600, color: selectedItem.sentiment.includes('YÜKSEK') ? '#f59e0b' : selectedItem.sentiment.includes('OLUMLU') ? '#10b981' : selectedItem.sentiment.includes('KIZGIN') || selectedItem.sentiment.includes('ŞİKAYET') ? '#ef4444' : '#6b7280'}}>{selectedItem.sentiment}</span>
+                                                        <span className="sentiment-detail-score">Skor: {selectedItem.sentimentScore}/100</span>
+                                                    </div>
+                                                )}
                                                 {/* İlk / Son Yazma */}
                                                 {(() => {
                                                     const cm = selectedItem.messages?.filter(m => m.isFromContact) || [];
@@ -3387,24 +3398,22 @@ const Inbox = () => {
                                                 );
                                             })()}
 
-                                            {/* Sohbet Durumu Dropdown - for both MESSAGE and EMAIL */}
+                                            {/* Sohbet Durumu Toggle - Açık ↔ Çözüldü */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
-                                                <div className="status-dropdown-compact">
-                                                    <span
-                                                        className="status-dot"
-                                                        style={{ backgroundColor: getConversationStatusInfo(selectedItem.status).color }}
-                                                    />
-                                                    <select
-                                                        value={selectedItem.status || 'OPEN'}
-                                                        onChange={(e) => handleConversationStatusChange(selectedItem.id, e.target.value)}
-                                                    >
-                                                        {CONVERSATION_STATUS_OPTIONS.map(opt => (
-                                                            <option key={opt.value} value={opt.value}>
-                                                                {opt.label}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
+                                                <button
+                                                    className={`conversation-archive-btn ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
+                                                    onClick={() => handleConversationStatusChange(
+                                                        selectedItem.id,
+                                                        selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED'
+                                                    )}
+                                                    title={selectedItem.status === 'RESOLVED' ? 'Tekrar Aç' : 'Çözüldü olarak işaretle'}
+                                                >
+                                                    {selectedItem.status === 'RESOLVED' ? (
+                                                        <><CheckCircle2 size={14} /> Çözüldü</>
+                                                    ) : (
+                                                        <><CheckCircle2 size={14} /> Arşivle</>
+                                                    )}
+                                                </button>
                                             )}
                                             <button
                                                 className="profile-action-btn delete"
@@ -3512,7 +3521,7 @@ const Inbox = () => {
                                             {/* Üstlen button moved to message input area */}
                                         </div>
 
-                                        {/* Right Group: Funnel Seç + Müşteri Durumu */}
+                                        {/* Right Group: Akış Seç + Müşteri Durumu */}
                                         <div className="assignment-right-group">
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact && (() => {
                                                 // Get active funnel's stages, fallback to default CUSTOMER_STATUS_OPTIONS
@@ -3524,7 +3533,7 @@ const Inbox = () => {
                                                 const currentStageColor = stageOptions.find(o => o.value === activeStageVal)?.color || '#3b82f6';
                                                 return (
                                                     <>
-                                                        {/* Funnel Seçici — sol */}
+                                                        {/* Akış Seçici — sol */}
                                                         <div className="status-dropdown-compact funnel-dropdown-compact">
                                                             <span
                                                                 className="status-dot"
@@ -4182,18 +4191,21 @@ const Inbox = () => {
                                                 <span>İlk Yazma: {comments[0]?.created_time ? new Date(comments[0].created_time).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}</span>
                                                 <span>Son Yazma: {comments[comments.length - 1]?.created_time ? new Date(comments[comments.length - 1].created_time).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}</span>
                                             </div>
-                                            {/* Status Dropdown */}
-                                            <div className="status-dropdown-compact">
-                                                <span className="status-dot" style={{ backgroundColor: resolvedPostIds.has(selectedItem?.id) ? '#10b981' : '#f59e0b' }} />
-                                                <select
-                                                    value={resolvedPostIds.has(selectedItem?.id) ? 'RESOLVED' : 'OPEN'}
-                                                    onChange={(e) => handleCommentStatusChange(selectedItem?.id, e.target.value)}
-                                                >
-                                                    <option value="OPEN">Açık</option>
-                                                    <option value="PENDING">Beklemede</option>
-                                                    <option value="RESOLVED">Çözüldü</option>
-                                                </select>
-                                            </div>
+                                            {/* Status Toggle - Açık ↔ Çözüldü */}
+                                            <button
+                                                className={`conversation-archive-btn ${resolvedPostIds.has(selectedItem?.id) ? 'resolved' : 'open'}`}
+                                                onClick={() => handleCommentStatusChange(
+                                                    selectedItem?.id,
+                                                    resolvedPostIds.has(selectedItem?.id) ? 'OPEN' : 'RESOLVED'
+                                                )}
+                                                title={resolvedPostIds.has(selectedItem?.id) ? 'Tekrar Aç' : 'Çözüldü olarak işaretle'}
+                                            >
+                                                {resolvedPostIds.has(selectedItem?.id) ? (
+                                                    <><CheckCircle2 size={14} /> Çözüldü</>
+                                                ) : (
+                                                    <><CheckCircle2 size={14} /> Arşivle</>
+                                                )}
+                                            </button>
                                             {selectedPost?.permalink_url && (
                                                 <a
                                                     href={selectedPost.permalink_url}

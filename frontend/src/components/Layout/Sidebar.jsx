@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -29,8 +29,7 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
-        { path: '/calendar', icon: Calendar, label: t('nav.calendar') },
-        { path: '/users', icon: Layers, label: t('users.title') }
+        { path: '/calendar', icon: Calendar, label: t('nav.calendar') }
     ];
 
     const realEstateSubItems = [
@@ -49,10 +48,11 @@ const Sidebar = () => {
     const settingsSubItems = [
         { path: '/settings', icon: Settings, label: t('settings.title') },
         { path: '/channels', icon: Radio, label: t('channels.title') },
+        { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/assistants', icon: Bot, label: t('nav.assistants') },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
         { path: '/automations', icon: Zap, label: t('nav.automations') },
-        { path: '/funnels', icon: Kanban, label: 'Funnellar' }
+        { path: '/funnels', icon: Kanban, label: 'Akışlar' }
     ];
 
     const salesSubItems = [
@@ -374,7 +374,7 @@ const Sidebar = () => {
                 </Link>
                 <Link
                     to="/settings"
-                    className={`mobile-nav-item ${['/settings', '/channels', '/assistants', '/automations'].includes(location.pathname) ? 'active' : ''}`}
+                    className={`mobile-nav-item ${['/settings', '/channels', '/assistants', '/automations', '/teams'].includes(location.pathname) ? 'active' : ''}`}
                 >
                     <Settings size={22} />
                     <span>Ayarlar</span>

@@ -213,7 +213,7 @@ export const generateResponse = async (req, res) => {
             where: { id: conversationId },
             include: {
                 messages: {
-                    take: 10,
+                    take: 40,
                     orderBy: { createdAt: 'desc' },
                     select: { content: true, isFromContact: true }
                 },
@@ -353,15 +353,15 @@ ${documentContext || "Bilgi bankası boş."}
         let result;
         try {
             // First try user requested model
-            result = await tryGenerate("gemini-2.0-flash");
+            result = await tryGenerate("gemini-2.5-flash");
         } catch (primaryError) {
-            console.warn(`⚠️ Primary model (gemini-2.0-flash) failed: ${primaryError.message}`);
+            console.warn(`⚠️ Primary model (gemini-2.5-flash) failed: ${primaryError.message}`);
 
             // If quota/not found/etc, try fallback
             if (primaryError.message.includes('404') || primaryError.message.includes('429') || primaryError.message.includes('503')) {
-                console.log('🔄 Switching to fallback model: gemini-2.0-flash');
+                console.log('🔄 Switching to fallback model: gemini-2.5-flash');
                 try {
-                    result = await tryGenerate("gemini-2.0-flash");
+                    result = await tryGenerate("gemini-2.5-flash");
                 } catch (fallbackError) {
                     throw new Error(`Both primary and fallback models failed. Last error: ${fallbackError.message}`);
                 }
@@ -440,10 +440,10 @@ ${chatLog}
         };
 
         try {
-            result = await trySummarize("gemini-2.0-flash");
+            result = await trySummarize("gemini-2.5-flash");
         } catch (e) {
             console.warn('Fallback to 1.5 for summary');
-            result = await trySummarize("gemini-1.5-flash");
+            result = await trySummarize("gemini-2.5-flash");
         }
 
         const summary = result.response.text();
@@ -591,10 +591,10 @@ SADECE JSON formatında yanıt ver, başka açıklama ekleme:
         };
 
         try {
-            result = await tryGenerate("gemini-2.0-flash");
+            result = await tryGenerate("gemini-2.5-flash");
         } catch (e) {
-            console.warn('Fallback to gemini-1.5-flash for suggestions');
-            result = await tryGenerate("gemini-1.5-flash");
+            console.warn('Fallback to gemini-2.5-flash for suggestions');
+            result = await tryGenerate("gemini-2.5-flash");
         }
 
         const responseText = result.response.text();
@@ -710,12 +710,12 @@ JSON:`;
         let extractedData;
         try {
             // Try 1.5 flash latest which is more standard now
-            extractedData = await tryExtract("gemini-2.0-flash");
+            extractedData = await tryExtract("gemini-2.5-flash");
             console.log('✅ [AI Extract] Extracted info:', JSON.stringify(extractedData));
         } catch (firstError) {
-            console.warn(`⚠️ [AI Extract] gemini-2.0-flash failed: ${firstError.message}`);
+            console.warn(`⚠️ [AI Extract] gemini-2.5-flash failed: ${firstError.message}`);
             try {
-                extractedData = await tryExtract("gemini-2.0-flash");
+                extractedData = await tryExtract("gemini-2.5-flash");
                 console.log('✅ [AI Extract] Fallback extracted info:', JSON.stringify(extractedData));
             } catch (secondError) {
                 console.error(`❌ [AI Extract] All attempts failed.`);
@@ -868,11 +868,11 @@ Eğer hiçbir alan tespit edilemiyorsa:
 
         let result;
         try {
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
             result = await model.generateContent(analysisPrompt);
         } catch (err) {
             try {
-                const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
                 result = await model.generateContent(analysisPrompt);
             } catch (err2) {
                 console.error('❌ [Routing] AI extraction failed:', err2);
@@ -1182,6 +1182,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     botEnabled: true,
                     teamIds: true,
                     routingState: true,
+                    appointmentState: true,
                     assignedBot: { include: { documents: true } },
                     facebookPage: {
                         include: {
@@ -1192,7 +1193,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     whatsappPhoneNumber: { include: { assignedBot: { include: { documents: true } } } },
                     emailChannel: { include: { assignedBot: { include: { documents: true } } } },
                     messages: {
-                        take: 10,
+                        take: 22,
                         orderBy: { createdAt: 'desc' },
                         select: { content: true, isFromContact: true }
                     },
@@ -1210,10 +1211,21 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     if (teamIds.length > 0) {
                         const team = await prisma.team.findFirst({
                             where: { id: teamIds[0] },
-                            include: { assignedBot: { include: { documents: true } } }
+                            include: {
+                                assignedBot: { include: { documents: true } },
+                                members: {
+                                    where: { botId: { not: null } },
+                                    include: { bot: { include: { documents: true } } }
+                                }
+                            }
                         });
                         if (team?.assignedBot) {
                             teamBot = team.assignedBot;
+                        } else if (team?.members?.length > 0) {
+                            const botMember = team.members.find(m => m.bot && m.bot.isActive);
+                            if (botMember) {
+                                teamBot = botMember.bot;
+                            }
                         }
                     }
                 } catch (e) {
@@ -1289,6 +1301,38 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
 
         console.log(`✅ Active bot prepared: ${activeBot.name}`);
 
+        // Fetch tools for this bot (for Function Calling)
+        try {
+            const botTools = await prisma.aIBotTool.findMany({
+                where: { botId: activeBot.id, isActive: true },
+                include: { apiIntegration: true }
+            });
+            activeBot.tools = botTools;
+            if (botTools.length > 0) {
+                console.log(`🛠️ [AI] Loaded ${botTools.length} tools for bot ${activeBot.name}`);
+            }
+        } catch (toolError) {
+            console.error(`⚠️ [AI] Failed to load tools for bot ${activeBot.name}:`, toolError.message);
+            activeBot.tools = [];
+        }
+
+        // 🏥 APPOINTMENT BOT — Inject built-in appointment tools
+        let isAppointmentBot = false;
+
+        // 🚀 Dynamic Appointment Capability: Check if workspace has Probel Health API
+        const hasHealthApi = await prisma.apiIntegration.findFirst({
+            where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true }
+        });
+
+        let isProbelBot = false; // Probel-specific logic only for workspaces with health API
+        if (activeBot.botType === 'APPOINTMENT' || hasHealthApi) {
+            isAppointmentBot = true;
+            if (hasHealthApi) isProbelBot = true; // Only Probel-connected workspaces get special treatment
+            const { getAppointmentToolDeclarations } = await import('../services/appointmentBot.service.js');
+            activeBot._appointmentTools = getAppointmentToolDeclarations();
+            console.log(`🏥 [AI] Appointment bot capability detected: ${activeBot.name}, ${activeBot._appointmentTools.length} built-in tools loaded${isProbelBot ? ' (Probel)' : ''}`);
+        }
+
         // 🔄 BOT ROUTING CHECK - Silent background analysis (never blocks normal AI)
         if (activeBot.routingEnabled && type === 'CHATS' && conversationId && conversation) {
             console.log(`🔄 [Routing] Bot ${activeBot.name} has routing enabled, running silent analysis...`);
@@ -1336,9 +1380,20 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`⚠️ [AI] No document context available!`);
         }
 
-        console.log(`🤖 [AI] System Prompt (first 200 chars): ${systemPrompt.substring(0, 200)}...`);
+        // 🚀 Probel appointment bot: Use code-defined prompt as BASE, preserve bot's custom info as supplement
+        if (isProbelBot) {
+            const { DEFAULT_APPOINTMENT_PROMPT } = await import('../services/appointmentBot.service.js');
+            // Bot'un DB'deki özel prompt'u varsa, randevu kurallarından SONRA ek bilgi olarak ekle
+            const botCustomPrompt = systemPrompt || '';
+            systemPrompt = DEFAULT_APPOINTMENT_PROMPT;
+            if (botCustomPrompt && !botCustomPrompt.includes('RANDEVU AKIŞI')) {
+                // Sadece randevu akışı kuralları DEĞİLSE ek bilgi olarak ekle (hastane adı, özel talimatlar vb.)
+                systemPrompt += '\n\nEK BİLGİLER (Bot yöneticisi tarafından eklenen):\n' + botCustomPrompt;
+            }
+        }
 
-        // 3. fetch conversation history for context
+        const convShort = conversationId ? conversationId.substring(0, 8) : 'N/A';
+        console.log(`🤖 [AI][${convShort}] System Prompt (first 200 chars): ${systemPrompt.substring(0, 200)}...`);
         // For COMMENTS type, there's no conversation history - just respond to the single comment
         const validMessages = (type === 'COMMENTS' || !conversation?.messages)
             ? []
@@ -1382,9 +1437,11 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             }
             if (infoParts.length > 0) {
                 customerInfo = infoParts.join('\n');
-                customerInfo += isEnglish
-                    ? '\n\n⚠️ WARNING: The above information is ALREADY AVAILABLE! Do NOT ask for it again!'
-                    : '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
+                if (!isProbelBot) {
+                    customerInfo += isEnglish
+                        ? '\n\n⚠️ WARNING: The above information is ALREADY AVAILABLE! Do NOT ask for it again!'
+                        : '\n\n⚠️ UYARI: Yukarıdaki bilgiler ZATEN MEVCUT! Bu bilgileri tekrar SORMA!';
+                }
             } else {
                 customerInfo = isEnglish ? 'No customer information available.' : 'Müşteri bilgisi mevcut değil.';
             }
@@ -1475,6 +1532,38 @@ ${documentContext || "Bilgi bankası boş."}
 9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
 10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.`;
 
+        // 🏥 PROBEL BOT — Build a clean, focused system instruction
+        let finalSystemInstruction;
+        if (isProbelBot) {
+            let appointmentContextPrompt = '';
+            if (conversation?.appointmentState) {
+                try {
+                    const aptState = JSON.parse(conversation.appointmentState);
+                    if (aptState.step !== 'COMPLETED') {
+                        appointmentContextPrompt = `\n\n### 🏥 RANDEVU AKIŞI DURUMU ###\nBu müşteri ile randevu akışı devam ediyor.\nMevcut durum: ${JSON.stringify(aptState)}\nZaten toplanan bilgileri TEKRAR SORMA, eksik bilgileri toplamaya devam et.`;
+                    }
+                } catch (e) { }
+            }
+            
+            // Randevu botu için SADECE randevu prompt'u + tarih bilgisi kullan
+            // Genel kurallar ([HANDOFF], bilgi bankası, vb.) randevu akışını bozuyor!
+            finalSystemInstruction = `### GÜNCEL TARİH VE SAAT ###
+Bugün: ${currentDay}, ${currentDate}
+Saat: ${currentTime} (Türkiye Saati)
+Yıl: ${now.getFullYear()}
+
+### MÜŞTERİ BİLGİLERİ ###
+${customerInfo}
+
+### RANDEVU ASİSTANI TALİMATI ###
+${systemPrompt}${appointmentContextPrompt}`;
+            
+            console.log(`🏥 [AI][${convShort}] Using clean appointment-only system instruction`);
+        } else {
+            // Normal bot — use full system instruction with all rules
+            finalSystemInstruction = fullSystemInstruction;
+        }
+
         // Build chat history WITHOUT the system instruction embedded in it.
         // The system instruction is passed via the systemInstruction parameter instead,
         // which prevents Gemini from ever echoing it back as a customer-facing reply.
@@ -1536,32 +1625,172 @@ ${documentContext || "Bilgi bankası boş."}
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
 
-        // Fallback Logic - system instruction passed via systemInstruction parameter (NEVER as user message)
-        const tryGenerate = async (modelName) => {
-            const model = genAI.getGenerativeModel({
-                model: modelName,
-                systemInstruction: fullSystemInstruction
+        // Format tools for Gemini Function Calling
+        const geminiTools = [];
+        if (activeBot.tools && activeBot.tools.length > 0) {
+            const functionDeclarations = activeBot.tools.map(tool => {
+                let schema = { type: "object", properties: {} };
+                try {
+                    if (tool.parametersSchema) {
+                        schema = typeof tool.parametersSchema === 'string'
+                            ? JSON.parse(tool.parametersSchema)
+                            : tool.parametersSchema;
+                    }
+                } catch (e) {
+                    console.error('Schema parse error:', e);
+                }
+
+                return {
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: schema
+                };
             });
 
+            geminiTools.push({ functionDeclarations });
+        }
+
+        // 🏥 Append appointment bot tools if applicable
+        if (isAppointmentBot && activeBot._appointmentTools) {
+            if (geminiTools.length === 0) {
+                geminiTools.push({ functionDeclarations: activeBot._appointmentTools });
+            } else {
+                geminiTools[0].functionDeclarations.push(...activeBot._appointmentTools);
+            }
+            console.log(`🏥 [AI] Appointment tools appended to Gemini tools`);
+        }
+
+        // Fallback Logic - system instruction passed via systemInstruction parameter (NEVER as user message)
+        const tryGenerate = async (modelName) => {
+            const modelConfig = {
+                model: modelName,
+                systemInstruction: finalSystemInstruction
+            };
+
+            if (geminiTools.length > 0) {
+                modelConfig.tools = geminiTools;
+            }
+
+            const model = genAI.getGenerativeModel(modelConfig);
             const chat = model.startChat({ history: historyParts });
-            return await chat.sendMessage(finalUserMessage);
+
+            let chatResult = await chat.sendMessage(finalUserMessage);
+            let responseObj = chatResult.response;
+
+            // Handle Function Calling recursively
+            let callCount = 0;
+            while (callCount < 5) {
+                callCount++;
+                let functionCalls = [];
+                if (typeof responseObj.functionCalls === 'function') {
+                    functionCalls = responseObj.functionCalls();
+                } else if (typeof responseObj.functionCalls === 'object' && responseObj.functionCalls !== null) {
+                    functionCalls = responseObj.functionCalls;
+                } else if (responseObj.candidates?.[0]?.content?.parts) {
+                    functionCalls = responseObj.candidates[0].content.parts
+                        .filter(p => p.functionCall)
+                        .map(p => p.functionCall);
+                }
+
+                if (!functionCalls || functionCalls.length === 0) {
+                    break;
+                }
+
+                let functionResponsesParts = [];
+                for (const call of functionCalls) {
+                    console.log(`⚙️ Gemini called function: ${call.name} with args:`, call.args);
+
+                    // 🏥 Check if this is an appointment bot function
+                    const appointmentFunctions = ['validate_patient', 'get_branches', 'get_doctors', 'get_available_days', 'get_available_hours', 'check_availability', 'create_appointment', 'handoff_to_human'];
+                    if (isAppointmentBot && appointmentFunctions.includes(call.name)) {
+                        try {
+                            const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
+                            const result = await executeAppointmentFunction(call.name, call.args, workspaceId, conversationId, activeBot.id);
+
+                            functionResponsesParts.push({
+                                functionResponse: {
+                                    name: call.name,
+                                    response: result
+                                }
+                            });
+                        } catch (aptErr) {
+                            console.error(`🏥 Appointment function failed:`, aptErr);
+                            functionResponsesParts.push({
+                                functionResponse: {
+                                    name: call.name,
+                                    response: { error: aptErr.message }
+                                }
+                            });
+                        }
+                    } else {
+                        // Regular tool execution
+                        const tool = activeBot.tools?.find(t => t.name === call.name);
+
+                        if (tool) {
+                            try {
+                                const { executeToolRequest } = await import('../utils/toolExecutor.js');
+                                const result = await executeToolRequest(tool, call.args);
+
+                                functionResponsesParts.push({
+                                    functionResponse: {
+                                        name: call.name,
+                                        response: result
+                                    }
+                                });
+                            } catch (toolErr) {
+                                console.error(`⚙️ Tool execution failed:`, toolErr);
+                                functionResponsesParts.push({
+                                    functionResponse: {
+                                        name: call.name,
+                                        response: { error: toolErr.message }
+                                    }
+                                });
+                            }
+                        } else {
+                            functionResponsesParts.push({
+                                functionResponse: {
+                                    name: call.name,
+                                    response: { error: "Function not found" }
+                                }
+                            });
+                        }
+                    }
+                }
+                
+                if (functionResponsesParts.length > 0) {
+                    console.log(`📡 [AI] Sending function responses back to Gemini:`, JSON.stringify(functionResponsesParts).substring(0, 500));
+                    chatResult = await chat.sendMessage(functionResponsesParts);
+                    responseObj = chatResult.response;
+                    
+                    try {
+                        const tempText = responseObj.text();
+                        console.log(`🤖 [AI] Gemini text after function response:`, tempText.substring(0, 200));
+                    } catch (e) {
+                        console.log(`🤖 [AI] Gemini text after function response: [No text or another function call]`);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            return chatResult;
         };
 
         let result;
         try {
-            result = await tryGenerate("gemini-2.0-flash");
+            result = await tryGenerate("gemini-2.5-flash");
         } catch (e) {
-            console.warn(`⚠️ [AI] Primary model (gemini-2.0-flash) failed for workspace ${workspaceId}: ${e.message}`);
-            
+            console.warn(`⚠️ [AI] Primary model (gemini-2.5-flash) failed for workspace ${workspaceId}: ${e.message}`);
+
             // 429 Rate Limit → 3 saniye bekle + farklı modelle dene
             if (e.message.includes('429') || e.message.includes('Resource exhausted')) {
                 console.log('⏳ [AI] Rate limited, waiting 3s before fallback...');
                 await new Promise(r => setTimeout(r, 3000));
             }
-            
+
             try {
-                console.log('🔄 [AI] Falling back to gemini-2.5-flash-lite...');
-                result = await tryGenerate("gemini-2.5-flash-lite");
+                console.log('🔄 [AI] Falling back to gemini-2.5-flash...');
+                result = await tryGenerate("gemini-2.5-flash");
             } catch (fallbackError) {
                 console.error(`❌ [AI] Both models failed for workspace ${workspaceId}. Primary: ${e.message}, Fallback: ${fallbackError.message}`);
                 if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
@@ -1569,7 +1798,147 @@ ${documentContext || "Bilgi bankası boş."}
             }
         }
 
-        const responseText = result.response.text();
+        let responseText = "";
+        try {
+            responseText = result.response.text();
+            console.log(`✅ [AI] Final Response Text length: ${responseText.length}`);
+            if (!responseText || responseText.trim() === '') {
+                console.warn(`⚠️ [AI] Response text is empty! Candidates:`, JSON.stringify(result.response.candidates));
+                
+                // Retry once if response is completely empty (Gemini sometimes freezes)
+                try {
+                    console.log(`🔄 [AI] Retrying with same message due to empty response...`);
+                    result = await tryGenerate("gemini-2.5-flash");
+                    responseText = result.response.text();
+                    console.log(`✅ [AI] Retry Response Text length: ${responseText.length}`);
+                } catch (retryErr) {
+                    console.error(`❌ [AI] Retry also failed:`, retryErr.message);
+                    responseText = "";
+                }
+            }
+        } catch (e) {
+            console.error(`❌ [AI] Error extracting text from response:`, e.message);
+            console.log(`🔍 [AI] Response object:`, JSON.stringify(result.response));
+            responseText = "";
+        }
+
+        // 🏥 Probel bot empty response fallback — state-aware auto-action
+        if ((!responseText || responseText.trim() === '') && isProbelBot && conversationId) {
+            console.log(`🏥 [AI][${convShort}] Empty response for appointment bot — checking state for smart fallback`);
+            try {
+                const { executeAppointmentFunction } = await import('../services/appointmentBot.service.js');
+                
+                // Check current appointment state
+                let aptState = {};
+                if (conversation?.appointmentState) {
+                    try { aptState = JSON.parse(conversation.appointmentState); } catch(e) {}
+                }
+                
+                // Determine action based on state
+                const userInput = (userMessage || '').trim();
+                
+                if (aptState.hours && aptState.hours.length > 0 && !aptState.patient_name) {
+                    // Hours shown, user selecting hour
+                    const selectedHour = aptState.hours.find(h => 
+                        String(h.sira) === userInput || 
+                        h.saat === userInput
+                    );
+                    if (selectedHour) {
+                        responseText = `Harika, randevunuzu ${selectedHour.saat} olarak işaretledim. İşlemi tamamlamak için lütfen Adınızı ve Soyadınızı yazar mısınız?`;
+                    } else {
+                        const hourList = aptState.hours.map(h => `${h.sira}. ${h.saat}`).join('\n');
+                        responseText = `Lütfen listeden uygun bir saat seçin:\n\n${hourList}`;
+                    }
+                } else if (aptState.days && aptState.days.length > 0 && !aptState.hours) {
+                    // Days shown, user selecting day
+                    const selectedDay = aptState.days.find(d => 
+                        String(d.sira) === userInput || 
+                        d.tarih === userInput || 
+                        (d.tarih_str && d.tarih_str.toLowerCase().includes(userInput.toLowerCase()))
+                    );
+                    if (selectedDay) {
+                        console.log(`🏥 [AI][${convShort}] Auto-matching day: ${selectedDay.tarih}`);
+                        const hourResult = await executeAppointmentFunction('get_available_hours', { 
+                            servis_kodu: aptState.selected_service_code || aptState.doctors?.[0]?.servis_kodu,
+                            tarih: selectedDay.tarih
+                        }, workspaceId, conversationId);
+                        if (hourResult && hourResult.success && hourResult.hours) {
+                            const hourList = hourResult.hours.map(h => `${h.sira}. ${h.saat}`).join('\n');
+                            responseText = `${selectedDay.tarih} tarihi için müsait saatler:\n\n${hourList}\n\nHangi saati tercih edersiniz?`;
+                        } else {
+                            responseText = hourResult?.message || 'Bu tarihte uygun saat bulunamadı.';
+                        }
+                    } else {
+                        const dayList = aptState.days.map(d => `${d.sira}. ${d.tarih}`).join('\n');
+                        responseText = `Lütfen listeden bir tarih seçin:\n\n${dayList}`;
+                    }
+                } else if (aptState.doctors && aptState.doctors.length > 0 && !aptState.days) {
+                    // Doctors shown, user selecting doctor
+                    const selectedDoc = aptState.doctors.find(d => 
+                        String(d.sira) === userInput || 
+                        d.doktor_adi.toLowerCase().includes(userInput.toLowerCase())
+                    );
+                    if (selectedDoc) {
+                        console.log(`🏥 [AI][${convShort}] Auto-matching doctor: ${selectedDoc.doktor_adi}`);
+                        // Update state to remember selected service code for get_available_hours
+                        try {
+                            const { updateAppointmentState } = await import('../services/appointmentBot.service.js');
+                            await updateAppointmentState(conversationId, { selected_service_code: selectedDoc.servis_kodu });
+                        } catch(e) {}
+                        
+                        const dayResult = await executeAppointmentFunction('get_available_days', { 
+                            brans_kodu: selectedDoc.brans_kodu,
+                            doktor_kodu: selectedDoc.doktor_kodu,
+                            servis_kodu: selectedDoc.servis_kodu
+                        }, workspaceId, conversationId);
+                        
+                        if (dayResult && dayResult.success && dayResult.days) {
+                            const dayList = dayResult.days.map(d => `${d.sira}. ${d.tarih}`).join('\n');
+                            responseText = `${selectedDoc.doktor_adi} için müsait günler:\n\n${dayList}\n\nHangi gün randevu almak istersiniz?`;
+                        } else {
+                            responseText = dayResult?.message || 'Bu doktor için uygun gün bulunamadı.';
+                        }
+                    } else {
+                        const docList = aptState.doctors.map(d => `${d.sira}. ${d.doktor_adi}`).join('\n');
+                        responseText = `Lütfen listeden doktor numarasını veya adını yazın:\n\n${docList}`;
+                    }
+                } else if (aptState.branches && aptState.branches.length > 0 && !aptState.doctors) {
+                    // Branches already shown — user is selecting a branch
+                    const selectedBranch = aptState.branches.find(b => 
+                        String(b.sira) === userInput || 
+                        b.brans_adi.toLowerCase().includes(userInput.toLowerCase())
+                    );
+                    
+                    if (selectedBranch) {
+                        console.log(`🏥 [AI][${convShort}] Auto-matching branch: ${selectedBranch.brans_adi}`);
+                        const docResult = await executeAppointmentFunction('get_doctors', { brans_kodu: selectedBranch.brans_kodu, brans_adi: selectedBranch.brans_adi }, workspaceId, conversationId);
+                        if (docResult && docResult.success && docResult.doctors) {
+                            const docList = docResult.doctors.map(d => `${d.sira}. ${d.doktor_adi}`).join('\n');
+                            responseText = `${selectedBranch.brans_adi} bölümündeki doktorlarımız:\n\n${docList}\n\nHangi doktoru tercih edersiniz?`;
+                        } else {
+                            responseText = docResult?.message || 'Bu bölümde uygun doktor bulunamadı.';
+                        }
+                    } else {
+                        // Couldn't match — re-show branches
+                        const branchList = aptState.branches.map(b => `${b.sira}. ${b.brans_adi}`).join('\n');
+                        responseText = `Lütfen listeden bölüm numarasını veya adını yazın:\n\n${branchList}`;
+                    }
+                } else if (!aptState.branches || aptState.branches.length === 0) {
+                    // No branches yet — fetch them
+                    const branchResult = await executeAppointmentFunction('get_branches', {}, workspaceId, conversationId);
+                    if (branchResult && branchResult.success && branchResult.branches) {
+                        const branchList = branchResult.branches.map(b => `${b.sira}. ${b.brans_adi}`).join('\n');
+                        responseText = `Merhaba! 😊 Randevu almak istediğiniz bölümü seçebilirsiniz:\n\n${branchList}\n\nHangi bölümden randevu almak istersiniz?`;
+                        console.log(`✅ [AI][${convShort}] Auto-generated branch list (${branchResult.branches.length} branches)`);
+                    }
+                } else {
+                    // Other state — generic fallback
+                    responseText = 'Devam edebilmem için lütfen bir seçim yapın veya bilgi verin. 😊';
+                }
+            } catch (fallbackErr) {
+                console.error(`❌ [AI] Smart fallback failed:`, fallbackErr.message);
+            }
+        }
 
         // Release lock after generating response
         if (type === 'CHATS' && conversationId) {
@@ -1870,7 +2239,9 @@ export const createBot = async (req, res) => {
             autoReplyDelayEnabled, autoReplyDelaySeconds, autoReplyDelayMessage,
             // Routing fields
             routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
-            routingConditionalEnabled, routingRules
+            routingConditionalEnabled, routingRules,
+            // Linked automations
+            automations
         } = req.body;
 
         const bot = await prisma.aIBot.create({
@@ -1901,7 +2272,9 @@ export const createBot = async (req, res) => {
                 routingDefaultTeamId: routingDefaultTeamId || null,
                 routingDefaultUserId: routingDefaultUserId || null,
                 routingConditionalEnabled: !!routingConditionalEnabled,
-                routingRules: routingRules || null
+                routingRules: routingRules || null,
+                // Automations
+                automations: automations ? JSON.stringify(automations) : null
             }
         });
         res.status(201).json({ bot });
@@ -2116,7 +2489,9 @@ export const updateBot = async (req, res) => {
             dailyReminderEnabled, dailyReminderHours, dailyReminderMessage,
             // Routing fields
             routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
-            routingConditionalEnabled, routingRules
+            routingConditionalEnabled, routingRules,
+            // Linked automations
+            automations
         } = req.body;
 
         // Verify bot belongs to this workspace
@@ -2161,7 +2536,9 @@ export const updateBot = async (req, res) => {
                 routingDefaultTeamId: routingDefaultTeamId || null,
                 routingDefaultUserId: routingDefaultUserId || null,
                 routingConditionalEnabled: !!routingConditionalEnabled,
-                routingRules: routingRules || null
+                routingRules: routingRules || null,
+                // Automations
+                automations: automations ? JSON.stringify(automations) : null
             }
         });
         res.json({ bot });
@@ -2291,14 +2668,14 @@ JSON:`;
 
         let extracted;
         try {
-            extracted = await tryModel("gemini-2.5-flash-lite");
+            extracted = await tryModel("gemini-2.5-flash");
         } catch (err) {
-            console.warn(`⚠️ [AI Auto-Extract] gemini-2.5-flash-lite failed, trying fallback: ${err.message}`);
+            console.warn(`⚠️ [AI Auto-Extract] gemini-2.5-flash failed, trying fallback: ${err.message}`);
             if (err.message.includes('429') || err.message.includes('Resource exhausted')) {
                 await new Promise(r => setTimeout(r, 2000));
             }
             try {
-                extracted = await tryModel("gemini-2.0-flash");
+                extracted = await tryModel("gemini-2.5-flash");
             } catch (err2) {
                 console.error(`❌ [AI Auto-Extract] All models failed for workspace ${workspaceId}: ${err2.message}`);
                 return null;
@@ -2477,7 +2854,7 @@ Mesaj: "${firstMessage.substring(0, 500)}"
 Konu başlığı:`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
         const result = await model.generateContent(prompt);
         const topic = result.response.text().trim().replace(/^["']|["']$/g, '').substring(0, 120);
 
@@ -2491,5 +2868,96 @@ Konu başlığı:`;
         console.log(`✅ [AutoTopic] Conversation ${conversationId}: "${topic}"`);
     } catch (err) {
         console.error('❌ [AutoTopic] Error:', err.message);
+    }
+};
+
+/**
+ * Müşteri yazışmasının genel duygusunu (Sentiment) analiz eder.
+ *
+ * @param {string} workspaceId 
+ * @param {string} conversationId 
+ * @param {boolean} force - Zaten analiz edilmişse bile zorla
+ */
+export const analyzeSentimentForConversation = async (workspaceId, conversationId, force = false) => {
+    try {
+        if (!workspaceId || !conversationId) return null;
+
+        // Konuşmayı çek
+        const existing = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: {
+                messages: {
+                    orderBy: { createdAt: 'asc' },
+                    select: { content: true, isFromContact: true }
+                }
+            }
+        });
+
+        if (!existing) return null;
+        if (existing.sentiment && !force) return null; // Zaten varsa atla
+
+        // Mesaj yoksa atla
+        if (!existing.messages || existing.messages.length === 0) return null;
+
+        // Get API key
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) return null;
+
+        // Log oluştur
+        const chatLog = existing.messages.map(m =>
+            `${m.isFromContact ? 'Müşteri' : 'Temsilci/Bot'}: ${m.content}`
+        ).join('\n');
+
+        const prompt = `Aşağıdaki müşteri konuşmasını analiz et. 
+Sadece JSON döndür. Başka hiçbir şey yazma.
+İlgi ve Memnuniyet durumunu (sentiment) GEREKTİĞİ GİBİ şu etiketlerden BİRİNE göre sınıflandır:
+- "YÜKSEK İLGİLİ" (Olumlu sinyal, alışverişe hazır, çok mutlu veya çok ilgili)
+- "OLUMLU" (Normal bir akış, sorunsuz ilerliyor)
+- "NÖTR" (Sadece soru soruyor, duygu barındırmıyor)
+- "İLGİSİZ" (Kısa cevaplar, konuşmaya pek hevesli değil)
+- "KIZGIN/ŞİKAYET" (Sorunu var, öfkeli, memnuniyetsiz veya iptal istiyor)
+
+Bir de 0 ile 100 arasında ilgi/memnuniyet puanı ver (sentimentScore). 
+100 en ilgili/olumlu, 0 en şikayetçi/kızgın, 50 nötr.
+
+JSON formatı:
+{ "sentiment": "OLUMLU", "score": 75 }
+
+Konuşma Geçmişi:
+${chatLog.substring(0, 5000)}`;
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        // Daha hızlı maliyet-etkin model kullanılabilir (1.5-flash vb)
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const result = await model.generateContent(prompt);
+        let text = result.response.text().trim();
+
+        // Temizleme
+        text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+        let parsed;
+        try {
+            parsed = JSON.parse(text);
+        } catch (e) {
+            console.error('Sentiment JSON parse hatası:', text);
+            return null;
+        }
+
+        if (parsed.sentiment) {
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: {
+                    sentiment: parsed.sentiment,
+                    sentimentScore: parsed.score || 50
+                }
+            });
+            console.log(`✅ [Sentiment] Conversation ${conversationId}: ${parsed.sentiment} (${parsed.score})`);
+            return parsed;
+        }
+
+        return null;
+    } catch (err) {
+        console.error('❌ [Sentiment] Error:', err.message);
+        return null;
     }
 };
