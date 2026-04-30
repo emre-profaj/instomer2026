@@ -97,9 +97,12 @@ const STAGE_RENAME_MAP = {
 
 // Funnel ismi rename map: { eskiFunnelAdı → yeniFunnelAdı }
 const FUNNEL_RENAME_MAP = {
-    'Fırsat':              'Satış Akışı',
-    'İş Başvurusu':        'İş ve Taşeron',
-    'Destek / Şikayet':    'Destek'
+    'Fırsat':                        'Satış Akışı',
+    'İş Başvurusu':                  'İş ve Taşeron',
+    'Destek / Şikayet':              'Destek',
+    'Genel CRM (Otomatik İşlem)':    'Genel',
+    'Genel CRM (Otomatik i̇şlem)':    'Genel',
+    'Genel CRM':                     'Genel',
 };
 
 // Normalize Turkish characters for comparison
@@ -177,26 +180,42 @@ const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────
-// migrateFunnelNames: Eski funnel isimlerini yeni isimlere taşır
+// migrateFunnelNames: Eski funnel isimlerini yeni isimlere taşır veya birleştirir
 // ────────────────────────────────────────────────────────────────────────────
 const migrateFunnelNames = async (workspaceId) => {
     let migrated = false;
 
     for (const [oldName, newName] of Object.entries(FUNNEL_RENAME_MAP)) {
+        // Case-insensitive fetch to catch slight casing differences
         const oldFunnel = await prisma.funnel.findFirst({
-            where: { workspaceId, name: oldName }
+            where: { workspaceId, name: { equals: oldName, mode: 'insensitive' } }
         });
         if (oldFunnel) {
-            // Yeni ad zaten varsa çakışma olmasın diye kontrol et
             const newExists = await prisma.funnel.findFirst({
-                where: { workspaceId, name: newName }
+                where: { workspaceId, name: { equals: newName, mode: 'insensitive' } }
             });
+            
             if (!newExists) {
                 await prisma.funnel.update({
                     where: { id: oldFunnel.id },
                     data: { name: newName }
                 });
-                console.log(`🔄 [Funnels] Renamed "${oldName}" → "${newName}" for workspace ${workspaceId}`);
+                console.log(`🔄 [Funnels] Renamed "${oldFunnel.name}" → "${newName}" for workspace ${workspaceId}`);
+                migrated = true;
+            } else if (newExists.id !== oldFunnel.id) {
+                console.log(`🔄 [Funnels] Merging duplicate "${oldFunnel.name}" into "${newExists.name}" for workspace ${workspaceId}`);
+                
+                // Move stages from oldFunnel to newExists
+                const oldStages = await prisma.funnelStage.findMany({ where: { funnelId: oldFunnel.id } });
+                for (const stage of oldStages) {
+                    await prisma.funnelStage.update({
+                        where: { id: stage.id },
+                        data: { funnelId: newExists.id }
+                    });
+                }
+                
+                // Delete the old funnel
+                await prisma.funnel.delete({ where: { id: oldFunnel.id } });
                 migrated = true;
             }
         }
@@ -580,13 +599,13 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
         });
         if (!conv || conv.funnelType) return;
 
-        // Önce "Satış Akışı", yoksa "Genel CRM (Otomatik İşlem)" akışını bul
+        // Önce "Satış Akışı", yoksa "Genel" akışını bul
         let defaultFunnel = await prisma.funnel.findFirst({
             where: { workspaceId, name: 'Satış Akışı' }
         });
         if (!defaultFunnel) {
             defaultFunnel = await prisma.funnel.findFirst({
-                where: { workspaceId, name: 'Genel CRM (Otomatik İşlem)' }
+                where: { workspaceId, name: { in: ['Genel', 'Genel CRM (Otomatik İşlem)'] } }
             });
         }
         if (!defaultFunnel) {

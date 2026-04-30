@@ -314,18 +314,18 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
             <div className="bot-card-header">
                 <div className="bot-info">
                 <div className="bot-avatar">
-                    {bot.botType === 'APPOINTMENT' ? <Stethoscope size={24} /> : <Bot size={24} />}
+                    {bot.botType === 'APPOINTMENT' ? <Stethoscope size={18} /> : <Bot size={18} />}
                 </div>
                     <div className="bot-title-group">
                         {isEditingTitle ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                 <input
                                     type="text"
                                     className="input-modern"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
                                     placeholder="Bot İsmi"
-                                    style={{ padding: '4px 8px', fontSize: '14px', height: 'auto' }}
+                                    style={{ padding: '3px 8px', fontSize: '13px', height: 'auto' }}
                                     autoFocus
                                 />
                                 <input
@@ -334,7 +334,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                                     value={role}
                                     onChange={(e) => setRole(e.target.value)}
                                     placeholder="Departman/Rol"
-                                    style={{ padding: '2px 8px', fontSize: '12px', height: 'auto' }}
+                                    style={{ padding: '2px 8px', fontSize: '11px', height: 'auto' }}
                                 />
                             </div>
                         ) : (
@@ -345,9 +345,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                         )}
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '8px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 'bold', color: isActive ? '#10b981' : '#64748b' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: '600', color: isActive ? '#10b981' : '#94a3b8' }}>
                             {isActive ? 'Aktif' : 'Pasif'}
                         </span>
                         <label className="toggle-switch" title={isActive ? "Botu Pasife Al" : "Botu Aktifleştir"}>
@@ -368,17 +368,17 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                             setIsEditingTitle(!isEditingTitle);
                         }}
                         title={isEditingTitle ? "Tamam" : "İsmi Düzenle"}
-                        style={{ padding: '8px' }}
+                        style={{ padding: '6px' }}
                     >
-                        {isEditingTitle ? <Save size={18} /> : <Edit2 size={18} />}
+                        {isEditingTitle ? <Save size={15} /> : <Edit2 size={15} />}
                     </button>
                     <button
                         className="btn-modern btn-outline-danger"
                         onClick={() => onDelete(bot.id)}
                         title="Botu Sil"
-                        style={{ padding: '8px' }}
+                        style={{ padding: '6px' }}
                     >
-                        <Trash2 size={18} />
+                        <Trash2 size={15} />
                     </button>
                 </div>
             </div>
@@ -885,54 +885,40 @@ const Assistants = () => {
                     <div className="ai-usage-card-wrapper">
                         {aiUsageLoading ? (
                             <div className="ai-usage-card loading">
-                                <div className="usage-loading">Kullanım bilgisi yükleniyor...</div>
+                                <div className="usage-loading">Yükleniyor...</div>
                             </div>
                         ) : aiUsage ? (
                             <div className={`ai-usage-card ${aiUsage.percentage >= 100 ? 'exceeded' : aiUsage.percentage >= 80 ? 'warning' : ''}`}>
-                                <div className="usage-card-header">
-                                    <div className="usage-card-icon">
-                                        <Gauge size={20} />
-                                    </div>
-                                    <div className="usage-card-title">
-                                        <h4>Günlük AI Kullanımı</h4>
+                                <div className="usage-row">
+                                    <div className="usage-left">
+                                        <div className="usage-card-icon">
+                                            <Gauge size={16} />
+                                        </div>
+                                        <span className="usage-title">AI Kullanımı</span>
                                         <span className={`usage-plan-tag ${aiUsage.subscription?.toLowerCase()}`}>
                                             {aiUsage.subscriptionName}
                                         </span>
                                     </div>
-                                </div>
-
-                                <div className="usage-card-stats">
-                                    <div className="usage-stat">
-                                        <span className="stat-value">{aiUsage.currentCount}</span>
-                                        <span className="stat-label">Kullanılan</span>
-                                    </div>
-                                    <div className="usage-stat divider">/</div>
-                                    <div className="usage-stat">
-                                        <span className="stat-value">{aiUsage.limit}</span>
-                                        <span className="stat-label">Limit</span>
-                                    </div>
-                                    <div className="usage-stat remaining">
-                                        <span className="stat-value">{aiUsage.remaining}</span>
-                                        <span className="stat-label">Kalan</span>
+                                    <div className="usage-right">
+                                        <span className="usage-numbers">
+                                            <strong>{aiUsage.currentCount}</strong>
+                                            <span className="usage-sep">/</span>
+                                            <span>{aiUsage.limit === 999999 ? '∞' : aiUsage.limit}</span>
+                                        </span>
+                                        <span className="usage-remaining-pill">
+                                            {aiUsage.limit === 999999 ? '∞' : aiUsage.remaining} kalan
+                                        </span>
                                     </div>
                                 </div>
-
-                                <div className="usage-progress-bar">
-                                    <div
-                                        className="usage-progress-fill"
-                                        style={{ width: `${Math.min(aiUsage.percentage, 100)}%` }}
-                                    />
-                                </div>
-
                                 {aiUsage.percentage >= 100 && (
                                     <div className="usage-alert exceeded">
-                                        <AlertCircle size={16} />
-                                        <span>Günlük limit doldu! AI bot yanıt vermeyecek.</span>
+                                        <AlertCircle size={14} />
+                                        <span>Günlük limit doldu!</span>
                                     </div>
                                 )}
                                 {aiUsage.percentage >= 80 && aiUsage.percentage < 100 && (
                                     <div className="usage-alert warning">
-                                        <AlertCircle size={16} />
+                                        <AlertCircle size={14} />
                                         <span>Limite yaklaşıyorsunuz (%{aiUsage.percentage})</span>
                                     </div>
                                 )}
@@ -940,9 +926,6 @@ const Assistants = () => {
                         ) : null}
                     </div>
 
-                    <div className="assistants-info-box">
-                        <p>💡 Botları Channels sayfasından ilgili kanallara (WhatsApp, Facebook, Instagram, E-posta, Widget) atayabilirsiniz.</p>
-                    </div>
 
                     <div className="assistants-content">
                         {/* Add Bot Form Overlay */}

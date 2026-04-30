@@ -147,6 +147,11 @@ export const addTeamMember = async (req, res) => {
         if (userId) {
             memberData.userId = userId;
         } else {
+            // Verify bot belongs to this workspace
+            const bot = await prisma.aIBot.findFirst({ where: { id: botId, workspaceId } });
+            if (!bot) {
+                return res.status(404).json({ error: 'Bot not found in this workspace' });
+            }
             memberData.botId = botId;
         }
 

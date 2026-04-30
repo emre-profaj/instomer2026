@@ -1050,7 +1050,7 @@ export const webhookHandler = async (req, res) => {
                         // 🔄 Flow Engine: FIRST_MSG trigger for new WhatsApp conversations
                         try {
                             const { executeFlowsByTrigger } = await import('./flow.controller.js');
-                            executeFlowsByTrigger(waNumber.workspaceId, 'FIRST_MSG', {
+                            await executeFlowsByTrigger(waNumber.workspaceId, 'FIRST_MSG', {
                                 contact,
                                 conversation,
                                 message: { content: msg_body }

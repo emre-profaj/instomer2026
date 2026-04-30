@@ -107,11 +107,17 @@ function parseTurkishDate(raw) {
 
 export const DEFAULT_APPOINTMENT_PROMPT = `Sen nazik ve profesyonel bir hastane randevu asistanısın. Görevin müşterilerle sohbet ederek randevu oluşturmaktır.
 
+🚨 KRİTİK BAŞLANGIÇ KURALI:
+1. Müşteri "randevu" kelimesini kullandığında, hemen nazikçe "Hangi bölümden randevu almak istiyorsunuz?" diye sor.
+2. İlk aşamada 'get_branches' fonksiyonunu DİREKT ÇAĞIRMA! Sadece soruyu sor.
+3. Eğer müşteri "bilmiyorum", "liste var mı?", "bölümleri göster" gibi bir şey söylerse, o zaman 'get_branches' fonksiyonunu çağır (cinsiyet: 1, dogum_tarihi: "" varsayılan değerleriyle) ve gelen listeyi numaralandırarak sun.
+4. Eğer müşteri direkt bir bölüm ismi verirse (örn. "Kardiyoloji"), o zaman 'get_branches' çağırarak arka planda bölüm listesini al ve müşterinin istediği bölüme uygun olanı seçerek Doktor adımına (Adım 2) geç.
+
 📋 RANDEVU AKIŞI:
 ÖNCE randevu detaylarını belirle (branş, doktor, gün, saat), SONRA hasta bilgilerini al.
 
 🔹 ADIM 1 — BRANŞ SEÇİMİ:
-Müşteri randevu almak istediğini belirttiğinde, hemen 'get_branches' fonksiyonunu çağır (cinsiyet: 1, dogum_tarihi: '01011990' varsayılan değerleriyle). METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
+Müşteri mesajında "randevu" kelimesi AÇIKÇA geçiyorsa, hemen 'get_branches' fonksiyonunu çağır (cinsiyet: 1, dogum_tarihi: "" varsayılan değerleriyle). METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
 Gelen branşları numaralı liste olarak sun (kodları gösterme). Müşteriye hangi bölümden randevu almak istediğini sor.
 
 🔹 ADIM 2 — DOKTOR SEÇİMİ:
@@ -131,7 +137,7 @@ Randevu detayları tamamen belirlendikten sonra hasta bilgilerini topla. Sıras�
 1. Ad Soyad
 2. Telefon Numarası
 Bu iki bilgi yeterli! Ad soyad ve telefon alındıktan sonra HİÇBİR ŞEY SORMADAN doğrudan 'validate_patient' fonksiyonunu çağır.
-TC Kimlik ve Doğum Tarihi BAŞLANGIÇTA KESİNLİKLE SORMA! Sadece sistem hasta kaydı bulamazsa veya hata verirse, o zaman TC Kimlik numarasını ve Doğum Tarihini AYNI MESAJDA İKİSİNİ BİRDEN İSTE (Tek tek sorma!).
+TC Kimlik ve Doğum Tarihi GEREKSİZDİR, KESİNLİKLE SORMA! Sistem hasta kaydı bulamazsa veya hata verirse, hastaya durumu nazikçe açıklayıp yetkililere yönlendir.
 NOT: Cinsiyet bilgisini isimden otomatik belirle, SORMA! (Erkek isimleri: Gökhan, Mehmet, Ali vb. → "Erkek" / Kadın isimleri: Ayşe, Fatma vb. → "Kadın")
 
 🔹 ADIM 6 — DOĞRULAMA VE RANDEVU OLUŞTURMA:
@@ -160,22 +166,22 @@ export function getAppointmentToolDeclarations() {
     return [
         {
             name: 'validate_patient',
-            description: 'Hasta bilgilerini doğrular ve sisteme kaydeder. Ad soyad ve telefon yeterlidir. TC ve doğum tarihi opsiyoneldir — sadece sistem hata verirse iste.',
+            description: 'Hasta bilgilerini doğrular ve sisteme kaydeder. Ad soyad ve telefon yeterlidir. TC ve doğum tarihi artık kullanılmamaktadır.',
             parameters: {
                 type: 'object',
                 properties: {
-                    tc: { type: 'string', description: 'TC Kimlik Numarası (11 haneli) — opsiyonel, sadece gerekirse sor' },
+                    tc: { type: 'string', description: 'Kullanımdan kaldırıldı, boş bırakın' },
                     ad_soyad: { type: 'string', description: 'Hasta ad ve soyadı' },
                     cinsiyet: { type: 'string', description: 'Erkek veya Kadın' },
                     telefon: { type: 'string', description: 'Telefon numarası' },
-                    dogum_tarihi: { type: 'string', description: 'Doğum tarihi — opsiyonel, sadece gerekirse sor' }
+                    dogum_tarihi: { type: 'string', description: 'Kullanımdan kaldırıldı, boş bırakın' }
                 },
                 required: ['ad_soyad', 'telefon']
             }
         },
         {
             name: 'get_branches',
-            description: 'Mevcut randevu branşlarını/bölümlerini listeler. Müşteri randevu almak istediğini belirttiğinde İLK ÇAĞRILACAK fonksiyondur. Parametresiz çağrılabilir.',
+            description: 'Mevcut randevu branşlarını/bölümlerini listeler. YALNIZCA müşteri mesajında "randevu" kelimesi AÇIKÇA geçiyorsa çağrılır. "randevu" kelimesi geçmiyorsa KESİNLİKLE çağrılmaz. Parametresiz çağrılabilir.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -383,7 +389,7 @@ async function executeGetBranches(workspaceId, conversationId, args) {
     
     if (hasConnection) {
         const { getBranches } = await import('./probel_appointment.service.js');
-        const res = await getBranches(workspaceId, args?.cinsiyet || 1, args?.dogum_tarihi || '01011990');
+        const res = await getBranches(workspaceId, args?.cinsiyet || 1, args?.dogum_tarihi || '');
         if (res.success && res.branches) {
             await updateAppointmentState(conversationId, { branches: res.branches, doctors: null, days: null, hours: null, patient_name: null });
         }

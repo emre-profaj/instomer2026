@@ -4,6 +4,7 @@ import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
 import { maskSensitiveInfo } from '../utils/masking.js';
+import { processShortcodes } from '../utils/shortcodeExecutor.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -459,7 +460,7 @@ export const sendMessage = async (req, res) => {
         }
 
         const { conversationId } = req.params;
-        const { content, cc, bcc } = req.body;
+        let { content, cc, bcc } = req.body;
 
         // Cancel any pending auto-reply since human is replying
         try {
@@ -504,6 +505,14 @@ export const sendMessage = async (req, res) => {
             console.log(`⏭️ [SendMessage] Duplicate message detected, skipping. Content: ${content.substring(0, 50)}...`);
             return res.status(200).json({ message: duplicateMessage, duplicate: true });
         }
+
+        // --- Execute Shortcodes ---
+        try {
+            content = await processShortcodes(content, conversation.workspaceId);
+        } catch (shortcodeErr) {
+            console.error('Error processing shortcodes:', shortcodeErr);
+        }
+        // -------------------------
 
         // Determine message type
         let messageType = 'TEXT';
@@ -1492,7 +1501,7 @@ export const getPendingTransfers = async (req, res) => {
 export const createManualConversation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone, email, description, channel } = req.body;
+        const { name, phone, email, description, channel, funnelType, funnelStageId, date } = req.body;
 
         console.log(`📝 [Manual Conversation] Creating for workspace: ${workspaceId}`);
 
@@ -1541,7 +1550,9 @@ export const createManualConversation = async (req, res) => {
                     phone: phone?.trim() || null,
                     email: email?.trim() || null,
                     status: 'NEW',
-                    tags: '[]'
+                    tags: '[]',
+                    ...(funnelType && { funnelType }),
+                    ...(funnelStageId && { funnelStageId })
                 }
             });
         }
@@ -1577,9 +1588,11 @@ export const createManualConversation = async (req, res) => {
                     contactId: contact.id,
                     channel: 'MANUAL',
                     status: 'OPEN',
-                    lastMessageAt: new Date(),
+                    lastMessageAt: date ? new Date(date) : new Date(),
                     teamIds: '[]',
-                    assignedToId: req.user.id
+                    assignedToId: req.user.id,
+                    ...(funnelType && { funnelType }),
+                    ...(funnelStageId && { funnelStageId })
                 },
                 include: {
                     contact: true
@@ -1595,7 +1608,8 @@ export const createManualConversation = async (req, res) => {
                     content: description.trim(),
                     senderId: req.user.id,
                     isFromContact: false,
-                    messageType: 'TEXT'
+                    messageType: 'TEXT',
+                    ...(date && { createdAt: new Date(date) })
                 }
             });
             console.log(`📝 [Manual Conversation] Added initial message`);

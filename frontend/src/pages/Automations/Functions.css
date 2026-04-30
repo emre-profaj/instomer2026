@@ -1,0 +1,147 @@
+.functions-page {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    height: 100vh;
+    overflow-y: auto;
+    background-color: #f9fafb;
+}
+
+.functions-header {
+    margin-bottom: 2rem;
+}
+
+.functions-header h1 {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.5rem;
+    color: #111827;
+    margin: 0 0 0.5rem 0;
+    font-weight: 600;
+}
+
+.functions-header h1 svg {
+    color: #3b82f6;
+}
+
+.header-desc {
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.functions-tabs {
+    display: flex;
+    gap: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    margin-bottom: 2rem;
+}
+
+.functions-tabs .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #6b7280;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: -1px;
+}
+
+.functions-tabs .tab-btn:hover {
+    color: #374151;
+}
+
+.functions-tabs .tab-btn.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
+}
+
+.info-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background-color: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    color: #1e3a8a;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.info-banner svg {
+    flex-shrink: 0;
+    color: #3b82f6;
+    margin-top: 2px;
+}
+
+.settings-wrapper {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+}
+
+.bot-tools-wrapper .bot-settings-section {
+    padding: 1.5rem;
+}
+
+.bot-selector-container {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.bot-selector-container label {
+    display: block;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.75rem;
+    font-size: 0.95rem;
+}
+
+.custom-select-wrapper {
+    position: relative;
+    max-width: 400px;
+}
+
+.bot-select {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    padding-right: 2.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: #1f2937;
+    background-color: #ffffff;
+    appearance: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.bot-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.custom-select-wrapper .select-icon {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6b7280;
+    pointer-events: none;
+}

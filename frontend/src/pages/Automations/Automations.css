@@ -1151,3 +1151,108 @@
     padding: 0;
     overflow: hidden;
 }
+
+/* ── Custom Flow Dropdown ─────────────────────────────────────── */
+.flow-custom-select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 14px;
+    color: #1f2937;
+    transition: all 0.18s;
+    user-select: none;
+    box-sizing: border-box;
+}
+.flow-custom-select:hover {
+    border-color: #d1d5db;
+    background: #f9fafb;
+}
+.flow-custom-select.open {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.1);
+}
+
+.flow-custom-select-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.flow-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.flow-chevron {
+    flex-shrink: 0;
+    color: #6b7280;
+    transition: transform 0.18s;
+}
+.flow-chevron.rotated {
+    transform: rotate(180deg);
+}
+
+/* Dropdown list */
+.flow-custom-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 200;
+    overflow: hidden;
+    animation: flowDropIn 0.14s ease;
+}
+@keyframes flowDropIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.flow-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #1f2937;
+    transition: background 0.12s;
+    border-bottom: 1px solid #f3f4f6;
+}
+.flow-dropdown-item:last-child { border-bottom: none; }
+.flow-dropdown-item:hover { background: #f9fafb; }
+.flow-dropdown-item.selected {
+    background: #fef2f2;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.flow-dropdown-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flow-dropdown-empty {
+    padding: 14px;
+    font-size: 12px;
+    color: #9ca3af;
+    text-align: center;
+}

@@ -277,3 +277,53 @@ export const getContactTimeline = async (req, res) => {
         res.status(500).json({ error: 'Aktivite geçmişi alınırken bir hata oluştu.' });
     }
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// UPDATE ACTIVITY
+// ────────────────────────────────────────────────────────────────────────────
+export const updateActivity = async (req, res) => {
+    try {
+        const { activityId } = req.params;
+        const { title, description, dueDate } = req.body;
+
+        const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
+        if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
+
+        const updated = await prisma.contactActivity.update({
+            where: { id: activityId },
+            data: {
+                title: title !== undefined ? title : existing.title,
+                description: description !== undefined ? description : existing.description,
+                dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
+            },
+            include: {
+                creator: { select: { name: true, role: true } },
+                assignee: { select: { name: true } }
+            }
+        });
+
+        res.json(updated);
+    } catch (error) {
+        console.error('Update Activity Error:', error);
+        res.status(500).json({ error: 'Aktivite güncellenirken bir hata oluştu.' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// DELETE ACTIVITY
+// ────────────────────────────────────────────────────────────────────────────
+export const deleteActivity = async (req, res) => {
+    try {
+        const { activityId } = req.params;
+
+        const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
+        if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
+
+        await prisma.contactActivity.delete({ where: { id: activityId } });
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete Activity Error:', error);
+        res.status(500).json({ error: 'Aktivite silinirken bir hata oluştu.' });
+    }
+};

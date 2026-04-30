@@ -1,0 +1,668 @@
+{
+	"info": {
+		"_postman_id": "7f062307-874e-45a6-a1cc-defabefd2642",
+		"name": "PKG_HSW_MBL_API_METROPOL_METROPOL",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "25950760",
+		"_collection_link": "https://winter-zodiac-219926.postman.co/workspace/Probel---APIs~bfda6332-1eee-44ea-80f2-7b0b9713f8ba/collection/25950760-7f062307-874e-45a6-a1cc-defabefd2642?action=share&source=collection_link&creator=25950760"
+	},
+	"item": [
+		{
+			"name": "token",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "grant_type",
+							"value": "password",
+							"type": "text"
+						},
+						{
+							"key": "username",
+							"value": "DRSITESI",
+							"type": "text"
+						},
+						{
+							"key": "password",
+							"value": "DR26!SITESI",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://probelweb.metropolhastanesi.com/DynamicDataApi/token",
+					"protocol": "https",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"DynamicDataApi",
+						"token"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_hasta_token",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_hasta_token\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"KIMLIK_TIPI\":1,\r\n      \"KIMLIK_NO\":\"50344271758\",\r\n      \"ADI\":\"ümit\",\r\n      \"SOYADI\":\"SELCAN\",\r\n      \"CINSIYET\":1,\r\n      \"DOGUM_TARIHI\":\"01091984\",\r\n      \"TELEFON\":\"5412096723\"\r\n   }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_hizmet_list",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_sube_list\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{ \r\n            \"SUBE_KODU\":\"\"\r\n   }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_sube_list",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_sube_list\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{ \r\n            \"SUBE_KODU\":\"\"\r\n   }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_brans_list",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_brans_list\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"SUBE_KODU\":\"1\",\r\n      \"CINSIYET\":1,\r\n      \"DOGUM_TARIHI\":\"06011983\",\r\n      \"UZAKTAN\" : 0\r\n   }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_poliklinik_list",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_poliklinik_list\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"SUBE_KODU\":\"1\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_uygun_gunler_list",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_uygun_gunler_list\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"SUBE_KODU\":\"1\",\r\n       \"SERVIS_KODU\":\"110\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_get_uygun_saatler_list",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_get_uygun_saatler_list\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"SERVIS_KODU\":\"110\",\r\n      \"BOS\":\"1\", //1 BOŞ,  2 DOLU\r\n      \"RANDEVU_TARIHI\":\"24.10.2024\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_set_randevu_bilgisi",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_set_randevu_bilgisi\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n       \"HASTA_TOKEN\":\"EWBR2E2V97FJ136E\",\r\n      \"RANDEVU_ID\":\"3181485\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_set_randevu_iptal",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_set_randevu_iptal\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"P1E31MPFM13OGJCJ\", \r\n      \"RANDEVU_ID\":\"2146754\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_listesi",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_hasta_randevu_listesi\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"P1E31MPFM13OGJCJ\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_muayene_kayit",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_randevu_muayene_kaydet\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"MJNZ6XOWMOHUFCG2\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"GELIS_ZAMANI\":\"23.11.2022 13:00\"      \r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_set_muayene_sys_takip_no",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_randevu_muayene_kaydet\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"MJNZ6XOWMOHUFCG2\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"GELIS_ZAMANI\":\"23.11.2022 13:00\"      \r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_muayene_iptal",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_MBL_API_METROPOL.prc_randevu_muayene_iptal\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"KAJIDYIM9Y9X0XE9\",\r\n      \"RANDEVU_ID\":\"10665412\"\r\n     \r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_muayene_icd",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_UMS.prc_randevu_muayene_icd10\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"MJNZ6XOWMOHUFCG2\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"TANI_KODU\":\"F50.8\"     \r\n               }\r\n}\r\n"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_hizmet_ekle",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_UMS.prc_randevu_muayene_icd10\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"MJNZ6XOWMOHUFCG2\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"TANI_KODU\":\"F50.8\"     \r\n               }\r\n}\r\n"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_hizmet_sil",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_UMS.prc_randevu_hizmet_sil\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"KAJIDYIM9Y9X0XE9\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"REFERANS_HIZMET_ID\":\"256365489\"     \r\n               }\r\n}\r\n"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_muayene_icd iptal",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_UMS.prc_randevu_muayene_anamnez\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"8BW1PPK88D2E98WW\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"KARAR_TEDAVI\":\"test karar\", \r\n      \"SIKAYET\":\"test Şikayet\"\r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "prc_randevu_muayene_anamnez",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"name": "Content-Type",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n   \"stored_procedure\":\"PKG_HSW_UMS.prc_randevu_muayene_icd_iptal\",\r\n   \"cursor_list\":[\r\n      \"ref_out_list\"\r\n   ],\r\n   \"input_data\":{\r\n      \"HASTA_TOKEN\":\"8BW1PPK88D2E98WW\",\r\n      \"RANDEVU_ID\":\"10665413\",\r\n      \"TANI_REFERANS_ID\":\"57374293\", \r\n               }\r\n}"
+				},
+				"url": {
+					"raw": "{{API_ADDRESS}}/api/oracle/runasync",
+					"host": [
+						"{{API_ADDRESS}}"
+					],
+					"path": [
+						"api",
+						"oracle",
+						"runasync"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{access_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"const tokenUrl =   pm.collectionVariables.get(\"API_ADDRESS\") +'/token';",
+					"",
+					"",
+					"const clientId = pm.collectionVariables.get(\"username\") ;",
+					"const clientSecret = pm.collectionVariables.get(\"password\") ;",
+					"",
+					" ",
+					"const getTokenRequest = {",
+					"  method: 'POST',",
+					"  url: tokenUrl, ",
+					"header: { ",
+					"        'Content-Type': 'application/x-www-form-urlencoded' ",
+					"    },body: {",
+					"        mode: 'urlencoded',",
+					"        urlencoded: [",
+					"            {key: 'grant_type', value: 'password'},",
+					"            {key: 'username', value: clientId},",
+					"            {key: 'password', value: clientSecret}",
+					"        ]",
+					"    }",
+					"};",
+					"",
+					"pm.sendRequest(getTokenRequest, (err, response) => {",
+					"  const jsonResponse = response.json();",
+					"  const newAccessToken = jsonResponse.access_token;",
+					"",
+					"  pm.variables.set('access_token', newAccessToken);",
+					"});"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "API_ADDRESS",
+			"value": "https://probelweb.metropolhastanesi.com/DynamicDataApi"
+		},
+		{
+			"key": "username",
+			"value": "DRSITESI"
+		},
+		{
+			"key": "password",
+			"value": "DR26!SITESI"
+		}
+	]
+}

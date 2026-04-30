@@ -109,9 +109,9 @@ export const deleteIntegration = async (req, res) => {
 
 export const getBotTools = async (req, res) => {
     try {
-        const { botId } = req.params;
+        const { workspaceId } = req.params;
         const tools = await prisma.aIBotTool.findMany({
-            where: { botId },
+            where: { workspaceId },
             include: {
                 apiIntegration: {
                     select: { id: true, name: true, baseUrl: true }
@@ -128,11 +128,11 @@ export const getBotTools = async (req, res) => {
 
 export const createBotTool = async (req, res) => {
     try {
-        const { botId } = req.params;
+        const { workspaceId } = req.params;
         const { apiIntegrationId, name, description, method, endpoint, parametersSchema, isActive } = req.body;
 
         const data = {
-            botId,
+            workspaceId,
             apiIntegrationId: apiIntegrationId || null,
             name,
             description,
@@ -152,7 +152,7 @@ export const createBotTool = async (req, res) => {
 
 export const updateBotTool = async (req, res) => {
     try {
-        const { botId, toolId } = req.params;
+        const { workspaceId, toolId } = req.params;
         const { apiIntegrationId, name, description, method, endpoint, parametersSchema, isActive } = req.body;
 
         const data = {};
@@ -178,7 +178,7 @@ export const updateBotTool = async (req, res) => {
 
 export const deleteBotTool = async (req, res) => {
     try {
-        const { botId, toolId } = req.params;
+        const { workspaceId, toolId } = req.params;
         await prisma.aIBotTool.delete({ where: { id: toolId } });
         res.json({ message: 'Yetenek silindi' });
     } catch (error) {

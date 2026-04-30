@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -46,12 +46,12 @@ const Sidebar = () => {
     ];
 
     const settingsSubItems = [
-        { path: '/settings', icon: Settings, label: t('settings.title') },
         { path: '/channels', icon: Radio, label: t('channels.title') },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/assistants', icon: Bot, label: t('nav.assistants') },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
         { path: '/automations', icon: Zap, label: t('nav.automations') },
+        { path: '/functions', icon: Wrench, label: 'Fonksiyonlar (API)' },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' }
     ];
 

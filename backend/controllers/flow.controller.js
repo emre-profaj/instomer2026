@@ -221,8 +221,20 @@ async function executeSteps(workspaceId, steps, context) {
                     await executeAssignTeam(workspaceId, step, context);
                     break;
 
+                case 'ASSIGN_BOT':
+                    await executeAssignBot(workspaceId, step, context);
+                    break;
+
                 case 'CONVERT_TO_OPP':
                     await executeConvertToOpportunity(workspaceId, step, context);
+                    break;
+
+                case 'SWITCH_FLOW':
+                    await executeSwitchFlow(workspaceId, step, context);
+                    break;
+
+                case 'SEND_MESSAGE':
+                    await executeSendMessage(workspaceId, step, context);
                     break;
 
                 case 'RETRY_CALL':
@@ -587,6 +599,54 @@ async function executeAssignTeam(workspaceId, step, context) {
 }
 
 /**
+ * ASSIGN_BOT: Assign a specific AI bot to the conversation
+ */
+async function executeAssignBot(workspaceId, step, context) {
+    const botId = step.config?.botId;
+
+    let conversationId = context.conversation?.id;
+    if (!conversationId && context.contact?.id) {
+        const conv = await prisma.conversation.findFirst({
+            where: { contactId: context.contact.id, workspaceId },
+            orderBy: { lastMessageAt: 'desc' }
+        });
+        conversationId = conv?.id;
+    }
+    if (!conversationId) {
+        console.log(`  ⚠️ [FLOW STEP] ASSIGN_BOT: No conversation found`);
+        return;
+    }
+    if (!botId) {
+        console.log(`  ⚠️ [FLOW STEP] ASSIGN_BOT: No bot ID configured`);
+        return;
+    }
+
+    const bot = await prisma.aIBot.findUnique({
+        where: { id: botId }
+    });
+
+    if (!bot) {
+        console.log(`  ⚠️ [FLOW STEP] ASSIGN_BOT: Target bot not found (${botId})`);
+        return;
+    }
+
+    await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+            assignedBotId: bot.id,
+            botEnabled: true
+        }
+    });
+
+    try {
+        const { emitToWorkspace } = await import('../socket.js');
+        emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });
+    } catch (e) {}
+
+    console.log(`  ✅ [FLOW STEP] ASSIGN_BOT: Conversation assigned to AI Bot "${bot.name}"`);
+}
+
+/**
  * CONVERT_TO_OPP: Move conversation to a specific funnel stage (Opportunity)
  */
 async function executeConvertToOpportunity(workspaceId, step, context) {
@@ -636,6 +696,129 @@ async function executeConvertToOpportunity(workspaceId, step, context) {
         }
     });
     console.log(`  ✅ [FLOW STEP] CONVERT_TO_OPP: Conversation moved to funnel "${fursatFunnel.name}" stage "${stage?.name || 'default'}"`);
+}
+
+/**
+ * SWITCH_FLOW: Move conversation to a specific funnel pipeline
+ */
+async function executeSwitchFlow(workspaceId, step, context) {
+    const targetFunnelId = step.config?.flowId;
+
+    let conversationId = context.conversation?.id;
+    if (!conversationId && context.contact?.id) {
+        const conv = await prisma.conversation.findFirst({
+            where: { contactId: context.contact.id, workspaceId },
+            orderBy: { lastMessageAt: 'desc' }
+        });
+        conversationId = conv?.id;
+    }
+    if (!conversationId) {
+        console.log(`  ⚠️ [FLOW STEP] SWITCH_FLOW: No conversation found`);
+        return;
+    }
+    if (!targetFunnelId) {
+        console.log(`  ⚠️ [FLOW STEP] SWITCH_FLOW: No target funnel ID configured`);
+        return;
+    }
+
+    // Find the target funnel and its first stage
+    const funnel = await prisma.funnel.findUnique({
+        where: { id: targetFunnelId },
+        include: { stages: { orderBy: { order: 'asc' } } }
+    });
+
+    if (!funnel) {
+        console.log(`  ⚠️ [FLOW STEP] SWITCH_FLOW: Target funnel not found (${targetFunnelId})`);
+        return;
+    }
+
+    const firstStage = funnel.stages[0];
+
+    await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+            funnelType: funnel.id,
+            ...(firstStage && { funnelStageId: firstStage.id })
+        }
+    });
+    
+    // Also emit to UI to update the view
+    try {
+        const { emitToWorkspace } = await import('../socket.js');
+        emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });
+    } catch (e) {
+        // Safe to ignore
+    }
+
+    console.log(`  ✅ [FLOW STEP] SWITCH_FLOW: Conversation moved to funnel "${funnel.name}" stage "${firstStage?.name || 'default'}"`);
+}
+
+/**
+ * SEND_MESSAGE: Send a standard text message
+ */
+async function executeSendMessage(workspaceId, step, context) {
+    const messageContent = step.config?.message;
+    if (!messageContent) {
+        console.log(`  ⚠️ [FLOW STEP] SEND_MESSAGE: No message content configured`);
+        return;
+    }
+
+    let conversationId = context.conversation?.id;
+    if (!conversationId && context.contact?.id) {
+        const conv = await prisma.conversation.findFirst({
+            where: { contactId: context.contact.id, workspaceId },
+            orderBy: { lastMessageAt: 'desc' }
+        });
+        conversationId = conv?.id;
+    }
+
+    if (!conversationId) {
+        console.log(`  ⚠️ [FLOW STEP] SEND_MESSAGE: No conversation found`);
+        return;
+    }
+
+    try {
+        const message = await prisma.message.create({
+            data: {
+                conversationId,
+                content: messageContent,
+                messageType: 'TEXT',
+                isFromContact: false,
+                status: 'SENT'
+            }
+        });
+
+        await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { lastMessageAt: new Date() }
+        });
+
+        // Trigger webhook to send real message based on channel
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { contact: true }
+        });
+
+        if (conversation && conversation.channel === 'WHATSAPP') {
+            const { sendWhatsAppMessage } = await import('./whatsapp.controller.js');
+            await sendWhatsAppMessage(workspaceId, conversation.contact.phone, messageContent);
+        } else if (conversation && conversation.channel === 'FACEBOOK') {
+            const { sendFacebookMessage } = await import('./facebook.controller.js');
+            await sendFacebookMessage(conversation.id, messageContent);
+        } else if (conversation && conversation.channel === 'INSTAGRAM') {
+            const { sendInstagramMessage } = await import('./facebook.controller.js');
+            await sendInstagramMessage(conversation.id, messageContent);
+        }
+
+        try {
+            const { emitToWorkspace } = await import('../socket.js');
+            emitToWorkspace(workspaceId, 'new_message', { conversationId, message });
+        } catch (e) {}
+
+        console.log(`  ✅ [FLOW STEP] SEND_MESSAGE: "${messageContent.substring(0, 30)}..."`);
+    } catch (err) {
+        console.error(`  ❌ [FLOW STEP] SEND_MESSAGE failed:`, err.message);
+    }
 }
 
 /**

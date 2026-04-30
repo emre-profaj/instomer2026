@@ -3,7 +3,7 @@ import { apiIntegrationAPI } from '../../services/api';
 import { Wrench, Plus, Trash2, Edit2, Link as LinkIcon, Check, X } from 'lucide-react';
 import './ApiIntegrationSettings.css'; // Aynı CSS'i kullanabiliriz
 
-const BotToolsSettings = ({ botId, workspaceId }) => {
+const BotToolsSettings = ({ workspaceId }) => {
     const [tools, setTools] = useState([]);
     const [integrations, setIntegrations] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -21,16 +21,16 @@ const BotToolsSettings = ({ botId, workspaceId }) => {
     });
 
     useEffect(() => {
-        if (botId && workspaceId) {
+        if (workspaceId) {
             fetchData();
         }
-    }, [botId, workspaceId]);
+    }, [workspaceId]);
 
     const fetchData = async () => {
         try {
             setLoading(true);
             const [toolsRes, integrationsRes] = await Promise.all([
-                apiIntegrationAPI.getBotTools(botId),
+                apiIntegrationAPI.getBotTools(workspaceId),
                 apiIntegrationAPI.getAll(workspaceId)
             ]);
             setTools(toolsRes.data.tools || []);
@@ -83,9 +83,9 @@ const BotToolsSettings = ({ botId, workspaceId }) => {
             }
 
             if (editingTool) {
-                await apiIntegrationAPI.updateBotTool(botId, editingTool.id, formData);
+                await apiIntegrationAPI.updateBotTool(workspaceId, editingTool.id, formData);
             } else {
-                await apiIntegrationAPI.createBotTool(botId, formData);
+                await apiIntegrationAPI.createBotTool(workspaceId, formData);
             }
             setShowModal(false);
             fetchData();
@@ -98,7 +98,7 @@ const BotToolsSettings = ({ botId, workspaceId }) => {
     const handleDelete = async (id) => {
         if (!window.confirm('Bu aracı silmek istediğinizden emin misiniz?')) return;
         try {
-            await apiIntegrationAPI.deleteBotTool(botId, id);
+            await apiIntegrationAPI.deleteBotTool(workspaceId, id);
             fetchData();
         } catch (error) {
             console.error('Delete error:', error);

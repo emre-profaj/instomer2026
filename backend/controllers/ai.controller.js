@@ -1137,6 +1137,18 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         let activeBot = null;
         let conversation = null;
 
+        // 🎯 WORKSPACE ROUTER — Funnel yönlendirmesi (CHATS tipinde, yeni/eşleşmemiş sohbetler için)
+        if (type === 'CHATS' && conversationId) {
+            try {
+                const { routeConversationToFunnel } = await import('../services/workspaceRouter.service.js');
+                await routeConversationToFunnel(workspaceId, conversationId, userMessage, channel);
+                // Router, funnel atamasını yaptı (bot değiştirmiş olabilir)
+                // Bot seçimi aşağıda DB'den taze okunacak
+            } catch (routerErr) {
+                console.error('⚠️ [Router] Non-fatal router error:', routerErr.message);
+            }
+        }
+
         // COMMENTS type - no conversation, find the comment bot assigned to the page
         if (type === 'COMMENTS') {
             const isInstagramComment = channel?.toLowerCase() === 'instagram';
@@ -1304,7 +1316,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         // Fetch tools for this bot (for Function Calling)
         try {
             const botTools = await prisma.aIBotTool.findMany({
-                where: { botId: activeBot.id, isActive: true },
+                where: { workspaceId: workspaceId, isActive: true },
                 include: { apiIntegration: true }
             });
             activeBot.tools = botTools;
@@ -1647,7 +1659,85 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 };
             });
 
-            geminiTools.push({ functionDeclarations });
+            const builtInTools = [
+                {
+                    name: "transfer_to_team",
+                    description: "Görüşmeyi bir takımın asistanına veya insan temsilciye devretmek için kullanılır.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            team_name: { type: "string", description: "Devredilecek takımın adı" },
+                            reason: { type: "string", description: "Devir nedeni" }
+                        },
+                        required: ["team_name"]
+                    }
+                },
+                {
+                    name: "change_funnel_stage",
+                    description: "Müşteriyi satış veya süreç hunisinde belirli bir aşamaya taşımak için kullanılır.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            funnel_name: { type: "string", description: "Huni adı (Örn: 'Satış Akışı')" },
+                            stage_name: { type: "string", description: "Aşama adı" }
+                        },
+                        required: ["funnel_name", "stage_name"]
+                    }
+                },
+                {
+                    name: "send_whatsapp_template",
+                    description: "Kişiye WhatsApp üzerinden hazır bir şablon mesaj (örn: Konum) göndermek için kullanılır.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            template_name: { type: "string", description: "Gönderilecek şablonun adı" }
+                        },
+                        required: ["template_name"]
+                    }
+                }
+            ];
+
+            const allDeclarations = [...functionDeclarations, ...builtInTools];
+            geminiTools.push({ functionDeclarations: allDeclarations });
+        } else {
+            const builtInTools = [
+                {
+                    name: "transfer_to_team",
+                    description: "Görüşmeyi bir takımın asistanına veya insan temsilciye devretmek için kullanılır.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            team_name: { type: "string", description: "Devredilecek takımın adı" },
+                            reason: { type: "string", description: "Devir nedeni" }
+                        },
+                        required: ["team_name"]
+                    }
+                },
+                {
+                    name: "change_funnel_stage",
+                    description: "Müşteriyi satış veya süreç hunisinde belirli bir aşamaya taşımak için kullanılır.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            funnel_name: { type: "string", description: "Huni adı (Örn: 'Satış Akışı')" },
+                            stage_name: { type: "string", description: "Aşama adı" }
+                        },
+                        required: ["funnel_name", "stage_name"]
+                    }
+                },
+                {
+                    name: "send_whatsapp_template",
+                    description: "Kişiye WhatsApp üzerinden hazır bir şablon mesaj (örn: Konum) göndermek için kullanılır.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            template_name: { type: "string", description: "Gönderilecek şablonun adı" }
+                        },
+                        required: ["template_name"]
+                    }
+                }
+            ];
+            geminiTools.push({ functionDeclarations: builtInTools });
         }
 
         // 🏥 Append appointment bot tools if applicable
@@ -1719,6 +1809,31 @@ ${systemPrompt}${appointmentContextPrompt}`;
                                 functionResponse: {
                                     name: call.name,
                                     response: { error: aptErr.message }
+                                }
+                            });
+                        }
+                    } else if (['transfer_to_team', 'change_funnel_stage', 'send_whatsapp_template'].includes(call.name)) {
+                        try {
+                            const { executeBuiltInTool } = await import('../utils/builtInToolExecutor.js');
+                            // Need to pass conversation if available
+                            const result = await executeBuiltInTool(call.name, call.args, {
+                                workspaceId,
+                                conversationId,
+                                activeBotId: activeBot.id
+                            });
+
+                            functionResponsesParts.push({
+                                functionResponse: {
+                                    name: call.name,
+                                    response: result
+                                }
+                            });
+                        } catch (toolErr) {
+                            console.error(`⚙️ Built-in Tool execution failed:`, toolErr);
+                            functionResponsesParts.push({
+                                functionResponse: {
+                                    name: call.name,
+                                    response: { error: toolErr.message }
                                 }
                             });
                         }
@@ -2879,6 +2994,9 @@ Konu başlığı:`;
  * @param {boolean} force - Zaten analiz edilmişse bile zorla
  */
 export const analyzeSentimentForConversation = async (workspaceId, conversationId, force = false) => {
+    // KULLANICI İSTEĞİ: Yüksek ilgi vs puan hesaplamasını ve gösterimini tamamen kaldır.
+    return null;
+    
     try {
         if (!workspaceId || !conversationId) return null;
 

@@ -402,8 +402,8 @@ setTimeout(() => {
   initKnowledgeCron();
 }, 65000);
 
-// Sentiment Analyzer Cron
-import { startSentimentAnalyzer } from './services/sentiment.service.js';
-setTimeout(() => {
-  startSentimentAnalyzer();
-}, 70000);
+// Sentiment Analyzer Cron Kapatıldı
+// import { startSentimentAnalyzer } from './services/sentiment.service.js';
+// setTimeout(() => {
+//   startSentimentAnalyzer();
+// }, 70000);

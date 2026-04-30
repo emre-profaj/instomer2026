@@ -1518,7 +1518,7 @@ async function processWebhookAsync(body) {
                     // 🔄 Flow Engine: FIRST_MSG trigger for new FB/IG conversations
                     try {
                         const { executeFlowsByTrigger } = await import('./flow.controller.js');
-                        executeFlowsByTrigger(facebookPage.workspaceId, 'FIRST_MSG', {
+                        await executeFlowsByTrigger(facebookPage.workspaceId, 'FIRST_MSG', {
                             contact,
                             conversation
                         });
@@ -3222,10 +3222,33 @@ async function handleLeadgenEvent(leadValue, entryId) {
             try {
                 const { triggerAutoCall } = await import('./retell.controller.js');
                 const baseDate = leadData.created_time ? new Date(leadData.created_time) : new Date();
-                // IMPORTANT: Pass null for messageContent — lead form messages are system-generated
-                // and contain date strings like "23.03.2026" that get misinterpreted as times (23:03).
-                // Lead forms never contain customer call-time preferences, so only business hours logic should apply.
-                triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', null, baseDate);
+
+                // Extract preferred call-time window directly from lead form fieldData.
+                // We do this here (structured data) rather than relying on message-content parsing,
+                // because LEAD triggers intentionally disable message parsing to prevent date strings
+                // like "23.03.2026" from being misread as "23:03".
+                // Facebook Lead Ads encodes range values with underscores: "12:00_-_15:00"
+                let leadPreferredWindow = null;
+                for (const [key, value] of Object.entries(fieldData)) {
+                    const lk = key.toLowerCase();
+                    if (lk.includes('zaman') || lk.includes('saat') || lk.includes('time') || lk.includes('when') || lk.includes('ara')) {
+                        if (value) {
+                            // Normalize underscored Facebook Lead Ads format: "12:00_-_15:00" → "12:00-15:00"
+                            const normalized = String(value).replace(/_/g, ' ').trim();
+                            const rangeMatch = normalized.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+                            if (rangeMatch) {
+                                const [, sH, sM, eH, eM] = rangeMatch.map((v, i) => i === 0 ? v : parseInt(v));
+                                if (sH >= 6 && eH > sH && eH <= 23) {
+                                    leadPreferredWindow = { startHour: sH, startMinute: sM, endHour: eH, endMinute: eM };
+                                    console.log(`🕐 [LEADGEN] Preferred call window from lead form field "${key}": ${sH}:${String(sM).padStart(2,'0')}-${eH}:${String(eM).padStart(2,'0')}`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                triggerAutoCall(facebookPage.workspaceId, leadPhone, contact?.id, leadName, 'LEAD', null, baseDate, leadPreferredWindow);
             } catch (autoCallErr) {
                 console.error('⚠️ [LEADGEN] AutoCall trigger error:', autoCallErr.message);
             }

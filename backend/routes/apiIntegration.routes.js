@@ -21,10 +21,10 @@ router.post('/workspace/:workspaceId', requireWorkspaceAccess, createIntegration
 router.put('/workspace/:workspaceId/:id', requireWorkspaceAccess, updateIntegration);
 router.delete('/workspace/:workspaceId/:id', requireWorkspaceAccess, deleteIntegration);
 
-// AI Bot Tools
-router.get('/bot/:botId', getBotTools);
-router.post('/bot/:botId', createBotTool);
-router.put('/bot/:botId/:toolId', updateBotTool);
-router.delete('/bot/:botId/:toolId', deleteBotTool);
+// AI Bot Tools (Workspace Level)
+router.get('/workspace/:workspaceId/tools', requireWorkspaceAccess, getBotTools);
+router.post('/workspace/:workspaceId/tools', requireWorkspaceAccess, createBotTool);
+router.put('/workspace/:workspaceId/tools/:toolId', requireWorkspaceAccess, updateBotTool);
+router.delete('/workspace/:workspaceId/tools/:toolId', requireWorkspaceAccess, deleteBotTool);
 
 export default router;

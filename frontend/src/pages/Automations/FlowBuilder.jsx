@@ -6,7 +6,7 @@ import {
     Play, Save, X, CheckCircle, Eye, MailCheck,
     AlarmClock, Tag, Bell, ArrowDown, Edit2
 } from 'lucide-react';
-import { flowAPI, automationAPI } from '../../services/api';
+import api, { flowAPI, automationAPI, funnelAPI, workspaceAPI, teamAPI, aiAPI, adminAPI } from '../../services/api';
 import './FlowBuilder.css';
 
 // ─── Step type definitions ─────────────────────────────────────────────────
@@ -20,11 +20,14 @@ const STEP_TYPES = {
     STAGE_CHANGED:  { group: 'trigger', label: 'Aşama Değiştiğinde',     icon: '🔀', color: '#3b82f6', borderColor: '#3b82f6' },
     // Actions
     WA_SEND:        { group: 'action',  label: 'WhatsApp Gönder',        icon: '💬', color: '#10b981', borderColor: '#10b981' },
+    SEND_MESSAGE:   { group: 'action',  label: 'Mesaj / Soru Sor',       icon: '✏️', color: '#10b981', borderColor: '#10b981' },
     AI_CALL:        { group: 'action',  label: 'AI Araması Başlat',      icon: '🤖', color: '#10b981', borderColor: '#10b981' },
     RETRY_CALL:     { group: 'action',  label: 'Hatırlatma Araması',     icon: '🔁', color: '#10b981', borderColor: '#10b981' },
     ASSIGN_AGENT:   { group: 'action',  label: 'Temsilci Ata',           icon: '👤', color: '#10b981', borderColor: '#10b981' },
     ASSIGN_TEAM:    { group: 'action',  label: 'Ekibe Ata',              icon: '👥', color: '#10b981', borderColor: '#10b981' },
+    ASSIGN_BOT:     { group: 'action',  label: 'AI Bot Ata',             icon: '🤖', color: '#10b981', borderColor: '#10b981' },
     CONVERT_TO_OPP: { group: 'action',  label: 'Fırsata Çevir',          icon: '🎯', color: '#10b981', borderColor: '#10b981' },
+    SWITCH_FLOW:    { group: 'action',  label: 'Akışa Geç',              icon: '🔀', color: '#10b981', borderColor: '#10b981' },
 
     // Logic
     WAIT:           { group: 'logic',   label: 'Bekleme Süresi',         icon: '⏱️', color: '#f59e0b', borderColor: '#f59e0b' },
@@ -33,7 +36,7 @@ const STEP_TYPES = {
 
 const PALETTE = {
     'TETİKLEYİCİLER': ['NEW_FORM', 'FIRST_MSG', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED', 'TAG_ADDED'],
-    'AKSİYONLAR':     ['WA_SEND', 'AI_CALL', 'RETRY_CALL', 'ASSIGN_AGENT', 'ASSIGN_TEAM', 'CONVERT_TO_OPP'],
+    'AKSİYONLAR':     ['SEND_MESSAGE', 'WA_SEND', 'AI_CALL', 'RETRY_CALL', 'ASSIGN_AGENT', 'ASSIGN_TEAM', 'ASSIGN_BOT', 'CONVERT_TO_OPP', 'SWITCH_FLOW'],
     'MANTIK & KONTROL': ['WAIT', 'CONDITION'],
 };
 
@@ -53,12 +56,15 @@ function makeStep(type) {
     if (type === 'WAIT')           base.config = { amount: 5, unit: 'dakika' };
     if (type === 'CONDITION')      base.config = { condition: 'MSG_READ', keywords: '', matchMode: 'any', yesBranch: [], noBranch: [] };
     if (type === 'WA_SEND')        base.config = { templateName: '' };
-    if (type === 'ASSIGN_AGENT')   base.config = { agentName: '' };
-    if (type === 'ASSIGN_TEAM')    base.config = { teamName: '' };
+    if (type === 'SEND_MESSAGE')   base.config = { message: '' };
+    if (type === 'ASSIGN_AGENT')   base.config = { agentId: '', agentName: '' };
+    if (type === 'ASSIGN_TEAM')    base.config = { teamId: '', teamName: '' };
+    if (type === 'ASSIGN_BOT')     base.config = { botId: '', botName: '' };
     if (type === 'NO_REPLY')       base.config = { amount: 1, unit: 'saat' };
     if (type === 'STAGE_CHANGED')  base.config = { fromStage: '', toStage: '' };
     if (type === 'RETRY_CALL')     base.config = { maxRetries: 3, waitAmount: 1, waitUnit: 'saat' };
     if (type === 'CONVERT_TO_OPP') base.config = { targetStage: '' };
+    if (type === 'SWITCH_FLOW')    base.config = { flowId: '', flowName: '' };
     return base;
 }
 
@@ -93,11 +99,14 @@ function StepCard({ step, isSelected, onClick, onDelete, branchKey, depth = 0 })
                     <div className="fb-step-type-label">
                         {step.type === 'WAIT'           ? 'BEKLE' :
                          step.type === 'WA_SEND'        ? 'WHATSAPP' :
+                         step.type === 'SEND_MESSAGE'   ? 'MESAJ / SORU' :
                          step.type === 'AI_CALL'        ? 'AI ARAMA' :
                          step.type === 'RETRY_CALL'     ? 'TEKRAR ARA' :
                          step.type === 'ASSIGN_AGENT'   ? 'ATAMA' :
                          step.type === 'ASSIGN_TEAM'    ? 'EKİP ATAMA' :
+                         step.type === 'ASSIGN_BOT'     ? 'AI BOT' :
                          step.type === 'CONVERT_TO_OPP' ? 'DÖNÜŞTÜR' :
+                         step.type === 'SWITCH_FLOW'    ? 'AKIŞA GEÇ' :
                          step.type === 'CONDITION'      ? 'KOŞUL' : 'OLAY'}
                     </div>
                     <div className="fb-step-name">
@@ -115,8 +124,16 @@ function StepCard({ step, isSelected, onClick, onDelete, branchKey, depth = 0 })
                             ? `${step.config.fromStage || 'Herhangi'} → ${step.config.toStage || 'Herhangi'}`
                             : step.type === 'ASSIGN_TEAM'
                             ? (step.config.teamName || 'Ekip seçin')
+                            : step.type === 'ASSIGN_BOT'
+                            ? (step.config.botName || 'Bot seçin')
                             : step.type === 'CONVERT_TO_OPP'
                             ? (step.config.targetStage || 'Fırsata Çevir')
+                            : step.type === 'SWITCH_FLOW'
+                            ? (step.config.flowName || 'Akış seçin')
+                            : step.type === 'SEND_MESSAGE'
+                            ? (step.config.message
+                                ? step.config.message.split('\n')[0].substring(0, 40) + (step.config.message.length > 40 ? '…' : '')
+                                : 'Mesaj yazın...')
                             : step.config.templateName || step.config.agentName || STEP_TYPES[step.type]?.label}
                     </div>
                     {step.config.detail && (
@@ -136,29 +153,56 @@ function StepCard({ step, isSelected, onClick, onDelete, branchKey, depth = 0 })
 }
 
 // ─── Branch block ────────────────────────────────────────────────────────────
-function BranchBlock({ steps, branchKey, onAdd, selectedId, onSelect, onDelete, label, color }) {
+function BranchBlock({ steps, branchKey, parentConditionId, onAdd, selectedId, onSelect, onDelete, label, color }) {
     return (
         <div className={`fb-branch fb-branch-${branchKey}`}>
             <div className="fb-branch-label" style={{ color, borderColor: color }}>
                 {label}
             </div>
             <div className="fb-branch-steps">
-                {steps.map(s => (
+                {Array.isArray(steps) && steps.map(s => (
                     <React.Fragment key={s.id}>
                         <StepCard
                             step={s}
                             isSelected={selectedId === s.id}
                             onClick={onSelect}
-                            onDelete={onDelete}
+                            onDelete={(id) => onDelete(id)} // It's recursive, ID is enough
                             branchKey={branchKey}
                         />
+                        {/* Recursive rendering of nested conditions */}
+                        {s.type === 'CONDITION' && (
+                            <div className="fb-condition-branches">
+                                <BranchBlock
+                                    steps={s.config.yesBranch || []}
+                                    branchKey="yes"
+                                    parentConditionId={s.id}
+                                    onAdd={onAdd}
+                                    selectedId={selectedId}
+                                    onSelect={onSelect}
+                                    onDelete={onDelete}
+                                    label="EVET"
+                                    color="#10b981"
+                                />
+                                <BranchBlock
+                                    steps={s.config.noBranch || []}
+                                    branchKey="no"
+                                    parentConditionId={s.id}
+                                    onAdd={onAdd}
+                                    selectedId={selectedId}
+                                    onSelect={onSelect}
+                                    onDelete={onDelete}
+                                    label="HAYIR"
+                                    color="#ef4444"
+                                />
+                            </div>
+                        )}
                         <div className="fb-connector"><ArrowDown size={16} color="#9ca3af" /></div>
                     </React.Fragment>
                 ))}
                 <button
                     className="fb-add-branch-step"
                     style={{ borderColor: color, color }}
-                    onClick={() => onAdd(branchKey)}
+                    onClick={() => onAdd(branchKey, parentConditionId)}
                     title={`${label} dalına adım ekle`}
                 >
                     <Plus size={14} /> Adım Ekle
@@ -169,8 +213,22 @@ function BranchBlock({ steps, branchKey, onAdd, selectedId, onSelect, onDelete, 
 }
 
 // ─── Step Settings Panel ────────────────────────────────────────────────────
-function SettingsPanel({ step, onChange, onClose, templates = [] }) {
+function SettingsPanel({ step, onChange, onClose, templates = [], flows = [], funnels = [], members = [], teams = [], bots = [] }) {
     const { t } = useTranslation();
+    const [flowOpen, setFlowOpen] = React.useState(false);
+    const flowRef = React.useRef(null);
+
+    // Close dropdown on outside click
+    React.useEffect(() => {
+        const handler = (e) => {
+            if (flowRef.current && !flowRef.current.contains(e.target)) {
+                setFlowOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
     if (!step) return (
         <div className="fb-settings-empty">
             <Settings size={32} color="#d1d5db" />
@@ -302,6 +360,35 @@ function SettingsPanel({ step, onChange, onClose, templates = [] }) {
                 </div>
             )}
 
+            {/* SEND_MESSAGE */}
+            {step.type === 'SEND_MESSAGE' && (
+                <div className="fb-field-group">
+                    <label>Bot Mesaj\u0131 / Sorusu ✏️</label>
+                    <textarea
+                        rows={5}
+                        placeholder={"Ameliyat randevusu mu muayene randevusu mu?\n\n1️⃣ Ameliyat Randevusu\n2️⃣ Muayene Randevusu"}
+                        value={step.config.message || ''}
+                        onChange={e => onChange({ ...step.config, message: e.target.value })}
+                        className="fb-msg-textarea"
+                    />
+                    <div className="fb-msg-meta">
+                        <span className="fb-msg-chars">{(step.config.message || '').length} karakter</span>
+                        <span className="fb-msg-hint">Emoji, liste, soru yazabilirsiniz</span>
+                    </div>
+                    {step.config.message && (
+                        <div className="fb-msg-preview">
+                            <div className="fb-msg-preview-label">Ön İzleme</div>
+                            <div className="fb-msg-preview-bubble">
+                                {step.config.message}
+                            </div>
+                        </div>
+                    )}
+                    <p className="fb-hint" style={{ marginTop: 8 }}>
+                        Bot bu mesaj\u0131 kullan\u0131c\u0131ya g\u00f6nderir. Bir sonraki ad\u0131mda yan\u0131t\u0131 ko\u015ful ile kontrol edebilirsiniz.
+                    </p>
+                </div>
+            )}
+
             {/* WA_SEND */}
             {step.type === 'WA_SEND' && (
                 <>
@@ -312,7 +399,7 @@ function SettingsPanel({ step, onChange, onClose, templates = [] }) {
                             onChange={e => onChange({ ...step.config, templateName: e.target.value })}
                         >
                             <option value="">Şablon seçin...</option>
-                            {templates.map(t => (
+                            {Array.isArray(templates) && templates.map(t => (
                                 <option key={t.id} value={t.name}>
                                     {t.name} {t.status === 'APPROVED' ? '✅' : t.status === 'PENDING' ? '⏳' : ''}
                                 </option>
@@ -383,27 +470,90 @@ function SettingsPanel({ step, onChange, onClose, templates = [] }) {
             {/* ASSIGN_AGENT */}
             {step.type === 'ASSIGN_AGENT' && (
                 <div className="fb-field-group">
-                    <label>Agent Adı</label>
-                    <input
-                        type="text"
-                        placeholder="örn: Ahmet Yılmaz"
-                        value={step.config.agentName || ''}
-                        onChange={e => onChange({ ...step.config, agentName: e.target.value })}
-                    />
+                    <label>Temsilci Seç</label>
+                    <select
+                        value={step.config.agentId || ''}
+                        onChange={e => {
+                            const m = members.find(x => x.user?.id === e.target.value || x.id === e.target.value);
+                            const name = m?.user?.name || m?.name || e.target.value;
+                            onChange({ ...step.config, agentId: e.target.value, agentName: name });
+                        }}
+                        style={{ width: '100%', marginTop: 4 }}
+                    >
+                        <option value="">Temsilci seçin...</option>
+                        {members.length === 0 && <option disabled>— Yükleniyor... —</option>}
+                        {Array.isArray(members) && members.map(m => {
+                            const id   = m.user?.id   || m.id;
+                            const name = m.user?.name || m.name || id;
+                            const role = m.role || '';
+                            return (
+                                <option key={id} value={id}>
+                                    {name}{role ? ` (${role})` : ''}
+                                </option>
+                            );
+                        })}
+                    </select>
+                    {step.config.agentName && (
+                        <p className="fb-hint" style={{ color: '#10b981', marginTop: 5 }}>
+                            ✅ Seçili: <strong>{step.config.agentName}</strong>
+                        </p>
+                    )}
                 </div>
             )}
 
             {/* ASSIGN_TEAM */}
             {step.type === 'ASSIGN_TEAM' && (
                 <div className="fb-field-group">
-                    <label>Ekip / Takım Adı</label>
-                    <input
-                        type="text"
-                        placeholder="örn: Saha Satış"
-                        value={step.config.teamName || ''}
-                        onChange={e => onChange({ ...step.config, teamName: e.target.value })}
-                    />
-                    <p className="fb-hint">Fırsat aşamasına geçen kişiler bu ekibe atanır.</p>
+                    <label>Takım Seç</label>
+                    <select
+                        value={step.config.teamId || ''}
+                        onChange={e => {
+                            const t = teams.find(x => x.id === e.target.value);
+                            onChange({ ...step.config, teamId: e.target.value, teamName: t?.name || '' });
+                        }}
+                        style={{ width: '100%', marginTop: 4 }}
+                    >
+                        <option value="">Takım seçin...</option>
+                        {teams.length === 0 && <option disabled>— Yükleniyor... —</option>}
+                        {Array.isArray(teams) && teams.map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                    </select>
+                    {step.config.teamName && (
+                        <p className="fb-hint" style={{ color: '#10b981', marginTop: 5 }}>
+                            ✅ Seçili: <strong>{step.config.teamName}</strong>
+                        </p>
+                    )}
+                    <p className="fb-hint" style={{ marginTop: 6 }}>Konuşma bu takıma atanır.</p>
+                </div>
+            )}
+
+            {/* ASSIGN_BOT */}
+            {step.type === 'ASSIGN_BOT' && (
+                <div className="fb-field-group">
+                    <label>AI Bot Seç 🤖</label>
+                    <select
+                        value={step.config.botId || ''}
+                        onChange={e => {
+                            const b = bots.find(x => x.id === e.target.value);
+                            onChange({ ...step.config, botId: e.target.value, botName: b?.name || '' });
+                        }}
+                        style={{ width: '100%', marginTop: 4 }}
+                    >
+                        <option value="">Bot seçin...</option>
+                        {bots.length === 0 && <option disabled>— Bot bulunamadı —</option>}
+                        {Array.isArray(bots) && bots.map(b => (
+                            <option key={b.id} value={b.id}>
+                                {b.name}{b.isActive === false ? ' (Pasif)' : ''}
+                            </option>
+                        ))}
+                    </select>
+                    {step.config.botName && (
+                        <p className="fb-hint" style={{ color: '#10b981', marginTop: 5 }}>
+                            ✅ Seçili: <strong>{step.config.botName}</strong>
+                        </p>
+                    )}
+                    <p className="fb-hint" style={{ marginTop: 6 }}>Bu adımdan itibaren seçilen AI bot konuşmayı devralır.</p>
                 </div>
             )}
 
@@ -423,6 +573,42 @@ function SettingsPanel({ step, onChange, onClose, templates = [] }) {
 
 
 
+            {/* SWITCH_FLOW */}
+            {step.type === 'SWITCH_FLOW' && (
+                <div className="fb-field-group">
+                    <label>Hedef Akış</label>
+                    <select
+                        value={step.config.flowId || ''}
+                        onChange={e => {
+                            const selected = funnels.find(f => f.id === e.target.value);
+                            onChange({
+                                ...step.config,
+                                flowId: e.target.value,
+                                flowName: selected?.name || ''
+                            });
+                        }}
+                        style={{ width: '100%', marginTop: 4 }}
+                    >
+                        <option value="">Akış seçin...</option>
+                        {(!funnels || funnels.length === 0) ? (
+                            <option disabled>— Henüz akış yok —</option>
+                        ) : (
+                            Array.isArray(funnels) && funnels.map(f => (
+                                <option key={f.id} value={f.id}>
+                                    {f.icon ? `${f.icon} ` : ''}{f.name}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                    {step.config.flowId && (
+                        <p className="fb-hint" style={{ marginTop: 6, color: '#10b981' }}>
+                            ✅ Seçili: <strong>{step.config.flowName}</strong>
+                        </p>
+                    )}
+                    <p className="fb-hint" style={{ marginTop: 6 }}>Bu adıma gelindiğinde konuşma seçilen akışa yönlendirilir.</p>
+                </div>
+            )}
+
             {/* Triggers have no extra settings */}
             {['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE'].includes(step.type) && (
                 <p className="fb-hint" style={{ marginTop: 12 }}>
@@ -433,10 +619,89 @@ function SettingsPanel({ step, onChange, onClose, templates = [] }) {
     );
 }
 
+// ─── Recursive State Management Helpers ─────────────────────────────────────
+const recursiveFind = (steps, targetId) => {
+    if (!Array.isArray(steps)) return null;
+    for (const s of steps) {
+        if (s.id === targetId) return s;
+        if (s.type === 'CONDITION') {
+            const y = recursiveFind(s.config.yesBranch, targetId);
+            if (y) return y;
+            const n = recursiveFind(s.config.noBranch, targetId);
+            if (n) return n;
+        }
+    }
+    return null;
+};
+
+const recursiveUpdateConfig = (steps, targetId, newConfig) => {
+    if (!Array.isArray(steps)) return [];
+    return steps.map(s => {
+        if (s.id === targetId) return { ...s, config: newConfig };
+        if (s.type === 'CONDITION') {
+            return {
+                ...s,
+                config: {
+                    ...s.config,
+                    yesBranch: recursiveUpdateConfig(s.config.yesBranch || [], targetId, newConfig),
+                    noBranch: recursiveUpdateConfig(s.config.noBranch || [], targetId, newConfig)
+                }
+            };
+        }
+        return s;
+    });
+};
+
+const recursiveAddBranchStep = (steps, parentConditionId, branchKey, newStep) => {
+    if (!Array.isArray(steps)) return [];
+    return steps.map(s => {
+        if (s.id === parentConditionId) {
+            const key = branchKey === 'yes' ? 'yesBranch' : 'noBranch';
+            return {
+                ...s,
+                config: {
+                    ...s.config,
+                    [key]: [...(s.config[key] || []), newStep]
+                }
+            };
+        }
+        if (s.type === 'CONDITION') {
+            return {
+                ...s,
+                config: {
+                    ...s.config,
+                    yesBranch: recursiveAddBranchStep(s.config.yesBranch || [], parentConditionId, branchKey, newStep),
+                    noBranch: recursiveAddBranchStep(s.config.noBranch || [], parentConditionId, branchKey, newStep)
+                }
+            };
+        }
+        return s;
+    });
+};
+
+const recursiveDelete = (steps, targetId) => {
+    if (!Array.isArray(steps)) return [];
+    const filtered = steps.filter(s => s.id !== targetId);
+    return filtered.map(s => {
+        if (s.type === 'CONDITION') {
+            return {
+                ...s,
+                config: {
+                    ...s.config,
+                    yesBranch: recursiveDelete(s.config.yesBranch || [], targetId),
+                    noBranch: recursiveDelete(s.config.noBranch || [], targetId)
+                }
+            };
+        }
+        return s;
+    });
+};
+
 // ─── Main FlowBuilder ────────────────────────────────────────────────────────
-export default function FlowBuilder({ workspaceId }) {
+export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImportTemplate }) {
     const { t } = useTranslation();
     const [flows, setFlows] = useState([]);
+    const [funnelList, setFunnelList] = useState([]); // CRM pipelines — same as Inbox
     const [currentFlow, setCurrentFlow] = useState(null);   // { id, name, steps[], isActive }
     const [showNewFlow, setShowNewFlow] = useState(false);
     const [newFlowName, setNewFlowName] = useState('');
@@ -446,54 +711,77 @@ export default function FlowBuilder({ workspaceId }) {
     const [savedMsg, setSavedMsg] = useState(false);
     const [loading, setLoading] = useState(false);
     const [templates, setTemplates] = useState([]);
+    
+    const [members, setMembers] = useState([]);
+    const [teams, setTeams] = useState([]);
+    const [bots, setBots] = useState([]);
 
     // Load flows from API
     useEffect(() => {
-        if (!workspaceId) return;
+        if (!workspaceId && !isTemplateMode) return;
         setLoading(true);
-        flowAPI.getAll(workspaceId)
-            .then(res => setFlows(res.data.flows || []))
+        
+        const fetchFlows = isTemplateMode ? adminAPI.getFlowTemplates() : flowAPI.getAll(workspaceId);
+        
+        fetchFlows
+            .then(res => {
+                // Handle both array and object responses
+                const raw = res.data;
+                const list = Array.isArray(raw) ? raw
+                    : Array.isArray(raw?.templates) ? raw.templates // for template mode
+                    : Array.isArray(raw?.flows) ? raw.flows
+                    : Array.isArray(raw?.data) ? raw.data
+                    : [];
+                const parsedList = list.map(f => ({
+                    ...f,
+                    steps: typeof f.steps === 'string' ? JSON.parse(f.steps) : (f.steps || [])
+                }));
+                setFlows(parsedList);
+            })
             .catch(err => console.error('Failed to load flows:', err))
             .finally(() => setLoading(false));
 
-        // Load WhatsApp templates for WA_SEND step
-        automationAPI.getTemplates(workspaceId)
-            .then(res => setTemplates(res.data.templates || []))
-            .catch(() => {});
-    }, [workspaceId]);
+        if (!isTemplateMode && workspaceId) {
+            // Load CRM funnels (pipelines) for SWITCH_FLOW
+            funnelAPI.getAll(workspaceId)
+                .then(res => {
+                    const list = res.data?.funnels || res.data || [];
+                    setFunnelList(Array.isArray(list) ? list : []);
+                })
+                .catch(() => {});
+
+            // Load WhatsApp templates
+            automationAPI.getTemplates(workspaceId)
+                .then(res => setTemplates(Array.isArray(res.data?.templates) ? res.data.templates : Array.isArray(res.data) ? res.data : []))
+                .catch(() => {});
+
+            // Load agents, teams, and bots
+            workspaceAPI.getMembers(workspaceId)
+                .then(res => setMembers(Array.isArray(res.data) ? res.data : Array.isArray(res.data?.members) ? res.data.members : []))
+                .catch(() => {});
+                
+            teamAPI.getWorkspaceTeams(workspaceId)
+                .then(res => setTeams(Array.isArray(res.data) ? res.data : Array.isArray(res.data?.teams) ? res.data.teams : []))
+                .catch(() => {});
+                
+            aiAPI.getBots(workspaceId)
+                .then(res => setBots(Array.isArray(res.data) ? res.data : Array.isArray(res.data?.bots) ? res.data.bots : []))
+                .catch(() => {});
+        }
+    }, [workspaceId, isTemplateMode]);
 
     // Get the selected step object from main or branch
     const getSelectedStep = () => {
         if (!currentFlow || !selectedStepId) return null;
-        for (const s of currentFlow.steps) {
-            if (s.id === selectedStepId) return s;
-            if (s.type === 'CONDITION') {
-                const y = (s.config.yesBranch || []).find(b => b.id === selectedStepId);
-                if (y) return y;
-                const n = (s.config.noBranch || []).find(b => b.id === selectedStepId);
-                if (n) return n;
-            }
-        }
-        return null;
+        return recursiveFind(currentFlow.steps, selectedStepId);
     };
 
     const updateStepConfig = (newConfig) => {
         if (!currentFlow || !selectedStepId) return;
-        const updateInArray = (arr) => arr.map(s => {
-            if (s.id === selectedStepId) return { ...s, config: newConfig };
-            if (s.type === 'CONDITION') {
-                return {
-                    ...s,
-                    config: {
-                        ...s.config,
-                        yesBranch: (s.config.yesBranch || []).map(b => b.id === selectedStepId ? { ...b, config: newConfig } : b),
-                        noBranch: (s.config.noBranch || []).map(b => b.id === selectedStepId ? { ...b, config: newConfig } : b),
-                    }
-                };
-            }
-            return s;
-        });
-        setCurrentFlow(f => ({ ...f, steps: updateInArray(f.steps) }));
+        setCurrentFlow(f => ({
+            ...f,
+            steps: recursiveUpdateConfig(f.steps, selectedStepId, newConfig)
+        }));
     };
 
     // Add step from palette
@@ -502,7 +790,7 @@ export default function FlowBuilder({ workspaceId }) {
 
         setCurrentFlow(f => {
             if (!f) return f;
-            if (branchKey === 'main') {
+            if (branchKey === 'main' || !conditionStepId) {
                 // Trigger can only be first; don't allow 2 triggers
                 if (STEP_TYPES[type].group === 'trigger' && f.steps.some(s => STEP_TYPES[s.type].group === 'trigger')) {
                     alert('Bir akışta yalnızca bir tetikleyici olabilir.');
@@ -510,14 +798,10 @@ export default function FlowBuilder({ workspaceId }) {
                 }
                 return { ...f, steps: [...f.steps, newStep] };
             }
-            // Add to branch
+            // Add to branch recursively
             return {
                 ...f,
-                steps: f.steps.map(s => {
-                    if (s.id !== conditionStepId) return s;
-                    const key = branchKey === 'yes' ? 'yesBranch' : 'noBranch';
-                    return { ...s, config: { ...s.config, [key]: [...(s.config[key] || []), newStep] } };
-                })
+                steps: recursiveAddBranchStep(f.steps, conditionStepId, branchKey, newStep)
             };
         });
         setSelectedStepId(newStep.id);
@@ -531,6 +815,7 @@ export default function FlowBuilder({ workspaceId }) {
     };
 
     const [branchPickerOpen, setBranchPickerOpen] = useState(null); // { branchKey, conditionStepId }
+    const [groupPickerOpen, setGroupPickerOpen] = useState(null); // group name like 'TETİKLEYİCİLER'
 
     // Open branch step picker
     const openBranchPicker = (branchKey, conditionStepId) => {
@@ -544,41 +829,51 @@ export default function FlowBuilder({ workspaceId }) {
         setBranchPickerOpen(null);
     };
 
+    // Open group picker (for palette group "Ekle" buttons)
+    const openGroupPicker = (groupName) => {
+        if (!currentFlow) { alert('Önce bir akış oluşturun veya seçin.'); return; }
+        setGroupPickerOpen(groupName);
+    };
+
+    // Add step from group picker
+    const addStepFromGroupPicker = (type) => {
+        addStep(type, 'main');
+        setGroupPickerOpen(null);
+    };
+
     // Add step to branch from inside canvas (used by BranchBlock via addBranchStep)
     const addBranchStep = (branchKey, conditionStepId) => {
         openBranchPicker(branchKey, conditionStepId);
     };
 
     // Delete step
-    const deleteStep = (stepId, branchKey, conditionStepId) => {
+    const deleteStep = (stepId) => {
         setCurrentFlow(f => {
             if (!f) return f;
-            if (!branchKey || branchKey === 'main') {
-                return { ...f, steps: f.steps.filter(s => s.id !== stepId) };
-            }
-            return {
-                ...f,
-                steps: f.steps.map(s => {
-                    if (s.id !== conditionStepId) return s;
-                    const key = branchKey === 'yes' ? 'yesBranch' : 'noBranch';
-                    return { ...s, config: { ...s.config, [key]: (s.config[key] || []).filter(b => b.id !== stepId) } };
-                })
-            };
+            return { ...f, steps: recursiveDelete(f.steps, stepId) };
         });
         if (selectedStepId === stepId) setSelectedStepId(null);
     };
 
-    const deleteMainStep = (stepId) => deleteStep(stepId, 'main');
+    const deleteMainStep = deleteStep;
 
     // Save to API
     const handleSave = async () => {
-        if (!currentFlow || !workspaceId) return;
+        if (!currentFlow || (!workspaceId && !isTemplateMode)) return;
         try {
-            await flowAPI.update(workspaceId, currentFlow.id, {
-                name: currentFlow.name,
-                steps: currentFlow.steps,
-                isActive: currentFlow.isActive
-            });
+            if (isTemplateMode) {
+                await adminAPI.updateFlowTemplate(currentFlow.id, {
+                    name: currentFlow.name,
+                    steps: currentFlow.steps,
+                    trigger: currentFlow.trigger
+                });
+            } else {
+                await flowAPI.update(workspaceId, currentFlow.id, {
+                    name: currentFlow.name,
+                    steps: currentFlow.steps,
+                    isActive: currentFlow.isActive
+                });
+            }
             setFlows(prev => prev.map(f => f.id === currentFlow.id ? currentFlow : f));
             setSavedMsg(true);
             setTimeout(() => setSavedMsg(false), 2000);
@@ -590,7 +885,7 @@ export default function FlowBuilder({ workspaceId }) {
 
     // Toggle flow active/inactive
     const toggleFlow = async (flowId, isActive) => {
-        if (!workspaceId) return;
+        if (!workspaceId || isTemplateMode) return;
         try {
             const res = await flowAPI.toggle(workspaceId, flowId, isActive);
             const updated = res.data.flow;
@@ -605,14 +900,23 @@ export default function FlowBuilder({ workspaceId }) {
 
     // Create new flow
     const createFlow = async () => {
-        if (!newFlowName.trim() || !workspaceId) return;
+        if (!newFlowName.trim() || (!workspaceId && !isTemplateMode)) return;
         try {
-            const res = await flowAPI.create(workspaceId, {
-                name: newFlowName.trim(),
-                steps: [],
-                isActive: false
-            });
-            const flow = res.data.flow;
+            let flow;
+            if (isTemplateMode) {
+                const res = await adminAPI.createFlowTemplate({
+                    name: newFlowName.trim(),
+                    steps: []
+                });
+                flow = res.data.template;
+            } else {
+                const res = await flowAPI.create(workspaceId, {
+                    name: newFlowName.trim(),
+                    steps: [],
+                    isActive: false
+                });
+                flow = res.data.flow;
+            }
             setFlows(prev => [...prev, flow]);
             setCurrentFlow(flow);
             setNewFlowName('');
@@ -625,9 +929,13 @@ export default function FlowBuilder({ workspaceId }) {
 
     const deleteFlow = async (id) => {
         if (!confirm('Bu akışı silmek istiyor musunuz?')) return;
-        if (!workspaceId) return;
+        if (!workspaceId && !isTemplateMode) return;
         try {
-            await flowAPI.delete(workspaceId, id);
+            if (isTemplateMode) {
+                await adminAPI.deleteFlowTemplate(id);
+            } else {
+                await flowAPI.delete(workspaceId, id);
+            }
             setFlows(prev => prev.filter(f => f.id !== id));
             if (currentFlow?.id === id) setCurrentFlow(null);
         } catch (err) {
@@ -645,8 +953,8 @@ export default function FlowBuilder({ workspaceId }) {
                 {/* Flow list */}
                 <div className="fb-flows-list">
                     <div className="fb-flows-header">
-                        <span>AKİŞLERİM</span>
-                        <button className="fb-new-btn" onClick={() => setShowNewFlow(true)} title="Yeni Akış">
+                        <span>{isTemplateMode ? 'ŞABLONLARIM' : 'AKİŞLERİM'}</span>
+                        <button className="fb-new-btn" onClick={() => setShowNewFlow(true)} title="Yeni">
                             <Plus size={14} />
                         </button>
                     </div>
@@ -669,7 +977,7 @@ export default function FlowBuilder({ workspaceId }) {
                     {!loading && flows.length === 0 && !showNewFlow && (
                         <div className="fb-no-flows">Henüz akış yok.<br />New oluşturun.</div>
                     )}
-                    {flows.map(f => (
+                    {Array.isArray(flows) && flows.map(f => (
                         <div
                             key={f.id}
                             className={`fb-flow-item ${currentFlow?.id === f.id ? 'fb-flow-active' : ''}`}
@@ -687,35 +995,48 @@ export default function FlowBuilder({ workspaceId }) {
                 {/* Palette */}
                 <div className="fb-palette">
                     <div className="fb-palette-title">BİLEŞENLER</div>
-                    {Object.entries(PALETTE).map(([group, types]) => (
-                        <div key={group} className="fb-palette-group">
-                            <button
-                                className="fb-palette-group-header"
-                                onClick={() => setExpandedGroups(g => ({ ...g, [group]: !g[group] }))}
-                            >
-                                <span>{group}</span>
-                                {expandedGroups[group] ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                            </button>
-                            {expandedGroups[group] && (
-                                <div className="fb-palette-items">
-                                    {types.map(type => {
-                                        const def = STEP_TYPES[type];
-                                        return (
-                                            <button
-                                                key={type}
-                                                className={`fb-palette-item fb-palette-${def.group}`}
-                                                onClick={() => handlePaletteClick(type)}
-                                                title={`Canvas'a ekle: ${def.label}`}
-                                            >
-                                                <Plus size={12} />
-                                                <span>{def.label}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                    {Object.entries(PALETTE).map(([group, types]) => {
+                        const groupType = types[0] ? STEP_TYPES[types[0]]?.group : 'action';
+                        const groupColorClass = groupType === 'trigger' ? 'fb-palette-trigger' : groupType === 'action' ? 'fb-palette-action' : 'fb-palette-logic';
+                        return (
+                            <div key={group} className="fb-palette-group">
+                                <button
+                                    className="fb-palette-group-header"
+                                    onClick={() => setExpandedGroups(g => ({ ...g, [group]: !g[group] }))}
+                                >
+                                    <span>{group}</span>
+                                    {expandedGroups[group] ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                </button>
+                                {expandedGroups[group] && (
+                                    <div className="fb-palette-items">
+                                        {types.map(type => {
+                                            const def = STEP_TYPES[type];
+                                            return (
+                                                <button
+                                                    key={type}
+                                                    className={`fb-palette-item fb-palette-${def.group}`}
+                                                    onClick={() => handlePaletteClick(type)}
+                                                    title={`Canvas'a ekle: ${def.label}`}
+                                                >
+                                                    <span className="fb-palette-item-icon">{def.icon}</span>
+                                                    <span>{def.label}</span>
+                                                </button>
+                                            );
+                                        })}
+                                        {/* Group-level "Ekle" button */}
+                                        <button
+                                            className={`fb-palette-group-add ${groupColorClass}`}
+                                            onClick={() => openGroupPicker(group)}
+                                            title={`${group} grubundan adım ekle`}
+                                        >
+                                            <Plus size={13} />
+                                            <span>Ekle</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -743,27 +1064,38 @@ export default function FlowBuilder({ workspaceId }) {
                                 <button className="fb-btn-save" onClick={handleSave}>
                                     <Save size={14} /> Kaydet
                                 </button>
-                                <button
-                                    className={`fb-btn-publish ${currentFlow.isActive ? 'fb-btn-unpublish' : ''}`}
-                                    onClick={async () => {
-                                        await handleSave();
-                                        toggleFlow(currentFlow.id, !currentFlow.isActive);
-                                    }}
-                                >
-                                    <Play size={14} /> {currentFlow.isActive ? 'Durdur' : 'Yayınla'}
-                                </button>
+                                {isTemplateMode && onImportTemplate && (
+                                    <button 
+                                        className="fb-btn-publish" 
+                                        onClick={() => onImportTemplate(currentFlow)}
+                                        style={{ backgroundColor: '#8b5cf6' }}
+                                    >
+                                        <ArrowDown size={14} /> Aktar
+                                    </button>
+                                )}
+                                {!isTemplateMode && (
+                                    <button
+                                        className={`fb-btn-publish ${currentFlow.isActive ? 'fb-btn-unpublish' : ''}`}
+                                        onClick={async () => {
+                                            await handleSave();
+                                            toggleFlow(currentFlow.id, !currentFlow.isActive);
+                                        }}
+                                    >
+                                        <Play size={14} /> {currentFlow.isActive ? 'Durdur' : 'Yayınla'}
+                                    </button>
+                                )}
                             </div>
                         </div>
 
                         {/* Flow steps */}
                         <div className="fb-flow-steps">
-                            {currentFlow.steps.length === 0 ? (
+                            {(!currentFlow.steps || currentFlow.steps.length === 0) ? (
                                 <div className="fb-canvas-hint">
                                     ← Sol panelden bileşenlere tıklayarak adım ekleyin
                                 </div>
                             ) : null}
 
-                            {currentFlow.steps.map((step, idx) => (
+                            {Array.isArray(currentFlow.steps) && currentFlow.steps.map((step, idx) => (
                                 <React.Fragment key={step.id}>
                                     <StepCard
                                         step={step}
@@ -779,20 +1111,22 @@ export default function FlowBuilder({ workspaceId }) {
                                             <BranchBlock
                                                 steps={step.config.yesBranch || []}
                                                 branchKey="yes"
-                                                onAdd={(br) => addBranchStep(br, step.id)}
+                                                parentConditionId={step.id}
+                                                onAdd={addBranchStep}
                                                 selectedId={selectedStepId}
                                                 onSelect={(id) => { setSelectedStepId(id); setSelectedBranch('yes'); }}
-                                                onDelete={(id, br) => deleteStep(id, br, step.id)}
+                                                onDelete={deleteStep}
                                                 label="EVET"
                                                 color="#10b981"
                                             />
                                             <BranchBlock
                                                 steps={step.config.noBranch || []}
                                                 branchKey="no"
-                                                onAdd={(br) => addBranchStep(br, step.id)}
+                                                parentConditionId={step.id}
+                                                onAdd={addBranchStep}
                                                 selectedId={selectedStepId}
                                                 onSelect={(id) => { setSelectedStepId(id); setSelectedBranch('no'); }}
-                                                onDelete={(id, br) => deleteStep(id, br, step.id)}
+                                                onDelete={deleteStep}
                                                 label="HAYIR"
                                                 color="#ef4444"
                                             />
@@ -831,6 +1165,11 @@ export default function FlowBuilder({ workspaceId }) {
                     onChange={updateStepConfig}
                     onClose={() => setSelectedStepId(null)}
                     templates={templates}
+                    flows={flows.filter(f => f.id !== currentFlow?.id)}
+                    funnels={funnelList}
+                    members={members}
+                    teams={teams}
+                    bots={bots}
                 />
             </div>
 
@@ -843,8 +1182,9 @@ export default function FlowBuilder({ workspaceId }) {
                             <button onClick={() => setBranchPickerOpen(null)}><X size={14} /></button>
                         </div>
                         <div className="fb-picker-list">
-                            {['WA_SEND', 'AI_CALL', 'RETRY_CALL', 'ASSIGN_AGENT', 'ASSIGN_TEAM', 'CONVERT_TO_OPP', 'WAIT'].map(type => {
+                            {[...PALETTE['AKSİYONLAR'], ...PALETTE['MANTIK & KONTROL']].map(type => {
                                 const def = STEP_TYPES[type];
+                                if (!def) return null;
                                 return (
                                     <button
                                         key={type}
@@ -853,6 +1193,39 @@ export default function FlowBuilder({ workspaceId }) {
                                     >
                                         <span>{def.icon}</span>
                                         <span>{def.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Group picker overlay (for palette group "Ekle" buttons) */}
+            {groupPickerOpen && (
+                <div className="fb-picker-overlay" onClick={() => setGroupPickerOpen(null)}>
+                    <div className="fb-picker-modal" onClick={e => e.stopPropagation()}>
+                        <div className="fb-picker-title">
+                            <span>
+                                {groupPickerOpen === 'TETİKLEYİCİLER' && '⚡ Tetikleyici Ekle'}
+                                {groupPickerOpen === 'AKSİYONLAR' && '🎯 Aksiyon Ekle'}
+                                {groupPickerOpen === 'MANTIK & KONTROL' && '⑂ Mantık & Kontrol Ekle'}
+                            </span>
+                            <button onClick={() => setGroupPickerOpen(null)}><X size={14} /></button>
+                        </div>
+                        <div className="fb-picker-list">
+                            {(PALETTE[groupPickerOpen] || []).map(type => {
+                                const def = STEP_TYPES[type];
+                                return (
+                                    <button
+                                        key={type}
+                                        className={`fb-picker-item fb-palette-${def.group}`}
+                                        onClick={() => addStepFromGroupPicker(type)}
+                                    >
+                                        <span style={{ fontSize: 18 }}>{def.icon}</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                            <span style={{ fontWeight: 700 }}>{def.label}</span>
+                                        </div>
                                     </button>
                                 );
                             })}

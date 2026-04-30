@@ -13,7 +13,8 @@ import {
     Building2,
     Settings,
     Search,
-    History
+    History,
+    GitBranch
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -83,6 +84,11 @@ const AdminLayout = () => {
             path: '/admin/activity-log',
             icon: <History size={20} />,
             label: 'İşlem Geçmişi'
+        },
+        {
+            path: '/admin/flow-templates',
+            icon: <GitBranch size={20} />,
+            label: 'Akış Şablonları'
         }
     ];
 

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI } from '../../services/api';
+import { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, ArrowRight, Search, X,
@@ -80,6 +80,9 @@ const Automations = () => {
 
     // Data for new actions
     const [funnels, setFunnels] = useState([]);
+    const [flows, setFlows] = useState([]);
+    const [flowDropdownOpen, setFlowDropdownOpen] = useState(false);
+    const flowDropdownRef = useRef(null);
     const [retellAgents, setRetellAgents] = useState([]);
 
     // --- Rules (Rules) state ---
@@ -91,6 +94,17 @@ const Automations = () => {
     const [newKeyword, setNewKeyword] = useState('');
     const [expandedRules, setExpandedRules] = useState({ HOT_KEYWORD: true, HOT_OPPORT_EMAIL: true });
 
+    // Close flow dropdown on outside click
+    useEffect(() => {
+        const handler = (e) => {
+            if (flowDropdownRef.current && !flowDropdownRef.current.contains(e.target)) {
+                setFlowDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
     useEffect(() => {
         if (currentWorkspace?.id) {
             loadData();
@@ -100,14 +114,15 @@ const Automations = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [templatesRes, automationsRes, emailRes, rulesRes, teamsRes, funnelsRes, agentsRes] = await Promise.all([
+            const [templatesRes, automationsRes, emailRes, rulesRes, teamsRes, funnelsRes, agentsRes, flowsRes] = await Promise.all([
                 automationAPI.getTemplates(currentWorkspace.id),
                 automationAPI.getAutomations(currentWorkspace.id),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 rulesAPI.getAll(currentWorkspace.id).catch(() => ({ data: { rules: [] } })),
                 teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
                 funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: { funnels: [] } })),
-                retellAPI.getAgents(currentWorkspace.id).catch(() => ({ data: { agents: [] } }))
+                retellAPI.getAgents(currentWorkspace.id).catch(() => ({ data: { agents: [] } })),
+                flowAPI.getAll(currentWorkspace.id).catch(() => ({ data: { flows: [] } }))
             ]);
             setTemplates(templatesRes.data.templates || []);
             setAutomations(automationsRes.data.automations || []);
@@ -116,6 +131,7 @@ const Automations = () => {
             setTeams(teamsRes.data.teams || []);
             setFunnels(funnelsRes.data.funnels || []);
             setRetellAgents(agentsRes.data.agents || []);
+            setFlows(flowsRes.data.flows || []);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -1293,17 +1309,72 @@ const Automations = () => {
                                 )}
 
                                 {automationForm.selectedActions?.includes('CHANGE_FLOW') && (
-                                    <div className="form-group">
-                                        <label>Hedef Akış *</label>
-                                        <select
-                                            value={automationForm.targetFlowId}
-                                            onChange={(e) => setAutomationForm({ ...automationForm, targetFlowId: e.target.value })}
+                                    <div className="form-group" ref={flowDropdownRef} style={{ position: 'relative' }}>
+                                        <label>🔀 Hedef Dinamik Akış *</label>
+
+                                        {/* Custom styled dropdown */}
+                                        <div
+                                            className={`flow-custom-select ${flowDropdownOpen ? 'open' : ''}`}
+                                            onClick={() => setFlowDropdownOpen(o => !o)}
                                         >
-                                            <option value="">Akış seçin...</option>
-                                            {funnels.map(f => (
-                                                <option key={f.id} value={f.id}>{f.name}</option>
-                                            ))}
-                                        </select>
+                                            <div className="flow-custom-select-value">
+                                                {automationForm.targetFlowId ? (
+                                                    <>
+                                                        <span
+                                                            className="flow-status-dot"
+                                                            style={{ background: flows.find(f => f.id === automationForm.targetFlowId)?.isActive ? '#10b981' : '#9ca3af' }}
+                                                        />
+                                                        <span>{flows.find(f => f.id === automationForm.targetFlowId)?.name || 'Akış seçin...'}</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="flow-status-dot" style={{ background: '#d1d5db' }} />
+                                                        <span style={{ color: '#9ca3af' }}>Akış Seç</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                            <ChevronDown size={14} className={`flow-chevron ${flowDropdownOpen ? 'rotated' : ''}`} />
+                                        </div>
+
+                                        {flowDropdownOpen && (
+                                            <div className="flow-custom-dropdown">
+                                                {flows.length === 0 ? (
+                                                    <div className="flow-dropdown-empty">
+                                                        ⚠️ Henüz akış yok. Dinamik Otomasyonlar sekmesinden oluşturun.
+                                                    </div>
+                                                ) : (
+                                                    flows.map(f => (
+                                                        <div
+                                                            key={f.id}
+                                                            className={`flow-dropdown-item ${automationForm.targetFlowId === f.id ? 'selected' : ''}`}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setAutomationForm({ ...automationForm, targetFlowId: f.id });
+                                                                setFlowDropdownOpen(false);
+                                                            }}
+                                                        >
+                                                            <span
+                                                                className="flow-status-dot"
+                                                                style={{ background: f.isActive ? '#10b981' : '#9ca3af' }}
+                                                            />
+                                                            <span className="flow-dropdown-name">{f.name}</span>
+                                                            {automationForm.targetFlowId === f.id && (
+                                                                <CheckCircle size={13} color="#10b981" />
+                                                            )}
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {automationForm.targetFlowId && (() => {
+                                            const sel = flows.find(f => f.id === automationForm.targetFlowId);
+                                            return sel ? (
+                                                <div className="form-hint" style={{ color: sel.isActive ? '#10b981' : '#f59e0b', marginTop: 6 }}>
+                                                    {sel.isActive ? '✅ Akış aktif ve çalışıyor' : '⚠️ Akış taslak modunda — önce yayınlayın'}
+                                                </div>
+                                            ) : null;
+                                        })()}
                                     </div>
                                 )}
 

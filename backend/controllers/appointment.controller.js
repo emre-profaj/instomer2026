@@ -42,8 +42,8 @@ export const getAppointments = async (req, res) => {
             orderBy: { startTime: 'asc' }
         });
 
-        // Get agent details for each appointment
-        const agentIds = [...new Set(appointments.map(a => a.assignedToId))];
+        // Get agent details for each appointment (filter out nulls to prevent Prisma error)
+        const agentIds = [...new Set(appointments.map(a => a.assignedToId).filter(id => id))];
         const agents = await prisma.user.findMany({
             where: { id: { in: agentIds } },
             select: { id: true, name: true, avatar: true }

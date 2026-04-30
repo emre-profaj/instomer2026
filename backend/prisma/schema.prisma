@@ -133,6 +133,7 @@ model Workspace {
   flows                Flow[]
   contactActivities    ContactActivity[]
   appointmentBranches  AppointmentBranch[]
+  botTools             AIBotTool[]
 
   // Retell AI Voice
   retellApiKey     String?
@@ -220,7 +221,6 @@ model AIBot {
   webWidgets            WebWidget[]
   teams                 Team[]
   teamMemberships       TeamMember[]
-  tools                 AIBotTool[]
   workspace             Workspace             @relation(fields: [workspaceId], references: [id])
 
   // Routing Configuration
@@ -1070,10 +1070,23 @@ model Funnel {
   assignedUserId String?
   assignedTeamId String?
   createdAt      DateTime      @default(now())
+
+  // Workspace Router — Giriş Kuralları
+  entryRules          String?  // JSON: [{ type: 'KEYWORD'|'CHANNEL'|'AI_INTENT', value: string }]
+  entryRuleLogic      String   @default("OR") // OR = herhangi biri eşleşirse, AND = hepsi
+  aiIntentDescription String?  // AI fallback için niyet açıklaması
+  priority            Int      @default(0)    // Yüksek = önce kontrol edilir
+  isDefault           Boolean  @default(false) // Hiçbiri eşleşmezse buraya düş
+
+  // Funnel giriş aksiyonları
+  assignedBotId       String?  // Funnela girilince bu bot devreye girer
+  entryAutomationId   String?  // Funnela girilince bu otomasyon tetiklenir
+
   workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages         FunnelStage[]
 
   @@index([workspaceId])
+  @@index([priority])
   @@map("funnels")
 }
 
@@ -1087,6 +1100,10 @@ model FunnelStage {
   assignedUserId String?
   assignedTeamId String?
   createdAt      DateTime @default(now())
+
+  // Aşama girilince tetiklenecek otomasyon
+  onEnterAutomationId String? // Automation tablosundaki ID
+
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 
   @@index([funnelId])
@@ -1291,7 +1308,7 @@ model ApiIntegration {
 
 model AIBotTool {
   id               String         @id @default(uuid())
-  botId            String
+  workspaceId      String
   apiIntegrationId String?
   name             String
   description      String
@@ -1302,10 +1319,10 @@ model AIBotTool {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  bot              AIBot          @relation(fields: [botId], references: [id], onDelete: Cascade)
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   apiIntegration   ApiIntegration? @relation(fields: [apiIntegrationId], references: [id], onDelete: Cascade)
 
-  @@index([botId])
+  @@index([workspaceId])
   @@index([apiIntegrationId])
   @@map("ai_bot_tools")
 }
@@ -1334,4 +1351,17 @@ model ContactActivity {
   @@index([contactId, createdAt])
   @@index([workspaceId])
   @@map("contact_activities")
+}
+
+// Global Flow Templates for Super Admin
+model FlowTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  trigger     String?  // NEW_FORM, FIRST_MSG, TAG_ADDED
+  steps       Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("flow_templates")
 }

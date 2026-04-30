@@ -28,7 +28,12 @@ import {
     checkFacebookPagesHealth,
     getActivityLogs,
     fixDatabaseFunnelStages,
-    toggleRealEstateModule
+    toggleRealEstateModule,
+    getFlowTemplates,
+    createFlowTemplate,
+    updateFlowTemplate,
+    deleteFlowTemplate,
+    importFlowTemplate
 } from '../controllers/admin.controller.js';
 import { authenticateJWT, requireRole } from '../middleware/auth.middleware.js';
 
@@ -89,5 +94,12 @@ router.get('/facebook/health-check', checkFacebookPagesHealth);
 
 // Activity Logs
 router.get('/activity-logs', getActivityLogs);
+
+// Flow Templates
+router.get('/flow-templates', getFlowTemplates);
+router.post('/flow-templates', createFlowTemplate);
+router.put('/flow-templates/:id', updateFlowTemplate);
+router.delete('/flow-templates/:id', deleteFlowTemplate);
+router.post('/flow-templates/:id/import', importFlowTemplate);
 
 export default router;

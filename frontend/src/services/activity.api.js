@@ -16,5 +16,17 @@ export const activityAPI = {
             headers: { Authorization: `Bearer ${token}` }
         });
         return response.data;
+    },
+
+    // Aktivite güncelle
+    updateActivity: async (activityId, data) => {
+        const response = await api.put(`/activities/${activityId}`, data);
+        return response.data;
+    },
+
+    // Aktivite sil
+    deleteActivity: async (activityId) => {
+        const response = await api.delete(`/activities/${activityId}`);
+        return response.data;
     }
 };

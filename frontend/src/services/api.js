@@ -122,7 +122,14 @@ export const adminAPI = {
     // Facebook/Instagram Health Check
     checkFacebookHealth: () => api.get('/admin/facebook/health-check'),
     // Activity Logs
-    getActivityLogs: (params) => api.get('/admin/activity-logs', { params })
+    getActivityLogs: (params) => api.get('/admin/activity-logs', { params }),
+    
+    // Flow Templates
+    getFlowTemplates: () => api.get('/admin/flow-templates'),
+    createFlowTemplate: (data) => api.post('/admin/flow-templates', data),
+    updateFlowTemplate: (id, data) => api.put(`/admin/flow-templates/${id}`, data),
+    deleteFlowTemplate: (id) => api.delete(`/admin/flow-templates/${id}`),
+    importFlowTemplate: (id, workspaceId) => api.post(`/admin/flow-templates/${id}/import`, { workspaceId })
 };
 
 export default api;
@@ -433,10 +440,10 @@ export const apiIntegrationAPI = {
     update: (workspaceId, id, data) => api.put(`/integrations/workspace/${workspaceId}/${id}`, data),
     delete: (workspaceId, id) => api.delete(`/integrations/workspace/${workspaceId}/${id}`),
     
-    getBotTools: (botId) => api.get(`/integrations/bot/${botId}`),
-    createBotTool: (botId, data) => api.post(`/integrations/bot/${botId}`, data),
-    updateBotTool: (botId, toolId, data) => api.put(`/integrations/bot/${botId}/${toolId}`, data),
-    deleteBotTool: (botId, toolId) => api.delete(`/integrations/bot/${botId}/${toolId}`)
+    getBotTools: (workspaceId) => api.get(`/integrations/workspace/${workspaceId}/tools`),
+    createBotTool: (workspaceId, data) => api.post(`/integrations/workspace/${workspaceId}/tools`, data),
+    updateBotTool: (workspaceId, toolId, data) => api.put(`/integrations/workspace/${workspaceId}/tools/${toolId}`, data),
+    deleteBotTool: (workspaceId, toolId) => api.delete(`/integrations/workspace/${workspaceId}/tools/${toolId}`)
 };
 
 export const appointmentAPI = {

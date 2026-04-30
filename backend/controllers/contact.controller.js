@@ -8,7 +8,7 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, importGroup, callStatus, showArchived, funnelType, funnelStageId, limit = 50, offset = 0 } = req.query;
+        const { search, status, source, category, tag, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, limit = 50, offset = 0 } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -119,6 +119,14 @@ export const getContacts = async (req, res) => {
                     { funnelStageId: funnelStageId }
                 ] 
             };
+        } else if (funnelTypes && funnelTypes !== 'ALL') {
+            // Multi-funnel: comma-separated IDs → OR filter
+            const ids = funnelTypes.split(',').map(id => id.trim()).filter(Boolean);
+            if (ids.length === 1) {
+                where = { AND: [where, { funnelType: ids[0] }] };
+            } else if (ids.length > 1) {
+                where = { AND: [where, { OR: ids.map(id => ({ funnelType: id })) }] };
+            }
         } else if (funnelType && funnelType !== 'ALL') {
             where = { 
                 AND: [
@@ -704,39 +712,52 @@ export const bulkImportContacts = async (req, res) => {
 export const getContactAnalytics = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, funnelId } = req.query;
 
-        console.log(`📊 [Analytics] Getting contact analytics for workspace: ${workspaceId}`);
-        console.log(`   Date filter: ${startDate || 'none'} - ${endDate || 'none'}`);
+        console.log(`📊 [Analytics] Getting contact analytics for workspace: ${workspaceId}${funnelId ? ` (Funnel: ${funnelId})` : ''}`);
 
         // Build date filter
         let dateFilter = {};
         if (startDate || endDate) {
             dateFilter.createdAt = {};
-            if (startDate) {
-                dateFilter.createdAt.gte = new Date(startDate);
-            }
+            if (startDate) dateFilter.createdAt.gte = new Date(startDate);
             if (endDate) {
-                // End of day
                 const end = new Date(endDate);
                 end.setHours(23, 59, 59, 999);
                 dateFilter.createdAt.lte = end;
             }
         }
 
-        // Get all contacts with conversations in this workspace
+        // Base contact where clause
+        const contactWhere = {
+            conversations: { some: { workspaceId } },
+            ...dateFilter
+        };
+
+        let activeFunnel = null;
+        if (funnelId) {
+            activeFunnel = await prisma.funnel.findUnique({
+                where: { id: funnelId },
+                include: { stages: { orderBy: { order: 'asc' } } }
+            });
+
+            if (activeFunnel) {
+                // Filter by either funnelStageId OR funnelType (for legacy/inbox consistency)
+                contactWhere.OR = [
+                    { funnelStageId: { in: activeFunnel.stages.map(s => s.id) } },
+                    { funnelType: activeFunnel.name }
+                ];
+            }
+        }
+
+        // Get all contacts
         const contacts = await prisma.contact.findMany({
-            where: {
-                conversations: {
-                    some: {
-                        workspaceId: workspaceId
-                    }
-                },
-                ...dateFilter
-            },
+            where: contactWhere,
             select: {
                 id: true,
                 status: true,
+                funnelType: true,
+                funnelStageId: true,
                 createdAt: true,
                 conversations: {
                     where: { workspaceId },
@@ -745,175 +766,169 @@ export const getContactAnalytics = async (req, res) => {
             }
         });
 
-        // Get total message count for this workspace (with date filter)
-        const messageFilter = {
-            conversation: {
-                workspaceId: workspaceId
-            }
-        };
-        if (startDate || endDate) {
-            messageFilter.createdAt = {};
-            if (startDate) {
-                messageFilter.createdAt.gte = new Date(startDate);
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                messageFilter.createdAt.lte = end;
-            }
-        }
+        // Message metrics (Human vs AI)
+        const messageFilter = { conversation: { workspaceId } };
+        if (startDate || endDate) messageFilter.createdAt = dateFilter.createdAt;
 
-        const totalMessages = await prisma.message.count({
-            where: messageFilter
-        });
+        const [totalMessages, totalAiMessages, totalHumanMessages] = await Promise.all([
+            prisma.message.count({ where: messageFilter }),
+            prisma.message.count({ 
+                where: { 
+                    ...messageFilter, 
+                    isFromContact: false, 
+                    senderId: null 
+                } 
+            }),
+            prisma.message.count({ 
+                where: { 
+                    ...messageFilter, 
+                    isFromContact: false, 
+                    senderId: { not: null } 
+                } 
+            })
+        ]);
 
-        // Get lead count - count conversations with channel='LEAD'
-        const leadFilter = {
-            workspaceId: workspaceId,
-            channel: 'LEAD'
-        };
-        if (startDate || endDate) {
-            leadFilter.createdAt = {};
-            if (startDate) {
-                leadFilter.createdAt.gte = new Date(startDate);
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                leadFilter.createdAt.lte = end;
-            }
-        }
+        // Conversation metrics
+        const conversationFilter = { workspaceId };
+        if (startDate || endDate) conversationFilter.createdAt = dateFilter.createdAt;
 
-        const totalLeads = await prisma.conversation.count({
-            where: leadFilter
-        });
+        const [totalConversations, botLedConversations, handoffConversations] = await Promise.all([
+            prisma.conversation.count({ where: conversationFilter }),
+            prisma.conversation.count({ 
+                where: { 
+                    ...conversationFilter, 
+                    assignedBotId: { not: null } 
+                } 
+            }),
+            prisma.conversation.count({ 
+                where: { 
+                    ...conversationFilter, 
+                    assignedBotId: { not: null },
+                    botEnabled: false 
+                } 
+            })
+        ]);
 
-        // Get conversation count
-        const conversationFilter = {
-            workspaceId: workspaceId
-        };
-        if (startDate || endDate) {
-            conversationFilter.createdAt = {};
-            if (startDate) {
-                conversationFilter.createdAt.gte = new Date(startDate);
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                conversationFilter.createdAt.lte = end;
-            }
-        }
-
-        const totalConversations = await prisma.conversation.count({
-            where: conversationFilter
-        });
-
-        // Count by status — yeni satış funnel aşamaları
-        const statusCounts = {
-            NEW: 0,
-            OPPORTUNITY: 0,
-            HOT_OPPORTUNITY: 0,
-            INFORMED: 0,
-            MEETING_PLANNED: 0,
-            PROPOSAL: 0,
-            CONVERTED: 0,
-            UNREACHABLE: 0,
-            LOST: 0
-        };
-
-        // Count by channel — tüm kanalları tanımla
-        const channelCounts = {
-            WHATSAPP: 0,
-            FACEBOOK: 0,
-            INSTAGRAM: 0,
-            EMAIL: 0,
-            WIDGET: 0,
-            PHONE: 0,
-            FORM: 0,
-            LEAD: 0,
-            MANUAL: 0,
-            IMPORT: 0,
-            UNKNOWN: 0
-        };
-
-        // Process contacts
+        // Channel Distribution
+        const channelCounts = {};
         contacts.forEach(contact => {
-            // Count status
-            const status = contact.status || 'NEW';
-            if (statusCounts.hasOwnProperty(status)) {
-                statusCounts[status]++;
-            } else {
-                statusCounts.NEW++;
-            }
-
-            // Count channels
             contact.conversations.forEach(conv => {
                 const channel = conv.channel || 'UNKNOWN';
-                if (channelCounts.hasOwnProperty(channel)) {
-                    channelCounts[channel]++;
-                } else {
-                    channelCounts.UNKNOWN++;
-                }
+                channelCounts[channel] = (channelCounts[channel] || 0) + 1;
             });
         });
 
-        // Calculate conversion rate
-        const totalContacts = contacts.length;
-        const convertedContacts = statusCounts.CONVERTED;
-        const conversionRate = totalContacts > 0 ? ((convertedContacts / totalContacts) * 100).toFixed(1) : 0;
+        // Status / Stage Data
+        let statusData = [];
+        if (activeFunnel) {
+            statusData = activeFunnel.stages.map(stage => {
+                const count = contacts.filter(c => {
+                    // Check direct ID match
+                    if (c.funnelStageId === stage.id) return true;
+                    
+                    // Check name match if contact is in this funnel type but has no stage ID
+                    if (c.funnelType === activeFunnel.name) {
+                        // Map global status to stage name if applicable
+                        const statusToNameMap = {
+                            'NEW': 'Yeni Başvuru',
+                            'OPPORTUNITY': 'Fırsat',
+                            'HOT_OPPORTUNITY': 'Sıcak Fırsat',
+                            'PROPOSAL': 'Teklif Aşaması',
+                            'CONVERTED': 'Satış'
+                        };
+                        const mappedName = statusToNameMap[c.status] || c.status;
+                        return mappedName === stage.name;
+                    }
+                    return false;
+                }).length;
 
-        // Calculate contacts by month (last 6 months)
+                return {
+                    status: stage.id,
+                    label: stage.name,
+                    count: count,
+                    color: stage.color
+                };
+            });
+        } else {
+            // Use global status
+            const statusCounts = {
+                NEW: 0, OPPORTUNITY: 0, HOT_OPPORTUNITY: 0, INFORMED: 0,
+                MEETING_PLANNED: 0, PROPOSAL: 0, CONVERTED: 0, UNREACHABLE: 0, LOST: 0
+            };
+            const statusLabels = {
+                NEW: 'Yeni Başvuru', OPPORTUNITY: 'Fırsat', HOT_OPPORTUNITY: 'Sıcak Fırsat',
+                INFORMED: 'Bilgi Verildi', MEETING_PLANNED: 'Görüşme Planlandı',
+                PROPOSAL: 'Teklif Aşaması', CONVERTED: 'Satış', UNREACHABLE: 'Ulaşılamadı', LOST: 'Kayıp'
+            };
+
+            contacts.forEach(contact => {
+                const s = contact.status || 'NEW';
+                if (statusCounts.hasOwnProperty(s)) statusCounts[s]++;
+            });
+
+            statusData = Object.entries(statusCounts).map(([key, value]) => ({
+                status: key,
+                label: statusLabels[key] || key,
+                count: value
+            }));
+        }
+
+        const totalContacts = contacts.length;
+        const convertedCount = funnelId ? 0 : (contacts.filter(c => c.status === 'CONVERTED').length);
+        const conversionRate = totalContacts > 0 ? ((convertedCount / totalContacts) * 100).toFixed(1) : 0;
+
+        // Monthly data
         const monthlyData = [];
         const now = new Date();
         for (let i = 5; i >= 0; i--) {
-            const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-            const monthName = monthStart.toLocaleString('tr-TR', { month: 'short' });
-
+            const mStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+            const mName = mStart.toLocaleString('tr-TR', { month: 'short' });
             const count = contacts.filter(c => {
-                const createdAt = new Date(c.createdAt);
-                return createdAt >= monthStart && createdAt <= monthEnd;
+                const d = new Date(c.createdAt);
+                return d >= mStart && d <= mEnd;
             }).length;
-
-            monthlyData.push({ month: monthName, count });
+            monthlyData.push({ month: mName, count });
         }
 
-        // Status labels in Turkish — yeni satış funnel aşamaları
-        const statusLabels = {
-            NEW: 'Yeni Başvuru',
-            OPPORTUNITY: 'Fırsat',
-            HOT_OPPORTUNITY: 'Sıcak Fırsat',
-            INFORMED: 'Bilgi Verildi',
-            MEETING_PLANNED: 'Görüşme Planlandı',
-            PROPOSAL: 'Teklif Aşaması',
-            CONVERTED: 'Satış',
-            UNREACHABLE: 'Ulaşılamadı',
-            LOST: 'Kayıp'
-        };
+        // Funnel Summary (for the main list view)
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            orderBy: { order: 'asc' }
+        });
 
-        const statusData = Object.entries(statusCounts).map(([key, value]) => ({
-            status: key,
-            label: statusLabels[key] || key,
-            count: value
+        const funnelSummary = allFunnels.map(f => ({
+            id: f.id,
+            name: f.name,
+            count: contacts.filter(c => c.funnelType === f.name).length,
+            color: f.color,
+            icon: f.icon
         }));
 
-        const channelData = Object.entries(channelCounts)
-            .filter(([_, value]) => value > 0)
-            .map(([key, value]) => ({
-                channel: key,
-                count: value
-            }));
+        // Add "Genel" only if it doesn't already exist in the list
+        if (!funnelSummary.some(f => f.name.toLowerCase() === 'genel')) {
+            funnelSummary.unshift({
+                id: 'genel',
+                name: 'Genel',
+                count: contacts.filter(c => !c.funnelType || c.funnelType === 'Genel').length,
+                color: '#64748b',
+                icon: '📋'
+            });
+        }
 
         res.json({
             totalContacts,
             totalMessages,
-            totalLeads,
+            totalAiMessages,
+            totalHumanMessages,
             totalConversations,
+            botLedConversations,
+            handoffConversations,
+            handoffRate: botLedConversations > 0 ? ((handoffConversations / botLedConversations) * 100).toFixed(1) : 0,
             conversionRate: parseFloat(conversionRate),
-            positiveContacts: statusCounts.CONVERTED + statusCounts.PROPOSAL + statusCounts.HOT_OPPORTUNITY + statusCounts.MEETING_PLANNED,
-            negativeContacts: statusCounts.UNREACHABLE + statusCounts.LOST,
             statusData,
-            channelData,
+            funnelSummary,
+            channelData: Object.entries(channelCounts).map(([k, v]) => ({ channel: k, count: v })),
             monthlyData
         });
     } catch (error) {
@@ -921,6 +936,8 @@ export const getContactAnalytics = async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch analytics' });
     }
 };
+
+
 
 // Get agent performance metrics
 export const getAgentPerformance = async (req, res) => {
@@ -1093,7 +1110,7 @@ export const getAgentPerformance = async (req, res) => {
                 messagesSent,
                 avgResponseTimeMinutes,
                 avgResolutionTimeMinutes,
-                resolutionRate
+                resolutionRate: Math.min(resolutionRate, 100)
             });
         }
 

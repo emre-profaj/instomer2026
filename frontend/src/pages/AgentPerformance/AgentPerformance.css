@@ -602,23 +602,23 @@
 }
 
 .bots-section .section-header svg {
-    color: #8b5cf6;
+    color: #ef4444;
 }
 
-.bot-card {
-    border-left: 3px solid #8b5cf6;
+.agent-performance-page .bot-card {
+    border-left: 3px solid #ef4444;
 }
 
-.bot-card:hover {
-    border-left-color: #7c3aed;
+.agent-performance-page .bot-card:hover {
+    border-left-color: #dc2626;
 }
 
-.bot-avatar {
-    background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+.agent-performance-page .bot-avatar {
+    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
 }
 
 .bot-role {
-    color: #8b5cf6;
+    color: #ef4444;
 }
 
 .bot-status {
@@ -649,17 +649,17 @@
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-md) var(--spacing-lg);
-    background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+    background: linear-gradient(135deg, #fef2f2, #fee2e2);
     border-radius: var(--radius-md);
     margin-top: var(--spacing-lg);
-    color: #6d28d9;
+    color: #dc2626;
     font-size: 0.875rem;
 }
 
 .bot-total-info svg {
-    color: #8b5cf6;
+    color: #ef4444;
 }
 
 .bot-total-info strong {
-    color: #5b21b6;
+    color: #b91c1c;
 }

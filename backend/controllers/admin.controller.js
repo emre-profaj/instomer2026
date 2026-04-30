@@ -1230,3 +1230,111 @@ export const getActivityLogs = async (req, res) => {
         res.status(500).json({ error: 'İşlem geçmişi yüklenemedi' });
     }
 };
+
+// ============================================
+// FLOW TEMPLATES MANAGEMENT
+// ============================================
+
+export const getFlowTemplates = async (req, res) => {
+    try {
+        const templates = await prisma.flowTemplate.findMany({
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json({ templates });
+    } catch (error) {
+        console.error('getFlowTemplates error:', error);
+        res.status(500).json({ error: 'Şablonlar getirilemedi' });
+    }
+};
+
+export const createFlowTemplate = async (req, res) => {
+    try {
+        const { name, description, trigger } = req.body;
+        const template = await prisma.flowTemplate.create({
+            data: {
+                name,
+                description,
+                trigger,
+                steps: []
+            }
+        });
+        await logAdminActivity(req, 'CREATE_FLOW_TEMPLATE', 'TEMPLATE', template.id, template.name);
+        res.status(201).json({ message: 'Şablon oluşturuldu', template });
+    } catch (error) {
+        console.error('createFlowTemplate error:', error);
+        res.status(500).json({ error: 'Şablon oluşturulamadı' });
+    }
+};
+
+export const updateFlowTemplate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, description, trigger, steps } = req.body;
+        
+        const data = {};
+        if (name !== undefined) data.name = name;
+        if (description !== undefined) data.description = description;
+        if (trigger !== undefined) data.trigger = trigger;
+        if (steps !== undefined) data.steps = typeof steps === 'string' ? JSON.parse(steps) : steps;
+
+        const template = await prisma.flowTemplate.update({
+            where: { id },
+            data
+        });
+        
+        res.json({ message: 'Şablon güncellendi', template });
+    } catch (error) {
+        console.error('updateFlowTemplate error:', error);
+        res.status(500).json({ error: 'Şablon güncellenemedi' });
+    }
+};
+
+export const deleteFlowTemplate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma.flowTemplate.delete({
+            where: { id }
+        });
+        await logAdminActivity(req, 'DELETE_FLOW_TEMPLATE', 'TEMPLATE', id, 'deleted');
+        res.json({ message: 'Şablon silindi' });
+    } catch (error) {
+        console.error('deleteFlowTemplate error:', error);
+        res.status(500).json({ error: 'Şablon silinemedi' });
+    }
+};
+
+export const importFlowTemplate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { workspaceId } = req.body;
+
+        if (!workspaceId) {
+            return res.status(400).json({ error: 'Workspace ID gereklidir' });
+        }
+
+        const template = await prisma.flowTemplate.findUnique({
+            where: { id }
+        });
+
+        if (!template) {
+            return res.status(404).json({ error: 'Şablon bulunamadı' });
+        }
+
+        const flow = await prisma.flow.create({
+            data: {
+                workspaceId,
+                name: template.name + ' (Kopya)',
+                trigger: template.trigger,
+                steps: template.steps,
+                isActive: false // Aktarmada pasif başlatılır
+            }
+        });
+
+        await logAdminActivity(req, 'IMPORT_FLOW_TEMPLATE', 'FLOW', flow.id, flow.name, { workspaceId, templateId: id });
+        
+        res.status(201).json({ message: 'Şablon başarıyla aktarıldı', flow });
+    } catch (error) {
+        console.error('importFlowTemplate error:', error);
+        res.status(500).json({ error: 'Şablon aktarılamadı' });
+    }
+};

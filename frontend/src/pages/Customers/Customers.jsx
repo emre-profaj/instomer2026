@@ -102,6 +102,7 @@ const Customers = () => {
     // Funnel filter state
     const [funnelFilter, setFunnelFilter] = useState('ALL');
     const [funnelStageFilter, setFunnelStageFilter] = useState('ALL');
+    const [mergedFunnelIds, setMergedFunnelIds] = useState(null); // when non-null, filter by these IDs together
     const [availableFunnels, setAvailableFunnels] = useState([]);
     const [sourceFilter, setSourceFilter] = useState('ALL');
     const [categoryFilter, setCategoryFilter] = useState('ALL');
@@ -186,6 +187,9 @@ const Customers = () => {
 
     // Filter labels to show on the main button
     const getActiveFilterLabel = () => {
+        if (mergedFunnelIds) {
+            return 'Genel';
+        }
         if (funnelStageFilter !== 'ALL') {
             // Find stage name
             for (const f of availableFunnels) {
@@ -201,6 +205,7 @@ const Customers = () => {
     };
 
     const getActiveFilterColor = () => {
+        if (mergedFunnelIds) return '#3b82f6';
         if (funnelStageFilter !== 'ALL') {
             for (const f of availableFunnels) {
                 const stage = f.stages?.find(s => s.id === funnelStageFilter);
@@ -236,7 +241,7 @@ const Customers = () => {
         if (currentWorkspace) {
             loadContacts();
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -318,6 +323,7 @@ const Customers = () => {
                 callStatus: callStatusFilter,
                 importGroup: importGroupFilter,
                 funnelType: funnelFilter,
+                funnelTypes: mergedFunnelIds ? mergedFunnelIds.join(',') : undefined,
                 funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
                 limit,
@@ -907,14 +913,17 @@ const Customers = () => {
             setCategoryFilter('ALL');
             setFunnelFilter('ALL');
             setFunnelStageFilter('ALL');
+            setMergedFunnelIds(null);
         } else if (tabId === 'customers') {
             setCategoryFilter('CUSTOMER');
             setFunnelFilter('ALL');
             setFunnelStageFilter('ALL');
+            setMergedFunnelIds(null);
         } else if (tabId.startsWith('funnel-')) {
             setCategoryFilter('ALL');
             setFunnelFilter(funnelId);
             setFunnelStageFilter('ALL');
+            setMergedFunnelIds(null);
         }
         setPage(1);
     };
@@ -963,7 +972,7 @@ const Customers = () => {
                     </div>
 
                     {/* Dynamic Tabs */}
-                    <div className="contacts-tabs" style={{ display: 'flex', gap: '8px', padding: '0 24px', marginBottom: '16px', overflowX: 'auto' }}>
+                    <div className="contacts-tabs" style={{ display: 'none', gap: '8px', padding: '0 24px', marginBottom: '16px', overflowX: 'auto' }}>
                         <button 
                             style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: getActiveTab() === 'all' ? '#1f2937' : '#f3f4f6', color: getActiveTab() === 'all' ? '#fff' : '#4b5563', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
                             onClick={() => handleTabClick('all')}
@@ -1027,54 +1036,116 @@ const Customers = () => {
 
                                             <div className="filter-divider" />
 
-                                            {availableFunnels.map(funnel => (
-                                                <div key={funnel.id} className="stage-filter-funnel">
-                                                    <button
-                                                        className={`funnel-filter-item ${funnelFilter === funnel.id && funnelStageFilter === 'ALL' ? 'selected' : ''}`}
-                                                        onClick={() => {
-                                                            // If there's a stage with the same name as the funnel, select that stage directly
-                                                            const matchingStage = funnel.stages?.find(
-                                                                s => s.name.toLowerCase() === funnel.name.toLowerCase()
-                                                            );
-                                                            if (matchingStage) {
-                                                                setFunnelFilter(funnel.id);
-                                                                setFunnelStageFilter(matchingStage.id);
-                                                            } else {
-                                                                setFunnelFilter(funnel.id);
-                                                                setFunnelStageFilter('ALL');
-                                                            }
-                                                            setFunnelFilterOpen(false);
-                                                            setPage(1);
-                                                        }}
-                                                    >
-                                                        <div className="funnel-filter-dot" style={{ backgroundColor: funnel.color || '#8b5cf6' }} />
-                                                        {funnel.name}
-                                                        <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />
-                                                    </button>
+                                            {(() => {
+                                                // Merge "Genel CRM (Otomatik İşlem)" and "Genel" into one entry
+                                                const MERGE_NAMES = ['genel crm (otomatik i̇şlem)', 'genel crm (otomatik işlem)', 'genel'];
+                                                const genelGroup = availableFunnels.filter(f => MERGE_NAMES.includes(f.name.toLowerCase()));
+                                                const otherFunnels = availableFunnels.filter(f => !MERGE_NAMES.includes(f.name.toLowerCase()));
 
-                                                    {funnel.stages && funnel.stages.length > 0 && (
-                                                        <div className="stage-filter-submenu">
-                                                            {funnel.stages.map(stage => (
+                                                return (
+                                                    <>
+                                                        {/* Merged "Genel CRM" entry */}
+                                                        {genelGroup.length > 0 && (() => {
+                                                            const mergedIds = genelGroup.map(f => f.id);
+                                                            const isActive = mergedFunnelIds && mergedIds.every(id => mergedFunnelIds.includes(id));
+                                                            // Combine stages from both funnels
+                                                            const combinedStages = genelGroup.flatMap(f => (f.stages || []).map(s => ({ ...s, _parentId: f.id })));
+                                                            return (
+                                                                <div key="merged-genel" className="stage-filter-funnel">
+                                                                    <button
+                                                                        className={`funnel-filter-item ${isActive ? 'selected' : ''}`}
+                                                                        onClick={() => {
+                                                                            setMergedFunnelIds(mergedIds);
+                                                                            setFunnelFilter('ALL');
+                                                                            setFunnelStageFilter('ALL');
+                                                                            setFunnelFilterOpen(false);
+                                                                            setPage(1);
+                                                                        }}
+                                                                    >
+                                                                        <div className="funnel-filter-dot" style={{ backgroundColor: '#3b82f6' }} />
+                                                                        Genel
+                                                                        {combinedStages.length > 0 && <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />}
+                                                                        {isActive && combinedStages.length === 0 && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                                                                    </button>
+                                                                    {combinedStages.length > 0 && (
+                                                                        <div className="stage-filter-submenu">
+                                                                            {combinedStages.map(stage => (
+                                                                                <button
+                                                                                    key={stage.id}
+                                                                                    className={`funnel-filter-item ${funnelStageFilter === stage.id ? 'selected' : ''}`}
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setMergedFunnelIds(null);
+                                                                                        setFunnelFilter(stage._parentId);
+                                                                                        setFunnelStageFilter(stage.id);
+                                                                                        setFunnelFilterOpen(false);
+                                                                                        setPage(1);
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="funnel-filter-dot" style={{ backgroundColor: stage.color || '#3b82f6' }} />
+                                                                                    {stage.name}
+                                                                                    {funnelStageFilter === stage.id && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+
+                                                        {/* Other funnels as usual */}
+                                                        {otherFunnels.map(funnel => (
+                                                            <div key={funnel.id} className="stage-filter-funnel">
                                                                 <button
-                                                                    key={stage.id}
-                                                                    className={`funnel-filter-item ${funnelStageFilter === stage.id ? 'selected' : ''}`}
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setFunnelFilter(funnel.id);
-                                                                        setFunnelStageFilter(stage.id);
+                                                                    className={`funnel-filter-item ${funnelFilter === funnel.id && funnelStageFilter === 'ALL' && !mergedFunnelIds ? 'selected' : ''}`}
+                                                                    onClick={() => {
+                                                                        const matchingStage = funnel.stages?.find(
+                                                                            s => s.name.toLowerCase() === funnel.name.toLowerCase()
+                                                                        );
+                                                                        setMergedFunnelIds(null);
+                                                                        if (matchingStage) {
+                                                                            setFunnelFilter(funnel.id);
+                                                                            setFunnelStageFilter(matchingStage.id);
+                                                                        } else {
+                                                                            setFunnelFilter(funnel.id);
+                                                                            setFunnelStageFilter('ALL');
+                                                                        }
                                                                         setFunnelFilterOpen(false);
                                                                         setPage(1);
                                                                     }}
                                                                 >
-                                                                    <div className="funnel-filter-dot" style={{ backgroundColor: stage.color || '#3b82f6' }} />
-                                                                    {stage.name}
-                                                                    {funnelStageFilter === stage.id && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                                                                    <div className="funnel-filter-dot" style={{ backgroundColor: funnel.color || '#8b5cf6' }} />
+                                                                    {funnel.name}
+                                                                    <ChevronRight size={14} style={{ marginLeft: 'auto', opacity: 0.5 }} />
                                                                 </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                                {funnel.stages && funnel.stages.length > 0 && (
+                                                                    <div className="stage-filter-submenu">
+                                                                        {funnel.stages.map(stage => (
+                                                                            <button
+                                                                                key={stage.id}
+                                                                                className={`funnel-filter-item ${funnelStageFilter === stage.id ? 'selected' : ''}`}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setMergedFunnelIds(null);
+                                                                                    setFunnelFilter(funnel.id);
+                                                                                    setFunnelStageFilter(stage.id);
+                                                                                    setFunnelFilterOpen(false);
+                                                                                    setPage(1);
+                                                                                }}
+                                                                            >
+                                                                                <div className="funnel-filter-dot" style={{ backgroundColor: stage.color || '#3b82f6' }} />
+                                                                                {stage.name}
+                                                                                {funnelStageFilter === stage.id && <Check size={14} style={{ marginLeft: 'auto' }} />}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </>
+                                                );
+                                            })()}
+
                                         </div>
                                     )}
                                 </div>

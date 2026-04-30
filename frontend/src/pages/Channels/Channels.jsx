@@ -7,7 +7,6 @@ import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
 import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
-import ApiIntegrationSettings from '../../components/Settings/ApiIntegrationSettings';
 import './Channels.css';
 
 
@@ -1115,9 +1114,6 @@ const Channels = () => {
                     </div>
                 )}
             </div>
-
-            {/* API Integrations Settings */}
-            <ApiIntegrationSettings />
 
             {/* Form Webhook Modal */}
             {showFormModal && (

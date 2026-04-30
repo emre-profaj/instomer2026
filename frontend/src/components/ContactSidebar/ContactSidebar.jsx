@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Phone, Mail, User, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, History } from 'lucide-react';
+import { X, Phone, Mail, User, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, History, Pencil } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import TransferModal from '../TransferModal/TransferModal';
@@ -172,6 +172,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [pastTimeline, setPastTimeline] = useState([]);
     const [timelineLoading, setTimelineLoading] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
+    const [editingActivity, setEditingActivity] = useState(null); // { id, description, title }
+    const [editActivityText, setEditActivityText] = useState('');
     const [activityForm, setActivityForm] = useState({
         type: 'NOTE', // NOTE, REMINDER, MEETING, TASK
         title: '',
@@ -392,6 +394,35 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }
     };
 
+    const handleDeleteActivity = async (activityId) => {
+        if (!confirm('Bu aktiviteyi silmek istediğinize emin misiniz?')) return;
+        try {
+            const rawId = activityId.replace(/^act_/, '');
+            await activityAPI.deleteActivity(rawId);
+            setPlannedTimeline(prev => prev.filter(i => i.id !== activityId));
+            setPastTimeline(prev => prev.filter(i => i.id !== activityId));
+        } catch (err) {
+            console.error('Delete activity error:', err);
+            alert('Silme işlemi başarısız.');
+        }
+    };
+
+    const handleUpdateActivity = async () => {
+        if (!editingActivity) return;
+        try {
+            const rawId = editingActivity.id.replace(/^act_/, '');
+            await activityAPI.updateActivity(rawId, { description: editActivityText, title: editingActivity.title });
+            const updateItem = item => item.id === editingActivity.id ? { ...item, content: editActivityText } : item;
+            setPlannedTimeline(prev => prev.map(updateItem));
+            setPastTimeline(prev => prev.map(updateItem));
+            setEditingActivity(null);
+            setEditActivityText('');
+        } catch (err) {
+            console.error('Update activity error:', err);
+            alert('Güncelleme başarısız.');
+        }
+    };
+
     const renderTimelineIcon = (type) => {
         switch(type) {
             case 'WHATSAPP': return <MessageSquare size={14} />;
@@ -456,8 +487,19 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const handleAddTag = async () => {
         if (!newTag.trim()) return;
         try {
-            const response = await facebookAPI.addContactTag(conversationId, newTag.trim());
-            setProfile(prev => ({ ...prev, tags: response.data.tags }));
+            if (conversationId) {
+                // Conversation context: use facebookAPI (updates via conversationId → contact)
+                const response = await facebookAPI.addContactTag(conversationId, newTag.trim());
+                setProfile(prev => ({ ...prev, tags: response.data.tags }));
+            } else if (profile?.id) {
+                // Direct contact context (e.g. Customers page): update contact directly
+                const currentTags = Array.isArray(profile.tags) ? profile.tags : [];
+                if (!currentTags.includes(newTag.trim())) {
+                    const updatedTags = [...currentTags, newTag.trim()];
+                    await contactAPI.update(currentWorkspace.id, profile.id, { tags: JSON.stringify(updatedTags) });
+                    setProfile(prev => ({ ...prev, tags: updatedTags }));
+                }
+            }
             setNewTag('');
             setIsAddingTag(false);
         } catch (err) {
@@ -468,13 +510,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
     const handleRemoveTag = async (tagToDelete) => {
         try {
-            const response = await facebookAPI.removeContactTag(conversationId, tagToDelete);
-            setProfile(prev => ({ ...prev, tags: response.data.tags }));
+            if (conversationId) {
+                // Conversation context: use facebookAPI
+                const response = await facebookAPI.removeContactTag(conversationId, tagToDelete);
+                setProfile(prev => ({ ...prev, tags: response.data.tags }));
+            } else if (profile?.id) {
+                // Direct contact context: update contact directly
+                const currentTags = Array.isArray(profile.tags) ? profile.tags : [];
+                const updatedTags = currentTags.filter(t => t !== tagToDelete);
+                await contactAPI.update(currentWorkspace.id, profile.id, { tags: JSON.stringify(updatedTags) });
+                setProfile(prev => ({ ...prev, tags: updatedTags }));
+            }
         } catch (err) {
             console.error('Remove tag error:', err);
             alert('Etiket silinirken hata oluştu: ' + (err.response?.data?.error || err.message));
         }
     };
+
 
 
     const handleSaveProfile = async () => {
@@ -1077,6 +1129,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </button>
                             </div>
 
+
                             {/* TIMELINE SECTION */}
                             <div className="activity-timeline-section">
                                 <div className="timeline-title">
@@ -1129,14 +1182,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </div>
                                                 )}
                                                 {pastTimeline.map((item) => {
-                                                    const isNote = item.type === 'NOTE';
+                                                    const isNote = item.type === 'NOTE' && item.sourceType === 'ACTIVITY';
                                                     const isConv = item.sourceType === 'CONVERSATION';
                                                     const iconClass = `timeline-icon type-${item.type.toLowerCase()}`;
+                                                    const isEditing = editingActivity?.id === item.id;
                                                     return (
                                                         <div 
                                                             key={item.id} 
                                                             className={`timeline-item ${isNote ? 'type-note' : ''}`}
-                                                            style={isConv ? { cursor: 'pointer' } : {}}
+                                                            style={{ position: 'relative', ...(isConv ? { cursor: 'pointer' } : {}) }}
                                                             onClick={isConv && item.conversationId ? () => navigate(`/inbox?conversationId=${item.conversationId}`) : undefined}
                                                         >
                                                             <div className="timeline-header">
@@ -1145,27 +1199,70 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     <span className="timeline-type-name">{item.title || renderTimelineTypeName(item.type)}</span>
                                                                     <span className="timeline-author-badge">{item.labelName}</span>
                                                                 </div>
-                                                                <span className="timeline-time">
-                                                                    {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                </span>
-                                                            </div>
-                                                            {/* Conversation: son 2 mesajı göster */}
-                                                            {isConv && item.recentMessages?.length > 0 ? (
-                                                                <div style={{ fontSize: '0.78rem', color: '#4b5563', marginTop: '4px' }}>
-                                                                    {item.recentMessages.map((msg, idx) => (
-                                                                        <div key={idx} style={{ display: 'flex', gap: '4px', marginBottom: '2px', lineHeight: 1.3 }}>
-                                                                            <span style={{ fontWeight: 600, color: msg.isFromContact ? '#dc2626' : '#2563eb', flexShrink: 0, fontSize: '0.72rem' }}>
-                                                                                {msg.senderName}:
-                                                                            </span>
-                                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                                {msg.content}
-                                                                            </span>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <span className="timeline-time">
+                                                                        {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                    </span>
+                                                                    {isNote && (
+                                                                        <div className="timeline-note-actions">
+                                                                            <button
+                                                                                title="Düzenle"
+                                                                                onClick={(e) => { e.stopPropagation(); setEditingActivity(item); setEditActivityText(item.content || ''); }}
+                                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#6b7280', display: 'flex', alignItems: 'center' }}
+                                                                            >
+                                                                                <Pencil size={13} />
+                                                                            </button>
+                                                                            <button
+                                                                                title="Sil"
+                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteActivity(item.id); }}
+                                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#ef4444', display: 'flex', alignItems: 'center' }}
+                                                                            >
+                                                                                <Trash2 size={13} />
+                                                                            </button>
                                                                         </div>
-                                                                    ))}
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            {/* Inline edit mode */}
+                                                            {isEditing ? (
+                                                                <div style={{ marginTop: '6px' }} onClick={e => e.stopPropagation()}>
+                                                                    <textarea
+                                                                        value={editActivityText}
+                                                                        onChange={e => setEditActivityText(e.target.value)}
+                                                                        rows={3}
+                                                                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 8px', fontSize: '0.82rem', resize: 'vertical', boxSizing: 'border-box' }}
+                                                                        autoFocus
+                                                                    />
+                                                                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                                                        <button onClick={handleUpdateActivity} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
+                                                                            <Save size={12} style={{ marginRight: '3px' }} />Kaydet
+                                                                        </button>
+                                                                        <button onClick={() => { setEditingActivity(null); setEditActivityText(''); }} style={{ background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
+                                                                            İptal
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             ) : (
                                                                 <>
-                                                                    {item.content && <div className="timeline-content">{item.content}</div>}
+                                                                    {/* Conversation: son 2 mesajı göster */}
+                                                                    {isConv && item.recentMessages?.length > 0 ? (
+                                                                        <div style={{ fontSize: '0.78rem', color: '#4b5563', marginTop: '4px' }}>
+                                                                            {item.recentMessages.map((msg, idx) => (
+                                                                                <div key={idx} style={{ display: 'flex', gap: '4px', marginBottom: '2px', lineHeight: 1.3 }}>
+                                                                                    <span style={{ fontWeight: 600, color: msg.isFromContact ? '#dc2626' : '#2563eb', flexShrink: 0, fontSize: '0.72rem' }}>
+                                                                                        {msg.senderName}:
+                                                                                    </span>
+                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                                        {msg.content}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <>
+                                                                            {item.content && <div className="timeline-content">{item.content}</div>}
+                                                                        </>
+                                                                    )}
                                                                 </>
                                                             )}
                                                             {item.dueDate && (
@@ -1174,6 +1271,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 </div>
                                                             )}
                                                             {item.assignedToName && (
+
                                                                 <div className="timeline-due-date" style={{ color: '#6366f1' }}>
                                                                     <User size={12} /> Atanan: {item.assignedToName}
                                                                 </div>
@@ -1187,57 +1285,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         {plannedTimeline.length === 0 && pastTimeline.length === 0 && !timelineLoading && (
                                             <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem', padding: '12px 0' }}>Henüz aktivite bulunmuyor.</div>
                                         )}
+
+                                        {/* Sesli Arama Geçmişi */}
+                                        {profile && currentWorkspace?.id && (
+                                            <CallHistory
+                                                workspaceId={currentWorkspace.id}
+                                                contactId={profile.id}
+                                                refreshKey={callRefreshKey}
+                                            />
+                                        )}
                                     </div>
                                 )}
                             </div>
 
-                            {/* Sesli Arama Geçmişi */}
-                            {profile && currentWorkspace?.id && (
-                                <CallHistory
-                                    workspaceId={currentWorkspace.id}
-                                    contactId={profile.id}
-                                    refreshKey={callRefreshKey}
-                                />
-                            )}
 
-                            {/* Sohbet Geçmişi */}
-                            {contactConversations.length > 0 && (
-                                <div className="conversation-history-list" style={{ marginTop: 8 }}>
-                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px', borderBottom: '1px dashed #e5e7eb', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <MessageSquare size={12} /> Sohbet Geçmişi
-                                    </div>
-                                    {contactConversations.map(conv => (
-                                        <div
-                                            key={conv.id}
-                                            className={`conversation-history-item ${conv.id === conversationId ? 'current' : ''}`}
-                                            onClick={() => {
-                                                if (conv.id !== conversationId) {
-                                                    navigate(`/inbox?conversationId=${conv.id}`);
-                                                }
-                                            }}
-                                            style={{ cursor: conv.id === conversationId ? 'default' : 'pointer' }}
-                                        >
-                                            <div className="conversation-history-info">
-                                                <span className="conversation-history-channel">
-                                                    {conv.channel === 'WHATSAPP' ? '📱 WhatsApp' :
-                                                        conv.channel === 'FACEBOOK' ? '💬 Facebook' :
-                                                            conv.channel === 'INSTAGRAM' ? '📸 Instagram' :
-                                                                conv.channel === 'EMAIL' ? '📧 E-posta' :
-                                                                    conv.channel === 'FORM' ? '📝 Web Form' :
-                                                                        conv.channel === 'PHONE' ? '📞 Sesli Arama' : '💬 Sohbet'}
-                                                </span>
-                                                <span className="conversation-history-date">
-                                                    {new Date(conv.lastMessageAt || conv.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                            </div>
-                                            <p className="conversation-history-preview">
-                                                {conv.id === conversationId ? '← Mevcut sohbet' :
-                                                    conv.messages?.[0]?.content?.substring(0, 50) || 'Sohbete gitmek için tıklayın...'}
-                                            </p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+
+
 
                             {/* Activity Modal */}
                             {showActivityModal && (

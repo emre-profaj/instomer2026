@@ -335,8 +335,12 @@ function calculateScheduledAt(preferredWindow, schedule, baseDate = new Date()) 
  * @param {string} triggerSource - One of: onNewLead, onWhatsApp, onMessenger, onWebForm, onMissedChat
  * @param {string|null} messageContent - Optional message content to parse for preferred time
  * @param {Date} baseDate - The timestamp the event occurred to build schedules from
+ * @param {{ startHour, startMinute, endHour, endMinute }|null} explicitPreferredWindow - Directly parsed
+ *   preferred call window from structured lead form data. When provided, bypasses messageContent
+ *   parsing entirely. Use this for LEAD/FORM triggers so that customer time preferences are honoured
+ *   without risking false positives from date strings inside system-generated message content.
  */
-export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date()) => {
+export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date(), explicitPreferredWindow = null) => {
     // ─── CONCURRENCY LOCK ───────────────────────────────────────────────────────
     // Prevent race condition: multiple triggers firing in parallel for the same
     // phone create multiple ScheduledCall rows because they all pass the PENDING
@@ -455,10 +459,12 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
         // 🛡️ SAFETY: System-generated triggers (LEAD, FORM, FLOW) should NEVER have their
         // message content parsed for time preferences — they contain auto-formatted strings
         // like dates ("23.03.2026") that can be misinterpreted as times ("23:03").
+        // NOTE: explicitPreferredWindow (structured data from form fields) is intentionally
+        // preserved — it comes from validated fieldData, not free-form text, so it is safe.
         const SYSTEM_TRIGGERS = ['LEAD', 'FORM', 'FLOW_TRIGGER', 'FLOW_RETRY'];
         if (SYSTEM_TRIGGERS.includes(triggerSource)) {
             messageContent = null;
-            console.log(`🛡️ [AutoCall] System trigger "${triggerSource}" — message parsing skipped`);
+            console.log(`🛡️ [AutoCall] System trigger "${triggerSource}" — message parsing skipped${explicitPreferredWindow ? ` (explicit preferredWindow retained: ${explicitPreferredWindow.startHour}:${String(explicitPreferredWindow.startMinute).padStart(2,'0')}-${explicitPreferredWindow.endHour}:${String(explicitPreferredWindow.endMinute).padStart(2,'0')})` : ''}`);
         }
 
         // 🕐 SMART SCHEDULING
@@ -488,7 +494,11 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 
         } else {
             // No explicit customer request → apply business hours / preferred window logic
-            let preferredWindow = parsePreferredTime(messageContent);
+            // Priority: explicitPreferredWindow (structured lead field) > parsePreferredTime (free-text)
+            let preferredWindow = explicitPreferredWindow || parsePreferredTime(messageContent);
+            if (explicitPreferredWindow) {
+                console.log(`🕐 [AutoCall] Using explicitPreferredWindow from lead form: ${explicitPreferredWindow.startHour}:${String(explicitPreferredWindow.startMinute).padStart(2,'0')}-${explicitPreferredWindow.endHour}:${String(explicitPreferredWindow.endMinute).padStart(2,'0')}`);
+            }
 
             // Fallback: if no preferred time found in the trigger message,
             // scan recent conversation messages (e.g., the "EK BİLGİLER" block may be in a different message)

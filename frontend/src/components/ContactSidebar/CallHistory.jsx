@@ -131,7 +131,7 @@ const CallHistory = ({ workspaceId, contactId, refreshKey = 0 }) => {
             {scheduledCalls.length > 0 && (
                 <div className="scheduled-calls-section">
                     <div className="scheduled-calls-label">
-                        <Calendar size={12} /> PLANLANMIŞ ARAMALAR
+                        <Calendar size={12} /> PLANLANMIŞ GÖREVLER
                     </div>
                     {scheduledCalls.map(sc => (
                         <div key={sc.id} className="scheduled-call-item">

@@ -541,7 +541,7 @@
 }
 
 .members-section-label.bot-label {
-    color: #6366f1;
+    color: #ef4444;
 }
 
 /* ── AI Asistan Ekle Section ── */
@@ -552,24 +552,24 @@
 }
 
 .bot-add-btn {
-    background-color: #6366f1 !important;
+    background-color: #ef4444 !important;
 }
 .bot-add-btn:hover {
-    background-color: #4f46e5 !important;
+    background-color: #dc2626 !important;
 }
 
 /* ── Bot Member Item ── */
 .bot-member-item {
-    background: linear-gradient(135deg, #f5f3ff 0%, #fff 100%);
-    border-left: 3px solid #6366f1;
+    background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+    border-left: 3px solid #ef4444;
 }
 
 .bot-badge {
-    color: #6366f1 !important;
+    color: #ef4444 !important;
     font-weight: 500 !important;
 }
 
-.bot-avatar {
-    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%) !important;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35) !important;
+.teams-page-container .bot-avatar {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35) !important;
 }

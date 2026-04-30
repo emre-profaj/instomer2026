@@ -24,6 +24,7 @@ import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
 import Calendar from './pages/Calendar/Calendar';
 import Automations from './pages/Automations/Automations';
+import Functions from './pages/Automations/Functions';
 import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
@@ -40,6 +41,7 @@ import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminSettings from './pages/Admin/AdminSettings';
 import AdminActivityLog from './pages/Admin/AdminActivityLog';
+import AdminFlowTemplates from './pages/Admin/AdminFlowTemplates';
 
 function App() {
   return (
@@ -60,6 +62,7 @@ function App() {
               <Route index element={<AdminDashboard />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="activity-log" element={<AdminActivityLog />} />
+              <Route path="flow-templates" element={<AdminFlowTemplates />} />
               <Route path="company/:companyId" element={<AdminDashboard />} />
               <Route path="company/:companyId/workspace/:workspaceId" element={<AdminDashboard />} />
               <Route path="workspace/:workspaceId" element={<AdminDashboard />} />
@@ -93,6 +96,7 @@ function App() {
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
               <Route path="calendar" element={<Calendar />} />
               <Route path="automations" element={<Automations />} />
+              <Route path="functions" element={<Functions />} />
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />
               <Route path="orders" element={<Orders />} />

@@ -27,9 +27,16 @@ export const connectHealthSystem = async (req, res) => {
             });
         }
 
-        // Normalize URL — remove trailing slash
-        const baseUrl = apiUrl.replace(/\/+$/, '');
-        const tokenUrl = `${baseUrl}/token`;
+        // Normalize URL — remove trailing slash and /token if present
+        let baseUrl = apiUrl.replace(/\/+$/, '');
+        if (baseUrl.endsWith('/token')) {
+            baseUrl = baseUrl.replace(/\/token$/, '');
+        }
+        if (baseUrl.endsWith('/DynamicDataApi')) {
+            baseUrl = baseUrl.replace(/\/DynamicDataApi$/, '');
+        }
+        
+        const tokenUrl = `${baseUrl}/DynamicDataApi/token`;
 
         console.log(`🏥 [HealthSystem] Connecting to: ${tokenUrl}`);
 

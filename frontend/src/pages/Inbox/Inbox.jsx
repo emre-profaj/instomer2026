@@ -640,6 +640,9 @@ const Inbox = () => {
     const [newConversationPhone, setNewConversationPhone] = useState('');
     const [newConversationName, setNewConversationName] = useState('');
     const [newConversationMessage, setNewConversationMessage] = useState('');
+    const [newConversationFunnel, setNewConversationFunnel] = useState('');
+    const [newConversationFunnelStage, setNewConversationFunnelStage] = useState('');
+    const [newConversationDate, setNewConversationDate] = useState('');
     const [creatingConversation, setCreatingConversation] = useState(false);
 
     // Quick Reply (Hazır Mesaj) states
@@ -1508,8 +1511,8 @@ const Inbox = () => {
             // 1. Tüm filtreler seçili (loadAll) - her şeyi göster
             // 2. İlgili yorum filtresi açıkça seçili (fb_comments veya ig_comments)
             // NOT: Channel filtresi (whatsapp, facebook, vb.) seçiliyse yorumları YÜKLEME
-            const shouldLoadFbComments = (loadAll || activeFilters.includes('fb_comments')) && !activeChannel && !statusFilter && workspaceMemberRole !== 'AGENT';
-            const shouldLoadIgComments = (loadAll || activeFilters.includes('ig_comments')) && !activeChannel && !statusFilter && workspaceMemberRole !== 'AGENT';
+            const shouldLoadFbComments = (loadAll || activeFilters.includes('fb_comments')) && !activeChannel && !statusFilter;
+            const shouldLoadIgComments = (loadAll || activeFilters.includes('ig_comments')) && !activeChannel && !statusFilter;
 
             const loadConversations = loadAll || hasChannelFilter || activeChannel;
 
@@ -2005,7 +2008,10 @@ const Inbox = () => {
             const response = await conversationAPI.createManual(currentWorkspace.id, {
                 phone,
                 name: newConversationName || `Müşteri ${phone.slice(-4)}`,
-                description: newConversationMessage || null
+                description: newConversationMessage || null,
+                ...(newConversationFunnel && { funnelType: newConversationFunnel }),
+                ...(newConversationFunnelStage && { funnelStageId: newConversationFunnelStage }),
+                ...(newConversationDate && { date: new Date(newConversationDate).toISOString() })
             });
 
             // Close modal and reset
@@ -2013,6 +2019,9 @@ const Inbox = () => {
             setNewConversationPhone('');
             setNewConversationName('');
             setNewConversationMessage('');
+            setNewConversationFunnel('');
+            setNewConversationFunnelStage('');
+            setNewConversationDate('');
 
             // Refresh inbox and select new conversation
             await loadInboxItems();
@@ -2527,7 +2536,12 @@ const Inbox = () => {
                             </h2>
                             <button
                                 className="new-conversation-btn"
-                                onClick={() => setShowNewConversationModal(true)}
+                                onClick={() => {
+                                    const now = new Date();
+                                    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                                    setNewConversationDate(now.toISOString().slice(0, 16));
+                                    setShowNewConversationModal(true);
+                                }}
                                 title="Yeni Görüşme Başlat"
                             >
                                 <Plus size={16} />
@@ -3176,11 +3190,6 @@ const Inbox = () => {
                                             <span className="inbox-item-name">
                                                 {getItemIcon(item)}
                                                 {getItemName(item)}
-                                                {item.sentiment && (
-                                                    <span className="sentiment-badge" title={`${item.sentiment} (Skor: ${item.sentimentScore}/100)`}>
-                                                        {item.sentiment.includes('YÜKSEK') ? '🔥' : item.sentiment.includes('OLUMLU') ? '😊' : item.sentiment.includes('NÖTR') ? '😐' : item.sentiment.includes('KIZGIN') || item.sentiment.includes('ŞİKAYET') ? '😡' : '❄️'}
-                                                    </span>
-                                                )}
                                             </span>
                                             <span className="inbox-item-time">
                                                 {formatTime(item.sortDate)}
@@ -3304,13 +3313,6 @@ const Inbox = () => {
                                             </div>
                                             <div className="profile-info">
                                                 <h3>{selectedItem.contact?.name || 'Bilinmeyen'}</h3>
-                                                {selectedItem.sentiment && (
-                                                    <div className="sentiment-detail">
-                                                        <span>{selectedItem.sentiment.includes('YÜKSEK') ? '🔥' : selectedItem.sentiment.includes('OLUMLU') ? '😊' : selectedItem.sentiment.includes('NÖTR') ? '😐' : selectedItem.sentiment.includes('KIZGIN') || selectedItem.sentiment.includes('ŞİKAYET') ? '😡' : '❄️'}</span>
-                                                        <span style={{fontWeight: 600, color: selectedItem.sentiment.includes('YÜKSEK') ? '#f59e0b' : selectedItem.sentiment.includes('OLUMLU') ? '#10b981' : selectedItem.sentiment.includes('KIZGIN') || selectedItem.sentiment.includes('ŞİKAYET') ? '#ef4444' : '#6b7280'}}>{selectedItem.sentiment}</span>
-                                                        <span className="sentiment-detail-score">Skor: {selectedItem.sentimentScore}/100</span>
-                                                    </div>
-                                                )}
                                                 {/* İlk / Son Yazma */}
                                                 {(() => {
                                                     const cm = selectedItem.messages?.filter(m => m.isFromContact) || [];
@@ -4632,6 +4634,58 @@ const Inbox = () => {
                                     onChange={(e) => setNewConversationName(e.target.value)}
                                 />
                             </div>
+                            
+                            <div className="form-group">
+                                <label>
+                                    <Filter size={18} />
+                                    Akış (Funnel) Seçimi
+                                </label>
+                                <select
+                                    value={newConversationFunnel}
+                                    onChange={(e) => {
+                                        setNewConversationFunnel(e.target.value);
+                                        setNewConversationFunnelStage(''); // Reset stage on funnel change
+                                    }}
+                                >
+                                    <option value="">-- Akış Seç --</option>
+                                    {funnelOptions.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Stage Selection - Only show if selected funnel has stages */}
+                            {newConversationFunnel && funnelOptions.find(f => f.value === newConversationFunnel)?.stages && (
+                                <div className="form-group">
+                                    <label>
+                                        <Tag size={18} />
+                                        Aşama Seçimi
+                                    </label>
+                                    <select
+                                        value={newConversationFunnelStage}
+                                        onChange={(e) => setNewConversationFunnelStage(e.target.value)}
+                                    >
+                                        <option value="">-- Aşama Seç --</option>
+                                        {funnelOptions.find(f => f.value === newConversationFunnel).stages.map(stage => (
+                                            <option key={stage.value} value={stage.value}>{stage.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            
+                            <div className="form-group">
+                                <label>
+                                    <Calendar size={18} />
+                                    Görüşme Tarihi (Geçmişe Dönük Kayıt İçin)
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={newConversationDate}
+                                    onChange={(e) => setNewConversationDate(e.target.value)}
+                                />
+                                <small style={{display: 'block', marginTop: '4px', color: '#6b7280', fontSize: '11px'}}>Varsayılan olarak şu anki zaman seçilidir.</small>
+                            </div>
+
                             <div className="form-group">
                                 <label>
                                     <MessageSquare size={18} />

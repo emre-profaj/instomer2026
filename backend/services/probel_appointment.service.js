@@ -147,14 +147,14 @@ export async function validatePatient(workspaceId, patientData) {
         
         console.log(`🏥 [Probel] validatePatient with fields:`, Object.keys(inputData).join(', '));
 
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_hasta_token', inputData);
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_hasta_token', inputData);
 
         const hastaToken = result.length > 0 ? (result[0].TOKEN || result[0].HASTA_TOKEN) : null;
 
         if (!hastaToken) {
             return {
                 success: false,
-                message: 'Girdiğiniz bilgilere ait sistemde hasta kaydı bulunamadı. Lütfen müşteriye sistemde kaydının bulunamadığını söyleyin ve işlemi tamamlamak için TC Kimlik Numarasını VE Doğum Tarihini (Gün/Ay/Yıl) AYNI ANDA İSTEYİN. (Sadece birini değil, ikisini birden sorun!).'
+                message: 'Girdiğiniz bilgilere ait sistemde hasta kaydı bulunamadı. Lütfen müşteriye sistemde kaydının bulunamadığını nazikçe iletin ve bilgilerini kontrol etmesini veya hastane yetkilisi ile görüşmesini isteyin.'
             };
         }
 
@@ -181,7 +181,7 @@ export async function validatePatient(workspaceId, patientData) {
  */
 export async function getBranches(workspaceId, cinsiyet = 1, dogumTarihi = '') {
     try {
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_brans_list', {
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_brans_list', {
             SUBE_KODU: DEFAULT_SUBE_KODU,
             CINSIYET: cinsiyet,
             DOGUM_TARIHI: dogumTarihi,
@@ -222,7 +222,7 @@ export async function getBranches(workspaceId, cinsiyet = 1, dogumTarihi = '') {
  */
 export async function getDoctors(workspaceId, bransKodu) {
     try {
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_poliklinik_list', {
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_poliklinik_list', {
             SUBE_KODU: DEFAULT_SUBE_KODU,
             BRANS_KODU: bransKodu
         });
@@ -284,7 +284,7 @@ export async function getAvailableDays(workspaceId, bransKodu, selectedDoctor) {
             if (selectedDoctor.doktor_kodu) payload.DOKTOR_KODU = selectedDoctor.doktor_kodu;
         }
 
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_uygun_gunler_list', payload);
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_uygun_gunler_list', payload);
 
         // Filter days for the selected doctor only
         let filteredDays = result;
@@ -350,7 +350,7 @@ export async function getAvailableDays(workspaceId, bransKodu, selectedDoctor) {
  */
 export async function getAvailableHours(workspaceId, servisKodu, tarih) {
     try {
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_get_uygun_saatler_list', {
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_uygun_saatler_list', {
             SERVIS_KODU: servisKodu,
             BOS: "1",
             RANDEVU_TARIHI: tarih
@@ -403,7 +403,7 @@ export async function createAppointment(workspaceId, hastaToken, randevuId) {
             };
         }
 
-        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API.prc_set_randevu_bilgisi', {
+        const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_set_randevu_bilgisi', {
             HASTA_TOKEN: hastaToken,
             RANDEVU_ID: String(randevuId)
         });
