@@ -36,7 +36,10 @@ export const executeBuiltInTool = async (functionName, args, context) => {
 
             if (teamMembers.length > 0) {
                 const lastConv = await prisma.conversation.findFirst({
-                    where: { teamId: team.id, assignedToId: { not: null } },
+                    where: { 
+                        teamIds: { string_contains: team.id },
+                        assignedToId: { not: null } 
+                    },
                     orderBy: { updatedAt: 'desc' },
                     select: { assignedToId: true }
                 });
@@ -57,7 +60,7 @@ export const executeBuiltInTool = async (functionName, args, context) => {
             await prisma.conversation.update({
                 where: { id: conversationId },
                 data: { 
-                    teamId: team.id,
+                    teamIds: JSON.stringify([team.id]),
                     assignedToId: assignedUserId,
                     botEnabled: false // Disable current channel bot so the team can take over
                 }
@@ -241,6 +244,120 @@ export const executeBuiltInTool = async (functionName, args, context) => {
             } catch (err) {
                 console.error(`Error sending template:`, err.response?.data || err);
                 return { success: false, error: `Şablon gönderimi başarısız oldu: ${err.response?.data?.error?.message || err.message}` };
+            }
+        }
+
+        // ─── PROBEL SAĞLIK SİSTEMİ BUILT-IN TOOLS ──────────────────────────────────
+
+        case 'probel_list_branches': {
+            // Tüm aktif branşları Probel'den listeler
+            try {
+                const { getBranches } = await import('../services/probel_appointment.service.js');
+                const result = await getBranches(workspaceId, 1, '');
+                if (!result.success) {
+                    return { success: false, message: result.message || 'Branşlar getirilemedi.' };
+                }
+                // Kısa, okunabilir liste
+                const branchList = result.branches.map(b => `• ${b.brans_adi}`).join('\n');
+                return {
+                    success: true,
+                    branches: result.branches,
+                    message: `Hastanemizde aşağıdaki branşlar mevcuttur:\n\n${branchList}`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] probel_list_branches error:', err.message);
+                return { success: false, message: 'Branş listesi alınamadı. Lütfen tekrar deneyin.' };
+            }
+        }
+
+        case 'probel_list_doctors': {
+            // Belirtilen branştaki doktorları Probel'den listeler
+            const { branch_name, brans_kodu } = args;
+            try {
+                let targetBransKodu = brans_kodu;
+
+                // Eğer brans_kodu yoksa, branch_name ile branş listesinden eşleştir
+                if (!targetBransKodu && branch_name) {
+                    const { getBranches } = await import('../services/probel_appointment.service.js');
+                    const branchRes = await getBranches(workspaceId, 1, '');
+                    if (branchRes.success && branchRes.branches) {
+                        const found = branchRes.branches.find(b =>
+                            b.brans_adi.toLowerCase().includes(branch_name.toLowerCase())
+                        );
+                        if (found) targetBransKodu = found.brans_kodu;
+                    }
+                }
+
+                if (!targetBransKodu) {
+                    return { success: false, message: `"${branch_name || ''}" branşı bulunamadı. Lütfen önce branş listesini isteyin.` };
+                }
+
+                const { getDoctors } = await import('../services/probel_appointment.service.js');
+                const result = await getDoctors(workspaceId, targetBransKodu);
+                if (!result.success) {
+                    return { success: false, message: result.message || 'Doktorlar getirilemedi.' };
+                }
+
+                const doctorList = result.doctors.map(d => `• ${d.doktor_adi}`).join('\n');
+                return {
+                    success: true,
+                    doctors: result.doctors,
+                    message: `${branch_name ? branch_name + ' ' : ''}branşındaki doktorlarımız:\n\n${doctorList}`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] probel_list_doctors error:', err.message);
+                return { success: false, message: 'Doktor listesi alınamadı. Lütfen tekrar deneyin.' };
+            }
+        }
+
+        case 'probel_check_doctor': {
+            // Belirli isimde bir doktorun sistemde olup olmadığını kontrol eder
+            const { doctor_name } = args;
+            if (!doctor_name) {
+                return { success: false, message: 'Doktor adı belirtilmedi.' };
+            }
+            try {
+                const { getBranches, getDoctors } = await import('../services/probel_appointment.service.js');
+                const branchRes = await getBranches(workspaceId, 1, '');
+                if (!branchRes.success) {
+                    return { success: false, message: 'Sistemde arama yapılamadı.' };
+                }
+
+                const searchName = doctor_name.toLowerCase()
+                    .replace(/^(dr\.|dr |prof\. dr\.|prof dr |uzm\. dr\.|uzm dr )/i, '').trim();
+
+                const matches = [];
+                for (const branch of branchRes.branches) {
+                    const docRes = await getDoctors(workspaceId, branch.brans_kodu);
+                    if (docRes.success && docRes.doctors) {
+                        for (const doc of docRes.doctors) {
+                            const docNameLower = doc.doktor_adi.toLowerCase()
+                                .replace(/^(dr\.|dr |prof\. dr\.|prof dr |uzm\. dr\.|uzm dr )/i, '').trim();
+                            if (docNameLower.includes(searchName)) {
+                                matches.push({ ...doc, brans_adi: branch.brans_adi });
+                            }
+                        }
+                    }
+                }
+
+                if (matches.length === 0) {
+                    return {
+                        success: true,
+                        found: false,
+                        message: `"${doctor_name}" adıyla sistemimizde kayıtlı bir doktor bulunamadı. Doğru ismi girdiğinizden emin olun veya tüm branş listesini görüntülemek için "Branşları listele" yazabilirsiniz.`
+                    };
+                }
+
+                const matchList = matches.map(m => `• ${m.doktor_adi} (${m.brans_adi})`).join('\n');
+                return {
+                    success: true,
+                    found: true,
+                    doctors: matches,
+                    message: `Evet, "${doctor_name}" adıyla eşleşen doktor(lar) kliniğimizde görev yapmaktadır:\n\n${matchList}\n\nRandevu almak ister misiniz?`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] probel_check_doctor error:', err.message);
+                return { success: false, message: 'Doktor kontrolü yapılamadı. Lütfen tekrar deneyin.' };
             }
         }
 

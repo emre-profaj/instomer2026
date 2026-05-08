@@ -128,17 +128,20 @@ model Workspace {
   quickReplies         QuickReply[]
   scheduledCalls       ScheduledCall[]
   workspaceRules       WorkspaceRule[]
+  routerRules          RouterRule[]
   funnels              Funnel[]
   calendarResources    CalendarResource[]
   flows                Flow[]
   contactActivities    ContactActivity[]
   appointmentBranches  AppointmentBranch[]
   botTools             AIBotTool[]
+  retellActions        RetellAction[]
 
   // Retell AI Voice
-  retellApiKey     String?
-  retellAgentId    String?
-  retellFromNumber String?
+  retellApiKey          String?
+  retellAgentId         String?
+  retellFromNumber      String?
+  retellKnowledgeBaseId String?   // Instomer KB → Retell sync sonrası oluşturulan KB ID
 
   // Retell Auto-Call Settings
   retellAutoCallEnabled   Boolean  @default(false)
@@ -236,6 +239,7 @@ model AIBot {
 
   // Health System API integrations assigned to this bot
   apiIntegrations           ApiIntegration[] @relation("ApiIntegrationBot")
+  funnelStages              FunnelStage[]    @relation("FunnelStageBot")
 
   @@index([workspaceId])
   @@map("ai_bots")
@@ -814,6 +818,24 @@ model WorkspaceRule {
   @@map("workspace_rules")
 }
 
+// Workspace-level Router Rules (Yönlendiriciler)
+model RouterRule {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  isActive    Boolean   @default(true)
+  priority    Int       @default(0)
+  conditions  String    @default("{}") // JSON: { channels[], keywords[], matchMode, useAI, aiDescription }
+  targets     String    @default("{}") // JSON: { funnelId, funnelName, teamId, botId }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, isActive])
+  @@map("router_rules")
+}
+
 // Visual Flow Builder Flows
 model Flow {
   id          String   @id @default(uuid())
@@ -1070,23 +1092,10 @@ model Funnel {
   assignedUserId String?
   assignedTeamId String?
   createdAt      DateTime      @default(now())
-
-  // Workspace Router — Giriş Kuralları
-  entryRules          String?  // JSON: [{ type: 'KEYWORD'|'CHANNEL'|'AI_INTENT', value: string }]
-  entryRuleLogic      String   @default("OR") // OR = herhangi biri eşleşirse, AND = hepsi
-  aiIntentDescription String?  // AI fallback için niyet açıklaması
-  priority            Int      @default(0)    // Yüksek = önce kontrol edilir
-  isDefault           Boolean  @default(false) // Hiçbiri eşleşmezse buraya düş
-
-  // Funnel giriş aksiyonları
-  assignedBotId       String?  // Funnela girilince bu bot devreye girer
-  entryAutomationId   String?  // Funnela girilince bu otomasyon tetiklenir
-
   workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages         FunnelStage[]
 
   @@index([workspaceId])
-  @@index([priority])
   @@map("funnels")
 }
 
@@ -1099,11 +1108,9 @@ model FunnelStage {
   order          Int      @default(0)
   assignedUserId String?
   assignedTeamId String?
+  assignedBotId  String?
+  assignedBot    AIBot?   @relation("FunnelStageBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())
-
-  // Aşama girilince tetiklenecek otomasyon
-  onEnterAutomationId String? // Automation tablosundaki ID
-
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 
   @@index([funnelId])
@@ -1226,7 +1233,9 @@ model Campaign {
   name                String
   monthlyInterestRate Float             @default(0)
   minDownPaymentRate  Float             @default(20)
+  flexDownPaymentRate Float?            // Esneme ile inen minimum peşinat (ör. standart %50, esnek %40)
   maxInstallments     Int               @default(24)
+  discountTiers       String?           // JSON: [{months, discountRate, label}] — vadeye göre indirim tablosu
   description         String?
   endDate             DateTime?
   offerValidityType   String            @default("DAYS")
@@ -1364,4 +1373,43 @@ model FlowTemplate {
   updatedAt   DateTime @updatedAt
 
   @@map("flow_templates")
+}
+
+// Retell arama sırasında otomatik WhatsApp gönderimleri için aksiyon tanımları
+model RetellAction {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name        String    // Görünen isim: "Hastane Konumu Gönder"
+  actionKey   String    // Retell'den gelecek parametre: "location", "catalog", "location_kadikoy" vb.
+  description String    // Agent'a ne zaman kullanacağını anlatan açıklama (prompt gibi davranır)
+
+  // Mesaj tipi: TEXT | LOCATION | DOCUMENT | VIDEO | TEMPLATE
+  messageType String
+
+  // TEXT tipi
+  textContent     String?
+
+  // LOCATION tipi
+  locationLat     Float?
+  locationLng     Float?
+  locationName    String?
+  locationAddress String?
+
+  // DOCUMENT / VIDEO tipi
+  mediaUrl        String?
+  mediaCaption    String?
+  mediaFilename   String?   // PDF için dosya adı
+
+  // TEMPLATE tipi
+  templateName    String?   // WhatsApp şablon adı (sendTemplateDynamic ile eşleşir)
+
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId])
+  @@map("retell_actions")
 }

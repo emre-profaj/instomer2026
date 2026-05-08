@@ -14,13 +14,29 @@ import {
     updateScheduledCall,
     recoverCallConversations,
     bulkRetryCall,
-    syncRetellCalls
+    syncRetellCalls,
+    syncSingleCall
+} from '../controllers/retell.controller.js';
+import {
+    handleRetellAction,
+    getActions,
+    createAction,
+    updateAction,
+    deleteAction
+} from '../controllers/retellAction.controller.js';
+import {
+    getAgent,
+    updateAgentPrompt,
+    listKnowledgeBases,
+    syncKnowledgeBase,
+    updateAgentKnowledgeBases
 } from '../controllers/retell.controller.js';
 
 const router = express.Router();
 
-// Public webhook endpoint (no auth — Retell calls this)
+// Public endpoints — no auth (Retell calls these during a live call)
 router.post('/webhook', handleWebhook);
+router.post('/action/:workspaceId', handleRetellAction);
 
 // Authenticated routes
 router.use(authenticateJWT);
@@ -44,11 +60,24 @@ router.get('/:workspaceId/scheduled-calls', requireWorkspaceAccess, getScheduled
 router.patch('/:workspaceId/scheduled-calls/:id', requireWorkspaceAccess, updateScheduledCall);
 router.delete('/:workspaceId/scheduled-calls/:id', requireWorkspaceAccess, cancelScheduledCall);
 
-// Recovery: create conversations for past calls
+// Recovery & Sync
 router.post('/:workspaceId/recover-calls', requireWorkspaceAccess, recoverCallConversations);
-
-// Sync: fetch historical calls from Retell API → DB → Inbox
 router.post('/:workspaceId/sync-calls', requireWorkspaceAccess, syncRetellCalls);
+router.post('/:workspaceId/sync-single-call', requireWorkspaceAccess, syncSingleCall);
+
+// Retell Actions (Otomatik WhatsApp Gönderimleri) — CRUD
+router.get('/:workspaceId/actions', requireWorkspaceAccess, getActions);
+router.post('/:workspaceId/actions', requireWorkspaceAccess, createAction);
+router.put('/:workspaceId/actions/:id', requireWorkspaceAccess, updateAction);
+router.delete('/:workspaceId/actions/:id', requireWorkspaceAccess, deleteAction);
+
+// Agent Management (Instomer'dan Retell agent yönetimi)
+router.get('/:workspaceId/agents/:agentId', requireWorkspaceAccess, getAgent);
+router.patch('/:workspaceId/agents/:agentId/prompt', requireWorkspaceAccess, updateAgentPrompt);
+
+// Knowledge Base Sync (Instomer KB → Retell KB)
+router.get('/:workspaceId/knowledge-bases', requireWorkspaceAccess, listKnowledgeBases);
+router.post('/:workspaceId/knowledge-bases/sync', requireWorkspaceAccess, syncKnowledgeBase);
+router.patch('/:workspaceId/agents/:agentId/knowledge-bases', requireWorkspaceAccess, updateAgentKnowledgeBases);
 
 export default router;
-

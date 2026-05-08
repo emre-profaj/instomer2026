@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { retellAPI, facebookAPI, whatsappAPI, emailAPI, formWebhookAPI, webWidgetAPI } from '../../services/api';
-import { Phone, Key, Bot, Save, Loader, CheckCircle, AlertCircle, RefreshCw, Clock, Calendar, PhoneCall, Trash2, Plus, Zap, XCircle } from 'lucide-react';
+import { Phone, Key, Bot, Save, Loader, CheckCircle, AlertCircle, RefreshCw, Clock, Calendar, PhoneCall, Trash2, Plus, Zap, XCircle, BookOpen } from 'lucide-react';
+import { RetellAgentManager, RetellKnowledgeBaseSync } from './RetellAgentManager';
 
 const RetellSettings = ({ onSave }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
+    const [activeTab, setActiveTab] = useState('general');
 
     const [settings, setSettings] = useState({
         retellApiKey: '',
@@ -25,6 +27,10 @@ const RetellSettings = ({ onSave }) => {
     const [syncing, setSyncing] = useState(false);
     const [syncResult, setSyncResult] = useState(null);
     const [message, setMessage] = useState(null);
+    const [singleCallId, setSingleCallId] = useState('');
+    const [singleSyncing, setSingleSyncing] = useState(false);
+    const [singleSyncResult, setSingleSyncResult] = useState(null);
+
 
     const channelLabels = {
         ALL: 'Tümü',
@@ -71,6 +77,23 @@ const RetellSettings = ({ onSave }) => {
             setSyncing(false);
         }
     };
+
+    const handleSyncSingleCall = async () => {
+        if (!workspaceId || !singleCallId.trim()) return;
+        setSingleSyncing(true);
+        setSingleSyncResult(null);
+        try {
+            const res = await retellAPI.syncSingleCall(workspaceId, singleCallId.trim());
+            setSingleSyncResult({ success: true, ...res.data });
+            setSingleCallId('');
+        } catch (err) {
+            setSingleSyncResult({ error: err.response?.data?.error || 'Arama getirilemedi' });
+        } finally {
+            setSingleSyncing(false);
+        }
+    };
+
+
 
     const loadSettings = async () => {
         try {
@@ -271,6 +294,41 @@ const RetellSettings = ({ onSave }) => {
 
     return (
         <div className="settings-section">
+
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 }}>
+                {[
+                    { id: 'general', icon: <Phone size={15} />, label: '⚙️ Genel Ayarlar' },
+                    { id: 'agents',  icon: <Bot size={15} />,   label: '🤖 Agent Yönetimi' },
+                    { id: 'kb',      icon: <BookOpen size={15} />, label: '📚 Bilgi Bankası' },
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '8px 16px', border: 'none', background: 'none',
+                            borderBottom: activeTab === tab.id ? '2px solid #6366f1' : '2px solid transparent',
+                            color: activeTab === tab.id ? '#6366f1' : '#6b7280',
+                            fontWeight: activeTab === tab.id ? 700 : 500,
+                            fontSize: '0.85rem', cursor: 'pointer', marginBottom: -1,
+                            transition: 'all 0.15s'
+                        }}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'agents' && (
+                <RetellAgentManager workspaceId={workspaceId} />
+            )}
+
+            {activeTab === 'kb' && (
+                <RetellKnowledgeBaseSync workspaceId={workspaceId} />
+            )}
+
+            {activeTab === 'general' && (<>
 
             {message && (
                 <div style={{
@@ -556,8 +614,53 @@ const RetellSettings = ({ onSave }) => {
                     {saving ? 'Kaydediliyor...' : 'Kaydet'}
                 </button>
             </div>
+
+            {/* Single Call Sync Panel */}
+            <div className="card" style={{ padding: 20, marginTop: 16, background: '#f8faff', border: '1px solid #e0e7ff' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <PhoneCall size={16} style={{ color: '#6366f1' }} />
+                    <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e1b4b' }}>Tek Arama Getir</span>
+                    <span style={{ fontSize: '0.78rem', color: '#6b7280', marginLeft: 4 }}>— Sadece bu arama eklenir, diğerlerine dokunulmaz</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                        type="text"
+                        value={singleCallId}
+                        onChange={e => setSingleCallId(e.target.value)}
+                        placeholder="call_85ebb2d4f1e18bc1acd9f8e3796"
+                        style={{ flex: 1, minWidth: 260, padding: '8px 12px', borderRadius: 8, border: '1px solid #c7d2fe', fontSize: '0.83rem', fontFamily: 'monospace' }}
+                        onKeyDown={e => e.key === 'Enter' && handleSyncSingleCall()}
+                    />
+                    <button onClick={handleSyncSingleCall} disabled={singleSyncing || !singleCallId.trim()}
+                        style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '8px 18px', background: '#6366f1', color: '#fff',
+                            border: 'none', borderRadius: 8, fontSize: '0.85rem',
+                            fontWeight: 600, cursor: (singleSyncing || !singleCallId.trim()) ? 'not-allowed' : 'pointer',
+                            opacity: (singleSyncing || !singleCallId.trim()) ? 0.6 : 1, whiteSpace: 'nowrap'
+                        }}>
+                        {singleSyncing ? <Loader size={14} className="spin" /> : <RefreshCw size={14} />}
+                        {singleSyncing ? 'Getiriliyor...' : 'Getir'}
+                    </button>
+                </div>
+                {singleSyncResult && (
+                    <div style={{
+                        marginTop: 8, fontSize: '0.82rem', padding: '6px 12px', borderRadius: 6,
+                        background: singleSyncResult.error ? '#fef2f2' : '#f0fdf4',
+                        color: singleSyncResult.error ? '#dc2626' : '#16a34a',
+                        border: `1px solid ${singleSyncResult.error ? '#fecaca' : '#bbf7d0'}`
+                    }}>
+                        {singleSyncResult.error
+                            ? `❌ ${singleSyncResult.error}`
+                            : `✅ Arama başarıyla eklendi — Süre: ${Math.floor((singleSyncResult.duration || 0) / 60)}dk ${(singleSyncResult.duration || 0) % 60}sn`
+                        }
+                    </div>
+                )}
+            </div>
+            </>)} {/* end activeTab === 'general' */}
         </div>
     );
 };
+
 
 export default RetellSettings;

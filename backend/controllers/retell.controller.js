@@ -2223,3 +2223,358 @@ export const syncRetellCalls = async (req, res) => {
         res.status(500).json({ error: 'Senkronizasyon hatası: ' + error.message });
     }
 };
+
+// Tek bir call_id'yi Retell'den çekip sisteme ekle
+export const syncSingleCall = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { callId } = req.body;
+
+        if (!callId) return res.status(400).json({ error: 'callId gerekli' });
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const call = await client.call.retrieve(callId);
+
+        if (!call) return res.status(404).json({ error: 'Retell\'de bu arama bulunamadı' });
+
+        console.log(`🔄 [SingleSync] call_id=${callId} from=${call.from_number} to=${call.to_number}`);
+
+        // Mevcut kaydı kontrol et
+        const existing = await prisma.retellCall.findUnique({ where: { callId } });
+
+        const fromNumber = call.from_number || '';
+        const toNumber   = call.to_number || '';
+        const duration   = call.duration_ms ? Math.round(call.duration_ms / 1000) : null;
+        const isInbound  = call.direction === 'inbound';
+        const lookupPhone = isInbound ? fromNumber : toNumber;
+
+        // Kişiyi eşleştir
+        let contactId = existing?.contactId || null;
+        if (!contactId && lookupPhone) {
+            const normalized = normalizePhone(lookupPhone);
+            const contact = await prisma.contact.findFirst({
+                where: {
+                    workspaceId,
+                    OR: [{ phone: normalized }, { phone: lookupPhone }, { phone: lookupPhone.replace(/\D/g, '') }]
+                },
+                select: { id: true }
+            });
+            if (contact) contactId = contact.id;
+        }
+
+        if (!contactId && lookupPhone) {
+            const normalized = normalizePhone(lookupPhone) || lookupPhone;
+            const newContact = await prisma.contact.create({
+                data: { workspaceId, name: `Arayan: ${lookupPhone}`, phone: normalized, status: 'NEW_APPLICATION', category: 'NEW_APPLICATION' }
+            });
+            contactId = newContact.id;
+            console.log(`📞 [SingleSync] Yeni kişi oluşturuldu: ${contactId}`);
+        }
+
+        const data = {
+            workspaceId,
+            callId,
+            agentId: call.agent_id || '',
+            fromNumber,
+            toNumber,
+            direction: call.direction || 'inbound',
+            status: call.call_status === 'ended' ? 'ended' : call.call_status || 'ended',
+            duration,
+            transcript: call.transcript || null,
+            recordingUrl: call.recording_url || null,
+            summary: call.call_analysis?.call_summary || null,
+            sentiment: call.call_analysis?.user_sentiment || null,
+            callSuccessful: call.call_analysis?.call_successful ?? null,
+            endedReason: call.disconnection_reason || null,
+            cost: call.call_cost?.combined_cost ?? null,
+            ...(contactId ? { contactId } : {}),
+            ...(call.start_timestamp ? { createdAt: new Date(call.start_timestamp) } : {})
+        };
+
+        if (!existing) {
+            await prisma.retellCall.create({ data: { ...data, createdById: '' } });
+        } else {
+            await prisma.retellCall.update({ where: { callId }, data: {
+                status: data.status, duration, transcript: data.transcript,
+                recordingUrl: data.recordingUrl, summary: data.summary, sentiment: data.sentiment,
+                callSuccessful: data.callSuccessful, endedReason: data.endedReason, cost: data.cost,
+                ...(contactId && !existing.contactId ? { contactId } : {})
+            }});
+        }
+
+        // Konuşma ve transkript ekle
+        await handleCallEnded(call).catch(e => console.error('[SingleSync] handleCallEnded:', e.message));
+        if (call.call_analysis) {
+            await handleCallAnalyzed(call).catch(e => console.error('[SingleSync] handleCallAnalyzed:', e.message));
+        }
+
+        console.log(`✅ [SingleSync] ${callId} başarıyla eklendi`);
+        res.json({ success: true, callId, contactId, duration });
+    } catch (err) {
+        console.error('❌ [SingleSync] Hata:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// ─── Agent Management ────────────────────────────────────────────────────────
+
+/**
+ * GET /:workspaceId/agents/:agentId
+ * Tek agent'ın tüm detaylarını + LLM prompt'unu çek
+ */
+export const getAgent = async (req, res) => {
+    try {
+        const { workspaceId, agentId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const agent = await client.agent.retrieve(agentId);
+
+        // LLM bilgisini de çek (prompt için)
+        let llm = null;
+        if (agent.response_engine?.type === 'retell-llm' && agent.response_engine?.llm_id) {
+            try {
+                llm = await client.llm.retrieve(agent.response_engine.llm_id);
+            } catch (e) {
+                console.warn(`[RetellAgent] LLM retrieve failed: ${e.message}`);
+            }
+        }
+
+        res.json({ agent, llm });
+    } catch (error) {
+        console.error('❌ [RetellAgent] getAgent error:', error.message);
+        res.status(500).json({ error: error.message || 'Agent bilgisi alınamadı' });
+    }
+};
+
+/**
+ * PATCH /:workspaceId/agents/:agentId/prompt
+ * Agent'ın LLM prompt'unu Instomer'dan güncelle → Retell'e push et
+ */
+export const updateAgentPrompt = async (req, res) => {
+    try {
+        const { workspaceId, agentId } = req.params;
+        const { generalPrompt, beginMessage, agentName, ambientSound, responsiveness } = req.body;
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+
+        // Agent seviyesindeki güncelleme (isim, ses tipi vb.)
+        const agentUpdateData = {};
+        if (agentName !== undefined) agentUpdateData.agent_name = agentName;
+        if (ambientSound !== undefined) agentUpdateData.ambient_sound = ambientSound;
+        if (responsiveness !== undefined) agentUpdateData.responsiveness = responsiveness;
+
+        let updatedAgent = null;
+        if (Object.keys(agentUpdateData).length > 0) {
+            updatedAgent = await client.agent.update(agentId, agentUpdateData);
+        } else {
+            updatedAgent = await client.agent.retrieve(agentId);
+        }
+
+        // LLM prompt güncellemesi
+        let updatedLlm = null;
+        if ((generalPrompt !== undefined || beginMessage !== undefined) &&
+            updatedAgent.response_engine?.type === 'retell-llm' &&
+            updatedAgent.response_engine?.llm_id) {
+
+            const llmUpdateData = {};
+            if (generalPrompt !== undefined) llmUpdateData.general_prompt = generalPrompt;
+            if (beginMessage !== undefined) llmUpdateData.begin_message = beginMessage;
+
+            updatedLlm = await client.llm.update(updatedAgent.response_engine.llm_id, llmUpdateData);
+            console.log(`✅ [RetellAgent] LLM prompt updated for agent ${agentId}`);
+        }
+
+        res.json({
+            success: true,
+            agent: updatedAgent,
+            llm: updatedLlm,
+            message: 'Agent başarıyla güncellendi'
+        });
+    } catch (error) {
+        console.error('❌ [RetellAgent] updateAgentPrompt error:', error.message);
+        res.status(500).json({ error: error.message || 'Agent güncellenemedi' });
+    }
+};
+
+/**
+ * GET /:workspaceId/knowledge-bases
+ * Retell'deki mevcut KB listesi
+ */
+export const listKnowledgeBases = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true, retellKnowledgeBaseId: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const knowledgeBases = await client.knowledgeBase.list();
+
+        res.json({
+            knowledgeBases: knowledgeBases || [],
+            syncedKbId: workspace.retellKnowledgeBaseId
+        });
+    } catch (error) {
+        console.error('❌ [RetellKB] listKnowledgeBases error:', error.message);
+        res.status(500).json({ error: error.message || 'KB listesi alınamadı' });
+    }
+};
+
+/**
+ * POST /:workspaceId/knowledge-bases/sync
+ * Instomer KB içeriklerini → Retell KB olarak push et
+ * body: { agentId, instomerKbIds: ['kb_id1', 'kb_id2', ...] }
+ *
+ * Strateji (B): İlk sync → yeni KB oluştur, ID'yi workspace'e kaydet.
+ * Sonraki sync → mevcut KB'nin kaynaklarını sil, yeniden ekle.
+ */
+export const syncKnowledgeBase = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { agentId, instomerKbIds = [] } = req.body;
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true, retellKnowledgeBaseId: true, retellAgentId: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+
+        const effectiveAgentId = agentId || workspace.retellAgentId;
+
+        // 1. Instomer KB içeriklerini çek
+        const kbEntries = await prisma.knowledgeBase.findMany({
+            where: {
+                workspaceId,
+                ...(instomerKbIds.length > 0 ? { id: { in: instomerKbIds } } : {})
+            },
+            include: { entries: true }
+        });
+
+        if (kbEntries.length === 0) {
+            return res.status(400).json({ error: 'Seçili bilgi bankası bulunamadı veya içerik yok' });
+        }
+
+        // 2. Tüm içerikleri tek metin olarak birleştir
+        const combinedText = kbEntries.map(kb => {
+            const content = (kb.entries || [])
+                .map(e => `${e.title || ''}\n${e.content || ''}`.trim())
+                .filter(Boolean)
+                .join('\n\n---\n\n');
+            return `# ${kb.title}\n\n${content}`;
+        }).join('\n\n===\n\n');
+
+        if (!combinedText.trim()) {
+            return res.status(400).json({ error: 'Bilgi bankasında içerik bulunamadı' });
+        }
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        let retellKbId = workspace.retellKnowledgeBaseId;
+        let isNew = false;
+
+        if (retellKbId) {
+            // Mevcut KB'yi güncelle: önce kaynakları sil, sonra yeni ekle
+            try {
+                const existingKb = await client.knowledgeBase.retrieve(retellKbId);
+                const sources = existingKb.knowledge_base_sources || [];
+                for (const src of sources) {
+                    await client.knowledgeBase.deleteSource(retellKbId, src.source_id).catch(() => {});
+                }
+                console.log(`🔄 [RetellKB] Cleared ${sources.length} old sources from KB ${retellKbId}`);
+            } catch (e) {
+                // KB silinmiş olabilir, yeniden oluştur
+                console.warn(`⚠️ [RetellKB] Existing KB not found, creating new: ${e.message}`);
+                retellKbId = null;
+            }
+        }
+
+        if (!retellKbId) {
+            // İlk sync: yeni KB oluştur
+            const newKb = await client.knowledgeBase.create({
+                knowledge_base_name: `Instomer KB — ${workspaceId.substring(0, 8)}`
+            });
+            retellKbId = newKb.knowledge_base_id;
+            isNew = true;
+            console.log(`✅ [RetellKB] Created new KB: ${retellKbId}`);
+        }
+
+        // 3. Birleştirilmiş içeriği KB'ye ekle
+        await client.knowledgeBase.addSources(retellKbId, {
+            knowledge_base_texts: [{
+                title: 'Instomer Bilgi Bankası',
+                text: combinedText
+            }]
+        });
+
+        // 4. KB id'sini workspace'e kaydet
+        await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { retellKnowledgeBaseId: retellKbId }
+        });
+
+        // 5. Agent'a bu KB'yi bağla
+        if (effectiveAgentId) {
+            await client.agent.update(effectiveAgentId, {
+                knowledge_base_ids: [retellKbId]
+            });
+            console.log(`✅ [RetellKB] KB ${retellKbId} linked to agent ${effectiveAgentId}`);
+        }
+
+        res.json({
+            success: true,
+            knowledgeBaseId: retellKbId,
+            isNew,
+            kbCount: kbEntries.length,
+            agentLinked: !!effectiveAgentId,
+            message: `${kbEntries.length} bilgi bankası Retell'e sync edildi${effectiveAgentId ? ' ve agent\'a bağlandı' : ''}`
+        });
+    } catch (error) {
+        console.error('❌ [RetellKB] syncKnowledgeBase error:', error.message);
+        res.status(500).json({ error: error.message || 'KB sync başarısız' });
+    }
+};
+
+/**
+ * PATCH /:workspaceId/agents/:agentId/knowledge-bases
+ * Agent'a belirli Retell KB ID'lerini bağla
+ */
+export const updateAgentKnowledgeBases = async (req, res) => {
+    try {
+        const { workspaceId, agentId } = req.params;
+        const { knowledgeBaseIds = [] } = req.body;
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const updated = await client.agent.update(agentId, {
+            knowledge_base_ids: knowledgeBaseIds
+        });
+
+        res.json({ success: true, agent: updated });
+    } catch (error) {
+        console.error('❌ [RetellKB] updateAgentKnowledgeBases error:', error.message);
+        res.status(500).json({ error: error.message || 'KB bağlantısı güncellenemedi' });
+    }
+};
