@@ -508,3 +508,35 @@
     background: #f9fafb;
     border-radius: 0 0 16px 16px;
 }
+
+/* Retell Sync Button */
+.btn-retell-sync {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-retell-sync:hover:not(:disabled) {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-retell-sync:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-retell-sync .spinning {
+    animation: spin 1s linear infinite;
+}

@@ -976,6 +976,36 @@ export const webhookHandler = async (req, res) => {
                         }
                     }
 
+                    // Reklam kaynagi tespiti (Click-to-WhatsApp Ads)
+                    const waReferral = message.referral || null;
+                    if (waReferral && (waReferral.source_type === "ad" || waReferral.ctwa_clid || waReferral.source_id)) {
+                        const adTitle = waReferral.headline || waReferral.body || null;
+                        const adTag = adTitle ? ("Reklam: " + adTitle.substring(0, 30)) : "WhatsApp Reklam";
+                        try {
+                            const rawTags = contact.tags || "[]";
+                            let tags = []; 
+                            try { tags = JSON.parse(rawTags); } catch { tags = []; }
+                            if (!tags.includes(adTag)) {
+                                tags.push(adTag);
+                                await prisma.contact.update({ where: { id: contact.id }, data: { tags: JSON.stringify(tags) } });
+                                console.log("[AdTag] Added: " + adTag);
+                            }
+                        } catch (tagErr) { console.error("❌ [AdTag] Error:", tagErr.message); }
+                    } else {
+                        // Reklam yoksa Organik etiketi ekle
+                        try {
+                            const rawTags = contact.tags || "[]";
+                            let tags = [];
+                            try { tags = JSON.parse(rawTags); } catch { tags = []; }
+                            const organicTag = "Organik";
+                            if (!tags.includes(organicTag)) {
+                                tags.push(organicTag);
+                                await prisma.contact.update({ where: { id: contact.id }, data: { tags: JSON.stringify(tags) } });
+                                console.log("[AdTag] Organik etiketi eklendi");
+                            }
+                        } catch (tagErr) { console.error("❌ [AdTag] Organik error:", tagErr.message); }
+                    }
+
                     // Check if contact is blocked - skip processing if blocked
                     if (contact.isBlocked) {
                         console.log(`🚫 [BLOCKED] WhatsApp contact ${contact.id} (${contact.name}) is blocked. Ignoring incoming message.`);

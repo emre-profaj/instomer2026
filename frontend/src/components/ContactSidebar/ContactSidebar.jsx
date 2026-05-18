@@ -120,7 +120,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
     );
 };
 
-const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose }) => {
+const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen }) => {
     const { currentWorkspace, onlineUsers } = useAuth();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
@@ -1191,7 +1191,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             key={item.id} 
                                                             className={`timeline-item ${isNote ? 'type-note' : ''}`}
                                                             style={{ position: 'relative', ...(isConv ? { cursor: 'pointer' } : {}) }}
-                                                            onClick={isConv && item.conversationId ? () => navigate(`/inbox?conversationId=${item.conversationId}`) : undefined}
+                                                            onClick={isConv && item.conversationId ? () => {
+                                                                if (onConversationOpen) {
+                                                                    onConversationOpen(item.conversationId);
+                                                                } else {
+                                                                    navigate(`/inbox?conversationId=${item.conversationId}`);
+                                                                }
+                                                            } : undefined}
                                                         >
                                                             <div className="timeline-header">
                                                                 <div className="timeline-header-left">

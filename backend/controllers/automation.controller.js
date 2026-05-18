@@ -48,10 +48,64 @@ function convertGoogleDriveLink(url) {
 
     return url;
 }
+/**
+ * Upload media from a URL to Meta's media API and return the media_id.
+ * This is required for Google Drive and other indirect URLs that Meta cannot
+ * reliably fetch directly. Returns null if upload fails (fallback to link).
+ */
+async function uploadMediaToMeta(mediaUrl, mediaType, phoneNumberId, accessToken) {
+    try {
+        console.log(`📤 [MediaUpload] Downloading media from: ${mediaUrl}`);
 
-// ============================================
-// WhatsApp Template Management
-// ============================================
+        // 1. Download the file as buffer
+        const downloadResp = await axios.get(mediaUrl, {
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            maxRedirects: 5,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+
+        const buffer = Buffer.from(downloadResp.data);
+        const contentType = downloadResp.headers['content-type']?.split(';')[0]?.trim() || 'image/jpeg';
+
+        // Map to accepted MIME types
+        const mimeMap = {
+            'IMAGE': 'image/jpeg',
+            'VIDEO': 'video/mp4',
+            'DOCUMENT': 'application/pdf'
+        };
+        const mime = contentType !== 'application/octet-stream' ? contentType : (mimeMap[mediaType] || 'image/jpeg');
+
+        console.log(`📦 [MediaUpload] Downloaded ${buffer.length} bytes, mime: ${mime}`);
+
+        // 2. Upload to Meta Media API using form-data
+        const FormData = (await import('form-data')).default;
+        const form = new FormData();
+        form.append('file', buffer, { filename: 'media', contentType: mime });
+        form.append('type', mime);
+        form.append('messaging_product', 'whatsapp');
+
+        const uploadResp = await axios.post(
+            `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phoneNumberId}/media`,
+            form,
+            {
+                headers: {
+                    ...form.getHeaders(),
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                timeout: 30000
+            }
+        );
+
+        const mediaId = uploadResp.data?.id;
+        console.log(`✅ [MediaUpload] Uploaded successfully, media_id: ${mediaId}`);
+        return mediaId;
+    } catch (err) {
+        console.error(`❌ [MediaUpload] Upload failed, falling back to link:`, err.response?.data || err.message);
+        return null;
+    }
+}
+
 
 // Get all templates for a workspace
 export const getTemplates = async (req, res) => {
@@ -235,7 +289,7 @@ export const syncTemplates = async (req, res) => {
                             status: tpl.status || 'APPROVED',
                             components: JSON.stringify(tpl.components || []),
                             headerType: header?.format || null,
-                            headerContent: header?.text || null,
+                            headerContent: header?.text || header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || null,
                             bodyText: body?.text || '',
                             footerText: footer?.text || null,
                             buttons: buttons ? JSON.stringify(buttons.buttons) : null
@@ -246,7 +300,7 @@ export const syncTemplates = async (req, res) => {
                             category: tpl.category || 'MARKETING',
                             components: JSON.stringify(tpl.components || []),
                             headerType: header?.format || null,
-                            headerContent: header?.text || null,
+                            headerContent: header?.text || header?.example?.header_url?.[0] || header?.example?.header_handle?.[0] || null,
                             bodyText: body?.text || '',
                             footerText: footer?.text || null,
                             buttons: buttons ? JSON.stringify(buttons.buttons) : null
@@ -717,18 +771,52 @@ export const sendTemplateDynamic = async (req, res) => {
 
         // 4a. HEADER COMPONENT (for IMAGE, VIDEO, DOCUMENT templates)
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            const mediaUrl = convertGoogleDriveLink(headerMediaUrl || template.headerContent);
+            const rawUrl = headerMediaUrl || template.headerContent;
+            const mediaUrl = convertGoogleDriveLink(rawUrl);
 
-            if (mediaUrl) {
-                components.push({
-                    type: 'header',
-                    parameters: [{
+            if (!mediaUrl) {
+                console.error(`❌ [sendTemplateDynamic] Template "${template.name}" has ${template.headerType} header but no media URL provided`);
+                return res.status(400).json({
+                    error: `Bu şablon ${template.headerType} header içeriyor ancak medya URL'si eksik`,
+                    details: `"${template.name}" şablonu için headerMediaUrl parametresi gönderilmeli veya şablona headerContent kaydedilmeli`,
+                    headerType: template.headerType
+                });
+            }
+
+            // These URL types cannot be used directly as template header links:
+            // - Google Drive: requires redirect/auth that Meta can't follow
+            // - scontent.whatsapp.net: temporary signed URLs that expire (oe= param)
+            const needsUpload = mediaUrl.includes('drive.usercontent.google.com')
+                || mediaUrl.includes('drive.google.com')
+                || mediaUrl.includes('scontent.whatsapp.net')
+                || mediaUrl.includes('scontent.cdninstagram.com');
+            let headerParam;
+
+            if (needsUpload) {
+                console.log(`☁️ [sendTemplateDynamic] Temporary/indirect URL detected, uploading to Meta Media API...`);
+                const mediaId = await uploadMediaToMeta(mediaUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
+                if (mediaId) {
+                    headerParam = {
+                        type: template.headerType.toLowerCase(),
+                        [template.headerType.toLowerCase()]: { id: mediaId }
+                    };
+                } else {
+                    // Upload failed — fall back to link (may or may not work)
+                    console.warn(`⚠️ [sendTemplateDynamic] Media upload failed, falling back to link`);
+                    headerParam = {
                         type: template.headerType.toLowerCase(),
                         [template.headerType.toLowerCase()]: { link: mediaUrl }
-                    }]
-                });
-                console.log('📎 [sendTemplateDynamic] Header added:', template.headerType);
+                    };
+                }
+            } else {
+                headerParam = {
+                    type: template.headerType.toLowerCase(),
+                    [template.headerType.toLowerCase()]: { link: mediaUrl }
+                };
             }
+
+            components.push({ type: 'header', parameters: [headerParam] });
+            console.log('📎 [sendTemplateDynamic] Header added:', template.headerType, headerParam);
         }
 
         // 4b. BODY COMPONENT - Dynamic variable substitution
@@ -1147,7 +1235,7 @@ export const executeLeadAutomation = async (workspaceId, lead, contact) => {
                             </tr>
                         </table>
                         <p>
-                            <a href="https://app.instomer.com/inbox" 
+                            <a href="https://app.instomer.com/inbox?contactId=${contact?.id || ''}" 
                                style="display: inline-block; background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
                                 Lead'i Görüntüle
                             </a>

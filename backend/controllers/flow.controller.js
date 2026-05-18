@@ -32,7 +32,7 @@ export const createFlow = async (req, res) => {
         let flowTrigger = trigger || null;
         if (!flowTrigger && Array.isArray(steps)) {
             const triggerStep = steps.find(s =>
-                ['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED'].includes(s.type)
+                ['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED', 'FLOW_ENTERED'].includes(s.type)
             );
             if (triggerStep) flowTrigger = triggerStep.type;
         }
@@ -72,7 +72,7 @@ export const updateFlow = async (req, res) => {
             updateData.steps = steps;
             // Auto-extract trigger from steps
             const triggerStep = (Array.isArray(steps) ? steps : []).find(s =>
-                ['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED'].includes(s.type)
+                ['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED', 'FLOW_ENTERED'].includes(s.type)
             );
             updateData.trigger = triggerStep ? triggerStep.type : existing.trigger;
         }
@@ -173,7 +173,7 @@ export const executeFlowsByTrigger = async (workspaceId, triggerType, context = 
 
                 // Filter out the trigger step itself, execute only actions/logic
                 const actionSteps = steps.filter(s =>
-                    !['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED'].includes(s.type)
+                    !['NEW_FORM', 'FIRST_MSG', 'TAG_ADDED', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED', 'FLOW_ENTERED'].includes(s.type)
                 );
 
                 await executeSteps(workspaceId, actionSteps, context);
@@ -560,9 +560,12 @@ async function executeAssignAgent(workspaceId, step, context) {
  * ASSIGN_TEAM: Assign conversation to a team by name
  */
 async function executeAssignTeam(workspaceId, step, context) {
+    const teamId   = step.config?.teamId;
     const teamName = step.config?.teamName;
-    if (!teamName) {
-        console.log(`  ⚠️ [FLOW STEP] ASSIGN_TEAM: No team name configured`);
+    const useRoundRobin = step.config?.useRoundRobin || false;
+
+    if (!teamId && !teamName) {
+        console.log(`  ⚠️ [FLOW STEP] ASSIGN_TEAM: No team configured`);
         return;
     }
 
@@ -579,23 +582,59 @@ async function executeAssignTeam(workspaceId, step, context) {
         return;
     }
 
-    const team = await prisma.team.findFirst({
-        where: {
-            workspaceId,
-            name: { contains: teamName, mode: 'insensitive' }
-        }
-    });
-
+    // Takımı bul — önce ID ile, yoksa isimle
+    let team = null;
+    if (teamId) {
+        team = await prisma.team.findUnique({ where: { id: teamId } });
+    }
+    if (!team && teamName) {
+        team = await prisma.team.findFirst({
+            where: { workspaceId, name: { contains: teamName, mode: 'insensitive' } }
+        });
+    }
     if (!team) {
-        console.log(`  ⚠️ [FLOW STEP] ASSIGN_TEAM: Team "${teamName}" not found`);
+        console.log(`  ⚠️ [FLOW STEP] ASSIGN_TEAM: Team not found`);
         return;
+    }
+
+    const updateData = { teamIds: JSON.stringify([team.id]) };
+
+    // Round-Robin: takım üyelerine sırayla ata
+    if (useRoundRobin) {
+        const members = await prisma.teamMember.findMany({
+            where: { teamId: team.id, userId: { not: null } },
+            orderBy: { createdAt: 'asc' },
+            select: { userId: true }
+        });
+
+        if (members.length > 0) {
+            // Son bu takımdan atanan kişiyi bul (workspaceId ile filtrele, yoksa diğer workspace'ler karışır)
+            const lastConv = await prisma.conversation.findFirst({
+                where: {
+                    workspaceId,
+                    teamIds: { contains: team.id },
+                    assignedToId: { not: null }
+                },
+                orderBy: { updatedAt: 'desc' },
+                select: { assignedToId: true }
+            });
+
+            const lastIdx = lastConv?.assignedToId
+                ? members.findIndex(m => m.userId === lastConv.assignedToId)
+                : -1;
+
+            const nextUserId = members[(lastIdx + 1) % members.length].userId;
+            updateData.assignedToId = nextUserId;
+            console.log(`  🔄 [FLOW STEP] ASSIGN_TEAM: Round-Robin → user ${nextUserId}`);
+        }
     }
 
     await prisma.conversation.update({
         where: { id: conversationId },
-        data: { teamId: team.id }
+        data: updateData
     });
-    console.log(`  ✅ [FLOW STEP] ASSIGN_TEAM: Conversation assigned to team "${team.name}"`);
+
+    console.log(`  ✅ [FLOW STEP] ASSIGN_TEAM: Conversation → team "${team.name}"${useRoundRobin ? ' (Round-Robin)' : ''}`);
 }
 
 /**

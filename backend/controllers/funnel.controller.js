@@ -12,10 +12,9 @@ const DEFAULT_FUNNELS = [
         order: 1,
         stages: [
             { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
-            { name: 'Randevu Veriliyor',    color: '#f59e0b', order: 1 },
-            { name: 'Randevu Verildi',      color: '#8b5cf6', order: 2 },
-            { name: 'Randevu Tamamlandı',   color: '#10b981', order: 3 },
-            { name: 'Randevu İptal',        color: '#ef4444', order: 4 }
+            { name: 'Randevu Verildi',      color: '#8b5cf6', order: 1 },
+            { name: 'Randevu Tamamlandı',   color: '#10b981', order: 2 },
+            { name: 'Randevu İptal',        color: '#ef4444', order: 3 }
         ]
     },
     {
@@ -41,11 +40,11 @@ const DEFAULT_FUNNELS = [
         icon: '👔',
         order: 3,
         stages: [
-            { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
-            { name: 'Değerlendirmede',      color: '#f59e0b', order: 1 },
-            { name: 'Aday Havuzunda',       color: '#8b5cf6', order: 2 },
-            { name: 'Kabul',                color: '#10b981', order: 3 },
-            { name: 'Red',                  color: '#ef4444', order: 4 }
+            { name: 'Yeni Başvuru',    color: '#3b82f6', order: 0 },
+            { name: 'Değerlendirmede', color: '#f59e0b', order: 1 },
+            { name: 'Mülakat',         color: '#8b5cf6', order: 2 },
+            { name: 'İşe Alındı',      color: '#10b981', order: 3 },
+            { name: 'Red',             color: '#ef4444', order: 4 }
         ]
     },
     {
@@ -54,25 +53,13 @@ const DEFAULT_FUNNELS = [
         icon: '🎧',
         order: 4,
         stages: [
-            { name: 'Yeni Başvuru',    color: '#3b82f6', order: 0 },
-            { name: 'Değerlendirme',   color: '#f59e0b', order: 1 },
-            { name: 'İşlemde',         color: '#8b5cf6', order: 2 },
-            { name: 'Çözüldü',        color: '#10b981', order: 3 },
-            { name: 'Kapandı',         color: '#64748b', order: 4 }
+            { name: 'Yeni Talep',      color: '#3b82f6', order: 0 },
+            { name: 'İnceleniyor',      color: '#f59e0b', order: 1 },
+            { name: 'İşlemde',          color: '#8b5cf6', order: 2 },
+            { name: 'Çözüldü',         color: '#10b981', order: 3 },
+            { name: 'Kapandı',          color: '#64748b', order: 4 }
         ]
     },
-    {
-        name: 'Kurumsal Satış',
-        color: '#a855f7',
-        icon: '🏢',
-        order: 5,
-        stages: [
-            { name: 'Yeni Başvuru',        color: '#3b82f6', order: 0 },
-            { name: 'Görüşme Aşaması',     color: '#f59e0b', order: 1 },
-            { name: 'Kazanıldı',           color: '#10b981', order: 2 },
-            { name: 'Kayıp',               color: '#ef4444', order: 3 }
-        ]
-    }
 ];
 
 // ── Stage isim eşleştirmesi: eski akış preset'leri → yeni default stages
@@ -85,15 +72,46 @@ for (const f of DEFAULT_FUNNELS) {
 // MIGRASYON: Eski aşama isimlerini yenilerine taşı
 // ────────────────────────────────────────────────────────────────────────────
 
-// Aşama bazlı rename map: { eskiAd → yeniAd }
+// Aşama bazlı rename map: { eskiAd → yeniAd } — Tüm funnel'lara uygulanır
 const STAGE_RENAME_MAP = {
     'Pazarlık':           'Teklif Aşaması',
     'Sözleşme':           'Teklif Aşaması',
     'İlgisiz':            'Kayıp',
     'Randevu Planlandı':  'Görüşme Planlandı',
     'Tekrar Ara':         'Fırsat',
-    'Teklif Verildi':     'Teklif Aşaması'
+    'Teklif Verildi':     'Teklif Aşaması',
+    // İş ve Taşeron sadeleştirmesi
+    'Kabul':              'İşe Alındı',
+    'Reddedildi':         'Red',
+    // Destek sadeleştirmesi
+    'Kapatıldı':           'Kapandı',    // eski yanlış rename'i düzelt
+    'Değerlendirme':      'İnceleniyor', // Destek'te İnceleniyor olarak birleştir
 };
+
+// Funnel bağımsız (global) silinecek stage'ler
+const STAGES_TO_DELETE = [
+    'Randevu Veriliyor',   // Randevu funnel'ından kaldırıldı
+    // İş ve Taşeron sadeleştirmesi — fazla stage'ler
+    'CV Alındı',
+    'CV İnceleniyor',
+    'Aday Havuzunda',
+    'Ön Görüşme',
+    'Teknik Değerlendirme',
+    'Referans Kontrolü',
+    'Teklif Yapıldı',
+    'Vazgeçti',
+];
+
+// Funnel'a özel silinecek stage'ler (sadece o funnel'ı etkiler)
+const FUNNEL_SCOPED_STAGE_CLEANUP = {
+    'destek': ['Yeni Başvuru', 'Yanıt Bekleniyor', 'Kapatıldı'],
+};
+
+// Tamamen kaldırılması gereken funnel'lar (isteyen kendisi açar)
+const FUNNELS_TO_DELETE = [
+    'Kurumsal Satış',
+    'Tedarikçi',
+];
 
 // Funnel ismi rename map: { eskiFunnelAdı → yeniFunnelAdı }
 const FUNNEL_RENAME_MAP = {
@@ -329,6 +347,24 @@ export const getFunnels = async (req, res) => {
                 include: { stages: { orderBy: { order: 'asc' } } }
             });
 
+            // ── 0) Kaldırılması gereken funnel'ları sil (FUNNELS_TO_DELETE) ──
+            for (const funnel of funnels) {
+                if (FUNNELS_TO_DELETE.some(n => normalizeTR(n) === normalizeTR(funnel.name))) {
+                    // Stage referanslarını temizle
+                    for (const stage of (funnel.stages || [])) {
+                        await prisma.conversation.updateMany({ where: { funnelStageId: stage.id }, data: { funnelStageId: null } });
+                        await prisma.contact.updateMany({ where: { funnelStageId: stage.id }, data: { funnelStageId: null } });
+                    }
+                    // Funnel referanslarını temizle
+                    await prisma.conversation.updateMany({ where: { funnelType: funnel.id }, data: { funnelType: null } });
+                    await prisma.contact.updateMany({ where: { funnelId: funnel.id }, data: { funnelId: null } }).catch(() => {});
+                    await prisma.funnel.delete({ where: { id: funnel.id } });
+                    console.log(`🗑️  [Migration] Funnel "${funnel.name}" silindi (workspace: ${workspaceId})`);
+                }
+            }
+            // Silinen funnel'ları listeden çıkar
+            funnels = funnels.filter(f => !FUNNELS_TO_DELETE.some(n => normalizeTR(n) === normalizeTR(f.name)));
+
             // ── 1) Migrate eski funnel isimlerini ──
             const didRenameFunnels = await migrateFunnelNames(workspaceId);
 
@@ -339,7 +375,35 @@ export const getFunnels = async (req, res) => {
                 }
             }
 
-            // ── 3) Duplicate stage'leri temizle ──
+            // ── 3) Global silinecek stage'ler (STAGES_TO_DELETE) ──
+            for (const funnel of funnels) {
+                for (const stageName of STAGES_TO_DELETE) {
+                    const toDelete = funnel.stages?.find(s => normalizeTR(s.name) === normalizeTR(stageName));
+                    if (toDelete) {
+                        await prisma.conversation.updateMany({ where: { funnelStageId: toDelete.id }, data: { funnelStageId: null } });
+                        await prisma.contact.updateMany({ where: { funnelStageId: toDelete.id }, data: { funnelStageId: null } });
+                        await prisma.funnelStage.delete({ where: { id: toDelete.id } });
+                        console.log(`🗑️  [Migration] Stage "${stageName}" silindi (funnel: ${funnel.name})`);
+                    }
+                }
+            }
+
+            // ── 3b) Funnel'a özel silinecek stage'ler (FUNNEL_SCOPED_STAGE_CLEANUP) ──
+            for (const funnel of funnels) {
+                const scopedStages = FUNNEL_SCOPED_STAGE_CLEANUP[normalizeTR(funnel.name)] || [];
+                for (const stageName of scopedStages) {
+                    const toDelete = funnel.stages?.find(s => normalizeTR(s.name) === normalizeTR(stageName));
+                    if (toDelete) {
+                        await prisma.conversation.updateMany({ where: { funnelStageId: toDelete.id }, data: { funnelStageId: null } });
+                        await prisma.contact.updateMany({ where: { funnelStageId: toDelete.id }, data: { funnelStageId: null } });
+                        await prisma.funnelStage.delete({ where: { id: toDelete.id } });
+                        console.log(`🗑️  [Migration] Stage "${stageName}" silindi (${funnel.name} funnel'ına özel)`);
+                    }
+                }
+            }
+
+
+            // ── 4) Duplicate stage'leri temizle ──
             let didDedup = false;
             for (const funnel of funnels) {
                 const cleaned = await deduplicateStages(funnel.id);

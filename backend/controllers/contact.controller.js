@@ -8,7 +8,7 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, limit = 50, offset = 0 } = req.query;
+        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, limit = 50, offset = 0 } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -109,6 +109,51 @@ export const getContacts = async (req, res) => {
                     { importGroup: importGroup }
                 ]
             };
+        }
+
+        // Add contactInfo filter (phone/email presence)
+        if (contactInfo && contactInfo !== 'ALL') {
+            if (contactInfo === 'HAS_PHONE') {
+                where = {
+                    AND: [
+                        where,
+                        { phone: { not: null } },
+                        { NOT: { phone: '' } }
+                    ]
+                };
+            } else if (contactInfo === 'HAS_EMAIL') {
+                where = {
+                    AND: [
+                        where,
+                        { email: { not: null } },
+                        { NOT: { email: '' } }
+                    ]
+                };
+            } else if (contactInfo === 'HAS_BOTH') {
+                where = {
+                    AND: [
+                        where,
+                        { phone: { not: null } },
+                        { NOT: { phone: '' } },
+                        { email: { not: null } },
+                        { NOT: { email: '' } }
+                    ]
+                };
+            } else if (contactInfo === 'NO_PHONE') {
+                where = {
+                    AND: [
+                        where,
+                        { OR: [{ phone: null }, { phone: '' }] }
+                    ]
+                };
+            } else if (contactInfo === 'NO_EMAIL') {
+                where = {
+                    AND: [
+                        where,
+                        { OR: [{ email: null }, { email: '' }] }
+                    ]
+                };
+            }
         }
 
         // Add funnel/stage filter — filter directly on Contact model
@@ -891,30 +936,71 @@ export const getContactAnalytics = async (req, res) => {
             monthlyData.push({ month: mName, count });
         }
 
-        // Funnel Summary (for the main list view)
+        // Funnel Summary — tüm kişiler, date filter yok (mevcut durumu gösterir)
         const allFunnels = await prisma.funnel.findMany({
             where: { workspaceId },
+            include: { stages: { select: { id: true } } },
             orderBy: { order: 'asc' }
         });
 
-        const funnelSummary = allFunnels.map(f => ({
-            id: f.id,
-            name: f.name,
-            count: contacts.filter(c => c.funnelType === f.name).length,
-            color: f.color,
-            icon: f.icon
+        const funnelSummary = await Promise.all(allFunnels.map(async (f) => {
+            const stageIds = f.stages.map(s => s.id);
+            const count = await prisma.contact.count({
+                where: {
+                    conversations: { some: { workspaceId } },
+                    OR: [
+                        ...(stageIds.length > 0 ? [{ funnelStageId: { in: stageIds } }] : []),
+                        { funnelType: f.name }
+                    ]
+                }
+            });
+            return { id: f.id, name: f.name, count, color: f.color, icon: f.icon };
         }));
 
-        // Add "Genel" only if it doesn't already exist in the list
+        // "Genel" funnel'ı — hiçbir funnel'a atanmamış kişiler
         if (!funnelSummary.some(f => f.name.toLowerCase() === 'genel')) {
-            funnelSummary.unshift({
-                id: 'genel',
-                name: 'Genel',
-                count: contacts.filter(c => !c.funnelType || c.funnelType === 'Genel').length,
-                color: '#64748b',
-                icon: '📋'
+            const allStageIds = allFunnels.flatMap(f => f.stages.map(s => s.id));
+            const allFunnelNames = allFunnels.map(f => f.name);
+            const generalCount = await prisma.contact.count({
+                where: {
+                    conversations: { some: { workspaceId } },
+                    funnelStageId: allStageIds.length > 0 ? { notIn: allStageIds } : undefined,
+                    OR: [
+                        { funnelType: null },
+                        { funnelType: 'Genel' },
+                        ...(allFunnelNames.length > 0 ? [] : [])
+                    ]
+                }
             });
+            funnelSummary.unshift({ id: 'genel', name: 'Genel', count: generalCount, color: '#64748b', icon: '📋' });
         }
+
+
+        // Appointment Statistics
+        const appointmentFilter = { workspaceId };
+        if (startDate || endDate) appointmentFilter.createdAt = dateFilter.createdAt;
+
+        const [
+            totalAppointments,
+            botAppointments,
+            agentAppointments,
+            scheduledAppointments,
+            completedAppointments,
+            cancelledAppointments
+        ] = await Promise.all([
+            prisma.appointment.count({ where: appointmentFilter }),
+            prisma.appointment.count({ where: { ...appointmentFilter, createdByBotId: { not: null } } }),
+            prisma.appointment.count({ where: { ...appointmentFilter, createdByBotId: null } }),
+            prisma.appointment.count({ where: { ...appointmentFilter, status: 'SCHEDULED' } }),
+            prisma.appointment.count({ where: { ...appointmentFilter, status: 'COMPLETED' } }),
+            prisma.appointment.count({ where: { ...appointmentFilter, status: 'CANCELLED' } })
+        ]);
+
+        // Real resolution rate from conversations
+        const resolvedConvs = await prisma.conversation.count({ where: { ...conversationFilter, status: 'RESOLVED' } });
+        const realResolutionRate = totalConversations > 0
+            ? ((resolvedConvs / totalConversations) * 100).toFixed(1)
+            : 0;
 
         res.json({
             totalContacts,
@@ -926,10 +1012,19 @@ export const getContactAnalytics = async (req, res) => {
             handoffConversations,
             handoffRate: botLedConversations > 0 ? ((handoffConversations / botLedConversations) * 100).toFixed(1) : 0,
             conversionRate: parseFloat(conversionRate),
+            resolutionRate: parseFloat(realResolutionRate),
             statusData,
             funnelSummary,
             channelData: Object.entries(channelCounts).map(([k, v]) => ({ channel: k, count: v })),
-            monthlyData
+            monthlyData,
+            appointmentStats: {
+                total: totalAppointments,
+                byBot: botAppointments,
+                byAgent: agentAppointments,
+                scheduled: scheduledAppointments,
+                completed: completedAppointments,
+                cancelled: cancelledAppointments
+            }
         });
     } catch (error) {
         console.error('Analytics error:', error);
@@ -981,24 +1076,26 @@ export const getAgentPerformance = async (req, res) => {
         for (const member of workspaceMembers) {
             const userId = member.user.id;
 
-            // Get total assigned conversations (currently assigned to this user)
-            const totalConversations = await prisma.conversation.count({
-                where: {
-                    workspaceId,
-                    assignedToId: userId,
-                    ...dateFilter
-                }
-            });
+            // Toplam işlem: agent'ın atandığı VEYA çözdüğü konuşmalar (unique)
+            // Prisma'da OR + distinct desteklenmiyor, 2 sorgu alıp birleştiriyoruz
+            const [assignedConvIds, resolvedConvIds] = await Promise.all([
+                prisma.conversation.findMany({
+                    where: { workspaceId, assignedToId: userId, ...dateFilter },
+                    select: { id: true }
+                }),
+                prisma.conversation.findMany({
+                    where: { workspaceId, resolvedById: userId, status: 'RESOLVED', ...dateFilter },
+                    select: { id: true }
+                })
+            ]);
+            const uniqueConvIds = [...new Set([
+                ...assignedConvIds.map(c => c.id),
+                ...resolvedConvIds.map(c => c.id)
+            ])];
+            const totalConversations = uniqueConvIds.length;
 
-            // Get resolved conversations BY this user (regardless of current assignment)
-            const resolvedConversations = await prisma.conversation.count({
-                where: {
-                    workspaceId,
-                    resolvedById: userId,
-                    status: 'RESOLVED',
-                    ...dateFilter
-                }
-            });
+            // Çözülen konuşmalar (bu agent'ın çözdükleri)
+            const resolvedConversations = resolvedConvIds.length;
 
             // Get open conversations (assigned to this user)
             const openConversations = await prisma.conversation.count({
@@ -1022,13 +1119,11 @@ export const getAgentPerformance = async (req, res) => {
                 }
             });
 
-            // Calculate average response time
-            // Get conversations with their messages to calculate response times
+            // Calculate average response time using all conversations this agent was involved in
             const conversationsWithMessages = await prisma.conversation.findMany({
                 where: {
                     workspaceId,
-                    assignedToId: userId,
-                    ...dateFilter
+                    id: { in: uniqueConvIds }
                 },
                 include: {
                     messages: {
@@ -1557,10 +1652,26 @@ export const addNoteToConversation = async (req, res) => {
             data: { lastMessageAt: new Date() }
         });
 
-        // Also save to contact.notes for backward compatibility
+        // Mevcut notları koru — JSON array'e append et (üzerine yazma!)
+        const contactRecord = await prisma.contact.findUnique({ where: { id }, select: { notes: true } });
+        let existingNotes = [];
+        try {
+            if (contactRecord?.notes) {
+                const parsed = JSON.parse(contactRecord.notes);
+                existingNotes = Array.isArray(parsed) ? parsed : [];
+            }
+        } catch { existingNotes = []; }
+
+        const newNoteEntry = {
+            timestamp: new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }),
+            title: '',
+            content: note
+        };
+        const updatedNotes = JSON.stringify([newNoteEntry, ...existingNotes]);
+
         await prisma.contact.update({
             where: { id },
-            data: { notes: note }
+            data: { notes: updatedNotes }
         });
 
         // Emit socket events

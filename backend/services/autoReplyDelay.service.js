@@ -183,6 +183,13 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
         let sentMessage = null;
         const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
+        // ⚠️ Güvenlik: [HANDOFF] tagını her kanalda mesajdan soy
+        const safeMessage = message.replace(/\[HANDOFF\]/gi, '').trim();
+        if (!safeMessage) {
+            console.log(`⚠️ [AutoReplyDelay] [HANDOFF]-only mesaj, gönderilmiyor: ${conversation.id}`);
+            return;
+        }
+
         if (channel === 'whatsapp' && conversation.whatsappPhoneNumber) {
             const phone = conversation.whatsappPhoneNumber;
             const recipientPhone = conversation.contact?.phone?.replace(/\D/g, '');
@@ -194,7 +201,7 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                         messaging_product: 'whatsapp',
                         to: recipientPhone,
                         type: 'text',
-                        text: { body: message }
+                        text: { body: safeMessage }
                     },
                     { headers: { Authorization: `Bearer ${phone.accessToken}` } }
                 );
@@ -208,7 +215,7 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                     `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
                     {
                         recipient: { id: String(recipientId) },
-                        message: { text: message }
+                        message: { text: safeMessage }
                     },
                     { params: { access_token: page.pageAccessToken } }
                 );
@@ -220,7 +227,7 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
                 sentMessage = await prisma.message.create({
                     data: {
                         conversationId: conversation.id,
-                        content: message,
+                        content: safeMessage,
                         isFromContact: false,
                         messageType: 'TEXT',
                         senderId: null, // Bot message, no user sender
@@ -235,7 +242,7 @@ const sendAutoReplyToChannel = async (conversation, message, channel) => {
             sentMessage = await prisma.message.create({
                 data: {
                     conversationId: conversation.id,
-                    content: message,
+                    content: safeMessage,
                     isFromContact: false,
                     messageType: 'TEXT',
                     senderId: null // Bot message, no user sender

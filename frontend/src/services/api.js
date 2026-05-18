@@ -606,8 +606,11 @@ export const retellAPI = {
         return api.get(`/retell/${workspaceId}/analytics${query ? `?${query}` : ''}`);
     },
     bulkRetryCall: (workspaceId, callIds) => api.post(`/retell/${workspaceId}/bulk-retry`, { callIds }),
-    syncCalls: (workspaceId) => api.post(`/retell/${workspaceId}/sync-calls`)
+    syncCalls: (workspaceId) => api.post(`/retell/${workspaceId}/sync-calls`),
+    syncSingleCall: (workspaceId, callId) => api.post(`/retell/${workspaceId}/sync-single-call`, { callId }),
+    syncKnowledgeBase: (workspaceId) => api.post(`/retell/${workspaceId}/knowledge-bases/sync`)
 };
+
 
 // Quick Reply (Hazır Mesaj) API
 export const quickReplyAPI = {
@@ -631,6 +634,15 @@ export const flowAPI = {
     update: (workspaceId, flowId, data) => api.put(`/workspaces/${workspaceId}/flows/${flowId}`, data),
     delete: (workspaceId, flowId) => api.delete(`/workspaces/${workspaceId}/flows/${flowId}`),
     toggle: (workspaceId, flowId, isActive) => api.patch(`/workspaces/${workspaceId}/flows/${flowId}/toggle`, { isActive })
+};
+
+// Router Rules API (Yönlendiriciler)
+export const routerAPI = {
+    getAll:  (workspaceId)                 => api.get(`/workspaces/${workspaceId}/router-rules`),
+    create:  (workspaceId, data)           => api.post(`/workspaces/${workspaceId}/router-rules`, data),
+    update:  (workspaceId, ruleId, data)   => api.put(`/workspaces/${workspaceId}/router-rules/${ruleId}`, data),
+    delete:  (workspaceId, ruleId)         => api.delete(`/workspaces/${workspaceId}/router-rules/${ruleId}`),
+    toggle:  (workspaceId, ruleId)         => api.patch(`/workspaces/${workspaceId}/router-rules/${ruleId}/toggle`)
 };
 
 // Real Estate API

@@ -10,7 +10,7 @@ import {
     Check, CheckCheck, Phone, Calendar, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
@@ -732,6 +732,9 @@ const Inbox = () => {
         const contactId = searchParams.get('contactId');
 
         if (conversationId && currentWorkspace) {
+            // Force switch to chat mode to ensure the UI becomes visible (e.g., when navigated from pipeline view)
+            setViewMode('chat');
+            
             // First check if it's already in loaded items
             const targetItem = inboxItems.find(item => item.id === conversationId);
             if (targetItem) {
@@ -749,23 +752,13 @@ const Inbox = () => {
                                 ...conv,
                                 inboxType: itemType,
                             };
-                            setInboxItems(prev => [injectedItem, ...prev.filter(i => i.id !== conv.id)]);
-                            // Directly set the selected item and messages
-                            setSelectedItem(conv);
-                            setSelectedItemType(itemType);
-                            setBotEnabled(conv.botEnabled !== false);
-                            const msgs = conv.messages || [];
-                            const notes = (conv.internalNotes || []).map(n => ({
-                                ...n,
-                                isInternalNote: true,
-                                messageType: 'NOTE',
-                                sender: n.user,
-                                isFromContact: false
-                            }));
-                            const combined = [...msgs, ...notes].sort((a, b) =>
-                                new Date(a.createdAt) - new Date(b.createdAt)
-                            );
-                            setMessages(combined);
+                            setInboxItems(prev => {
+                                if (prev.some(i => i.id === injectedItem.id)) return prev;
+                                return [injectedItem, ...prev];
+                            });
+                            
+                            // Let the standard handler take care of fetching messages, setting sidebar, and updating types
+                            handleSelectItem(injectedItem);
                             setSearchParams({}, { replace: true });
                         }
                     } catch (err) {
@@ -3400,21 +3393,23 @@ const Inbox = () => {
                                                 );
                                             })()}
 
-                                            {/* Sohbet Durumu Toggle - Açık ↔ Çözüldü */}
+                                            {/* Sohbet Durumu Toggle - Açık / Çözüldü */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
                                                 <button
-                                                    className={`conversation-archive-btn ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
-                                                    onClick={() => handleConversationStatusChange(
-                                                        selectedItem.id,
-                                                        selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED'
-                                                    )}
-                                                    title={selectedItem.status === 'RESOLVED' ? 'Tekrar Aç' : 'Çözüldü olarak işaretle'}
+                                                    className={`conv-status-toggle ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
+                                                    onClick={() => handleConversationStatusChange(selectedItem.id, selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED')}
+                                                    title={selectedItem.status === 'RESOLVED' ? 'Açık olarak işaretle' : 'Çözüldü olarak işaretle'}
                                                 >
-                                                    {selectedItem.status === 'RESOLVED' ? (
-                                                        <><CheckCircle2 size={14} /> Çözüldü</>
-                                                    ) : (
-                                                        <><CheckCircle2 size={14} /> Arşivle</>
-                                                    )}
+                                                    <span className="conv-status-toggle-track">
+                                                        <span className="conv-status-toggle-thumb">
+                                                            {selectedItem.status === 'RESOLVED'
+                                                                ? <CheckCircle2 size={11} />
+                                                                : <Circle size={11} />}
+                                                        </span>
+                                                    </span>
+                                                    <span className="conv-status-toggle-label">
+                                                        {selectedItem.status === 'RESOLVED' ? 'Çözüldü' : 'Açık'}
+                                                    </span>
                                                 </button>
                                             )}
                                             <button
@@ -3718,17 +3713,38 @@ const Inbox = () => {
                                                     <div className="message-meta">
                                                         <span className="message-time">{formatTime(msg.createdAt)}</span>
                                                         {!msg.isFromContact && !msg.isInternalNote && (
-                                                            <span className={`message-status ${msg.status?.toLowerCase() || 'sent'}`}>
-                                                                {msg.status === 'READ' ? (
-                                                                    <CheckCheck size={14} className="status-read" title="Okundu" />
-                                                                ) : msg.status === 'DELIVERED' ? (
-                                                                    <CheckCheck size={14} className="status-delivered" title="İletildi" />
-                                                                ) : msg.status === 'FAILED' ? (
-                                                                    <AlertCircle size={14} className="status-failed" title="Gönderilemedi" />
-                                                                ) : (
-                                                                    <Check size={14} className="status-sent" title="Gönderildi" />
-                                                                )}
-                                                            </span>
+                                                            <>
+                                                                <span className="message-channel-tag">
+                                                                    {(() => {
+                                                                        const ch = selectedItem?.channel;
+                                                                        if (ch === 'WHATSAPP') return '💬 WhatsApp';
+                                                                        if (ch === 'FACEBOOK') return '📘 Facebook';
+                                                                        if (ch === 'INSTAGRAM') return '📸 Instagram';
+                                                                        if (ch === 'FACEBOOK_COMMENT') return '💬 FB Yorum';
+                                                                        if (ch === 'EMAIL') return '✉️ E-posta';
+                                                                        if (ch === 'WIDGET') return '🌐 Web';
+                                                                        if (ch === 'PHONE') return '📞 Telefon';
+                                                                        if (ch === 'FORM' || ch === 'LEAD') return '📋 Form';
+                                                                        return ch || '';
+                                                                    })()}
+                                                                </span>
+                                                                <span className="message-sender-tag">
+                                                                    {msg.senderId
+                                                                        ? `👤 ${msg.sender?.name || 'Agent'}`
+                                                                        : '🤖 AI Bot'}
+                                                                </span>
+                                                                <span className={`message-status ${msg.status?.toLowerCase() || 'sent'}`}>
+                                                                    {msg.status === 'READ' ? (
+                                                                        <CheckCheck size={14} className="status-read" title="Okundu" />
+                                                                    ) : msg.status === 'DELIVERED' ? (
+                                                                        <CheckCheck size={14} className="status-delivered" title="İletildi" />
+                                                                    ) : msg.status === 'FAILED' ? (
+                                                                        <AlertCircle size={14} className="status-failed" title="Gönderilemedi" />
+                                                                    ) : (
+                                                                        <Check size={14} className="status-sent" title="Gönderildi" />
+                                                                    )}
+                                                                </span>
+                                                            </>
                                                         )}
                                                     </div>
                                                     {msg.isInternalNote && (
@@ -3887,19 +3903,7 @@ const Inbox = () => {
                                                         </div>
                                                     )}
                                                 </div>
-                                                {/* Üstlen Button */}
-                                                {(!selectedItem?.assignedToId || selectedItem?.assignedToId !== user.id) && (
-                                                    <button
-                                                        type="button"
-                                                        className="take-over-btn-input"
-                                                        onClick={handleTakeOver}
-                                                        disabled={takingOver}
-                                                        title="Bu e-postayı üstlen"
-                                                    >
-                                                        <UserCheck size={14} />
-                                                        <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
-                                                    </button>
-                                                )}
+
                                                 <button
                                                     type="button"
                                                     className="ai-suggest-btn"
@@ -4119,19 +4123,7 @@ const Inbox = () => {
                                                         </div>
                                                     )}
                                                 </div>
-                                                {/* Üstlen Button */}
-                                                {(!selectedItem?.assignedToId || selectedItem?.assignedToId !== user.id) && (
-                                                    <button
-                                                        type="button"
-                                                        className="take-over-btn-input"
-                                                        onClick={handleTakeOver}
-                                                        disabled={takingOver}
-                                                        title="Bu konuşmayı üstlen"
-                                                    >
-                                                        <UserCheck size={14} />
-                                                        <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
-                                                    </button>
-                                                )}
+
                                                 <button
                                                     type="button"
                                                     className="ai-suggest-btn"
@@ -4193,21 +4185,26 @@ const Inbox = () => {
                                                 <span>İlk Yazma: {comments[0]?.created_time ? new Date(comments[0].created_time).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}</span>
                                                 <span>Son Yazma: {comments[comments.length - 1]?.created_time ? new Date(comments[comments.length - 1].created_time).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---'}</span>
                                             </div>
-                                            {/* Status Toggle - Açık ↔ Çözüldü */}
-                                            <button
-                                                className={`conversation-archive-btn ${resolvedPostIds.has(selectedItem?.id) ? 'resolved' : 'open'}`}
-                                                onClick={() => handleCommentStatusChange(
-                                                    selectedItem?.id,
-                                                    resolvedPostIds.has(selectedItem?.id) ? 'OPEN' : 'RESOLVED'
-                                                )}
-                                                title={resolvedPostIds.has(selectedItem?.id) ? 'Tekrar Aç' : 'Çözüldü olarak işaretle'}
-                                            >
-                                                {resolvedPostIds.has(selectedItem?.id) ? (
-                                                    <><CheckCircle2 size={14} /> Çözüldü</>
-                                                ) : (
-                                                    <><CheckCircle2 size={14} /> Arşivle</>
-                                                )}
-                                            </button>
+                                            {/* Status Toggle - Açık / Çözüldü */}
+                                            {(() => {
+                                                const isResolved = resolvedPostIds.has(selectedItem?.id);
+                                                return (
+                                                    <button
+                                                        className={`conv-status-toggle ${isResolved ? 'resolved' : 'open'}`}
+                                                        onClick={() => handleCommentStatusChange(selectedItem?.id, isResolved ? 'OPEN' : 'RESOLVED')}
+                                                        title={isResolved ? 'Açık olarak işaretle' : 'Çözüldü olarak işaretle'}
+                                                    >
+                                                        <span className="conv-status-toggle-track">
+                                                            <span className="conv-status-toggle-thumb">
+                                                                {isResolved ? <CheckCircle2 size={11} /> : <Circle size={11} />}
+                                                            </span>
+                                                        </span>
+                                                        <span className="conv-status-toggle-label">
+                                                            {isResolved ? 'Çözüldü' : 'Açık'}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })()}
                                             {selectedPost?.permalink_url && (
                                                 <a
                                                     href={selectedPost.permalink_url}
@@ -4416,17 +4413,7 @@ const Inbox = () => {
                                                 <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
                                                 {togglingBot && <Loader size={12} className="spin" />}
                                             </div>
-                                            {/* Üstlen Button */}
-                                            <button
-                                                type="button"
-                                                className="take-over-btn-input"
-                                                onClick={handleTakeOver}
-                                                disabled={takingOver}
-                                                title="Bu yorumu üstlen"
-                                            >
-                                                <UserCheck size={14} />
-                                                <span>{takingOver ? 'Üstleniliyor...' : 'Üstlen'}</span>
-                                            </button>
+
                                             <button
                                                 type="button"
                                                 className="ai-suggest-btn"

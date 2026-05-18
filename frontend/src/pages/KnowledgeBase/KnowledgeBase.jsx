@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, knowledgeBaseAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link } from 'lucide-react';
+import { workspaceAPI, knowledgeBaseAPI, retellAPI } from '../../services/api';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -28,6 +28,9 @@ const KnowledgeBase = () => {
     const [urlSyncInterval, setUrlSyncInterval] = useState('');
     const [scraping, setScraping] = useState(false);
     const [syncingEntry, setSyncingEntry] = useState(null);
+
+    // Retell Sync State
+    const [syncingRetell, setSyncingRetell] = useState(false);
 
     // Company Info States
     const [companyInfo, setCompanyInfo] = useState({
@@ -281,6 +284,20 @@ const KnowledgeBase = () => {
         }
     };
 
+    const handleRetellSync = async () => {
+        try {
+            setSyncingRetell(true);
+            const response = await retellAPI.syncKnowledgeBase(currentWorkspace.id);
+            alert(response.data.message || 'Bilgi bankası Retell\'e başarıyla senkronize edildi');
+        } catch (error) {
+            console.error('Retell sync error:', error);
+            const msg = error.response?.data?.error || 'Retell sync başarısız';
+            alert(msg);
+        } finally {
+            setSyncingRetell(false);
+        }
+    };
+
     if (!currentWorkspace) {
         return (
             <div className="empty-state">
@@ -296,6 +313,15 @@ const KnowledgeBase = () => {
                     <h1>Knowledge Base</h1>
                     <p className="text-muted">{t('knowledgeBase.description')}</p>
                 </div>
+                <button
+                    className="btn btn-retell-sync"
+                    onClick={handleRetellSync}
+                    disabled={syncingRetell || knowledgeEntries.length === 0}
+                    title="Bilgi bankasını Retell AI sesli asistana senkronize et"
+                >
+                    {syncingRetell ? <RefreshCw size={16} className="spinning" /> : <Phone size={16} />}
+                    {syncingRetell ? 'Retell\'e Gönderiliyor...' : 'Retell\'e Sync Et'}
+                </button>
             </div>
 
             {/* Tabs */}

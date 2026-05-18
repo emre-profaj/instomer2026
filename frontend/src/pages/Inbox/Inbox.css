@@ -2165,6 +2165,28 @@
     opacity: 0.7;
 }
 
+.message-channel-tag {
+    font-size: 10px;
+    opacity: 0.65;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1px 5px;
+    border-radius: 8px;
+    white-space: nowrap;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+.message-sender-tag {
+    font-size: 10px;
+    opacity: 0.75;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 1px 5px;
+    border-radius: 8px;
+    white-space: nowrap;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
 .message-status {
     display: flex;
     align-items: center;
@@ -5638,4 +5660,234 @@
     background: #eff6ff;
     color: #3b82f6;
     border-color: #3b82f6;
+}
+
+/* Acik / Cozuldu Select Dropdown */
+.conversation-status-select-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #e5e7eb;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.conversation-status-select-wrapper.open {
+    background: #f9fafb;
+    color: #6b7280;
+    border-color: #e5e7eb;
+}
+
+.conversation-status-select-wrapper.open .conv-status-icon {
+    color: #9ca3af;
+}
+
+.conversation-status-select-wrapper.resolved {
+    background: #ecfdf5;
+    color: #10b981;
+    border-color: #10b981;
+}
+
+.conversation-status-select-wrapper.resolved .conv-status-icon {
+    color: #10b981;
+}
+
+.conversation-status-select-wrapper:hover {
+    filter: brightness(0.97);
+}
+
+.conversation-status-select {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.conversation-status-select option {
+    background: #ffffff;
+    color: #374151;
+    font-weight: 500;
+}
+
+
+/* Channel Badge on outgoing messages */
+.message-channel-badge {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 4px;
+    opacity: 0.85;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.message-channel-badge.channel-whatsapp {
+    background: rgba(37, 211, 102, 0.2);
+    color: #15803d;
+}
+.message.outgoing .message-channel-badge.channel-whatsapp {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+.message-channel-badge.channel-facebook {
+    background: rgba(24, 119, 242, 0.15);
+    color: #1d4ed8;
+}
+.message.outgoing .message-channel-badge.channel-facebook {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+.message-channel-badge.channel-instagram {
+    background: rgba(228, 64, 95, 0.15);
+    color: #be185d;
+}
+.message.outgoing .message-channel-badge.channel-instagram {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+.message-channel-badge.channel-email {
+    background: rgba(245, 158, 11, 0.15);
+    color: #b45309;
+}
+.message.outgoing .message-channel-badge.channel-email {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+.message-channel-badge.channel-widget {
+    background: rgba(99, 102, 241, 0.15);
+    color: #4338ca;
+}
+.message.outgoing .message-channel-badge.channel-widget {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+.message-channel-badge.channel-lead {
+    background: rgba(139, 92, 246, 0.15);
+    color: #6d28d9;
+}
+.message.outgoing .message-channel-badge.channel-lead {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+/* Sender Badge on outgoing messages */
+.message-sender-badge {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 4px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.message-sender-badge.bot {
+    background: rgba(139, 92, 246, 0.15);
+    color: #7c3aed;
+}
+.message.outgoing .message-sender-badge.bot {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+.message-sender-badge.human {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+}
+.message.outgoing .message-sender-badge.human {
+    background: rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.85);
+}
+
+/* ─── Sohbet Durumu Toggle (Açık / Çözüldü) ────────────────────────────────── */
+.conv-status-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    border: 1.5px solid #e5e7eb;
+    background: #f9fafb;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #6b7280;
+    white-space: nowrap;
+    outline: none;
+}
+
+.conv-status-toggle:hover {
+    filter: brightness(0.96);
+    transform: scale(1.02);
+}
+
+.conv-status-toggle-track {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+
+.conv-status-toggle-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    transition: color 0.2s;
+}
+
+.conv-status-toggle-label {
+    font-size: 12px;
+    font-weight: 600;
+    transition: color 0.2s;
+}
+
+/* Açık durumu */
+.conv-status-toggle.open {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    color: #6b7280;
+}
+
+.conv-status-toggle.open .conv-status-toggle-track {
+    background: #e5e7eb;
+}
+
+.conv-status-toggle.open .conv-status-toggle-thumb {
+    color: #9ca3af;
+}
+
+/* Çözüldü durumu */
+.conv-status-toggle.resolved {
+    background: #ecfdf5;
+    border-color: #10b981;
+    color: #059669;
+}
+
+.conv-status-toggle.resolved .conv-status-toggle-track {
+    background: #d1fae5;
+}
+
+.conv-status-toggle.resolved .conv-status-toggle-thumb {
+    color: #10b981;
 }

@@ -19,7 +19,63 @@
 
 import prisma from '../lib/prisma.js';
 
-// ─── TURKISH DATE PARSER ────────────────────────────────────────────────────
+// ─── APPOINTMENT DATE/TIME PARSER ──────────────────────────────────────────
+/**
+ * args.date ("12.05.2026", "12-05-2026", "2026-05-12") ve
+ * args.time ("10:00", "10:00:00") değerlerinden Türkiye saatine (UTC+3)
+ * göre doğru startTime ve endTime üretir.
+ *
+ * Sunucu UTC'de çalışsa bile randevu saati Türkiye yerel saatine göre
+ * doğru şekilde kaydedilir.
+ */
+function parseAppointmentDateTime(dateStr, timeStr, durationMinutes = 30) {
+    try {
+        if (!dateStr) throw new Error('No date');
+
+        let day, month, year;
+
+        // "12.05.2026" veya "12-05-2026"
+        const dmyMatch = dateStr.match(/^(\d{1,2})[.\-](\d{1,2})[.\-](\d{4})$/);
+        if (dmyMatch) {
+            day   = parseInt(dmyMatch[1]);
+            month = parseInt(dmyMatch[2]);
+            year  = parseInt(dmyMatch[3]);
+        } else {
+            // "2026-05-12" (ISO)
+            const isoMatch = dateStr.match(/^(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})$/);
+            if (isoMatch) {
+                year  = parseInt(isoMatch[1]);
+                month = parseInt(isoMatch[2]);
+                day   = parseInt(isoMatch[3]);
+            } else {
+                throw new Error(`Unrecognised date format: ${dateStr}`);
+            }
+        }
+
+        const [hour = 9, minute = 0] = (timeStr || '09:00')
+            .split(':')
+            .map(Number);
+
+        // Türkiye saatine (UTC+3) göre ISO string oluştur → timezone-aware Date
+        const pad = (n) => String(n).padStart(2, '0');
+        const isoWithTZ = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00+03:00`;
+        const startTime = new Date(isoWithTZ);
+
+        if (isNaN(startTime.getTime())) throw new Error(`Invalid date: ${isoWithTZ}`);
+
+        const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+
+        console.log(`📅 [parseAppointmentDateTime] "${dateStr} ${timeStr}" → startTime: ${startTime.toISOString()} (TR: ${startTime.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })})`);
+        return { startTime, endTime };
+    } catch (err) {
+        console.warn(`⚠️ [parseAppointmentDateTime] Parse failed ("${dateStr}" "${timeStr}"), falling back to NOW:`, err.message);
+        const startTime = new Date();
+        const endTime   = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+        return { startTime, endTime };
+    }
+}
+
+// ─── TURKISH DATE PARSER ─────────────────────────────────────────────────────
 /**
  * Her türlü Türkçe tarih formatını DDMMYYYY'ye dönüştürür.
  * Desteklenen formatlar:
@@ -117,8 +173,9 @@ export const DEFAULT_APPOINTMENT_PROMPT = `Sen nazik ve profesyonel bir hastane 
 ÖNCE randevu detaylarını belirle (branş, doktor, gün, saat), SONRA hasta bilgilerini al.
 
 🔹 ADIM 1 — BRANŞ SEÇİMİ:
-Müşteri mesajında "randevu" kelimesi AÇIKÇA geçiyorsa, hemen 'get_branches' fonksiyonunu çağır (cinsiyet: 1, dogum_tarihi: "" varsayılan değerleriyle). METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
-Gelen branşları numaralı liste olarak sun (kodları gösterme). Müşteriye hangi bölümden randevu almak istediğini sor.
+Müşteri mesajında "randevu" kelimesi AÇIKÇA geçiyorsa, HEMEN "Hangi bölümden randevu almak istiyorsunuz?" diye sor. get_branches FONKSİYONUNU ÇAĞIRMA!
+- Eğer müşteri direkt bölüm adı verirse (örn: "Kardiyoloji"), o zaman arka planda get_branches çağır ve doğrudan Doktor adımına (Adım 2) geç.
+- Eğer müşteri "bilmiyorum", "seçenekler neler?", "liste göster" gibi bir şey söylerse, o zaman get_branches çağır ve listeyi sun.
 
 🔹 ADIM 2 — DOKTOR SEÇİMİ:
 Müşteri branş seçtiğinde, o branşın kodunu kullanarak 'get_doctors' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
@@ -126,19 +183,23 @@ Doktorları listele ve seçim yaptır.
 
 🔹 ADIM 3 — GÜN SEÇİMİ:
 Doktor seçildikten sonra 'get_available_days' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
-Uygun günleri listele ve müşteriye sor.
+Fonksiyon günleri döndürdüğünde sadece kısa bir soru ekle ("Hangi gün uygun?"). Listeyi TEKRAR YAZMA — zaten gösterildi.
 
 🔹 ADIM 4 — SAAT SEÇİMİ:
 Gün seçildiğinde 'get_available_hours' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
-Uygun saatleri listele ve müşteriye sor.
+Fonksiyon saatleri döndürdüğünde sadece kısa bir soru ekle ("Hangi saat uygun?"). Listeyi TEKRAR YAZMA — zaten gösterildi.
+Müşteri numara ile seçim yaparsa (örn: "3" → 3. saat) listeyi tekrar göstermeden o saati onayla ve devam et.
 
 🔹 ADIM 5 — HASTA BİLGİLERİ (saat seçildikten SONRA):
 Randevu detayları tamamen belirlendikten sonra hasta bilgilerini topla. Sırasıyla şunları sor (TEKER TEKER, aynı anda birden fazla soru sorma):
 1. Ad Soyad
 2. Telefon Numarası
-Bu iki bilgi yeterli! Ad soyad ve telefon alındıktan sonra HİÇBİR ŞEY SORMADAN doğrudan 'validate_patient' fonksiyonunu çağır.
-TC Kimlik ve Doğum Tarihi GEREKSİZDİR, KESİNLİKLE SORMA! Sistem hasta kaydı bulamazsa veya hata verirse, hastaya durumu nazikçe açıklayıp yetkililere yönlendir.
+3. Doğum Tarihi ("Doğum tarihinizi öğrenebilir miyim? Örnek format: 15.08.1985")
+Bu üç bilgi alındıktan sonra HİÇBİR ŞEY SORMADAN doğrudan 'validate_patient' fonksiyonunu çağır.
+
+TC Kimlik GEREKSİZDİR, KESİNLİKLE SORMA!
 NOT: Cinsiyet bilgisini isimden otomatik belirle, SORMA! (Erkek isimleri: Gökhan, Mehmet, Ali vb. → "Erkek" / Kadın isimleri: Ayşe, Fatma vb. → "Kadın")
+
 
 🔹 ADIM 6 — DOĞRULAMA VE RANDEVU OLUŞTURMA:
 Tüm bilgiler toplandığında 'validate_patient' fonksiyonunu çağır. METİN YAZMA, DİREKT FONKSİYONU ÇAĞIR!
@@ -156,7 +217,29 @@ Müşteri onaylarsa 'create_appointment' fonksiyonunu çağır.
 - Müşteri doktor adı söylerse, listede eşleştirip doğrudan get_available_days çağır.
 - Doğum tarihi örneği olarak **/**/****  kullan, gerçek tarih gösterme.
 - Türkçe yanıt ver ve samimi bir iletişim kur.
-- Müşteri randevu dışında bir şey sorarsa, kibarca randevu konusuna yönlendir.`;
+- Müşteri randevu dışında bir şey sorarsa, kibarca randevu konusuna yönlendir.
+- 🔢 NUMARA SEÇİMİ: Müşteri bir liste sunulduğunda sadece numara yazarsa ("1", "2", "3" vb.), o numaradaki seçeneği seçmiş sayılır. Tekrar sormadan o seçeneğe göre devam et. Örn: saatler listesinde "3" yazarsa = 3. saati seçmiş demektir, o saatin randevu_id'sini kullan.
+- ✅ HASTA DOĞRULAMA: validate_patient her zaman success döner. Success geldiğinde direkt özet göster ve onay al, TEKRAR bilgi SORMA!
+
+🕐 GÖRECELİ ZAMAN KURALLARI (ÇOK ÖNEMLİ):
+Sana sistemin GÜNCEL TARİH VE SAAT bilgisi verilmektedir. Müşteri göreceli zaman ifadesi kullandığında MUTLAKA bu bilgiyi referans alarak gerçek tarihi hesapla:
+- "yarın" → sistem tarihine +1 gün ekle (Örn: bugün 11 Mayıs ise yarın = 12 Mayıs 2026)
+- "öbür gün" / "2 gün sonra" → +2 gün
+- "bu hafta Perşembe" → en yakın gelecekteki o gün (geçmişe gitme!)
+- "gelecek hafta" → +7 gün baz alarak hesapla
+- "2 saat sonra" → sistem saatine +2 saat ekle, o saati hedef saat olarak kullan
+- "öğleden sonra" → 13:00-17:00 arasındaki ilk müsait slotu tercih et
+- "sabah erken" / "sabah" → 08:00-11:00 arasındaki ilk müsait slotu tercih et
+- "akşam" → 17:00 ve sonrası
+- "öğlen" / "öğle vakti" → 12:00-13:00 arası
+
+Hesapladığın tarihi kullanıcıya MUTLAKA teyit et, örneğin:
+"12 Mayıs Salı için uygun saatlere bakıyorum..." gibi söyle.
+
+Eğer hesapladığın tarih/saat için müsait slot bulunamazsa:
+- Saat bulunamazsa: müsait saatleri listele ve "Bu saat müsait değil, şu saatler boş: ..." de
+- Gün bulunamazsa: müsait günleri listele ve "O gün için boş slot yok, şu günler müsait: ..." de
+- Asla yanlış slot kaydetme, her zaman müşteriyle teyit et!`;
 
 
 
@@ -174,7 +257,7 @@ export function getAppointmentToolDeclarations() {
                     ad_soyad: { type: 'string', description: 'Hasta ad ve soyadı' },
                     cinsiyet: { type: 'string', description: 'Erkek veya Kadın' },
                     telefon: { type: 'string', description: 'Telefon numarası' },
-                    dogum_tarihi: { type: 'string', description: 'Kullanımdan kaldırıldı, boş bırakın' }
+                    dogum_tarihi: { type: 'string', description: 'Hastanın doğum tarihi. "15.08.1985", "15 Ağustos 1985", "1985-08-15" gibi formatlarda alınabilir.' }
                 },
                 required: ['ad_soyad', 'telefon']
             }
@@ -367,9 +450,22 @@ async function executeValidatePatient(workspaceId, conversationId, args) {
         }
         
         if (res.success && res.hasta_token) {
+            // Probel'de hasta bulundu — gerçek token kaydediliyor
             await updateAppointmentState(conversationId, { hasta_token: res.hasta_token });
+            return res;
+        } else {
+            // Probel'de bulunamadı → LOCAL_ token ile devam et (local DB randevu)
+            // Bu sayede Gemini create_appointment'ı çağırmaya devam eder
+            const localToken = 'LOCAL_' + Date.now();
+            await updateAppointmentState(conversationId, { hasta_token: localToken });
+            console.log(`⚠️ [AppointmentBot] Probel'de hasta bulunamadı, LOCAL_ token ile devam ediliyor`);
+            return {
+                success: true,
+                hasta_token: localToken,
+                probel_found: false,
+                message: 'Hasta bilgileri alındı ✅ Randevunuz oluşturulacak.'
+            };
         }
-        return res;
     }
 
     // Fallback: no health system — just store info
@@ -597,7 +693,13 @@ async function executeGetAvailableHours(workspaceId, conversationId, args) {
                         // AI'ın gönderdiği tarihe göre eşleştir
                         let selectedDay = state.days.find(d => d.tarih === args.tarih);
                         
-                        // Tarihe göre bulunamazsa, sıra numarasıyla dene
+                        // Tarihe göre bulunamazsa, tarih normalizasyonuyla dene (nokta/tire farklılığı)
+                        if (!selectedDay && args.tarih) {
+                            const normDate = (d) => (d || '').replace(/[.\-\/]/g, '');
+                            selectedDay = state.days.find(d => normDate(d.tarih) === normDate(args.tarih));
+                        }
+
+                        // Hâlâ bulunamazsa, sıra numarasıyla dene
                         if (!selectedDay) {
                             const dayIndex = parseInt(args.tarih) - 1;
                             if (!isNaN(dayIndex) && dayIndex >= 0 && dayIndex < state.days.length) {
@@ -605,17 +707,20 @@ async function executeGetAvailableHours(workspaceId, conversationId, args) {
                             }
                         }
                         
-                        // Hâlâ bulunamazsa ilk günü al
+                        // Yine bulunamazsa — yanlış güne düşme, müsait günleri döndür
                         if (!selectedDay) {
-                            selectedDay = state.days[0];
-                            console.warn(`⚠️ [AppointmentBot] Could not match day, falling back to first day`);
+                            const availableDates = state.days.map(d => d.tarih).join(', ');
+                            console.warn(`⚠️ [AppointmentBot] Requested date "${args.tarih}" not found in available days: ${availableDates}`);
+                            return {
+                                success: false,
+                                requested_date: args.tarih,
+                                message: `Üzgünüm, ${args.tarih} tarihi için müsait randevu slotu bulunmuyor. Aşağıdaki günler müsaittir: ${availableDates}\n\nHangi günü tercih edersiniz?`
+                            };
                         }
                         
-                        if (selectedDay) {
-                            realServisKodu = selectedDay.servis_kodu || realServisKodu;
-                            realTarih = selectedDay.tarih || realTarih;
-                            console.log(`🔄 [AppointmentBot] Overriding AI codes for hours — servis: ${realServisKodu}, tarih: ${realTarih}`);
-                        }
+                        realServisKodu = selectedDay.servis_kodu || realServisKodu;
+                        realTarih = selectedDay.tarih || realTarih;
+                        console.log(`🔄 [AppointmentBot] Overriding AI codes for hours — servis: ${realServisKodu}, tarih: ${realTarih}`);
                     }
                     
                     // Ayrıca doctors'tan da servis_kodu çekilebilir (fallback)
@@ -644,115 +749,86 @@ async function executeGetAvailableHours(workspaceId, conversationId, args) {
  * create_appointment — Randevu oluştur
  */
 async function executeCreateAppointment(workspaceId, args, conversationId, botId) {
-    const hasConnection = await checkHealthConnection(workspaceId);
-    
-    if (hasConnection) {
-        // AI'ın gönderdiği token/id'lere GÜVENMİYORUZ. MUTLAKA state'den çekiyoruz.
-        let hastaToken = null;
-        let randevuId = null;
-        
-        if (conversationId) {
-            try {
-                const conv = await prisma.conversation.findUnique({ where: { id: conversationId } });
-                if (conv?.appointmentState) {
-                    const state = JSON.parse(conv.appointmentState);
-                    
-                    // hasta_token'ı state'den çek
-                    hastaToken = state.hasta_token;
-                    console.log(`🔄 [AppointmentBot] hasta_token from state: ${hastaToken}`);
-                    
-                    // randevu_id'yi seçilen saate göre hours listesinden çek
-                    if (state.hours && state.hours.length > 0) {
-                        let selectedHour = null;
-                        
-                        // AI'ın gönderdiği saat ile eşleştir
-                        if (args.time) {
-                            selectedHour = state.hours.find(h => 
-                                h.saat === args.time || 
-                                h.saat.startsWith(args.time) || 
-                                (args.time.length === 5 && h.saat.startsWith(args.time))
-                            );
-                        }
-                        
-                        // Saat ile bulunamazsa sıra numarasıyla dene
-                        if (!selectedHour && args.randevu_id) {
-                            const hourIndex = parseInt(args.randevu_id) - 1;
-                            if (!isNaN(hourIndex) && hourIndex >= 0 && hourIndex < state.hours.length) {
-                                selectedHour = state.hours[hourIndex];
-                            }
-                        }
-                        
-                        // Hâlâ bulunamazsa ilk saati al
-                        if (!selectedHour) {
-                            selectedHour = state.hours[0];
-                            console.warn(`⚠️ [AppointmentBot] Could not match hour, falling back to first hour`);
-                        }
-                        
-                        if (selectedHour) {
-                            randevuId = selectedHour.randevu_id;
-                            // OVERRIDE args.time so that the final message shows the EXACT booked time!
-                            args.time = selectedHour.saat;
-                            console.log(`🔄 [AppointmentBot] randevu_id from state: ${randevuId} (saat: ${selectedHour.saat})`);
-                        }
+    // ── ÖN ADIM: State'i fonksiyon başında oku (ADIM 1 üzerine yazmadan önce) ──
+    // ADIM 1 appointmentState'i overwrite eder — bu yüzden hasta_token ve
+    // randevu_id'yi şimdi okuyup dışarıdaki değişkenlere alıyoruz.
+    let probelHastaToken = null;
+    let probelRandevuId = null;
+    if (conversationId) {
+        try {
+            const preConv = await prisma.conversation.findUnique({ where: { id: conversationId } });
+            if (preConv?.appointmentState) {
+                const preState = JSON.parse(preConv.appointmentState);
+                probelHastaToken = preState.hasta_token || null;
+                if (preState.hours?.length > 0 && args.time) {
+                    const match = preState.hours.find(h => h.saat === args.time || h.saat.startsWith(args.time));
+                    if (match) {
+                        probelRandevuId = match.randevu_id;
+                        console.log(`✅ [AppointmentBot] Ön-okuma: saat "${args.time}" → randevu_id: ${probelRandevuId}`);
+                    } else {
+                        console.warn(`⚠️ [AppointmentBot] Ön-okuma: saat eşleşmedi! args.time="${args.time}", kayıtlı:`, preState.hours.map(h => h.saat));
                     }
                 }
-            } catch (e) {
-                console.error('⚠️ [AppointmentBot] Error reading state for create_appointment:', e.message);
+                console.log(`🔑 [AppointmentBot] Ön-okuma: hasta_token=${probelHastaToken || 'YOK'}, randevu_id=${probelRandevuId || 'YOK'}`);
             }
+        } catch (preErr) {
+            console.warn('⚠️ [AppointmentBot] Ön-okuma hatası (non-critical):', preErr.message);
         }
-        
-        console.log(`📋 [AppointmentBot] FINAL create_appointment params — hasta_token: ${hastaToken}, randevu_id: ${randevuId}`);
-        
-        const { createAppointment } = await import('./probel_appointment.service.js');
-        const result = await createAppointment(workspaceId, hastaToken, randevuId);
-
-        // Also save to local DB for tracking
-        if (result.success) {
-            try {
-                const admin = await prisma.workspaceMember.findFirst({
-                    where: { workspaceId },
-                    include: { user: { select: { id: true } } }
-                });
-
-                await prisma.appointment.create({
-                    data: {
-                        workspaceId,
-                        title: `${args.branch || 'Randevu'} - ${args.patient_name || 'Hasta'}`,
-                        description: `HBYS üzerinden alınan randevu`,
-                        startTime: new Date(),
-                        endTime: new Date(Date.now() + 30 * 60000),
-                        contactName: args.patient_name || '',
-                        contactPhone: args.patient_phone || '',
-                        branch: args.branch || '',
-                        doctorName: args.doctor_name || '',
-                        createdById: admin?.user?.id || 'system',
-                        createdByBotId: botId || null,
-                        conversationId: conversationId || null,
-                        status: 'SCHEDULED',
-                        color: '#7c3aed',
-                        notes: `HBYS Randevu | Tarih: ${args.date || ''} Saat: ${args.time || ''}`
-                    }
-                });
-            } catch (dbErr) {
-                console.warn('⚠️ [AppointmentBot] Local DB save failed (non-critical):', dbErr.message);
-            }
-
-            result.message = `Randevunuz başarıyla oluşturuldu! ✅\n\n📋 Randevu Detayları:\n👤 Hasta: ${args.patient_name || ''}\n🏥 Branş: ${args.branch || ''}\n👨‍⚕️ Doktor: ${args.doctor_name || ''}\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n\nRandevunuz onaylanmıştır. İyi günler dileriz! 🙏`;
-        }
-
-        return result;
     }
 
-    // Fallback: Local DB appointment
+    // ── ADIM 1: HER ZAMAN Instomer DB'ye kaydet ─────────────────────────────
+    // Probel bağlantısı veya token beklenmez. Randevu önce Instomer'e yazılır.
+    let localAppointmentId = null;
     try {
-        const { patient_name, patient_phone, branch, procedure, doctor_name, date, time } = args;
+        let { patient_name, patient_phone, branch, procedure, doctor_name, date, time } = args;
 
-        const [dayStr, monthStr, yearStr] = (date || '').includes('.') ? date.split('.') : date.split('-');
-        const [hour, minute] = (time || '09:00').split(':').map(Number);
 
-        const startTime = new Date(yearStr, monthStr - 1, dayStr, hour, minute, 0);
-        const endTime = new Date(startTime);
-        endTime.setMinutes(endTime.getMinutes() + 30);
+        // Eksik bilgileri conversation/contact'tan tamamla
+        if ((!patient_name || !patient_phone) && conversationId) {
+            try {
+                const convData = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: {
+                        contact: { select: { name: true, phone: true } }
+                    }
+                });
+                if (!patient_name) patient_name = convData?.contact?.name || 'Müşteri';
+                if (!patient_phone) patient_phone = convData?.contact?.phone || '';
+            } catch (e) {
+                console.warn('⚠️ [AppointmentBot] Contact lookup failed:', e.message);
+            }
+        }
+
+        // Göreceli tarih desteği ("yarın", "bugün", "pazartesi" vb.)
+        if (date) {
+            const dateLower = date.toLowerCase().trim();
+            const trNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
+            const pad = n => String(n).padStart(2, '0');
+            const TR_DAYS = { 'pazartesi': 1, 'sali': 2, 'salı': 2, 'carsamba': 3, 'çarşamba': 3, 'persembe': 4, 'perşembe': 4, 'cuma': 5, 'cumartesi': 6, 'pazar': 0 };
+
+            let resolvedDate = null;
+            if (dateLower === 'yarın' || dateLower === 'yarin') {
+                resolvedDate = new Date(trNow.getTime() + 24 * 60 * 60 * 1000);
+            } else if (dateLower === 'bugün' || dateLower === 'bugun') {
+                resolvedDate = new Date(trNow);
+            } else {
+                for (const [dayName, dayNum] of Object.entries(TR_DAYS)) {
+                    if (dateLower.includes(dayName)) {
+                        const today = trNow.getUTCDay();
+                        let daysUntil = dayNum - today;
+                        if (daysUntil <= 0) daysUntil += 7;
+                        resolvedDate = new Date(trNow.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+                        break;
+                    }
+                }
+            }
+            if (resolvedDate) {
+                date = `${pad(resolvedDate.getUTCDate())}.${pad(resolvedDate.getUTCMonth() + 1)}.${resolvedDate.getUTCFullYear()}`;
+                console.log(`📅 [AppointmentBot] Göreceli tarih çözümlendi: "${args.date}" → "${date}"`);
+            }
+        }
+
+        const { startTime, endTime } = parseAppointmentDateTime(date, time);
 
         const admin = await prisma.workspaceMember.findFirst({
             where: { workspaceId },
@@ -762,61 +838,175 @@ async function executeCreateAppointment(workspaceId, args, conversationId, botId
         const appointment = await prisma.appointment.create({
             data: {
                 workspaceId,
-                title: `${branch || 'Randevu'} - ${patient_name}`,
-                description: procedure || `${branch} randevusu`,
+                title:         `${branch || 'Randevu'} — ${patient_name || 'Müşteri'}`,
+                description:   procedure || `${branch || 'Randevu'} randevusu`,
                 startTime,
                 endTime,
-                contactName: patient_name,
-                contactPhone: patient_phone,
-                branch: branch || '',
-                procedure: procedure || null,
-                doctorName: doctor_name,
-                createdById: admin?.user?.id || 'system',
-                createdByBotId: botId || null,
+                contactName:   patient_name  || '',
+                contactPhone:  patient_phone || '',
+                branch:        branch        || '',
+                procedure:     procedure     || null,
+                doctorName:    doctor_name   || '',
+                createdById:   admin?.user?.id || 'system',
+                createdByBotId: botId         || null,
                 conversationId: conversationId || null,
-                status: 'SCHEDULED',
-                color: '#10b981'
+                status:        'SCHEDULED',
+                color:         '#10b981',
+                notes:         `Tarih: ${date || '?'} | Saat: ${time || '?'}`
             }
         });
+
+        localAppointmentId = appointment.id;
+        console.log(`✅ [AppointmentBot] Instomer DB randevu kaydedildi: ${appointment.id} | ${patient_name} | ${date} ${time}`);
 
         if (conversationId) {
             await prisma.conversation.update({
                 where: { id: conversationId },
                 data: { appointmentState: JSON.stringify({ step: 'COMPLETED', appointmentId: appointment.id }) }
-            });
+            }).catch(() => {});
         }
 
-        return {
-            success: true,
-            appointmentId: appointment.id,
-            message: `Randevunuz başarıyla oluşturuldu! ✅\n\n📋 Randevu Detayları:\n👤 Hasta: ${patient_name}\n📱 Telefon: ${patient_phone}\n🏥 Branş: ${branch}\n👨‍⚕️ Doktor: ${doctor_name}\n📅 Tarih: ${date}\n🕐 Saat: ${time}\n\nRandevunuz onaylanmıştır. İyi günler dileriz! 🙏`
-        };
-    } catch (error) {
-        console.error('❌ [AppointmentBot] create_appointment error:', error.message);
-        return { success: false, error: 'Randevu oluşturulurken bir hata oluştu.' };
+        // Bildirim gönder
+        try {
+            const convForNotif = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { assignedToId: true, teamIds: true } });
+            const { createNotification, createTeamNotifications } = await import('../controllers/notification.controller.js');
+            const notifTitle = `📅 Yeni Randevu — ${patient_name}`;
+            const notifBody  = `${date || ''} ${time || ''} | ${branch || ''}`;
+            if (convForNotif?.assignedToId) {
+                await createNotification(workspaceId, convForNotif.assignedToId, 'APPOINTMENT_CREATED', notifTitle, notifBody, { conversationId });
+            } else if (convForNotif?.teamIds) {
+                const teamIds = JSON.parse(convForNotif.teamIds || '[]');
+                if (teamIds.length > 0) await createTeamNotifications(workspaceId, teamIds[0], 'APPOINTMENT_CREATED', notifTitle, notifBody, { conversationId });
+            }
+        } catch (notifErr) {
+            console.warn('⚠️ [AppointmentBot] Bildirim gönderilemedi (non-critical):', notifErr.message);
+        }
+
+
+    } catch (localErr) {
+        console.error('❌ [AppointmentBot] Instomer DB kayıt hatası:', localErr.message);
     }
+
+    // ── ADIM 2: Probel bağlıysa VE gerekli tokenlar varsa → Probel'e de gönder ──
+    // probelHastaToken ve probelRandevuId fonksiyon başında (ADIM 1 öncesi) okundu.
+    try {
+        const hasConnection = await checkHealthConnection(workspaceId);
+        if (hasConnection) {
+            console.log(`🔑 [AppointmentBot] ADIM 2 — hasta_token: ${probelHastaToken || 'YOK'}, randevu_id: ${probelRandevuId || 'YOK'}`);
+
+            // LOCAL_ token = hasta Probel'de kayıtlı değil → Probel'e gönderme
+            const isRealProbelToken = probelHastaToken && !String(probelHastaToken).startsWith('LOCAL_');
+
+            if (isRealProbelToken && probelRandevuId) {
+                const { createAppointment } = await import('./probel_appointment.service.js');
+                const probelResult = await createAppointment(workspaceId, probelHastaToken, probelRandevuId);
+                if (probelResult.success) {
+                    console.log('✅ [AppointmentBot] Probel HBYS randevusu da oluşturuldu');
+                } else {
+                    console.warn('⚠️ [AppointmentBot] Probel HBYS başarısız (non-critical):', probelResult.message);
+                }
+            } else if (!isRealProbelToken) {
+                console.warn(`⚠️ [AppointmentBot] Probel atlandı — hasta sistemde kayıtlı değil (LOCAL token). Sadece Instomer DB'ye kaydedildi.`);
+            } else {
+                console.warn(`⚠️ [AppointmentBot] Probel atlandı — randevu_id: ${probelRandevuId || 'YOK'}`);
+            }
+        }
+    } catch (probelErr) {
+        console.warn('⚠️ [AppointmentBot] Probel adımı atlandı (non-critical):', probelErr.message);
+    }
+
+
+    // Her durumda success döndür — local DB kaydı yapıldı (veya hata loglandı)
+    return {
+        success: true,
+        appointmentId: localAppointmentId,
+        message: `Randevunuz başarıyla oluşturuldu! ✅\n\n📋 Randevu Detayları:\n👤 Hasta: ${args.patient_name || ''}\n🏥 Branş: ${args.branch || ''}\n👨‍⚕️ Doktor: ${args.doctor_name || ''}\n📅 Tarih: ${args.date || ''}\n🕐 Saat: ${args.time || ''}\n\nRandevunuz onaylanmıştır. İyi günler dileriz! 🙏`
+    };
 }
 
-/**
- * handoff_to_human — Gerçek insana aktar
- */
+
+
 async function executeHandoffToHuman(workspaceId, conversationId, reason) {
     try {
+        let targetAgentId = null;
+        let contactName = 'Müşteri';
+
         if (conversationId) {
+            // 1. Konuşmaya zaten atanmış agent var mı? (round-robin'den gelmişse bunu önce kullan)
+            const conv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: {
+                    assignedToId: true,
+                    teamIds: true,
+                    contact: { select: { name: true } }
+                }
+            });
+            targetAgentId = conv?.assignedToId || null;
+            contactName   = conv?.contact?.name || 'Müşteri';
+
+            // 2. Atanmış agent yoksa çevrimiiçi agent ara
+            if (!targetAgentId) {
+                const onlineMember = await prisma.workspaceMember.findFirst({
+                    where: { workspaceId, user: { isOnline: true } },
+                    include: { user: { select: { id: true } } }
+                });
+                targetAgentId = onlineMember?.user?.id || null;
+            }
+
+            // 3. Bot'u KAPAT ve handoff'u tamamla
             await prisma.conversation.update({
                 where: { id: conversationId },
                 data: {
                     appointmentState: null,
-                    handoffPending: true
+                    handoffPending: false,       // ai.controller tekrar işlemesin
+                    botEnabled: false,           // Bot artık cevap vermesin
+                    ...(targetAgentId && { assignedToId: targetAgentId })
                 }
             });
+
+            // 4. Agent'a veya takıma bildirim gönder
+            try {
+                const { createNotification, createTeamNotifications } = await import('../controllers/notification.controller.js');
+                const notifTitle = `${contactName} — Devralma Gerekiyor`;
+                const notifBody  = `Randevu botu yardım edemedi: ${reason}`;
+
+                if (targetAgentId) {
+                    await createNotification(workspaceId, targetAgentId, 'HANDOFF_NEEDED', notifTitle, notifBody, { conversationId });
+                } else if (conv?.teamIds) {
+                    const teamIds = JSON.parse(conv.teamIds || '[]');
+                    if (teamIds.length > 0) {
+                        await createTeamNotifications(workspaceId, teamIds[0], 'HANDOFF_NEEDED', notifTitle, notifBody, { conversationId });
+                    }
+                }
+            } catch (notifErr) {
+                console.warn('⚠️ [AppointmentBot] Handoff bildirimi gönderilemedi:', notifErr.message);
+            }
+
+            // 5. Socket: Inbox'ta konuşmayı güncelle
+            try {
+                const { emitToWorkspace } = await import('../socket.js');
+                emitToWorkspace(workspaceId, 'bot_handoff', {
+                    conversationId,
+                    workspaceId,
+                    assignedToId: targetAgentId,
+                    reason,
+                    botName: 'Randevu Asistanı'
+                });
+                emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });
+            } catch (socketErr) {
+                console.warn('⚠️ [AppointmentBot] Socket emit hatası:', socketErr.message);
+            }
         }
 
-        console.log(`🔄 [AppointmentBot] Handoff requested: ${reason}`);
+        console.log(`🔄 [AppointmentBot] Handoff tamamlandı: ${reason} | targetAgent: ${targetAgentId || 'yok'}`);
+
+        const agentMsg = targetAgentId
+            ? 'Müşteri temsilcimiz en kısa sürede size yardımcı olacaktır.'
+            : 'Şu anda müsait temsilcimiz bulunmuyor, en kısa sürede dönüş yapacağız.';
 
         return {
             success: true,
-            message: `Sizi müşteri temsilcimize aktarıyorum. Nedeni: ${reason}. Kısa süre içinde size yardımcı olunacaktır. 🙏`
+            message: `${agentMsg} 🙏`
         };
     } catch (error) {
         console.error('❌ [AppointmentBot] handoff error:', error.message);

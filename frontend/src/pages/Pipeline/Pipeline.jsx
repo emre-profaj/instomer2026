@@ -1,13 +1,15 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { conversationAPI, funnelAPI } from '../../services/api';
+import { conversationAPI, funnelAPI, workspaceAPI } from '../../services/api';
 import {
     Kanban, Plus, X, Search, RefreshCw,
     MessageSquare, Phone, Mail, Instagram, Facebook,
     Globe, User, Trash2, Edit2, Check,
-    Clock, ChevronRight, ChevronDown, Loader, Tag
+    Clock, ChevronRight, ChevronDown, Tag
 } from 'lucide-react';
+import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import './Pipeline.css';
 
 /* ─── Channel Icons ─── */
@@ -33,7 +35,7 @@ const formatDate = (d) => {
 };
 
 /* ─── Conversation Card ─── */
-const ConvCard = ({ conv, onDragStart }) => {
+const ConvCard = ({ conv, onDragStart, onSelect }) => {
     const { t } = useTranslation();
     const channel = CHANNEL_ICONS[conv.channel] || CHANNEL_ICONS.MANUAL;
     const ChannelIcon = channel.icon;
@@ -47,6 +49,7 @@ const ConvCard = ({ conv, onDragStart }) => {
             className="pl-card"
             draggable
             onDragStart={e => onDragStart(e, conv)}
+            onClick={() => onSelect(conv.id)}
             id={`plc-${conv.id}`}
         >
             <div className="pl-card-top">
@@ -91,7 +94,7 @@ const ConvCard = ({ conv, onDragStart }) => {
 };
 
 /* ─── Stage Column ─── */
-const StageColumn = ({ stage, convs, onDragStart, onDragOver, onDrop, isDragOver }) => (
+const StageColumn = ({ stage, convs, onDragStart, onDragOver, onDrop, isDragOver, onSelect }) => (
     <div
         className={`pl-col ${isDragOver ? 'pl-col--over' : ''}`}
         onDragOver={e => onDragOver(e, stage.id)}
@@ -110,7 +113,7 @@ const StageColumn = ({ stage, convs, onDragStart, onDragOver, onDrop, isDragOver
         <div className="pl-col-body">
             {convs.length === 0
                 ? <div className="pl-col-empty"><MessageSquare size={22} /><p>Sohbet yok</p></div>
-                : convs.map(c => <ConvCard key={c.id} conv={c} onDragStart={onDragStart} />)
+                : convs.map(c => <ConvCard key={c.id} conv={c} onDragStart={onDragStart} onSelect={onSelect} />)
             }
             {isDragOver && <div className="pl-drop-hint"><ChevronRight size={16} /> Buraya bırak</div>}
         </div>
@@ -120,7 +123,8 @@ const StageColumn = ({ stage, convs, onDragStart, onDragOver, onDrop, isDragOver
 /* ─── MAIN Pipeline Component ─── */
 const Pipeline = () => {
     const { t } = useTranslation();
-    const { currentWorkspace } = useAuth();
+    const { currentWorkspace, user: currentUser } = useAuth();
+    const navigate = useNavigate();
     const [funnels, setFunnels] = useState([]);
     const [selectedFunnelId, setSelectedFunnelId] = useState(null);
     const [conversations, setConversations] = useState([]);
@@ -129,6 +133,39 @@ const Pipeline = () => {
     const [dragOverCol, setDragOverCol] = useState(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dragConv = useRef(null);
+
+    // ── Sidebar ──────────────────────────────────────────
+    const [selectedConvId, setSelectedConvId] = useState(null);
+    const [members, setMembers] = useState([]);
+    // ───────────────────────────────────────────────────
+
+    // ── Filters ──────────────────────────────────────────
+    const [filterChannel, setFilterChannel] = useState(null);
+    const [filterStatus,  setFilterStatus]  = useState(null);
+    const [filterAssign,  setFilterAssign]  = useState(null);
+    const [chOpen,  setChOpen]  = useState(false);
+    const [stOpen,  setStOpen]  = useState(false);
+    const [asOpen,  setAsOpen]  = useState(false);
+    const chRef = useRef(null);
+    const stRef = useRef(null);
+    const asRef = useRef(null);
+    // ─────────────────────────────────────────────────────
+    const boardRef = useRef(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+
+    const updateScrollState = useCallback(() => {
+        const el = boardRef.current;
+        if (!el) return;
+        setCanScrollLeft(el.scrollLeft > 4);
+        setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+    }, []);
+
+    const scrollBoard = (dir) => {
+        const el = boardRef.current;
+        if (!el) return;
+        el.scrollBy({ left: dir * 260, behavior: 'smooth' });
+    };
 
     const selectedFunnel = funnels.find(f => f.id === selectedFunnelId);
     const stages = selectedFunnel?.stages || [];
@@ -162,6 +199,37 @@ const Pipeline = () => {
     }, [currentWorkspace]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Load members for assignment
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        workspaceAPI.getMembers(currentWorkspace.id)
+            .then(r => setMembers(r.data?.members || []))
+            .catch(() => {});
+    }, [currentWorkspace]);
+
+    // Close filter dropdowns on outside click
+    useEffect(() => {
+        const handler = (e) => {
+            if (chRef.current && !chRef.current.contains(e.target)) setChOpen(false);
+            if (stRef.current && !stRef.current.contains(e.target)) setStOpen(false);
+            if (asRef.current && !asRef.current.contains(e.target)) setAsOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    // Check scroll state after data/stages change
+    useEffect(() => {
+        const el = boardRef.current;
+        if (!el) return;
+        // Small delay to let DOM settle
+        const t = setTimeout(updateScrollState, 120);
+        const ro = new ResizeObserver(updateScrollState);
+        ro.observe(el);
+        el.addEventListener('scroll', updateScrollState);
+        return () => { clearTimeout(t); ro.disconnect(); el.removeEventListener('scroll', updateScrollState); };
+    }, [stages.length, updateScrollState]);
 
     /* Drag & Drop */
     const handleDragStart = (e, conv) => {
@@ -214,10 +282,19 @@ const Pipeline = () => {
 
     /* Grouping by stage */
     const filtered = conversations.filter(c => {
-        if (!search) return true;
-        const q = search.toLowerCase();
-        return (c.contact?.name || '').toLowerCase().includes(q) ||
-            (c.aiTopic || '').toLowerCase().includes(q);
+        // Search
+        if (search) {
+            const q = search.toLowerCase();
+            if (!((c.contact?.name || '').toLowerCase().includes(q) || (c.aiTopic || '').toLowerCase().includes(q))) return false;
+        }
+        // Channel
+        if (filterChannel && c.channel !== filterChannel) return false;
+        // Status
+        if (filterStatus && c.status !== filterStatus) return false;
+        // Assignment
+        if (filterAssign === 'mine' && c.assignedToId !== currentUser?.id) return false;
+        if (filterAssign === 'unassigned' && c.assignedToId) return false;
+        return true;
     });
 
     // For selected funnel: group conversations by stageId
@@ -278,6 +355,7 @@ const Pipeline = () => {
             {/* Funnel Selector Bar */}
             {funnels.length > 0 && (
                 <div className="pl-funnel-bar">
+                    {/* Funnel selector */}
                     <div className="pl-funnel-selector-wrap">
                         <button
                             className="pl-funnel-selector"
@@ -309,6 +387,117 @@ const Pipeline = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* ── Filter selects (Inbox style) ── */}
+                    <div className="pl-filters">
+
+                        {/* Channel */}
+                        <div className="pl-filter-select-wrap" ref={chRef}>
+                            <button
+                                className={`pl-filter-select${filterChannel ? ' active' : ''}`}
+                                onClick={() => { setChOpen(p => !p); setStOpen(false); setAsOpen(false); }}
+                            >
+                                {filterChannel === 'WHATSAPP'  && '💬 WhatsApp'}
+                                {filterChannel === 'FACEBOOK'  && '📘 Facebook'}
+                                {filterChannel === 'INSTAGRAM' && '📸 Instagram'}
+                                {filterChannel === 'EMAIL'     && '✉️ E-posta'}
+                                {filterChannel === 'WIDGET'    && '🌐 Web'}
+                                {filterChannel === 'PHONE'     && '📞 Telefon'}
+                                {!filterChannel               && 'Tüm Kanallar'}
+                                <ChevronDown size={13} style={{ marginLeft: 'auto', transform: chOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                            </button>
+                            {chOpen && (
+                                <div className="pl-filter-dropdown">
+                                    {[null,'WHATSAPP','FACEBOOK','INSTAGRAM','EMAIL','WIDGET','PHONE'].map(ch => (
+                                        <button
+                                            key={ch || 'all'}
+                                            className={`pl-filter-item${filterChannel === ch ? ' selected' : ''}`}
+                                            onClick={() => { setFilterChannel(ch); setChOpen(false); }}
+                                        >
+                                            {ch === 'WHATSAPP'  && '💬 WhatsApp'}
+                                            {ch === 'FACEBOOK'  && '📘 Facebook'}
+                                            {ch === 'INSTAGRAM' && '📸 Instagram'}
+                                            {ch === 'EMAIL'     && '✉️ E-posta'}
+                                            {ch === 'WIDGET'    && '🌐 Web'}
+                                            {ch === 'PHONE'     && '📞 Telefon'}
+                                            {ch === null        && 'Tüm Kanallar'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Status */}
+                        <div className="pl-filter-select-wrap" ref={stRef}>
+                            <button
+                                className={`pl-filter-select${filterStatus ? ' active' : ''}`}
+                                onClick={() => { setStOpen(p => !p); setChOpen(false); setAsOpen(false); }}
+                            >
+                                {filterStatus === 'OPEN'     && '🟢 Açık'}
+                                {filterStatus === 'PENDING'  && '🟡 Beklemede'}
+                                {filterStatus === 'RESOLVED' && '✅ Çözüldü'}
+                                {!filterStatus              && 'Tüm Durumlar'}
+                                <ChevronDown size={13} style={{ marginLeft: 'auto', transform: stOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                            </button>
+                            {stOpen && (
+                                <div className="pl-filter-dropdown">
+                                    {[null,'OPEN','PENDING','RESOLVED'].map(st => (
+                                        <button
+                                            key={st || 'all'}
+                                            className={`pl-filter-item${filterStatus === st ? ' selected' : ''}`}
+                                            onClick={() => { setFilterStatus(st); setStOpen(false); }}
+                                        >
+                                            {st === null       && 'Tüm Durumlar'}
+                                            {st === 'OPEN'     && '🟢 Açık'}
+                                            {st === 'PENDING'  && '🟡 Beklemede'}
+                                            {st === 'RESOLVED' && '✅ Çözüldü'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Assignment */}
+                        <div className="pl-filter-select-wrap" ref={asRef}>
+                            <button
+                                className={`pl-filter-select${filterAssign ? ' active' : ''}`}
+                                onClick={() => { setAsOpen(p => !p); setChOpen(false); setStOpen(false); }}
+                            >
+                                {filterAssign === 'mine'       && '👤 Bana Atanan'}
+                                {filterAssign === 'unassigned' && '⬜ Atanmamış'}
+                                {!filterAssign                && 'Tüm Temsilciler'}
+                                <ChevronDown size={13} style={{ marginLeft: 'auto', transform: asOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                            </button>
+                            {asOpen && (
+                                <div className="pl-filter-dropdown">
+                                    {[null,'mine','unassigned'].map(asgn => (
+                                        <button
+                                            key={asgn || 'all'}
+                                            className={`pl-filter-item${filterAssign === asgn ? ' selected' : ''}`}
+                                            onClick={() => { setFilterAssign(asgn); setAsOpen(false); }}
+                                        >
+                                            {asgn === null         && 'Tüm Temsilciler'}
+                                            {asgn === 'mine'       && '👤 Bana Atanan'}
+                                            {asgn === 'unassigned' && '⬜ Atanmamış'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Clear */}
+                        {(filterChannel || filterStatus || filterAssign) && (
+                            <button
+                                className="pl-filter-clear-btn"
+                                onClick={() => { setFilterChannel(null); setFilterStatus(null); setFilterAssign(null); }}
+                                title="Filtreleri temizle"
+                            >
+                                <X size={13} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Info */}
                     {selectedFunnel && (
                         <div className="pl-funnel-info">
                             <span className="pl-funnel-info-label">{stages.length} durum</span>
@@ -341,18 +530,56 @@ const Pipeline = () => {
                     <p>Ayarlar → Akış Yönetimi sayfasından<br />bu akışa durumlar ekleyin.</p>
                 </div>
             ) : (
-                <div className="pl-board">
-                    {stages.map(s => (
-                        <StageColumn
-                            key={s.id}
-                            stage={s}
-                            convs={grouped[s.id] || []}
-                            onDragStart={handleDragStart}
-                            onDragOver={handleDragOver}
-                            onDrop={handleDrop}
-                            isDragOver={dragOverCol === s.id}
+                <div className="pl-board-wrap">
+                    {/* Left fade + arrow */}
+                    {canScrollLeft && (
+                        <button className="pl-scroll-btn pl-scroll-btn--left" onClick={() => scrollBoard(-1)} title="Sola kaydır">
+                            <ChevronLeft size={20} />
+                        </button>
+                    )}
+                    <div
+                        className={`pl-board${canScrollLeft ? ' pl-board--fade-left' : ''}${canScrollRight ? ' pl-board--fade-right' : ''}`}
+                        ref={boardRef}
+                        onScroll={updateScrollState}
+                    >
+                        {stages.map(s => (
+                            <StageColumn
+                                key={s.id}
+                                stage={s}
+                                convs={grouped[s.id] || []}
+                                onDragStart={handleDragStart}
+                                onDragOver={handleDragOver}
+                                onDrop={handleDrop}
+                                isDragOver={dragOverCol === s.id}
+                                onSelect={setSelectedConvId}
+                            />
+                        ))}
+                    </div>
+                    {/* Right fade + arrow */}
+                    {canScrollRight && (
+                        <button className="pl-scroll-btn pl-scroll-btn--right" onClick={() => scrollBoard(1)} title="Sağa kaydır">
+                            <ChevronRight size={20} />
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Contact Sidebar */}
+            {selectedConvId && (
+                <div
+                    className="pl-sidebar-backdrop"
+                    onClick={e => { if (e.target === e.currentTarget) setSelectedConvId(null); }}
+                >
+                    <div className="pl-sidebar-panel">
+                        <ContactSidebar
+                            conversationId={selectedConvId}
+                            isOpen={true}
+                            members={members}
+                            isOwner={['OWNER','SUPER_ADMIN'].includes(currentUser?.role)}
+                            onAssign={() => {}}
+                            onClose={() => setSelectedConvId(null)}
                         />
-                    ))}
+                    </div>
                 </div>
             )}
         </div>

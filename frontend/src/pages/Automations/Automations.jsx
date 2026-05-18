@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI } from '../../services/api';
+import { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI, routerAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, ArrowRight, Search, X,
@@ -94,6 +94,20 @@ const Automations = () => {
     const [newKeyword, setNewKeyword] = useState('');
     const [expandedRules, setExpandedRules] = useState({ HOT_KEYWORD: true, HOT_OPPORT_EMAIL: true });
 
+    // --- Router Rules (Yönlendiriciler) state ---
+    const [routerRules, setRouterRules] = useState([]);
+    const [routerKeywordInput, setRouterKeywordInput] = useState('');
+    const [showRouterModal, setShowRouterModal] = useState(false);
+    const [editingRouterRule, setEditingRouterRule] = useState(null);
+    const [routerForm, setRouterForm] = useState({
+        name: '',
+        isActive: true,
+        priority: 0,
+        conditions: { channels: [], keywords: [], matchMode: 'ANY', useAI: false, aiDescription: '' },
+        targets: { funnelId: '', funnelName: '', teamId: '' }
+    });
+    const [routerSaving, setRouterSaving] = useState(false);
+
     // Close flow dropdown on outside click
     useEffect(() => {
         const handler = (e) => {
@@ -132,6 +146,10 @@ const Automations = () => {
             setFunnels(funnelsRes.data.funnels || []);
             setRetellAgents(agentsRes.data.agents || []);
             setFlows(flowsRes.data.flows || []);
+
+            // Router rules
+            const routerRes = await routerAPI.getAll(currentWorkspace.id).catch(() => ({ data: { rules: [] } }));
+            setRouterRules(routerRes.data.rules || []);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -474,6 +492,97 @@ const Automations = () => {
         saveRule('HOT_OPPORT_EMAIL', { isActive: rule.isActive, config: updatedConfig });
     };
 
+    // ============================================
+    // Router Rule handlers
+    // ============================================
+    const openCreateRouter = () => {
+        setEditingRouterRule(null);
+        setRouterForm({
+            name: '',
+            isActive: true,
+            priority: routerRules.length,
+            conditions: { channels: [], keywords: [], matchMode: 'ANY', useAI: false, aiDescription: '' },
+            targets: { funnelId: '', funnelName: '', teamId: '' }
+        });
+        setShowRouterModal(true);
+    };
+
+    const openEditRouter = (rule) => {
+        setEditingRouterRule(rule);
+        setRouterForm({
+            name: rule.name,
+            isActive: rule.isActive,
+            priority: rule.priority,
+            conditions: JSON.parse(rule.conditions || '{}'),
+            targets: JSON.parse(rule.targets || '{}')
+        });
+        setShowRouterModal(true);
+    };
+
+    const handleSaveRouterRule = async () => {
+        if (!routerForm.name.trim()) { alert('Kural adı gereklidir'); return; }
+        // Input'ta kalan kelimeyi kaydetmeden önce dahil et
+        let finalForm = routerForm;
+        if (routerKeywordInput.trim()) {
+            const parts = routerKeywordInput.split(/[,;]+/).map(k => k.trim()).filter(k => k.length > 0);
+            const existing = routerForm.conditions.keywords || [];
+            const merged = [...existing, ...parts.filter(p => !existing.includes(p))];
+            finalForm = { ...routerForm, conditions: { ...routerForm.conditions, keywords: merged } };
+        }
+        setRouterKeywordInput('');
+        setRouterSaving(true);
+        try {
+            if (editingRouterRule) {
+                const res = await routerAPI.update(currentWorkspace.id, editingRouterRule.id, finalForm);
+                setRouterRules(prev => prev.map(r => r.id === editingRouterRule.id ? res.data.rule : r));
+            } else {
+                const res = await routerAPI.create(currentWorkspace.id, finalForm);
+                setRouterRules(prev => [...prev, res.data.rule]);
+            }
+            setShowRouterModal(false);
+        } catch (err) {
+            alert(err.response?.data?.error || 'Kural kaydedilemedi');
+        } finally {
+            setRouterSaving(false);
+        }
+    };
+
+    const handleDeleteRouterRule = async (ruleId) => {
+        if (!confirm('Bu yönlendirici kuralını silmek istediğinizden emin misiniz?')) return;
+        try {
+            await routerAPI.delete(currentWorkspace.id, ruleId);
+            setRouterRules(prev => prev.filter(r => r.id !== ruleId));
+        } catch (err) { alert('Silinemedi'); }
+    };
+
+    const handleToggleRouterRule = async (rule) => {
+        try {
+            const res = await routerAPI.toggle(currentWorkspace.id, rule.id);
+            setRouterRules(prev => prev.map(r => r.id === rule.id ? res.data.rule : r));
+        } catch (err) { console.error(err); }
+    };
+
+    const toggleRouterChannel = (ch) => {
+        const channels = routerForm.conditions.channels || [];
+        const updated = channels.includes(ch) ? channels.filter(c => c !== ch) : [...channels, ch];
+        setRouterForm(f => ({ ...f, conditions: { ...f.conditions, channels: updated } }));
+    };
+
+    const addRouterKeyword = (raw) => {
+        // Virgül veya noktalı virgülle ayrılmış birden fazla kelimeyi destekle
+        const parts = raw.split(/[,;]+/).map(k => k.trim()).filter(k => k.length > 0);
+        if (!parts.length) return;
+        setRouterForm(f => {
+            const existing = f.conditions.keywords || [];
+            const merged = [...existing, ...parts.filter(p => !existing.includes(p))];
+            return { ...f, conditions: { ...f.conditions, keywords: merged } };
+        });
+    };
+
+    const removeRouterKeyword = (kw) => {
+        setRouterForm(f => ({ ...f, conditions: { ...f.conditions, keywords: f.conditions.keywords.filter(k => k !== kw) } }));
+    };
+
     if (loading) {
         return (
             <div className="automations-page">
@@ -511,6 +620,12 @@ const Automations = () => {
                             Otomasyon Ekle
                         </button>
                     )}
+                    {activeTab === 'routers' && (
+                        <button className="btn btn-primary" onClick={openCreateRouter}>
+                            <Plus size={16} />
+                            Yönlendirici Ekle
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -536,6 +651,13 @@ const Automations = () => {
                 >
                     <GitBranch size={18} />
                     Dinamik Otomasyonlar
+                </button>
+                <button
+                    className={`tab-btn ${activeTab === 'routers' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('routers')}
+                >
+                    <ArrowRight size={18} />
+                    Yönlendiriciler ({routerRules.length})
                 </button>
             </div>
 
@@ -814,6 +936,231 @@ const Automations = () => {
                 {/* Dinamik Otomasyonlar Tab */}
                 {activeTab === 'flows' && (
                     <FlowBuilder workspaceId={currentWorkspace?.id} />
+                )}
+
+                {/* ─── Yönlendiriciler Tab ─── */}
+                {activeTab === 'routers' && (
+                    <div className="routers-section">
+                        <div className="rules-intro" style={{ marginBottom: '20px' }}>
+                            <ArrowRight size={20} />
+                            <div>
+                                <h3>Yönlendirici Kuralları</h3>
+                                <p>Gelen mesajlar buradaki kurallara göre öncelik sırasıyla değerlendirilir. Eşleşen ilk kural sohbeti ilgili Akışa yönlendirir.</p>
+                            </div>
+                        </div>
+
+                        {routerRules.length === 0 ? (
+                            <div className="empty-state">
+                                <div className="icon">🔀</div>
+                                <h3>Henüz yönlendirici yok</h3>
+                                <p>Gelen mesajları otomatik akışlara yönlendirmek için kural oluşturun.</p>
+                                <button className="btn btn-primary" onClick={openCreateRouter}>
+                                    <Plus size={18} /> Yönlendirici Ekle
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="router-rules-list">
+                                {routerRules.map((rule, idx) => {
+                                    const cond = JSON.parse(rule.conditions || '{}');
+                                    const tgt  = JSON.parse(rule.targets  || '{}');
+                                    return (
+                                        <div key={rule.id} className={`rule-card ${rule.isActive ? 'rule-active' : ''}`} style={{ marginBottom: '12px' }}>
+                                            <div className="rule-header">
+                                                <div className="rule-icon" style={{ fontSize: '18px', minWidth: '32px' }}>
+                                                    {idx + 1}
+                                                </div>
+                                                <div className="rule-meta" style={{ flex: 1 }}>
+                                                    <h4 style={{ margin: 0 }}>{rule.name}</h4>
+                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                                        {(cond.channels || []).map(ch => (
+                                                            <span key={ch} className="keyword-chip" style={{ background: '#dbeafe', color: '#1d4ed8' }}>{ch}</span>
+                                                        ))}
+                                                        {(cond.keywords || []).slice(0, 4).map(kw => (
+                                                            <span key={kw} className="keyword-chip">{kw}</span>
+                                                        ))}
+                                                        {(cond.keywords || []).length > 4 && (
+                                                            <span className="keyword-chip">+{cond.keywords.length - 4}</span>
+                                                        )}
+                                                        {cond.useAI && (
+                                                            <span className="keyword-chip" style={{ background: '#ede9fe', color: '#7c3aed' }}>🤖 AI</span>
+                                                        )}
+                                                    </div>
+                                                    {tgt.funnelName && (
+                                                        <div style={{ marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>
+                                                            → <strong>{tgt.funnelName}</strong> akışına yönlendir
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div
+                                                        className={`rule-toggle ${rule.isActive ? 'rule-toggle-on' : ''}`}
+                                                        onClick={() => handleToggleRouterRule(rule)}
+                                                    >
+                                                        <div className="rule-toggle-knob" />
+                                                    </div>
+                                                    <button className="btn btn-secondary btn-sm" onClick={() => openEditRouter(rule)}>
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteRouterRule(rule.id)}>
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ─── Yönlendirici Modal ─── */}
+                {showRouterModal && (
+                    <div className="modal-overlay" onClick={() => setShowRouterModal(false)}>
+                        <div className="modal" style={{ maxWidth: '560px', width: '95%' }} onClick={e => e.stopPropagation()}>
+                            <div className="modal-header">
+                                <h2>{editingRouterRule ? 'Yönlendiriciyi Düzenle' : 'Yeni Yönlendirici'}</h2>
+                                <button className="modal-close" onClick={() => setShowRouterModal(false)}>×</button>
+                            </div>
+                            <div className="modal-body">
+
+                                {/* Kural Adı */}
+                                <div className="form-group">
+                                    <label>Kural Adı *</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        placeholder="Örn: Randevu Yönlendirici"
+                                        value={routerForm.name}
+                                        onChange={e => setRouterForm(f => ({ ...f, name: e.target.value }))}
+                                    />
+                                </div>
+
+
+                                <hr style={{ margin: '16px 0', borderColor: '#e5e7eb' }} />
+                                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>📋 Koşullar — Ne Zaman Tetiklensin?</h4>
+
+                                {/* Eşleşme Modu */}
+                                <div className="form-group">
+                                    <label>Anahtar Kelime Eşleşme Modu</label>
+                                    <select
+                                        className="form-control"
+                                        value={routerForm.conditions.matchMode || 'ANY'}
+                                        onChange={e => setRouterForm(f => ({ ...f, conditions: { ...f.conditions, matchMode: e.target.value } }))}
+                                    >
+                                        <option value="ANY">Herhangi biri içeriyorsa (VEYA)</option>
+                                        <option value="ALL">Hepsini içeriyorsa (VE)</option>
+                                    </select>
+                                </div>
+
+                                {/* Anahtar Kelimeler */}
+                                <div className="form-group">
+                                    <label>Anahtar Kelimeler</label>
+                                    <div className="keyword-chips" style={{ marginBottom: '8px' }}>
+                                        {(routerForm.conditions.keywords || []).map(kw => (
+                                            <span key={kw} className="keyword-chip">
+                                                {kw}
+                                                <button className="chip-remove" onClick={() => removeRouterKeyword(kw)}>×</button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <div className="keyword-add">
+                                        <input
+                                            type="text"
+                                            className="keyword-input"
+                                            placeholder="Kelime ekle, virgülle ayır veya Enter'a bas..."
+                                            value={routerKeywordInput}
+                                            onChange={e => setRouterKeywordInput(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' || e.key === ',') {
+                                                    e.preventDefault();
+                                                    addRouterKeyword(routerKeywordInput);
+                                                    setRouterKeywordInput('');
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (routerKeywordInput.trim()) {
+                                                    addRouterKeyword(routerKeywordInput);
+                                                    setRouterKeywordInput('');
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* AI Modu */}
+                                <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                                    <div
+                                        className={`rule-toggle ${routerForm.conditions.useAI ? 'rule-toggle-on' : ''}`}
+                                        style={{ marginTop: '2px', flexShrink: 0 }}
+                                        onClick={() => setRouterForm(f => ({ ...f, conditions: { ...f.conditions, useAI: !f.conditions.useAI } }))}
+                                    >
+                                        <div className="rule-toggle-knob" />
+                                    </div>
+                                    <div>
+                                        <label style={{ margin: 0, cursor: 'pointer' }}>🤖 AI ile Intent Analizi</label>
+                                        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>Kelime eşleşmesi yoksa AI mesajın amacını analiz eder.</p>
+                                    </div>
+                                </div>
+
+                                {routerForm.conditions.useAI && (
+                                    <div className="form-group">
+                                        <label>AI Açıklaması</label>
+                                        <textarea
+                                            className="form-control"
+                                            rows="2"
+                                            placeholder="Örn: Hasta randevu, muayene veya doktor görüşmesi istiyor"
+                                            value={routerForm.conditions.aiDescription || ''}
+                                            onChange={e => setRouterForm(f => ({ ...f, conditions: { ...f.conditions, aiDescription: e.target.value } }))}
+                                        />
+                                    </div>
+                                )}
+
+                                <hr style={{ margin: '16px 0', borderColor: '#e5e7eb' }} />
+                                <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: '600', color: '#374151' }}>🎯 Hedef — Nereye Yönlendirilsin?</h4>
+
+                                {/* Hedef Funnel */}
+                                <div className="form-group">
+                                    <label>Hedef Akış (Funnel)</label>
+                                    <select
+                                        className="form-control"
+                                        value={routerForm.targets.funnelId || ''}
+                                        onChange={e => {
+                                            const sel = funnels.find(f => f.id === e.target.value);
+                                            setRouterForm(f => ({ ...f, targets: { ...f.targets, funnelId: e.target.value, funnelName: sel?.name || '' } }));
+                                        }}
+                                    >
+                                        <option value="">Funnel seçin...</option>
+                                        {funnels.map(fn => (
+                                            <option key={fn.id} value={fn.id}>{fn.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Hedef Takım */}
+                                <div className="form-group">
+                                    <label>Hedef Takım (opsiyonel)</label>
+                                    <select
+                                        className="form-control"
+                                        value={routerForm.targets.teamId || ''}
+                                        onChange={e => setRouterForm(f => ({ ...f, targets: { ...f.targets, teamId: e.target.value } }))}
+                                    >
+                                        <option value="">Takım seçme</option>
+                                        {teams.map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                            </div>
+                            <div className="modal-footer">
+                                <button className="btn btn-secondary" onClick={() => setShowRouterModal(false)}>İptal</button>
+                                <button className="btn btn-primary" onClick={handleSaveRouterRule} disabled={routerSaving}>
+                                    {routerSaving ? 'Kaydediliyor...' : (editingRouterRule ? 'Güncelle' : 'Oluştur')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
 
                 {/* Template Modal */}

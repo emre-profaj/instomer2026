@@ -158,17 +158,19 @@
 /* ── Board ── */
 .pl-board {
     display: flex;
-    gap: 14px;
-    padding: 18px 20px;
+    gap: 10px;
+    padding: 14px 16px;
     overflow-x: auto;
     overflow-y: hidden;
     flex: 1;
+    min-width: 0;
+    width: 100%;
     align-items: flex-start;
 }
 
 /* ── Column ── */
 .pl-col {
-    flex: 0 0 280px;
+    flex: 0 0 220px;
     min-height: 200px;
     border-radius: 12px;
     background: #fff;
@@ -176,7 +178,7 @@
     display: flex;
     flex-direction: column;
     transition: box-shadow 0.15s;
-    max-height: calc(100vh - 160px);
+    max-height: calc(100vh - 136px);
 }
 .pl-col--over {
     box-shadow: 0 0 0 2px #ef4444, 0 4px 24px rgba(239,68,68,0.15);
@@ -385,3 +387,425 @@
 /* ── Animations ── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 0.7s linear infinite; }
+
+/* Pipeline needs no outer padding  override content-area */
+.content-area:has(.pl-page) {
+    padding: 0;
+    overflow: hidden;
+}
+
+/*    Board Wrapper (scroll hint arrows)    */
+.pl-board-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+}
+
+/* Scroll arrow buttons */
+.pl-scroll-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    width: 36px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.92);
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    color: #374151;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.pl-scroll-btn:hover {
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.16);
+    transform: translateY(-50%) scale(1.07);
+    color: #ef4444;
+}
+.pl-scroll-btn--left  { left: 8px; }
+.pl-scroll-btn--right { right: 8px; }
+
+/* Edge fade gradients  signals more content */
+.pl-board--fade-left {
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, black 48px);
+    mask-image: linear-gradient(to right, transparent 0px, black 48px);
+}
+.pl-board--fade-right {
+    -webkit-mask-image: linear-gradient(to left, transparent 0px, black 48px);
+    mask-image: linear-gradient(to left, transparent 0px, black 48px);
+}
+.pl-board--fade-left.pl-board--fade-right {
+    -webkit-mask-image: linear-gradient(to right, transparent 0px, black 48px, black calc(100% - 48px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0px, black 48px, black calc(100% - 48px), transparent 100%);
+}
+
+/*    Filter Bar    */
+.pl-funnel-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 20px;
+}
+
+.pl-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.pl-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.pl-filter-chip:hover {
+    background: #f1f5f9;
+    border-color: #d1d5db;
+    color: #374151;
+}
+.pl-filter-chip--active {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.pl-filter-divider {
+    width: 1px;
+    height: 18px;
+    background: #e5e7eb;
+    flex-shrink: 0;
+}
+
+.pl-filter-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid #fca5a5;
+    background: #fff0f0;
+    color: #ef4444;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.pl-filter-clear:hover {
+    background: #fee2e2;
+}
+
+/*    Filter Bar (Inbox-style selects)    */
+.pl-funnel-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 20px;
+}
+
+.pl-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+/* Select wrapper  for relative positioning of dropdown */
+.pl-filter-select-wrap {
+    position: relative;
+}
+
+/* Select button  matches Inbox agent-filter-select */
+.pl-filter-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    min-width: 130px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    white-space: nowrap;
+}
+.pl-filter-select:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+.pl-filter-select.active {
+    border-color: #10b981;
+    background: #ecfdf5;
+    color: #059669;
+}
+
+/* Dropdown panel */
+.pl-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 160px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+    z-index: 200;
+    padding: 4px;
+    overflow: hidden;
+}
+
+/* Dropdown item */
+.pl-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #374151;
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s;
+}
+.pl-filter-item:hover {
+    background: #f1f5f9;
+}
+.pl-filter-item.selected {
+    background: #eff6ff;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+/* Clear button */
+.pl-filter-clear-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid #fca5a5;
+    background: #fff0f0;
+    color: #ef4444;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.pl-filter-clear-btn:hover {
+    background: #fee2e2;
+}
+
+/*    Contact Sidebar Backdrop    */
+.pl-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: rgba(0, 0, 0, 0.18);
+    display: flex;
+    justify-content: flex-end;
+    animation: pl-backdrop-in 0.18s ease;
+}
+@keyframes pl-backdrop-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* ── Sidebar Panel (proper width) ── */
+.pl-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: rgba(0, 0, 0, 0.22);
+    display: flex;
+    justify-content: flex-end;
+    animation: pl-backdrop-in 0.18s ease;
+}
+@keyframes pl-backdrop-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.pl-sidebar-panel {
+    width: 380px;
+    min-width: 320px;
+    max-width: 420px;
+    height: 100%;
+    background: #fff;
+    box-shadow: -6px 0 32px rgba(0,0,0,0.14);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: pl-panel-slide 0.22s cubic-bezier(.22,.68,0,1.2);
+}
+@keyframes pl-panel-slide {
+    from { transform: translateX(40px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* ── Conversation Messages Panel ── */
+.pl-conv-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #f8fafc;
+    height: 100%;
+    border-right: 1px solid #e2e8f0;
+    min-width: 0;
+    animation: pl-panel-slide 0.22s cubic-bezier(.22,.68,0,1.2);
+}
+
+.pl-conv-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.pl-conv-panel-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.pl-conv-panel-back:hover { background: #f1f5f9; }
+
+.pl-conv-panel-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pl-conv-panel-ch {
+    font-size: 11px;
+    color: #64748b;
+    background: #f1f5f9;
+    padding: 2px 8px;
+    border-radius: 20px;
+    flex-shrink: 0;
+}
+
+.pl-conv-panel-inbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    background: #eff6ff;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.pl-conv-panel-inbox:hover { background: #dbeafe; }
+
+.pl-conv-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pl-conv-panel-loading,
+.pl-conv-panel-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #9ca3af;
+    font-size: 14px;
+    gap: 8px;
+}
+
+/* Messages */
+.pl-conv-msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+}
+.pl-conv-msg--in  { align-self: flex-start; }
+.pl-conv-msg--out { align-self: flex-end; }
+
+.pl-conv-msg-meta {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 3px;
+    padding: 0 4px;
+}
+.pl-conv-msg--out .pl-conv-msg-meta { flex-direction: row-reverse; }
+
+.pl-conv-msg-sender {
+    font-size: 11px;
+    font-weight: 600;
+    color: #475569;
+}
+.pl-conv-msg-time {
+    font-size: 10px;
+    color: #9ca3af;
+}
+
+.pl-conv-msg-bubble {
+    padding: 9px 13px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+.pl-conv-msg--in  .pl-conv-msg-bubble {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-bottom-left-radius: 4px;
+    color: #1e293b;
+}
+.pl-conv-msg--out .pl-conv-msg-bubble {
+    background: #2563eb;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}

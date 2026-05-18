@@ -1,377 +1,229 @@
 /**
  * WorkspaceRouter Service
- * 
- * Hibrit yönlendirme motoru:
- * 1. Kanal kuralı  (META_LEAD, WHATSAPP vs.) — hızlı, maliyetsiz
- * 2. Kelime listesi (keyword matching)        — hızlı, maliyetsiz
- * 3. AI niyet analizi (Gemini fallback)       — yalnızca eşleşme yoksa
- * 4. Varsayılan funnel                        — hiçbiri eşleşmezse
- * 
- * Funnel'a düşünce:
- *   - conversation.funnelStageId → İlk aşama
- *   - conversation.assignedBotId → Funnel'ın botu (varsa)
- *   - conversation.assignedTeamId → Funnel'ın takımı (varsa)
- *   - Giriş otomasyonu tetiklenir (varsa)
+ * ─────────────────────────────────────────────────────────────
+ * Gelen mesajı analiz eder ve eşleşen RouterRule'a göre
+ * konuşmayı ilgili Funnel'a taşır + bot/takım atar.
+ *
+ * Eşleşme sırası:
+ *   1. Anahtar kelime (ANY/ALL)
+ *   2. AI intent analizi (Gemini) — useAI=true ise
  */
 
 import prisma from '../lib/prisma.js';
-import { emitToWorkspace } from '../socket.js';
-import { executeAutomationAction } from './automationExecutor.js';
-import { getEffectiveAiApiKey } from '../controllers/ai.controller.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// ─── ANA ROUTER FONKSİYONU ───────────────────────────────────────────────────
-
-/**
- * Gelen mesajı analiz edip uygun funnel'a yönlendirir.
- * Conversation zaten bir funnelda ise hiçbir şey yapmaz.
- * 
- * @param {string} workspaceId
- * @param {string} conversationId
- * @param {string} message - Kullanıcının mesajı
- * @param {string} channel - INSTAGRAM | FACEBOOK | WHATSAPP | WIDGET | META_LEAD
- * @returns {Object|null} - Eşleşen funnel veya null
- */
-export async function routeConversationToFunnel(workspaceId, conversationId, message, channel) {
-    try {
-        // 1. Conversation zaten bir funnelda mı?
-        const conversation = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { funnelStageId: true, funnelType: true }
-        });
-
-        if (conversation?.funnelStageId) {
-            // Zaten yönlendirilmiş, dokunma
-            return null;
-        }
-
-        // 2. Workspace'teki tüm aktif funnel'ları al (öncelik sırasına göre)
-        const funnels = await prisma.funnel.findMany({
-            where: { workspaceId },
-            orderBy: { priority: 'desc' },
-            include: {
-                stages: {
-                    orderBy: { order: 'asc' },
-                    take: 1 // Sadece ilk aşama
-                }
-            }
-        });
-
-        if (funnels.length === 0) return null;
-
-        let matchedFunnel = null;
-        let defaultFunnel = null;
-
-        for (const funnel of funnels) {
-            if (funnel.isDefault) {
-                defaultFunnel = funnel;
-                continue; // Varsayılanı sona bırak
-            }
-
-            const entryRules = parseJson(funnel.entryRules, []);
-            if (entryRules.length === 0) continue;
-
-            const matched = await evaluateRules(
-                entryRules,
-                funnel.entryRuleLogic || 'OR',
-                funnel.aiIntentDescription,
-                message,
-                channel,
-                workspaceId
-            );
-
-            if (matched) {
-                matchedFunnel = funnel;
-                break; // İlk eşleşmede dur
-            }
-        }
-
-        // Eşleşme yoksa varsayılan funnel
-        const targetFunnel = matchedFunnel || defaultFunnel;
-        if (!targetFunnel) return null;
-
-        // 3. Funnel'a ata
-        await assignToFunnel(conversationId, targetFunnel, workspaceId);
-
-        console.log(`🎯 [Router] Conversation ${conversationId} → Funnel "${targetFunnel.name}" (${matchedFunnel ? 'rule match' : 'default'})`);
-
-        return targetFunnel;
-
-    } catch (error) {
-        console.error('❌ [WorkspaceRouter] Error:', error.message);
-        return null;
-    }
-}
-
-// ─── KURAL DEĞERLENDİRME ─────────────────────────────────────────────────────
-
-/**
- * Funnel giriş kurallarını değerlendirir.
- * Rule types: KEYWORD | CHANNEL | AI_INTENT
- */
-async function evaluateRules(rules, logic, aiDescription, message, channel, workspaceId) {
-    const results = [];
-
-    for (const rule of rules) {
-        let result = false;
-
-        switch (rule.type) {
-            case 'CHANNEL':
-                result = evaluateChannelRule(rule, channel);
-                break;
-
-            case 'KEYWORD':
-                result = evaluateKeywordRule(rule, message);
-                break;
-
-            case 'AI_INTENT':
-                // AI fallback — sadece bu kural tipi için çağırılır
-                result = await evaluateAiIntentRule(rule, aiDescription, message, workspaceId);
-                break;
-
-            default:
-                console.warn(`⚠️ [Router] Unknown rule type: ${rule.type}`);
-        }
-
-        results.push(result);
-
-        // OR logic: İlk true'da dur
-        if (logic === 'OR' && result === true) return true;
-
-        // AND logic: İlk false'da dur
-        if (logic === 'AND' && result === false) return false;
-    }
-
-    // AND: Hepsi true ise true
-    // OR: Hiçbiri true değilse false
-    return logic === 'AND' ? results.every(r => r) : results.some(r => r);
-}
-
-// CHANNEL kuralı — kanal eşleşmesi
-function evaluateChannelRule(rule, channel) {
-    if (!channel || !rule.value) return false;
-    const ruleChannel = rule.value.toUpperCase();
-    const msgChannel = channel.toUpperCase();
-
-    // META_LEAD özel durumu
-    if (ruleChannel === 'META_LEAD') {
-        return msgChannel === 'META_LEAD' || msgChannel === 'LEAD';
-    }
-
-    return msgChannel === ruleChannel;
-}
-
-// KEYWORD kuralı — kelime eşleştirme (hızlı, maliyetsiz)
-function evaluateKeywordRule(rule, message) {
-    if (!message || !rule.value) return false;
-    const msgLower = message.toLowerCase().trim();
-
-    // Virgülle ayrılmış kelimeler
-    const keywords = rule.value.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
-
-    return keywords.some(keyword => {
-        // Tam kelime eşleşmesi veya içerme
-        return msgLower.includes(keyword);
+// ─── Round-Robin yardımcısı ────────────────────────────────────
+async function assignRoundRobin(teamId, conversationId) {
+    const members = await prisma.teamMember.findMany({
+        where: { teamId, userId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { userId: true }
     });
+    if (!members.length) return null;
+
+    const last = await prisma.conversation.findFirst({
+        where: { teamId, assignedToId: { not: null } },
+        orderBy: { updatedAt: 'desc' },
+        select: { assignedToId: true }
+    });
+
+    const idx = last?.assignedToId
+        ? members.findIndex(m => m.userId === last.assignedToId)
+        : -1;
+
+    return members[(idx + 1) % members.length].userId;
 }
 
-// AI_INTENT kuralı — Gemini ile niyet analizi (fallback)
-async function evaluateAiIntentRule(rule, aiDescription, message, workspaceId) {
-    if (!message || (!rule.value && !aiDescription)) return false;
+// ─── Keyword eşleşme ──────────────────────────────────────────
+function keywordMatch(message, keywords = [], mode = 'ANY') {
+    if (!keywords.length) return true; // koşul yoksa hep eşleşir
+    const lower = message.toLowerCase();
+    if (mode === 'ALL') return keywords.every(kw => lower.includes(kw.toLowerCase()));
+    return keywords.some(kw => lower.includes(kw.toLowerCase()));
+}
 
+// ─── AI Intent analizi ────────────────────────────────────────
+async function aiIntentMatch(message, aiDescription, workspaceId) {
     try {
-        const apiKey = await getEffectiveAiApiKey(workspaceId);
+        const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) return false;
 
-        const intentDescription = aiDescription || rule.value;
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-        const prompt = `Aşağıdaki müşteri mesajı belirtilen kategoriyle ilgili mi? 
-        
-KATEGORI: "${intentDescription}"
-
-MÜŞTERİ MESAJI: "${message}"
-
-SADECE "EVET" veya "HAYIR" yaz. Başka hiçbir şey yazma.`;
+        const prompt = `Kullanıcı mesajı: "${message}"
+Hedef niyet açıklaması: "${aiDescription}"
+Bu mesaj belirtilen niyetle örtüşüyor mu? Sadece "EVET" veya "HAYIR" ile cevap ver.`;
 
         const result = await model.generateContent(prompt);
-        const response = result.response.text().trim().toUpperCase();
-
-        const matched = response.startsWith('EVET') || response === 'YES';
-        console.log(`🤖 [Router] AI intent check for "${intentDescription.substring(0, 30)}...": ${matched ? '✅ MATCH' : '❌ NO MATCH'}`);
-
-        return matched;
-
-    } catch (error) {
-        console.error('❌ [Router] AI intent evaluation error:', error.message);
+        const text = result.response.text().trim().toUpperCase();
+        return text.startsWith('EVET');
+    } catch (err) {
+        console.error('[WorkspaceRouter] AI intent error:', err.message);
         return false;
     }
 }
 
-// ─── FUNNEL'A ATAMA ───────────────────────────────────────────────────────────
-
-/**
- * Conversation'ı funnel'a atar ve tüm yan etkileri tetikler:
- * - Funnel + aşama ataması
- * - Bot değiştirme (varsa)
- * - Takım ataması (varsa)
- * - Giriş otomasyonu tetikleme (varsa)
- */
-async function assignToFunnel(conversationId, funnel, workspaceId) {
-    const firstStage = funnel.stages?.[0];
-
-    // 1. Conversation'ı güncelle
-    const updateData = {};
-
-    if (firstStage) {
-        updateData.funnelStageId = firstStage.id;
-    }
-
-    // Bot değiştirme — funnel'ın kendi botu varsa
-    if (funnel.assignedBotId) {
-        updateData.assignedBotId = funnel.assignedBotId;
-        console.log(`🤖 [Router] Switching bot to funnel bot: ${funnel.assignedBotId}`);
-    }
-
-    // Takım ataması — funnel'ın takımı varsa
-    if (funnel.assignedTeamId) {
-        updateData.assignedTeamId = funnel.assignedTeamId;
-        updateData.teamIds = JSON.stringify([funnel.assignedTeamId]);
-        console.log(`👥 [Router] Assigning team: ${funnel.assignedTeamId}`);
-    }
-
-    const updatedConversation = await prisma.conversation.update({
-        where: { id: conversationId },
-        data: updateData,
-        include: { contact: true }
-    });
-
-    // 2. Socket ile bildir
-    emitToWorkspace(workspaceId, 'conversation_updated', {
-        conversationId,
-        funnelId: funnel.id,
-        funnelName: funnel.name,
-        funnelStageId: firstStage?.id,
-        assignedBotId: funnel.assignedBotId,
-        assignedTeamId: funnel.assignedTeamId
-    });
-
-    // 3. Giriş otomasyonunu tetikle
-    if (funnel.entryAutomationId) {
-        await triggerAutomationById(
-            funnel.entryAutomationId,
-            {
-                workspaceId,
-                conversationId,
-                contactId: updatedConversation.contactId,
-                contact: updatedConversation.contact,
-                message: null,
-                funnelId: funnel.id,
-                funnelName: funnel.name
-            }
-        );
-    }
-
-    // 4. İlk aşamanın kendi otomasyonu varsa onu da tetikle
-    if (firstStage?.onEnterAutomationId) {
-        await triggerAutomationById(
-            firstStage.onEnterAutomationId,
-            {
-                workspaceId,
-                conversationId,
-                contactId: updatedConversation.contactId,
-                contact: updatedConversation.contact,
-                funnelStageId: firstStage.id,
-                stageName: firstStage.name
-            }
-        );
-    }
-
-    return updatedConversation;
-}
-
-// ─── STAGE DEĞİŞİKLİĞİNDE OTOMASYON ─────────────────────────────────────────
-
-/**
- * Conversation bir aşamaya taşındığında çağrılır.
- * O aşamanın onEnterAutomationId'si varsa tetikler.
- * 
- * @param {string} conversationId
- * @param {string} newStageId - Yeni aşama ID'si
- * @param {string} workspaceId
- */
-export async function triggerStageAutomation(conversationId, newStageId, workspaceId) {
+// ─── Funnel Stage'e taşıma ────────────────────────────────────
+async function moveConversationToFunnel(conversation, funnelId, botId = null, teamId = null, workspaceId = null) {
     try {
-        const stage = await prisma.funnelStage.findUnique({
-            where: { id: newStageId },
-            select: { id: true, name: true, onEnterAutomationId: true }
+        console.log(`🚦 [ROUTER:MOVE] Funnel aranıyor: ${funnelId}`);
+
+        // Funnel'ı stages olmadan bul (schema uyumsuzluğunu önle)
+        const funnel = await prisma.funnel.findFirst({
+            where: { id: funnelId }
+        });
+        if (!funnel) {
+            console.log(`🚦 [ROUTER:MOVE] Funnel bulunamadı: ${funnelId}`);
+            return null;
+        }
+        console.log(`🚦 [ROUTER:MOVE] Funnel bulundu: "${funnel.name}"`);
+
+        // Aşamaları ayrı sorguda çek (assignedBotId olmayabilir)
+        let firstStage = null;
+        try {
+            firstStage = await prisma.funnelStage.findFirst({
+                where: { funnelId },
+                orderBy: { order: 'asc' }
+            });
+            console.log(`🚦 [ROUTER:MOVE] İlk aşama: ${firstStage?.name || 'yok'}`);
+        } catch (stageErr) {
+            console.error(`🚦 [ROUTER:MOVE] Aşama sorgusu hatası:`, stageErr.message);
+        }
+
+        // Sadece kesinlikle var olan kolonları güncelle
+        const updateData = {
+            funnelType: funnelId,
+            updatedAt: new Date()
+        };
+        if (firstStage?.id) updateData.funnelStageId = firstStage.id;
+
+        // Opsiyonel atamalar — doğru kolon adlarıyla
+        const effectiveBotId = botId || firstStage?.assignedBotId || null;
+        const effectiveTeamId = teamId || firstStage?.assignedTeamId || null;
+        if (effectiveBotId) updateData.assignedBotId = effectiveBotId;
+        if (effectiveTeamId) updateData.teamIds = JSON.stringify([effectiveTeamId]); // Conversation şemasında teamIds[]
+        if (firstStage?.assignedUserId) updateData.assignedToId = firstStage.assignedUserId;
+
+        console.log(`🚦 [ROUTER:MOVE] Güncelleme yapılıyor:`, JSON.stringify(updateData));
+
+        await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: updateData
         });
 
-        if (!stage?.onEnterAutomationId) return; // Bu aşamanın otomasyonu yok
+        console.log(`✅ [ROUTER:MOVE] Conversation ${conversation.id} → "${funnel.name}" taşındı`);
+
+        // UI'ı anlık güncelle
+        try {
+            const { emitToWorkspace } = await import('../socket.js');
+            emitToWorkspace(workspaceId, 'conversation_updated', { conversationId: conversation.id });
+        } catch (_) {}
+
+        // FLOW_ENTERED eventi
+        if (workspaceId) {
+            try {
+                const { executeFlowsByTrigger } = await import('../controllers/flow.controller.js');
+                await executeFlowsByTrigger(workspaceId, 'FLOW_ENTERED', {
+                    conversation: { id: conversation.id },
+                    funnelId,
+                    funnelName: funnel.name
+                });
+            } catch (flowErr) {
+                console.error('[WorkspaceRouter] FLOW_ENTERED trigger error:', flowErr.message);
+            }
+        }
+
+        return { funnel, stage: firstStage };
+    } catch (err) {
+        console.error(`❌ [ROUTER:MOVE] Hata:`, err.message, err.stack?.split('\n').slice(0,3).join(' | '));
+        return null;
+    }
+}
+
+// ─── Ana Router Fonksiyonu ────────────────────────────────────
+/**
+ * Gelen mesajı RouterRule'larla karşılaştırır.
+ * Eşleşen ilk kural uygulanır ve konuşma yönlendirilir.
+ *
+ * @returns {{ matched: boolean, rule?: object, result?: object }}
+ */
+export async function runWorkspaceRouter(workspaceId, conversationId, message) {
+    try {
+        console.log('\n🚦 [ROUTER] ===== START =====');
+        console.log(`🚦 [ROUTER] workspaceId=${workspaceId} convId=${conversationId} msg="${message?.substring(0,80)}"`);
+
+        const rules = await prisma.routerRule.findMany({
+            where: { workspaceId, isActive: true },
+            orderBy: { priority: 'asc' }
+        });
+
+        console.log(`🚦 [ROUTER] ${rules.length} aktif kural bulundu`);
+        if (!rules.length) return { matched: false };
 
         const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            include: { contact: true }
+            select: { id: true, funnelType: true }
         });
 
-        if (!conversation) return;
+        console.log(`🚦 [ROUTER] conversation: ${JSON.stringify(conversation)}`);
+        if (!conversation) { console.log('🚦 [ROUTER] conversation bulunamadı!'); return { matched: false }; }
 
-        console.log(`⚡ [Router] Stage automation triggered: "${stage.name}" → automation ${stage.onEnterAutomationId}`);
+        for (const rule of rules) {
+            let conditions = {};
+            let targets = {};
+            try { conditions = JSON.parse(rule.conditions || '{}'); } catch { }
+            try { targets = JSON.parse(rule.targets || '{}'); } catch { }
 
-        await triggerAutomationById(
-            stage.onEnterAutomationId,
-            {
-                workspaceId,
-                conversationId,
-                contactId: conversation.contactId,
-                contact: conversation.contact,
-                funnelStageId: stage.id,
-                stageName: stage.name
+            console.log(`🚦 [ROUTER] Kural: "${rule.name}" | keywords=${JSON.stringify(conditions.keywords)} | funnelId=${targets.funnelId}`);
+
+            const keywords = conditions.keywords || [];
+            const matchMode = conditions.matchMode || 'ANY';
+            const useAI = conditions.useAI || false;
+            const aiDesc = conditions.aiDescription || '';
+
+            let matched = false;
+
+            if (keywords.length) {
+                matched = keywordMatch(message, keywords, matchMode);
+                console.log(`🚦 [ROUTER] keyword match: ${matched}`);
             }
-        );
 
-    } catch (error) {
-        console.error('❌ [Router] Stage automation error:', error.message);
-    }
-}
+            if (!matched && useAI && aiDesc) {
+                matched = await aiIntentMatch(message, aiDesc, workspaceId);
+                console.log(`🚦 [ROUTER] AI match: ${matched}`);
+            }
 
-// ─── YARDIMCI FONKSİYONLAR ───────────────────────────────────────────────────
+            if (!keywords.length && !useAI) {
+                matched = true;
+                console.log('🚦 [ROUTER] koşulsuz kural → matched');
+            }
 
-/**
- * Otomasyon ID'si ile mevcut automationExecutor'ı çalıştırır
- */
-async function triggerAutomationById(automationId, context) {
-    try {
-        const automation = await prisma.automation.findUnique({
-            where: { id: automationId }
-        });
+            if (!matched) { console.log('🚦 [ROUTER] eşleşmedi'); continue; }
 
-        if (!automation || !automation.isActive) {
-            console.warn(`⚠️ [Router] Automation ${automationId} not found or inactive`);
-            return;
+            console.log(`✅ [ROUTER] Kural "${rule.name}" EŞLEŞTİ! funnelId=${targets.funnelId}`);
+
+            if (targets.funnelId) {
+                console.log(`🚦 [ROUTER] Funnel'a taşınıyor: ${targets.funnelId}`);
+                const result = await moveConversationToFunnel(
+                    conversation,
+                    targets.funnelId,
+                    targets.botId || null,
+                    targets.teamId || null,
+                    workspaceId
+                );
+                console.log('🚦 [ROUTER] Taşıma tamamlandı:', result ? 'başarılı' : 'sonuç yok');
+                return { matched: true, rule, result };
+            }
+
+            console.log('🚦 [ROUTER] funnelId yok, taşıma yapılmadı');
+            return { matched: true, rule, result: null };
         }
 
-        console.log(`⚡ [Router] Triggering automation: "${automation.name}"`);
-
-        // Multi-action support
-        if (automation.actions) {
-            const actions = parseJson(automation.actions, []);
-            for (const actionDef of actions) {
-                const syntheticAutomation = { ...automation, ...actionDef, action: actionDef.type };
-                await executeAutomationAction(syntheticAutomation, context);
-            }
-        } else {
-            // Single action (legacy)
-            await executeAutomationAction(automation, context);
-        }
-
-    } catch (error) {
-        console.error(`❌ [Router] Failed to trigger automation ${automationId}:`, error.message);
+        console.log('🚦 [ROUTER] Hiçbir kural eşleşmedi');
+        return { matched: false };
+    } catch (err) {
+        console.error('[WorkspaceRouter] Error:', err.message, err.stack?.split('\n').slice(0,3).join(' | '));
+        return { matched: false };
     }
-}
-
-function parseJson(str, fallback) {
-    if (!str) return fallback;
-    try { return JSON.parse(str); } catch { return fallback; }
 }

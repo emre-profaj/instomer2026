@@ -37,10 +37,6 @@ export async function executeAutomationAction(automation, context) {
                 return await handleChangeFlow(automation, context);
             case 'SEND_REMINDER':
                 return await handleSendReminder(automation, context);
-            case 'SWITCH_BOT':
-                return await handleSwitchBot(automation, context);
-            case 'CHANGE_STAGE':
-                return await handleChangeStage(automation, context);
             default:
                 console.warn(`⚠️ [AutomationExecutor] Unknown action type: ${action}`);
                 return { success: false, error: `Unknown action: ${action}` };
@@ -259,56 +255,4 @@ async function handleSendReminder(automation, context) {
 
     console.log(`🔔 [AutomationExecutor] SEND_REMINDER: Scheduled in ${automation.reminderDelayMin || 60} minutes`);
     return { success: true, action: 'SEND_REMINDER', scheduledIn: `${automation.reminderDelayMin || 60} min` };
-}
-
-// ─── SWITCH_BOT ──────────────────────────────────────────────────
-async function handleSwitchBot(automation, context) {
-    const { conversationId, workspaceId } = context;
-    if (!automation.targetBotId) return { success: false, error: 'Hedef bot seçilmedi' };
-    if (!conversationId) return { success: false, error: 'Conversation ID eksik' };
-
-    // Botun bu workspace'e ait olduğunu doğrula
-    const bot = await prisma.aIBot.findFirst({
-        where: { id: automation.targetBotId, workspaceId }
-    });
-    if (!bot) return { success: false, error: 'Bot bulunamadı' };
-
-    await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { assignedBotId: automation.targetBotId }
-    });
-
-    console.log(`🤖 [AutomationExecutor] SWITCH_BOT: Conversation ${conversationId} → Bot "${bot.name}"`);
-    emitToWorkspace(workspaceId, 'conversation_updated', { conversationId, assignedBotId: automation.targetBotId });
-    return { success: true, action: 'SWITCH_BOT', botName: bot.name };
-}
-
-// ─── CHANGE_STAGE ────────────────────────────────────────────────
-async function handleChangeStage(automation, context) {
-    const { conversationId, workspaceId } = context;
-    if (!automation.targetStageId) return { success: false, error: 'Hedef aşama seçilmedi' };
-    if (!conversationId) return { success: false, error: 'Conversation ID eksik' };
-
-    const stage = await prisma.funnelStage.findUnique({
-        where: { id: automation.targetStageId },
-        include: { funnel: true }
-    });
-    if (!stage) return { success: false, error: 'Aşama bulunamadı' };
-
-    await prisma.conversation.update({
-        where: { id: conversationId },
-        data: {
-            funnelStageId: stage.id,
-            // Aşamanın funnelı varsa funnelı da güncelle
-        }
-    });
-
-    console.log(`📊 [AutomationExecutor] CHANGE_STAGE: Conversation ${conversationId} → Stage "${stage.name}" (Funnel: ${stage.funnel?.name})`);
-    emitToWorkspace(workspaceId, 'conversation_updated', { conversationId, funnelStageId: stage.id });
-
-    // Aşama otomasyonunu tetikle
-    const { triggerStageAutomation } = await import('./workspaceRouter.service.js');
-    await triggerStageAutomation(conversationId, stage.id, workspaceId);
-
-    return { success: true, action: 'CHANGE_STAGE', stageName: stage.name };
 }

@@ -181,6 +181,9 @@ const Customers = () => {
     const [tagFilter, setTagFilter] = useState('ALL');
     const [availableTags, setAvailableTags] = useState([]);
 
+    // Contact info filter state (phone/email)
+    const [contactInfoFilter, setContactInfoFilter] = useState('ALL');
+
     // Import group filter state
     const [importGroupFilter, setImportGroupFilter] = useState('ALL');
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
@@ -241,7 +244,7 @@ const Customers = () => {
         if (currentWorkspace) {
             loadContacts();
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -320,6 +323,7 @@ const Customers = () => {
                 source: sourceFilter,
                 category: categoryFilter,
                 tag: tagFilter,
+                contactInfo: contactInfoFilter,
                 callStatus: callStatusFilter,
                 importGroup: importGroupFilter,
                 funnelType: funnelFilter,
@@ -1188,6 +1192,26 @@ const Customers = () => {
                                     </select>
                                 </div>
                             )}
+
+                            {/* Contact Info Filter (Phone/Email) */}
+                            <div className="filter-dropdown-item">
+                                <label><Filter size={12} /> İletişim</label>
+                                <select
+                                    value={contactInfoFilter}
+                                    onChange={(e) => {
+                                        setContactInfoFilter(e.target.value);
+                                        setPage(1);
+                                    }}
+                                    className="filter-select"
+                                >
+                                    <option value="ALL">Tümü</option>
+                                    <option value="HAS_PHONE">Numarası Olanlar</option>
+                                    <option value="HAS_EMAIL">E-postası Olanlar</option>
+                                    <option value="HAS_BOTH">İkisi de Olanlar</option>
+                                    <option value="NO_PHONE">Numarası Olmayanlar</option>
+                                    <option value="NO_EMAIL">E-postası Olmayanlar</option>
+                                </select>
+                            </div>
 
                             {/* Import Button - red, next to Export */}
                             <button

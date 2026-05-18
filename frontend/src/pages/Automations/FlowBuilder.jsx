@@ -13,11 +13,12 @@ import './FlowBuilder.css';
 const STEP_TYPES = {
     // Triggers
     NEW_FORM:       { group: 'trigger', label: 'Yeni Form Kaydı',        icon: '📋', color: '#3b82f6', borderColor: '#3b82f6' },
-    FIRST_MSG:      { group: 'trigger', label: 'Gelen İlk Mesaj',        icon: '💬', color: '#3b82f6', borderColor: '#3b82f6' },
+    FIRST_MSG:      { group: 'trigger', label: 'Gelen Mesaj',              icon: '💬', color: '#3b82f6', borderColor: '#3b82f6' },
     TAG_ADDED:      { group: 'trigger', label: 'Etiket Eklendi',         icon: '🏷️', color: '#3b82f6', borderColor: '#3b82f6' },
     HAS_PHONE:      { group: 'trigger', label: 'Numara Bıraktıysa',      icon: '📞', color: '#3b82f6', borderColor: '#3b82f6' },
     NO_REPLY:       { group: 'trigger', label: 'Yanıt Vermedi (Süre)',   icon: '⏰', color: '#3b82f6', borderColor: '#3b82f6' },
     STAGE_CHANGED:  { group: 'trigger', label: 'Aşama Değiştiğinde',     icon: '🔀', color: '#3b82f6', borderColor: '#3b82f6' },
+    FLOW_ENTERED:   { group: 'trigger', label: 'Akışa Girdiğinde',       icon: '🌀', color: '#3b82f6', borderColor: '#3b82f6' },
     // Actions
     WA_SEND:        { group: 'action',  label: 'WhatsApp Gönder',        icon: '💬', color: '#10b981', borderColor: '#10b981' },
     SEND_MESSAGE:   { group: 'action',  label: 'Mesaj / Soru Sor',       icon: '✏️', color: '#10b981', borderColor: '#10b981' },
@@ -35,7 +36,7 @@ const STEP_TYPES = {
 };
 
 const PALETTE = {
-    'TETİKLEYİCİLER': ['NEW_FORM', 'FIRST_MSG', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED', 'TAG_ADDED'],
+    'TETİKLEYİCİLER': ['NEW_FORM', 'FIRST_MSG', 'HAS_PHONE', 'NO_REPLY', 'STAGE_CHANGED', 'FLOW_ENTERED', 'TAG_ADDED'],
     'AKSİYONLAR':     ['SEND_MESSAGE', 'WA_SEND', 'AI_CALL', 'RETRY_CALL', 'ASSIGN_AGENT', 'ASSIGN_TEAM', 'ASSIGN_BOT', 'CONVERT_TO_OPP', 'SWITCH_FLOW'],
     'MANTIK & KONTROL': ['WAIT', 'CONDITION'],
 };
@@ -62,6 +63,7 @@ function makeStep(type) {
     if (type === 'ASSIGN_BOT')     base.config = { botId: '', botName: '' };
     if (type === 'NO_REPLY')       base.config = { amount: 1, unit: 'saat' };
     if (type === 'STAGE_CHANGED')  base.config = { fromStage: '', toStage: '' };
+    if (type === 'FLOW_ENTERED')   base.config = { funnelId: '', funnelName: '' };
     if (type === 'RETRY_CALL')     base.config = { maxRetries: 3, waitAmount: 1, waitUnit: 'saat' };
     if (type === 'CONVERT_TO_OPP') base.config = { targetStage: '' };
     if (type === 'SWITCH_FLOW')    base.config = { flowId: '', flowName: '' };
@@ -122,6 +124,8 @@ function StepCard({ step, isSelected, onClick, onDelete, branchKey, depth = 0 })
                                 : CONDITION_OPTIONS.find(o => o.value === step.config.condition)?.label || 'Koşul seçin')
                             : step.type === 'STAGE_CHANGED'
                             ? `${step.config.fromStage || 'Herhangi'} → ${step.config.toStage || 'Herhangi'}`
+                            : step.type === 'FLOW_ENTERED'
+                            ? (step.config.funnelName || 'Akış seçin')
                             : step.type === 'ASSIGN_TEAM'
                             ? (step.config.teamName || 'Ekip seçin')
                             : step.type === 'ASSIGN_BOT'
@@ -524,9 +528,49 @@ function SettingsPanel({ step, onChange, onClose, templates = [], flows = [], fu
                             ✅ Seçili: <strong>{step.config.teamName}</strong>
                         </p>
                     )}
-                    <p className="fb-hint" style={{ marginTop: 6 }}>Konuşma bu takıma atanır.</p>
+
+                    {/* Round-Robin Toggle */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        marginTop: '12px', padding: '10px 12px',
+                        background: step.config.useRoundRobin ? '#f0fdf4' : '#f9fafb',
+                        border: `1px solid ${step.config.useRoundRobin ? '#86efac' : '#e5e7eb'}`,
+                        borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s'
+                    }}
+                        onClick={() => onChange({ ...step.config, useRoundRobin: !step.config.useRoundRobin })}
+                    >
+                        <div style={{
+                            width: '36px', height: '20px', borderRadius: '10px', flexShrink: 0,
+                            background: step.config.useRoundRobin ? '#10b981' : '#d1d5db',
+                            position: 'relative', transition: 'background 0.2s'
+                        }}>
+                            <div style={{
+                                position: 'absolute', top: '3px',
+                                left: step.config.useRoundRobin ? '18px' : '3px',
+                                width: '14px', height: '14px', borderRadius: '50%',
+                                background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                            }} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '13px', fontWeight: '600', color: step.config.useRoundRobin ? '#065f46' : '#374151' }}>
+                                🔄 Ekibe Sırayla Ata
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                                {step.config.useRoundRobin
+                                    ? 'Aktif — Takım üyelerine sırayla atanır'
+                                    : 'Pasif — Sadece takıma atanır, kişi belirlenmez'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <p className="fb-hint" style={{ marginTop: 6 }}>
+                        {step.config.useRoundRobin
+                            ? '👥 Sohbet, takım üyelerine eşit şekilde dağıtılır.'
+                            : 'Konuşma bu takıma atanır.'}
+                    </p>
                 </div>
             )}
+
 
             {/* ASSIGN_BOT */}
             {step.type === 'ASSIGN_BOT' && (
@@ -606,6 +650,38 @@ function SettingsPanel({ step, onChange, onClose, templates = [], flows = [], fu
                         </p>
                     )}
                     <p className="fb-hint" style={{ marginTop: 6 }}>Bu adıma gelindiğinde konuşma seçilen akışa yönlendirilir.</p>
+                </div>
+            )}
+
+            {/* FLOW_ENTERED */}
+            {step.type === 'FLOW_ENTERED' && (
+                <div className="fb-field-group">
+                    <label>🌀 Hangi Akışa Girdiğinde?</label>
+                    <select
+                        value={step.config.funnelId || ''}
+                        onChange={e => {
+                            const selected = funnels.find(f => f.id === e.target.value);
+                            onChange({ ...step.config, funnelId: e.target.value, funnelName: selected?.name || '' });
+                        }}
+                        style={{ width: '100%', marginTop: 4 }}
+                    >
+                        <option value="">Akış seçin...</option>
+                        {(!funnels || funnels.length === 0) ? (
+                            <option disabled>— Henüz akış yok —</option>
+                        ) : (
+                            Array.isArray(funnels) && funnels.map(f => (
+                                <option key={f.id} value={f.id}>
+                                    {f.icon ? `${f.icon} ` : ''}{f.name}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                    {step.config.funnelName && (
+                        <p className="fb-hint" style={{ color: '#10b981', marginTop: 5 }}>
+                            ✅ Seçili: <strong>{step.config.funnelName}</strong>
+                        </p>
+                    )}
+                    <p className="fb-hint" style={{ marginTop: 6 }}>Bir konuşma bu akışa taşındığında otomasyon tetiklenir.</p>
                 </div>
             )}
 

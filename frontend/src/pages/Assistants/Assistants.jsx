@@ -3,8 +3,7 @@ import { useState, useEffect } from 'react';
 import { aiAPI, workspaceAPI, automationAPI } from '../../services/api';
 import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import BotRoutingSettings from '../../components/Settings/BotRoutingSettings';
-import BotToolsSettings from '../../components/Settings/BotToolsSettings';
+
 import AppointmentBotConfig from '../../components/Settings/AppointmentBotConfig';
 import './Assistants.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
@@ -667,62 +666,14 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 )}
             </div>
 
-            <BotRoutingSettings
-                routingConfig={routingConfig}
-                onChange={setRoutingConfig}
-            />
 
-            <BotToolsSettings 
-                botId={bot.id} 
-                workspaceId={workspaceId} 
-            />
 
             {/* Appointment Bot Config — Branş & Doktor Yönetimi */}
             {bot.botType === 'APPOINTMENT' && (
                 <AppointmentBotConfig workspaceId={workspaceId} />
             )}
 
-            {/* Bot Automations Section */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <Zap size={18} />
-                        <span>Bot Otomasyonları</span>
-                    </div>
-                </div>
-                <div className="section-content">
-                    <p className="section-description">Bu asistanın dahil olacağı otomasyonları seçin.</p>
-                    
-                    {(!automationsList || automationsList.length === 0) ? (
-                        <p className="text-muted text-sm">Henüz otomasyon bulunmuyor. Otomasyonlar sayfasından oluşturabilirsiniz.</p>
-                    ) : (
-                        <div className="action-cards" style={{ marginTop: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                            {automationsList.map(auto => {
-                                const isSelected = selectedAutomations.includes(auto.id);
-                                return (
-                                    <label key={auto.id} className={`action-card ${isSelected ? 'selected' : ''}`} style={{ width: 'calc(50% - 8px)' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedAutomations(prev => [...prev, auto.id]);
-                                                } else {
-                                                    setSelectedAutomations(prev => prev.filter(id => id !== auto.id));
-                                                }
-                                            }}
-                                        />
-                                        <span className="action-icon">⚡</span>
-                                        <span className="action-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {auto.name}
-                                        </span>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            </div>
+
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px', marginBottom: '16px' }}>
                 <button

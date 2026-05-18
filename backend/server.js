@@ -60,6 +60,7 @@ import realEstateRoutes from './routes/realestate.routes.js';
 import activityRoutes from './routes/activity.routes.js';
 import appointmentConfigRoutes from './routes/appointmentConfig.routes.js';
 import healthSystemRoutes from './routes/probel_proxy.routes.js';
+import routerRuleRoutes from './routes/routerRule.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -187,10 +188,11 @@ app.use('/api/rules', rulesRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/workspaces', flowRoutes);
-app.use('/api/real-estate', realEstateRoutes);
+app.use('/api/realestate', realEstateRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/appointment-config', appointmentConfigRoutes);
 app.use('/api/health-system', healthSystemRoutes);
+app.use('/api/workspaces', routerRuleRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
@@ -240,10 +242,20 @@ httpServer.listen(PORT, () => {
     console.log(`🔌 WebSocket server initialized`);
   }
 
+  // ─── ONE-TIME STARTUP CLEANUP ────────────────────────────────────────────
+  // "Randevu Veriliyor" stage'i tüm workspace'lerden kaldır (gereksiz / kafa karıştırıcı)
+  prisma.funnelStage.deleteMany({ where: { name: 'Randevu Veriliyor' } })
+    .then(r => {
+      if (r.count > 0) console.log(`🗑️  [Startup] "Randevu Veriliyor" stage silindi: ${r.count} kayıt`);
+    })
+    .catch(e => console.warn('⚠️ [Startup] Stage cleanup error:', e.message));
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Start email polling after server starts
   startEmailPolling();
 
 });
+
 
 // Email Polling System - checks for new emails every 2 minutes
 const EMAIL_POLL_INTERVAL = 2 * 60 * 1000; // 2 minutes

@@ -105,7 +105,7 @@ async function probelApiCall(workspaceId, stored_procedure, input_data = {}) {
 
     // Extract ref_out_list
     const resultList = data?.JsonData?.data?.ref_out_list || data?.ref_out_list || [];
-    
+
     console.log(`✅ [Probel] ${stored_procedure} returned ${resultList.length} items`);
     return resultList;
 }
@@ -132,19 +132,20 @@ export async function validatePatient(workspaceId, patientData) {
             SOYADI: soyadi,
             TELEFON: telefon
         };
-        
-        // Optional fields — only add if provided
-        if (tc && tc.trim() !== '') {
-            inputData.KIMLIK_TIPI = 1;
-            inputData.KIMLIK_NO = tc;
-        }
+
+        // TC / Kimlik — gerçek TC varsa kullan, yoksa default 11111111111
+        const tcNo = (tc && tc.trim() !== '' && tc.trim().length >= 10) ? tc.trim() : '11111111111';
+        inputData.KIMLIK_TIPI = 1;
+        inputData.KIMLIK_NO = tcNo;
+
         if (cinsiyet) {
             inputData.CINSIYET = cinsiyet;
         }
         if (dogum_tarihi && dogum_tarihi.trim() !== '') {
             inputData.DOGUM_TARIHI = dogum_tarihi;
         }
-        
+
+
         console.log(`🏥 [Probel] validatePatient with fields:`, Object.keys(inputData).join(', '));
 
         const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_hasta_token', inputData);
@@ -353,7 +354,8 @@ export async function getAvailableHours(workspaceId, servisKodu, tarih) {
         const result = await probelApiCall(workspaceId, 'PKG_HSW_MBL_API_METROPOL.prc_get_uygun_saatler_list', {
             SERVIS_KODU: servisKodu,
             BOS: "1",
-            RANDEVU_TARIHI: tarih
+            RANDEVU_TARIHI: tarih,
+
         });
 
         if (result.length === 0) {
@@ -394,7 +396,7 @@ export async function getAvailableHours(workspaceId, servisKodu, tarih) {
 export async function createAppointment(workspaceId, hastaToken, randevuId) {
     try {
         console.log(`🏥 [Probel] Creating appointment with HASTA_TOKEN: ${hastaToken}, RANDEVU_ID: ${randevuId}`);
-        
+
         if (!hastaToken || !randevuId) {
             console.error('❌ [Probel] createAppointment missing params! hasta_token:', hastaToken, 'randevu_id:', randevuId);
             return {
@@ -417,7 +419,7 @@ export async function createAppointment(workspaceId, hastaToken, randevuId) {
         if (Array.isArray(result) && result.length > 0) {
             // Check if any row has an error
             const errorRow = result.find(r => r.HATA_KODU || (r.ISLEM_SONUCU && String(r.ISLEM_SONUCU).toLowerCase() !== 'basarili' && String(r.ISLEM_SONUCU).toLowerCase() !== 'başarılı'));
-            
+
             if (errorRow) {
                 console.error('❌ [Probel] Appointment creation failed with error:', errorRow);
                 errorMsg = errorRow.HATA_MESAJI || errorRow.MESAJ || errorRow.ISLEM_SONUCU || errorMsg;

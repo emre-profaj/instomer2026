@@ -97,27 +97,39 @@ function calculateOffer({
     interimPayments = [],
     installmentCount,
     monthlyInterestRate,  // % (ör: 1.5 = %1.5)
+    basePrice,            // Hesaplama tabanı: liste veya nakit fiyat (kampanyaya göre seçilir)
+    manualMonthly,        // Manuel taksit override (kullanıcı tarafından girilmişse)
+    discountTierRate,     // Vadeye göre indirim oranı (% — Emlak Konut tipi kampanyalar)
 }) {
+    // İndirim uygulanmış efektif taban fiyat
+    const rawBase = basePrice || cashPrice;
+    const tierDiscount = parseFloat(discountTierRate) || 0;
+    const effectiveBase = tierDiscount > 0 ? rawBase * (1 - tierDiscount / 100) : rawBase;
     const r = monthlyInterestRate / 100; // aylık faiz (ondalık)
 
-    // 1. Ara ödemelerin nominal ve bugünkü değerleri
+    // 1. Ara ödemelerin nominal toplamı
+    // NOT: Ara ödemeler nominal tutarlarıyla düşülür (iskonto uygulanmaz).
+    // Mantık: Müşteri 3M+3M=6M ödüyor → taksit tabanı 6M azalır, daha düşük aylık taksit çıkar.
     let interimNominal = 0;
-    let interimPV = 0;
     for (const ip of interimPayments) {
         const amt = ip.amount || 0;
         const month = ip.month || 0;
         if (amt > 0 && month > 0) {
             interimNominal += amt;
-            interimPV += r > 0 ? amt / Math.pow(1 + r, month) : amt;
         }
     }
 
-    // 2. Kalan bugünkü değer (taksitlere düşen)
-    const remainingPV = Math.max(0, cashPrice - downPayment - interimPV);
+    // 2. Kalan taksit tabanı — ara ödemeler nominal olarak düşülür
+    const remainingPV = Math.max(0, effectiveBase - downPayment - interimNominal);
 
-    // 3. Aylık taksit hesabı (annuity formülü)
+    // 3. Aylık taksit hesabı
+    //    - Manuel override varsa doğrudan kullanılır (esnek ödeme planı)
+    //    - Yoksa annuity formülü ile hesaplanır
     let actualMonthlyPayment = 0;
-    if (installmentCount > 0 && remainingPV > 0) {
+    if (manualMonthly && parseFloat(manualMonthly) > 0) {
+        // Manuel mod: kullanıcının girdiği tutar baz alınır
+        actualMonthlyPayment = parseFloat(manualMonthly);
+    } else if (installmentCount > 0 && remainingPV > 0) {
         if (r > 0) {
             const pva = (1 - Math.pow(1 + r, -installmentCount)) / r;
             actualMonthlyPayment = remainingPV / pva;
@@ -142,7 +154,7 @@ function calculateOffer({
     const adatDays = calculateAdat(cashFlow);
     const adatMonths = adatDays / 30;
 
-    // 7. Liste fiyatıyla karşılaştırma
+    // 7. Liste fiyatıyla karşılaştırma (her zaman listPrice referans)
     const discountAmount = listPrice - netPrice;
     const discountRate = listPrice > 0 ? (discountAmount / listPrice) * 100 : 0;
 
@@ -196,6 +208,8 @@ function calculateOffer({
         discountAmount: Math.round(discountAmount * 100) / 100,
         discountRate: Math.round(discountRate * 100) / 100,
         isDiscount: discountAmount > 0,
+        isManualMonthly: !!(manualMonthly && parseFloat(manualMonthly) > 0),
+        tierDiscount,
         paymentSchedule,
     };
 }
@@ -521,6 +535,9 @@ const calculate = async (req, res) => {
             interimPayments = [],
             installmentCount,
             monthlyInterestRate,
+            basePrice,     // Opsiyonel: kampanyaya göre liste veya nakit fiyat
+            manualMonthly, // Opsiyonel: manuel taksit override
+            discountTierRate, // Opsiyonel: vadeye göre indirim
         } = req.body;
 
         if (!cashPrice || cashPrice <= 0) {
@@ -537,6 +554,9 @@ const calculate = async (req, res) => {
             })),
             installmentCount: parseInt(installmentCount || 0),
             monthlyInterestRate: parseFloat(monthlyInterestRate || 0),
+            basePrice: basePrice ? parseFloat(basePrice) : undefined,
+            manualMonthly: manualMonthly ? parseFloat(manualMonthly) : undefined,
+            discountTierRate: discountTierRate ? parseFloat(discountTierRate) : undefined,
         });
 
         res.json({ success: true, result });
@@ -598,12 +618,17 @@ const createOffer = async (req, res) => {
             customerName, customerPhone, customerEmail, agentName,
             listPrice, cashPrice, downPayment, interimPayments = [],
             installmentCount, monthlyInterestRate, notes,
+            basePrice,        // Kampanyaya göre hesaplama tabanı (listPrice veya cashPrice)
+            manualMonthly,    // Manuel taksit override
+            discountTierRate, // Vadeye göre indirim oranı
         } = req.body;
 
         // Hesaplama motorunu çalıştır
+        const effectiveListPrice = parseFloat(listPrice || cashPrice);
+        const effectiveCashPrice = parseFloat(cashPrice);
         const calc = calculateOffer({
-            cashPrice: parseFloat(cashPrice),
-            listPrice: parseFloat(listPrice || cashPrice),
+            cashPrice: effectiveCashPrice,
+            listPrice: effectiveListPrice,
             downPayment: parseFloat(downPayment || 0),
             interimPayments: interimPayments.map(ip => ({
                 month: parseInt(ip.month),
@@ -611,6 +636,9 @@ const createOffer = async (req, res) => {
             })),
             installmentCount: parseInt(installmentCount || 0),
             monthlyInterestRate: parseFloat(monthlyInterestRate || 0),
+            basePrice: basePrice ? parseFloat(basePrice) : undefined,
+            manualMonthly: manualMonthly ? parseFloat(manualMonthly) : undefined,
+            discountTierRate: discountTierRate ? parseFloat(discountTierRate) : undefined,
         });
 
         // CRM: Contact oluştur veya bul
@@ -673,11 +701,14 @@ const createOffer = async (req, res) => {
                 customerPhone: customerPhone || null,
                 customerEmail: customerEmail || null,
                 agentName: agentName || null,
-                listPrice: parseFloat(listPrice || cashPrice),
-                cashPrice: parseFloat(cashPrice),
+                listPrice: effectiveListPrice,
+                cashPrice: effectiveCashPrice,
                 netPrice: calc.netPrice,
                 downPayment: parseFloat(downPayment || 0),
-                downPaymentRate: parseFloat(cashPrice) > 0 ? (parseFloat(downPayment || 0) / parseFloat(cashPrice)) * 100 : 0,
+                // downPaymentRate: basePrice (liste veya nakit) üzerinden hesaplanır
+                downPaymentRate: (basePrice ? parseFloat(basePrice) : effectiveCashPrice) > 0
+                    ? (parseFloat(downPayment || 0) / (basePrice ? parseFloat(basePrice) : effectiveCashPrice)) * 100
+                    : 0,
                 installmentCount: Number(installmentCount) || 0,
                 monthlyPayment: calc.monthlyPayment,
                 interimPayments: JSON.stringify(interimPayments || []),

@@ -122,6 +122,24 @@ export const getContactTimeline = async (req, res) => {
             console.error('Timeline Appointments Error:', e.message);
         }
 
+        // 5. Contact.notes JSON alanındaki manuel notlar
+        let contactNotes = [];
+        try {
+            const contactRecord = await prisma.contact.findUnique({
+                where: { id: contactId },
+                select: { notes: true }
+            });
+            if (contactRecord?.notes) {
+                const parsed = JSON.parse(contactRecord.notes);
+                if (Array.isArray(parsed)) {
+                    contactNotes = parsed;
+                }
+            }
+        } catch (e) {
+            console.error('Timeline ContactNotes Error:', e.message);
+        }
+
+
         // Tümünü tek bir timeline array'inde birleştir
         const timeline = [];
 
@@ -248,6 +266,33 @@ export const getContactTimeline = async (req, res) => {
                 labelName,
                 assignedToName: apt.assignedTo?.name,
                 raw: apt
+            });
+        });
+
+        // Contact.notes JSON alanındaki manuel notlar (5. kaynak)
+        contactNotes.forEach((note, idx) => {
+            if (!note?.content) return;
+            // timestamp alanı "GG.AA.YYYY SS:DD" formatında string — Date'e çevir
+            let noteDate = new Date();
+            try {
+                if (note.timestamp) {
+                    // "11.05.2026 11:24" → parse
+                    const parts = note.timestamp.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+                    if (parts) {
+                        noteDate = new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]), parseInt(parts[4]), parseInt(parts[5]));
+                    }
+                }
+            } catch {}
+
+            timeline.push({
+                id: `cnote_${contactId}_${idx}`,
+                sourceType: 'ACTIVITY',
+                type: 'NOTE',
+                title: note.title || 'Not',
+                content: note.content,
+                date: noteDate,
+                labelName: 'Kişi Notu',
+                raw: note
             });
         });
 

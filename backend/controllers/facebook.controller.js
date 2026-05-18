@@ -914,35 +914,56 @@ async function processWebhookAsync(body) {
                             if (!commentBotId) {
                                 console.log(`ℹ️ [COMMENTS] No ${isInstagram ? 'Instagram' : 'Facebook'} comment bot assigned - skipping auto-reply`);
                             } else {
-                                try {
-                                    const { getAutoReply } = await import('./ai.controller.js');
-                                    console.log(`🤖 [COMMENTS] Calling getAutoReply for workspace: ${facebookPage.workspaceId}, pageId: ${facebookPage.pageId}`);
+                                // 🔍 Soru tespiti — sadece soru içeren yorumlara yanıt ver
+                                const cleanText = commentText.replace(/[\p{Emoji}\s]/gu, '').trim();
+                                const questionMarks = ['?', '؟'];
+                                const questionKeywords = [
+                                    'nasıl', 'neden', 'nerede', 'nereden', 'nereye', 'ne zaman', 'nezaman',
+                                    'ne kadar', 'nekadar', 'kim', 'kime', 'kimden', 'hangi', 'hangisi',
+                                    'kaç', 'kaçta', 'var mı', 'var mi', 'varmı', 'varmi',
+                                    'ister miyim', 'mümkün mü', 'mumkun mu', 'yapılır mı', 'edilir mi',
+                                    'alabilir', 'öğrenebilir', 'söyler misiniz', 'bilgi verir',
+                                    'fiyat', 'ücret', 'ne oldu', 'ne oluyor', 'ne yapacak',
+                                    'how', 'what', 'where', 'when', 'why', 'who', 'which', 'is there', 'do you'
+                                ];
+                                const lowerComment = commentText.toLowerCase();
+                                const hasQuestion =
+                                    questionMarks.some(q => commentText.includes(q)) ||
+                                    questionKeywords.some(k => lowerComment.includes(k));
 
-                                    // Pass pageId so AI controller can find the assigned comment bot
-                                    const aiResponse = await getAutoReply(
-                                        facebookPage.workspaceId,
-                                        null,
-                                        commentText,
-                                        isInstagram ? 'instagram' : 'facebook',
-                                        'COMMENTS',
-                                        isInstagram ? facebookPage.instagramBusinessId : facebookPage.pageId
-                                    );
+                                if (!hasQuestion || cleanText.length === 0) {
+                                    console.log(`ℹ️ [COMMENTS] Skipping — no question detected in: "${commentText.substring(0, 60)}"`);
+                                } else {
+                                    try {
+                                        const { getAutoReply } = await import('./ai.controller.js');
+                                        console.log(`🤖 [COMMENTS] Calling getAutoReply for workspace: ${facebookPage.workspaceId}, pageId: ${facebookPage.pageId}`);
 
-                                    console.log(`🤖 [COMMENTS] AI Response: ${aiResponse ? aiResponse.substring(0, 100) : 'NULL'}`);
-
-                                    if (aiResponse) {
-                                        await axios.post(
-                                            `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`,
-                                            { message: aiResponse },
-                                            { params: { access_token: facebookPage.pageAccessToken } }
+                                        // Pass pageId so AI controller can find the assigned comment bot
+                                        const aiResponse = await getAutoReply(
+                                            facebookPage.workspaceId,
+                                            null,
+                                            commentText,
+                                            isInstagram ? 'instagram' : 'facebook',
+                                            'COMMENTS',
+                                            isInstagram ? facebookPage.instagramBusinessId : facebookPage.pageId
                                         );
-                                        console.log('✅ AI Comment Reply posted successfully!');
-                                    } else {
-                                        console.log('⚠️ [COMMENTS] No AI response generated');
+
+                                        console.log(`🤖 [COMMENTS] AI Response: ${aiResponse ? aiResponse.substring(0, 100) : 'NULL'}`);
+
+                                        if (aiResponse) {
+                                            await axios.post(
+                                                `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`,
+                                                { message: aiResponse },
+                                                { params: { access_token: facebookPage.pageAccessToken } }
+                                            );
+                                            console.log('✅ AI Comment Reply posted successfully!');
+                                        } else {
+                                            console.log('⚠️ [COMMENTS] No AI response generated');
+                                        }
+                                    } catch (aiError) {
+                                        console.error('❌ AI Comment Reply failed:', aiError.message);
+                                        console.error('❌ AI Comment Reply stack:', aiError.stack);
                                     }
-                                } catch (aiError) {
-                                    console.error('❌ AI Comment Reply failed:', aiError.message);
-                                    console.error('❌ AI Comment Reply stack:', aiError.stack);
                                 }
                             }
                         } else {
@@ -1438,6 +1459,37 @@ async function processWebhookAsync(body) {
                     }
                 }
 
+                // Reklam kaynagi tespiti (Click-to-Messenger / IG Ads)
+                const fbReferral = messagingEvent.referral || null;
+                if (!isOutgoingMessage && fbReferral && (fbReferral.source === "ADS" || fbReferral.ad_id || fbReferral.type === "OPEN_THREAD")) {
+                    const adTitle = (fbReferral.ads_context_data && fbReferral.ads_context_data.ad_title) ? fbReferral.ads_context_data.ad_title : (fbReferral.ref || null);
+                    const platform = isInstagram ? "Instagram" : "Facebook";
+                    const adTag = adTitle ? (platform + " Reklam: " + adTitle.substring(0, 25)) : (platform + " Reklam");
+                    try {
+                        const rawTags = contact.tags || "[]"; 
+                        let tags = []; 
+                        try { tags = JSON.parse(rawTags); } catch { tags = []; }
+                        if (!tags.includes(adTag)) {
+                            tags.push(adTag);
+                            await prisma.contact.update({ where: { id: contact.id }, data: { tags: JSON.stringify(tags) } });
+                            console.log("[AdTag] Added: " + adTag);
+                        }
+                    } catch (tagErr) { console.error("❌ [AdTag] Error:", tagErr.message); }
+                } else if (!isOutgoingMessage) {
+                    // Reklam yoksa Organik etiketi ekle
+                    try {
+                        const rawTags = contact.tags || "[]";
+                        let tags = [];
+                        try { tags = JSON.parse(rawTags); } catch { tags = []; }
+                        const organicTag = "Organik";
+                        if (!tags.includes(organicTag)) {
+                            tags.push(organicTag);
+                            await prisma.contact.update({ where: { id: contact.id }, data: { tags: JSON.stringify(tags) } });
+                            console.log("[AdTag] Organik etiketi eklendi");
+                        }
+                    } catch (tagErr) { console.error("❌ [AdTag] Organik error:", tagErr.message); }
+                }
+
                 // Check if contact is blocked - skip processing if blocked
                 if (contact.isBlocked && !isOutgoingMessage) {
                     console.log(`🚫 [BLOCKED] Contact ${contact.id} (${contact.name}) is blocked. Ignoring incoming message.`);
@@ -1909,13 +1961,12 @@ async function processWebhookAsync(body) {
 
                         // --- AUTO EXTRACT START ---
                         try {
-                            const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
-                            const { autoAssignDefaultFunnel } = await import('./funnel.controller.js');
+                            const { autoExtractFromConversation, autoGenerateTopic, autoClassifyAndAssignFunnel } = await import('./ai.controller.js');
                             autoExtractFromConversation(facebookPage.workspaceId, conversation.id);
                             autoGenerateTopic(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [AutoTopic] FB/IG error:', e.message)
                             );
-                            autoAssignDefaultFunnel(facebookPage.workspaceId, conversation.id).catch(e =>
+                            autoClassifyAndAssignFunnel(facebookPage.workspaceId, conversation.id, message.text || '').catch(e =>
                                 console.error('❌ [AutoFunnel] FB/IG error:', e.message)
                             );
                         } catch (extractError) {
@@ -3254,23 +3305,48 @@ async function handleLeadgenEvent(leadValue, entryId) {
             }
         }
 
-        // --- AUTO TOPIC GENERATION ---
-        if (conversation?.id && messageContent) {
+        // --- AUTO TOPIC GENERATION (Lead Form: dogrudan form alanlarından üret) ---
+        if (conversation?.id) {
             try {
-                const { autoGenerateTopic } = await import('./ai.controller.js');
-                autoGenerateTopic(facebookPage.workspaceId, conversation.id, messageContent).catch(e =>
-                    console.error('❌ [AutoTopic] LEADGEN error:', e.message)
-                );
+                // Lead form için konu başlığını form alanlarından çıkar
+                // Önce mesaj, bölüm, konu gibi alanları kontrol et
+                const topicFields = [];
+                for (const [key, value] of Object.entries(fieldData)) {
+                    const lk = key.toLowerCase();
+                    if ((lk.includes('mesaj') || lk.includes('konu') || lk.includes('bolum') || lk.includes('bölüm') ||
+                         lk.includes('department') || lk.includes('subject') || lk.includes('message') ||
+                         lk.includes('hizmet') || lk.includes('service') || lk.includes('ilgi')) && value) {
+                        topicFields.push(value);
+                    }
+                }
+
+                if (topicFields.length > 0) {
+                    // Form alanlarından doğrudan konu üret (AI gerektirmeden)
+                    const rawTopic = topicFields.join(' - ').substring(0, 80);
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { aiTopic: rawTopic }
+                    });
+                    console.log('✅ [AutoTopic] LEADGEN topic from form fields: ' + rawTopic);
+                } else {
+                    // Form alanlarında yeterli bilgi yoksa AI ile üret
+                    const { autoGenerateTopic } = await import('./ai.controller.js');
+                    autoGenerateTopic(facebookPage.workspaceId, conversation.id, messageContent).catch(e =>
+                        console.error('❌ [AutoTopic] LEADGEN error:', e.message)
+                    );
+                }
             } catch (topicErr) {
                 console.error('⚠️ [LEADGEN] AutoTopic error:', topicErr.message);
             }
         }
 
-        // --- AUTO FUNNEL ASSIGNMENT ---
+        // --- AUTO FUNNEL / CLASSIFY ASSIGNMENT ---
         if (conversation?.id) {
             try {
-                const { autoAssignDefaultFunnel } = await import('./funnel.controller.js');
-                autoAssignDefaultFunnel(facebookPage.workspaceId, conversation.id).catch(e =>
+                // Form içeriğini ve lead verilerini birleştirip AI ile sınıflandır
+                const { autoClassifyAndAssignFunnel } = await import('./ai.controller.js');
+                const leadContext = messageContent; // Tüm lead form içeriğini gönder
+                autoClassifyAndAssignFunnel(facebookPage.workspaceId, conversation.id, leadContext).catch(e =>
                     console.error('❌ [AutoFunnel] LEADGEN error:', e.message)
                 );
             } catch (funnelErr) {

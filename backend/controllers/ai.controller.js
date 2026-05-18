@@ -415,9 +415,41 @@ export const summarizeConversation = async (req, res) => {
             return res.json({ topic: null, summary: 'Bu sohbette henüz mesaj bulunmuyor.' });
         }
 
-        // Get first customer message as topic
-        const firstCustomerMessage = conversation.messages.find(m => m.isFromContact);
-        const topic = firstCustomerMessage ? firstCustomerMessage.content.substring(0, 100) : null;
+        // 3a. Generate topic with AI from full conversation
+        const chatLogForTopic = conversation.messages
+            .filter(m => m.content?.trim())
+            .map(m => `${m.isFromContact ? 'Müşteri' : 'Temsilci'}: ${m.content.trim()}`)
+            .join('\n');
+
+        let topic = null;
+        try {
+            const topicPrompt = `Aşağıdaki müşteri sohbetini dikkatle analiz et ve konuşmanın ANA KONUSUNU özetleyen profesyonel bir başlık oluştur.
+
+KURALLAR:
+- Türkçe yaz
+- Maksimum 5-7 kelime
+- Sohbetin GERÇEK amacını yansıt — tüm konuşmaya bak, sadece ilk mesaja değil
+- Somut ve açıklayıcı ol (örnek: "Doğum Paketi Fiyat Talebi", "Randevu Saati Değiştirme", "Sipariş Teslimat Sorunu")
+- SADECE başlığı yaz — başka hiçbir şey ekleme, tırnak işareti kullanma
+
+SOHBET:
+${chatLogForTopic.substring(0, 3000)}
+
+Konu başlığı:`;
+
+            const topicModel = new GoogleGenerativeAI(aiApiKey).getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const topicResult = await topicModel.generateContent(topicPrompt);
+            topic = topicResult.response.text()
+                .trim()
+                .replace(/^["'`*#]|["'`*#]$/g, '')
+                .replace(/\*+/g, '')
+                .trim()
+                .substring(0, 80) || null;
+        } catch (topicErr) {
+            console.warn('⚠️ [Summarize] Topic AI failed, using fallback:', topicErr.message);
+            const firstCustomerMessage = conversation.messages.find(m => m.isFromContact);
+            topic = firstCustomerMessage ? firstCustomerMessage.content.substring(0, 100) : null;
+        }
 
         // 3. Prepare Prompt for Summary only
         const chatLog = conversation.messages.map(m =>
@@ -2948,39 +2980,90 @@ JSON:`;
  */
 export const autoGenerateTopic = async (workspaceId, conversationId, firstMessage) => {
     try {
-        if (!workspaceId || !conversationId || !firstMessage?.trim()) return;
+        if (!workspaceId || !conversationId) return;
 
-        // Skip if topic already set
-        const existing = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { aiTopic: true }
-        });
-        if (existing?.aiTopic) return;
-
-        // Get API key
+        // Get API key first
         const aiApiKey = await getEffectiveAiApiKey(workspaceId);
         if (!aiApiKey) return;
 
-        const prompt = `Aşağıdaki müşteri mesajından 3-6 kelimelik, Türkçe, kısa ve öz bir konu başlığı oluştur.
-Sadece başlığı döndür, başka hiçbir şey yazma.
+        // Fetch full conversation with all messages
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: {
+                messages: {
+                    orderBy: { createdAt: 'asc' },
+                    select: { content: true, isFromContact: true }
+                }
+            }
+        });
 
-Mesaj: "${firstMessage.substring(0, 500)}"
+        if (!conversation || !conversation.messages?.length) return;
+
+        const customerMessages = conversation.messages.filter(m => m.isFromContact && m.content?.trim());
+        const totalCustomerMsgs = customerMessages.length;
+        const existingTopic = conversation.aiTopic;
+
+        // ── When to generate/re-generate ──────────────────────────────────
+        if (existingTopic) {
+            // Long topic (>60 chars) = likely manually edited — never overwrite
+            if (existingTopic.length > 60) {
+                return;
+            }
+            // Re-generate only at milestones: 3rd, 6th, 10th customer message
+            const MILESTONES = [3, 6, 10];
+            if (!MILESTONES.includes(totalCustomerMsgs)) {
+                return;
+            }
+            console.log(`🔄 [AutoTopic] Re-generating at milestone ${totalCustomerMsgs} customer msgs`);
+        } else {
+            if (totalCustomerMsgs < 1) return;
+            console.log(`🆕 [AutoTopic] First generation (${totalCustomerMsgs} customer msgs in DB)`);
+        }
+
+        // Build chat log from last 20 messages for context
+        const recentMessages = conversation.messages.slice(-20);
+        const chatLog = recentMessages
+            .filter(m => m.content?.trim())
+            .map(m => `${m.isFromContact ? 'Müşteri' : 'Temsilci'}: ${m.content.trim()}`)
+            .join('\n');
+
+        if (!chatLog) return;
+
+        const prompt = `Aşağıdaki müşteri sohbetini dikkatle analiz et ve konuşmanın ANA KONUSUNU özetleyen profesyonel bir başlık oluştur.
+
+KURALLAR:
+- Türkçe yaz
+- Maksimum 5-7 kelime
+- Sohbetin GERÇEK amacını yansıt — tüm konuşmaya bak, sadece ilk mesaja değil
+- Somut, açıklayıcı ve anlamlı ol
+  İyi örnekler: "Doğum Paketi Fiyat Talebi", "Ameliyat Randevusu Değiştirme", "Sipariş Teslimat Sorunu", "Ürün Kurulum Yardımı"
+- "Hakkında", "İle İlgili", "Konusunda" gibi gereksiz kelimelerden kaçın
+- SADECE başlığı yaz — başka hiçbir şey ekleme, tırnak işareti kullanma
+
+SOHBET (${totalCustomerMsgs} müşteri mesajı):
+${chatLog.substring(0, 3000)}
 
 Konu başlığı:`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
         const result = await model.generateContent(prompt);
-        const topic = result.response.text().trim().replace(/^["']|["']$/g, '').substring(0, 120);
+        const topic = result.response.text()
+            .trim()
+            .replace(/^["'`*#]|["'`*#]$/g, '')
+            .replace(/\*+/g, '')
+            .replace(/#+/g, '')
+            .trim()
+            .substring(0, 80);
 
-        if (!topic) return;
+        if (!topic || topic.length < 3) return;
 
         await prisma.conversation.update({
             where: { id: conversationId },
             data: { aiTopic: topic }
         });
 
-        console.log(`✅ [AutoTopic] Conversation ${conversationId}: "${topic}"`);
+        console.log(`✅ [AutoTopic] Conv ${conversationId} (${totalCustomerMsgs} msgs): "${topic}"`);
     } catch (err) {
         console.error('❌ [AutoTopic] Error:', err.message);
     }

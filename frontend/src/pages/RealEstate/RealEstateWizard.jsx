@@ -40,38 +40,47 @@ const VADE_OPTIONS = [
 //  6. fark = listPrice - netPrice → indirim veya vade farkı
 //
 //  Peşin (installmentCount=0) → netPrice = cashPrice
-function localCalculate({ cashPrice, listPrice, downPayment, interimPayments, installmentCount, monthlyInterestRate }) {
+// basePrice: Hesaplama tabanı (kampanya bazlı: listPrice veya cashPrice)
+// manualMonthly: Manuel taksit override (kullanıcının girdiği)
+// discountTierRate: Vadeye göre indirim oranı (% — Emlak Konut tipi kampanyalar için)
+function localCalculate({ cashPrice, listPrice, downPayment, interimPayments, installmentCount, monthlyInterestRate, basePrice, manualMonthly, discountTierRate }) {
+    // İndirim uygulanmış efektif taban fiyat
+    const rawBase = basePrice || cashPrice;
+    const tierDiscount = parseFloat(discountTierRate) || 0;
+    const effectiveBase = tierDiscount > 0 ? rawBase * (1 - tierDiscount / 100) : rawBase;
+
     const r = monthlyInterestRate / 100; // aylık faiz (ondalık)
 
-    // Ara ödemelerin nominal ve bugünkü değerleri
+    // Ara ödemelerin nominal toplamı (taksit tabanından düşülür)
+    // NOT: Ara ödemeler nominal tutarlarıyla düşülür (iskonto uygulanmaz).
+    // Mantık: Müşteri 3M+3M=6M ödüyor → taksit tabanı 6M azalır.
     let interimNominal = 0;
-    let interimPV = 0;
     interimPayments.forEach(ip => {
         const amt = ip.amount || 0;
         const month = ip.month || 0;
         if (amt > 0 && month > 0) {
             interimNominal += amt;
-            interimPV += r > 0 ? amt / Math.pow(1 + r, month) : amt;
         }
     });
 
-    // Kalan bugünkü değer (taksitlere düşen)
-    const remainingPV = Math.max(0, cashPrice - downPayment - interimPV);
+    // Kalan taksit tabanı — ara ödemeler nominal olarak düşülür
+    const remainingPV = Math.max(0, effectiveBase - downPayment - interimNominal);
 
-    // Aylık taksit hesabı (annuity formülü)
+    // Aylık taksit: manuel override varsa onu kullan, yoksa annuity formülü
     let monthly = 0;
-    if (installmentCount > 0 && remainingPV > 0) {
+    const parsedManual = parseFloat(manualMonthly) || 0;
+    if (parsedManual > 0) {
+        monthly = parsedManual;
+    } else if (installmentCount > 0 && remainingPV > 0) {
         if (r > 0) {
-            // PVA = (1 - (1+r)^(-n)) / r
             const pva = (1 - Math.pow(1 + r, -installmentCount)) / r;
             monthly = remainingPV / pva;
         } else {
-            // Sıfır faiz: basit bölme
             monthly = remainingPV / installmentCount;
         }
     }
 
-    // Toplam nominal ödeme (müşterinin ödeyeceği gerçek tutar)
+    // Toplam nominal ödeme
     const netPrice = downPayment + interimNominal + monthly * installmentCount;
 
     // Adat (bilgilendirme amaçlı)
@@ -85,21 +94,26 @@ function localCalculate({ cashPrice, listPrice, downPayment, interimPayments, in
             flows.push({ day: i * 30, amount: monthly });
         }
     }
-    if (flows.length === 0) flows.push({ day: 0, amount: cashPrice });
+    if (flows.length === 0) flows.push({ day: 0, amount: effectiveBase });
     const totalAmt = flows.reduce((s, f) => s + f.amount, 0);
     const adatDays = totalAmt > 0 ? flows.reduce((s, f) => s + f.amount * f.day, 0) / totalAmt : 0;
     const adatMonths = adatDays / 30;
 
-    // Kalan bakiye (nominal — peşinat ve ara ödemeler düşülmüş)
-    const remaining = Math.max(0, netPrice - downPayment - interimNominal);
+    // Taksitlendirilecek Bakiye = gerçek finansman tutari (baz - peşinat - ara ödemeler)
+    // remainingPV zaten effectiveBase - downPayment - interimNominal olarak hesaplandı
+    const remaining = remainingPV;
 
-    // Liste fiyatıyla fark → pozitif = indirim, negatif = vade farkı
+    // Liste fiyatı her zaman referans
     const discountAmount = listPrice - netPrice;
     const discountRate = listPrice > 0 ? (discountAmount / listPrice) * 100 : 0;
-
     const totalPayable = Math.round(netPrice);
 
-    return { adatMonths, netPrice: Math.round(netPrice), monthly: Math.round(monthly), remaining: Math.round(remaining), discountAmount, discountRate, totalPayable, isDiscount: discountAmount > 0 };
+    return {
+        adatMonths, netPrice: Math.round(netPrice), monthly: Math.round(monthly),
+        remaining: Math.round(remaining), discountAmount, discountRate, totalPayable,
+        isDiscount: discountAmount > 0, isManualMonthly: parsedManual > 0,
+        effectiveBase: Math.round(effectiveBase), tierDiscount,
+    };
 }
 
 // ─── ADIM GÖSTERGESİ ───────────────────────────────────────────────────────
@@ -274,7 +288,9 @@ export default function RealEstateWizard() {
         downPayment: 0,
         downPaymentRate: 20,
         interimPayments: [],
-        manualInterestRate: '',  // Kampanya seçilince otomatik dolar, override edilebilir
+        manualInterestRate: '',       // Kampanya seçilince otomatik dolar, override edilebilir
+        manualMonthly: '',            // Manuel taksit tutarı override
+        manualMonthlyEnabled: false,  // Manuel mod aktif mi?
     });
 
     // Anlık hesaplama
@@ -373,10 +389,32 @@ export default function RealEstateWizard() {
         const cashPrice = selectedAptType.cashPrice || selectedAptType.listPrice || 0;
         const listPrice = selectedAptType.listPrice || cashPrice;
         if (!cashPrice) { setCalc(null); return; }
+
         // Faiz kaynağı: kampanya faizi öncelikli, yoksa manuel giriş
         const monthlyIR = selectedCampaign
             ? (selectedCampaign.monthlyInterestRate ?? 0)
             : (parseFloat(form.manualInterestRate) || 0);
+
+        // Kampanya discount tier'larını parse et
+        let discountTiers = [];
+        try {
+            discountTiers = typeof selectedCampaign?.discountTiers === 'string'
+                ? JSON.parse(selectedCampaign.discountTiers)
+                : (selectedCampaign?.discountTiers || []);
+        } catch { discountTiers = []; }
+
+        // Seçilen vadeye ait indirim oranını bul
+        // maxInstallments = standart vade (indirimsiz, liste fiyatı), diğerleri indirimli
+        const isMaxInstallments = selectedCampaign && form.installmentCount === selectedCampaign.maxInstallments;
+        const activeTier = !isMaxInstallments
+            ? discountTiers.find(t => t.months === form.installmentCount)
+            : null;
+        const discountTierRate = activeTier ? activeTier.discountRate : 0;
+
+        // Kural: Kampanya seçiliyken her zaman listPrice baz alınır (sıfır faizli de, şirket bünyesi de).
+        // Kampanya yoksa (peşin satış) cashPrice baz alınır.
+        const basePrice = selectedCampaign ? listPrice : cashPrice;
+
         const result = localCalculate({
             cashPrice,
             listPrice,
@@ -384,20 +422,31 @@ export default function RealEstateWizard() {
             interimPayments: form.interimPayments,
             installmentCount: form.installmentCount,
             monthlyInterestRate: monthlyIR,
+            basePrice,
+            manualMonthly: form.manualMonthlyEnabled ? form.manualMonthly : '',
+            discountTierRate,
         });
-        setCalc(result);
-    }, [form.downPayment, form.installmentCount, form.interimPayments, form.manualInterestRate, selectedAptType, selectedCampaign]);
+        setCalc({ ...result, activeTier, discountTiers, isMaxInstallments });
+    }, [form.downPayment, form.installmentCount, form.interimPayments, form.manualInterestRate, form.manualMonthly, form.manualMonthlyEnabled, selectedAptType, selectedCampaign]);
 
     // Peşinat oranı ↔ tutar senkronizasyonu
+    // Kural: SADECE sıfır faizli kampanya (Emlak Konut vb.) → listPrice baz; faizli kampanya → cashPrice baz
+    const _getPriceBase = () => {
+        const cp = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
+        const lp = selectedAptType?.listPrice || cp;
+        // Kampanya varsa her zaman liste fiyatı baz alınır
+        return selectedCampaign ? lp : cp;
+    };
+
     const handleDownPaymentRate = (rate) => {
-        const cashPrice = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
-        const dp = Math.round((cashPrice * rate) / 100);
+        const base = _getPriceBase();
+        const dp = Math.round((base * rate) / 100);
         setForm(f => ({ ...f, downPaymentRate: rate, downPayment: dp }));
     };
 
     const handleDownPaymentAmt = (amt) => {
-        const cashPrice = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
-        const rate = cashPrice > 0 ? (amt / cashPrice) * 100 : 0;
+        const base = _getPriceBase();
+        const rate = base > 0 ? (amt / base) * 100 : 0;
         setForm(f => ({ ...f, downPayment: amt, downPaymentRate: rate }));
     };
 
@@ -436,9 +485,32 @@ export default function RealEstateWizard() {
     const handleSave = async () => {
         if (!selectedProject || !selectedAptType) { setError('Lütfen bir daire tipi seçin.'); return; }
         if (!form.customerName) { setError('Müşteri adı zorunludur.'); return; }
+
+        // Peşinat min kontrolleri
+        const cashPrice = selectedAptType.cashPrice || selectedAptType.listPrice || 0;
+        const listPrice = selectedAptType.listPrice || cashPrice;
+        const isZeroIRCampaign = selectedCampaign && selectedCampaign.monthlyInterestRate === 0 && form.installmentCount > 0;
+
+        // Sıfır faizli kampanya (Emlak Konut): flexDownPaymentRate en az
+        if (isZeroIRCampaign && selectedCampaign.flexDownPaymentRate != null) {
+            const flexMin = listPrice * selectedCampaign.flexDownPaymentRate / 100;
+            if (form.downPayment < flexMin) {
+                setError(`Bu kampanya için minimum ${fmt(flexMin)} peşinat (%%${selectedCampaign.flexDownPaymentRate}) gereklidir.`);
+                return;
+            }
+        }
+
+        // Discount tier hesapla
+        let discountTiers = [];
+        try { discountTiers = typeof selectedCampaign?.discountTiers === 'string' ? JSON.parse(selectedCampaign.discountTiers) : []; } catch {}
+        const isMaxInst = selectedCampaign && form.installmentCount === selectedCampaign.maxInstallments;
+        const activeTier = !isMaxInst ? discountTiers.find(t => t.months === form.installmentCount) : null;
+        const discountTierRate = activeTier ? activeTier.discountRate : 0;
+
         setSaving(true); setError('');
         try {
-            const cashPrice = selectedAptType.cashPrice || selectedAptType.listPrice || 0;
+            // SADECE sıfır faizli kampanyalarda listPrice baz alınır; faizlide cashPrice
+            const basePrice = isZeroIRCampaign ? listPrice : cashPrice;
             await realEstateAPI.createOffer(wid, {
                 projectId: selectedProject.id,
                 campaignId: selectedCampaign?.id || null,
@@ -447,12 +519,15 @@ export default function RealEstateWizard() {
                 customerPhone: form.customerPhone,
                 customerEmail: form.customerEmail,
                 agentName: form.agentName,
-                listPrice: selectedAptType.listPrice || cashPrice,
+                listPrice,
                 cashPrice,
                 downPayment: form.downPayment,
                 interimPayments: form.interimPayments,
                 installmentCount: form.installmentCount,
                 monthlyInterestRate: selectedCampaign?.monthlyInterestRate ?? (parseFloat(form.manualInterestRate) || 0),
+                basePrice,
+                manualMonthly: form.manualMonthlyEnabled && form.manualMonthly ? parseFloat(form.manualMonthly) : undefined,
+                discountTierRate: discountTierRate || undefined,
             });
             setSaved(true);
             setTimeout(() => {
@@ -467,18 +542,40 @@ export default function RealEstateWizard() {
     };
 
     const minDPRate = selectedCampaign?.minDownPaymentRate || 0;
-    const minDP = selectedCampaign
-        ? selectedCampaign.minDownPaymentFixed
-            || ((selectedAptType?.cashPrice || selectedAptType?.listPrice || 0) * minDPRate / 100)
-        : 0;
     const cashPrice = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
+    const listPriceForCalc = selectedAptType?.listPrice || cashPrice;
+
+    // Kampanya tiplerini belirle (render-time)
+    // Kampanya varsa her zaman listPrice baz alınır (sıfır faiz de, şirket bünyesi de)
+    const isZeroIRActive = selectedCampaign && selectedCampaign.monthlyInterestRate === 0 && form.installmentCount > 0;
+    const priceBase = selectedCampaign ? listPriceForCalc : cashPrice;
+
+    // Peşinat min oranı: Emlak Konut flex → flexDownPaymentRate, diğerleri kampanya minDP
+    const flexMinRate = selectedCampaign?.flexDownPaymentRate ?? null;
+    const effectiveMinDPRate = (isZeroIRActive && flexMinRate != null) ? flexMinRate : minDPRate;
+
+    const minDP = selectedCampaign
+        ? Math.max(
+            selectedCampaign.minDownPaymentFixed || 0,
+            priceBase * effectiveMinDPRate / 100
+          )
+        : 0;
     const dp = form.downPayment;
-    const dpPct = cashPrice > 0 ? (dp / cashPrice) * 100 : 0;
+    const dpPct = priceBase > 0 ? (dp / priceBase) * 100 : 0;
     // CSS --value slider min'e göre normalize: (value - min) / (max - min) × 100
-    const sliderMin = minDPRate;
+    const sliderMin = effectiveMinDPRate;
     const sliderPct = sliderMin < 100
         ? Math.min(100, Math.max(0, ((dpPct - sliderMin) / (100 - sliderMin)) * 100))
         : 100;
+
+    // Aktif discount tier (Emlak Konut tipi indirim)
+    let renderDiscountTiers = [];
+    try {
+        renderDiscountTiers = typeof selectedCampaign?.discountTiers === 'string'
+            ? JSON.parse(selectedCampaign.discountTiers) : (selectedCampaign?.discountTiers || []);
+    } catch {}
+    const isMaxInstRender = selectedCampaign && form.installmentCount === selectedCampaign.maxInstallments;
+    const activeRenderTier = !isMaxInstRender ? renderDiscountTiers.find(t => t.months === form.installmentCount) : null;
 
     if (loading) return <div className="re-loading"><Building2 size={32} /><span>Proje verileri yükleniyor...</span></div>;
 
@@ -771,13 +868,101 @@ export default function RealEstateWizard() {
                                                         <button
                                                             key={v.months}
                                                             className={`re-vade-btn ${form.installmentCount === v.months ? 'selected' : ''}`}
-                                                            onClick={() => setForm(f => ({ ...f, installmentCount: v.months }))}
+                                                            onClick={() => {
+                                                                setForm(f => ({ ...f, installmentCount: v.months }));
+                                                                // Kampanya min peşinatını uygula
+                                                                if (selectedCampaign && selectedCampaign.minDownPaymentRate) {
+                                                                    const cp = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
+                                                                    const lp = selectedAptType?.listPrice || cp;
+                                                                    const isZeroIR = selectedCampaign.monthlyInterestRate === 0;
+                                                                    const base = isZeroIR ? lp : cp;
+                                                                    const currentMinDP = selectedCampaign.minDownPaymentFixed || (base * (selectedCampaign.minDownPaymentRate || 0) / 100);
+                                                                    if (form.downPayment < currentMinDP) {
+                                                                        const rate = base > 0 ? (currentMinDP / base) * 100 : selectedCampaign.minDownPaymentRate;
+                                                                        setForm(f => ({ ...f, installmentCount: v.months, downPayment: Math.round(currentMinDP), downPaymentRate: rate }));
+                                                                    }
+                                                                }
+                                                            }}
                                                         >
                                                             {v.label}
                                                         </button>
                                                     ))}
                                             </div>
-                                            {selectedCampaign && form.installmentCount > 0 && (
+
+                                            {/* Emlak Konut — Sıfır Faiz Kampanyası Bilgisi */}
+                                            {isZeroIRActive && form.installmentCount > 0 && (
+                                                <div style={{
+                                                    marginTop: 12, padding: '10px 14px',
+                                                    background: activeRenderTier
+                                                        ? 'linear-gradient(135deg, rgba(39,174,96,0.08), rgba(39,174,96,0.04))'
+                                                        : 'linear-gradient(135deg, rgba(26,82,118,0.08), rgba(26,82,118,0.04))',
+                                                    border: activeRenderTier
+                                                        ? '1px solid rgba(39,174,96,0.3)'
+                                                        : '1px solid rgba(26,82,118,0.2)',
+                                                    borderRadius: 8, fontSize: '0.8125rem',
+                                                    color: activeRenderTier ? '#1e8449' : 'var(--re-primary)',
+                                                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                                                }}>
+                                                    <span style={{ fontSize: '1rem', flexShrink: 0 }}>{activeRenderTier ? '🟢' : 'ℹ️'}</span>
+                                                    <div>
+                                                        {activeRenderTier ? (
+                                                            <>
+                                                                <b>{activeRenderTier.label || `${form.installmentCount} Ay`} — %{activeRenderTier.discountRate} İndirim Uygulanır</b><br />
+                                                                Liste fiyatı: <b>{fmt(listPriceForCalc)}</b> →
+                                                                İndirimli fiyat: <b>{fmt(Math.round(listPriceForCalc * (1 - activeRenderTier.discountRate / 100)))}</b>
+                                                                {flexMinRate != null && (
+                                                                    <span style={{ display: 'block', marginTop: 4 }}>
+                                                                        Peşinat: min %{selectedCampaign.minDownPaymentRate} (standart) · min %{flexMinRate} (esnek)
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <b>{form.installmentCount} Ay — {isMaxInstRender ? 'Liste Fiyatı (İndirimsiz)' : 'Seçili Vade'}</b><br />
+                                                                Sıfır faizli hesaplama: <b>{fmt(listPriceForCalc)}</b> üzerinden
+                                                                {flexMinRate != null && (
+                                                                    <span style={{ display: 'block', marginTop: 4 }}>
+                                                                        Peşinat: min %{selectedCampaign.minDownPaymentRate} (standart) · min %{flexMinRate} (esnek)
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Tüm Vade İndirimleri — Özet Tablo */}
+                                            {isZeroIRActive && renderDiscountTiers.length > 0 && (
+                                                <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                    {renderDiscountTiers.map((t, i) => (
+                                                        <span key={i} style={{
+                                                            fontSize: '0.75rem', padding: '3px 10px',
+                                                            background: form.installmentCount === t.months
+                                                                ? 'rgba(39,174,96,0.15)' : 'rgba(26,82,118,0.06)',
+                                                            color: form.installmentCount === t.months ? '#1e8449' : 'var(--re-muted)',
+                                                            border: form.installmentCount === t.months
+                                                                ? '1px solid rgba(39,174,96,0.4)' : '1px solid var(--re-border)',
+                                                            borderRadius: 20, fontWeight: 600, cursor: 'pointer',
+                                                        }}
+                                                        onClick={() => setForm(f => ({ ...f, installmentCount: t.months }))}>
+                                                            {t.months}A %{t.discountRate}↓
+                                                        </span>
+                                                    ))}
+                                                    <span style={{
+                                                        fontSize: '0.75rem', padding: '3px 10px',
+                                                        background: form.installmentCount === selectedCampaign.maxInstallments
+                                                            ? 'rgba(26,82,118,0.15)' : 'rgba(26,82,118,0.04)',
+                                                        color: 'var(--re-primary)',
+                                                        border: '1px solid rgba(26,82,118,0.2)',
+                                                        borderRadius: 20, fontWeight: 600, cursor: 'pointer',
+                                                    }}
+                                                    onClick={() => setForm(f => ({ ...f, installmentCount: selectedCampaign.maxInstallments }))}>
+                                                        {selectedCampaign.maxInstallments}A Liste
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {selectedCampaign && form.installmentCount > 0 && !isZeroIRActive && (
                                                 <p style={{ marginTop: 10, fontSize: '0.8125rem', color: 'var(--re-muted)' }}>
                                                     Seçilen kampanya ({selectedCampaign.name}) için maks. {selectedCampaign.maxInstallments} aya kadar taksit seçilebilir.
                                                 </p>
@@ -792,14 +977,14 @@ export default function RealEstateWizard() {
                                             <label>Peşinat Oranı ve Tutarı</label>
                                             <div className="re-slider-wrapper">
                                                 <div className="re-slider-labels">
-                                                    <span>%{Math.max(selectedCampaign?.minDownPaymentRate || 0, 0).toFixed(0)} Min</span>
+                                                    <span>%{effectiveMinDPRate.toFixed(0)} Min</span>
                                                     <span className="re-slider-value">%{dpPct.toFixed(1)} — {fmt(dp)}</span>
                                                     <span>%100</span>
                                                 </div>
                                                 <input
                                                     type="range"
                                                     className="re-slider"
-                                                    min={selectedCampaign?.minDownPaymentRate || 0}
+                                                    min={effectiveMinDPRate}
                                                     max={100}
                                                     step={0.5}
                                                     value={dpPct}
@@ -811,14 +996,14 @@ export default function RealEstateWizard() {
                                                 <div>
                                                     <label style={{ fontSize: '0.75rem', color: 'var(--re-muted)' }}>Tutar (TL)</label>
                                                     <input className="re-input" type="number"
-                                                        min={minDP} max={cashPrice}
+                                                        min={minDP} max={priceBase}
                                                         value={dp}
                                                         onChange={e => handleDownPaymentAmt(parseFloat(e.target.value) || 0)} />
                                                 </div>
                                                 <div>
                                                     <label style={{ fontSize: '0.75rem', color: 'var(--re-muted)' }}>Oran (%)</label>
                                                     <input className="re-input" type="number"
-                                                        min={selectedCampaign?.minDownPaymentRate || 0} max={100} step={0.5}
+                                                        min={effectiveMinDPRate} max={100} step={0.5}
                                                         value={dpPct.toFixed(1)}
                                                         onChange={e => handleDownPaymentRate(parseFloat(e.target.value) || 0)} />
                                                 </div>
@@ -827,9 +1012,65 @@ export default function RealEstateWizard() {
 
                                         {/* Kalan bakiye */}
                                         {calc && form.installmentCount > 0 && (
-                                            <div style={{ padding: '10px 16px', background: 'rgba(26,82,118,0.05)', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem', color: 'var(--re-primary)' }}>
-                                                Taksitlendirilecek Bakiye: <b>{fmt(calc.remaining)}</b> →
-                                                {form.installmentCount} × <b>{fmt(calc.monthly)}</b>/ay
+                                            <div style={{ padding: '10px 16px', background: 'rgba(26,82,118,0.05)', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem', color: 'var(--re-primary)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                <span>Taksitlendirilecek Bakiye: <b>{fmt(calc.remaining)}</b> → {form.installmentCount} × <b>{fmt(calc.monthly)}</b>/ay</span>
+                                                {calc.isManualMonthly && (
+                                                    <span style={{ fontSize: '0.75rem', background: 'rgba(171,44,43,0.12)', color: '#922b21', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>Manuel Mod</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Manuel Taksit Tutarı */}
+                                        {form.installmentCount > 0 && (
+                                            <div className="re-form-group" style={{ marginBottom: 16 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                                    <label style={{ margin: 0 }}>Aylık Taksit Tutarı</label>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.8125rem', color: form.manualMonthlyEnabled ? 'var(--re-primary)' : 'var(--re-muted)', fontWeight: 600, userSelect: 'none' }}>
+                                                        <div
+                                                            onClick={() => setForm(f => ({ ...f, manualMonthlyEnabled: !f.manualMonthlyEnabled, manualMonthly: '' }))}
+                                                            style={{
+                                                                width: 36, height: 20, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s',
+                                                                background: form.manualMonthlyEnabled ? 'var(--re-primary)' : 'var(--re-border)',
+                                                                position: 'relative', flexShrink: 0,
+                                                            }}
+                                                        >
+                                                            <div style={{
+                                                                position: 'absolute', top: 2, left: form.manualMonthlyEnabled ? 18 : 2,
+                                                                width: 16, height: 16, background: 'white', borderRadius: '50%',
+                                                                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                                                            }} />
+                                                        </div>
+                                                        Manuel Giriş
+                                                    </label>
+                                                </div>
+                                                {form.manualMonthlyEnabled ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                        <input
+                                                            className="re-input"
+                                                            type="number"
+                                                            min="0"
+                                                            step="100"
+                                                            placeholder="Örn: 15.000"
+                                                            value={form.manualMonthly}
+                                                            onChange={e => setForm(f => ({ ...f, manualMonthly: e.target.value }))}
+                                                            style={{ flex: 1 }}
+                                                        />
+                                                        <span style={{ fontSize: '0.875rem', color: 'var(--re-muted)', whiteSpace: 'nowrap' }}>TL / ay</span>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{
+                                                        padding: '10px 14px', background: 'rgba(26,82,118,0.04)',
+                                                        border: '1px solid var(--re-border)', borderRadius: 8,
+                                                        fontSize: '0.9rem', fontWeight: 600, color: 'var(--re-primary)',
+                                                    }}>
+                                                        {calc ? fmt(calc.monthly) : '—'} <span style={{ fontWeight: 400, fontSize: '0.8rem', color: 'var(--re-muted)' }}>/ay (otomatik hesaplanıyor)</span>
+                                                    </div>
+                                                )}
+                                                {form.manualMonthlyEnabled && (
+                                                    <p style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--re-muted)', lineHeight: 1.5 }}>
+                                                        ⚠️ Manuel mod: Girdiğiniz tutar baz alınır. Toplam ödeme = Peşinat + Ara Ödemeler + (Taksit × Ay Sayısı).
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
 

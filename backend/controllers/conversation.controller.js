@@ -1844,6 +1844,66 @@ export const updateFunnel = async (req, res) => {
                         contact: existing.contactId ? { id: existing.contactId } : null
                     });
                     console.log('🔀 [FLOW:STAGE_CHANGED] stage changed');
+
+                    // 🎯 Aşamaya özel atama — Round-Robin + Bot + Kişi
+                    if (newStageRec) {
+                        const stageAssign = {};
+
+                        // Bot atama
+                        if (newStageRec.assignedBotId) {
+                            stageAssign.assignedBotId = newStageRec.assignedBotId;
+                            stageAssign.botEnabled = true;
+                            console.log(`🤖 [StageAssign] Bot atandı: ${newStageRec.assignedBotId}`);
+                        }
+
+                        // Takım atama + Round-Robin
+                        if (newStageRec.assignedTeamId) {
+                            stageAssign.teamId = newStageRec.assignedTeamId;
+                            stageAssign.teamIds = JSON.stringify([newStageRec.assignedTeamId]);
+
+                            // Round-robin ile kullanıcı seç
+                            try {
+                                const teamMembers = await prisma.teamMember.findMany({
+                                    where: { teamId: newStageRec.assignedTeamId, userId: { not: null } },
+                                    orderBy: { createdAt: 'asc' },
+                                    select: { userId: true }
+                                });
+                                if (teamMembers.length > 0) {
+                                    const lastConv = await prisma.conversation.findFirst({
+                                        where: { teamId: newStageRec.assignedTeamId, assignedToId: { not: null } },
+                                        orderBy: { updatedAt: 'desc' },
+                                        select: { assignedToId: true }
+                                    });
+                                    const lastIdx = lastConv?.assignedToId
+                                        ? teamMembers.findIndex(m => m.userId === lastConv.assignedToId)
+                                        : -1;
+                                    stageAssign.assignedToId = teamMembers[(lastIdx + 1) % teamMembers.length].userId;
+                                    console.log(`👥 [StageAssign] Round-Robin → user: ${stageAssign.assignedToId}`);
+                                }
+                            } catch (rrErr) {
+                                console.error('[StageAssign] Round-robin error:', rrErr.message);
+                            }
+                        }
+
+                        // Kişi atama (round-robin yoksa)
+                        if (newStageRec.assignedUserId && !stageAssign.assignedToId) {
+                            stageAssign.assignedToId = newStageRec.assignedUserId;
+                            console.log(`👤 [StageAssign] Kişi atandı: ${newStageRec.assignedUserId}`);
+                        }
+
+                        if (Object.keys(stageAssign).length > 0) {
+                            await prisma.conversation.update({
+                                where: { id: conversationId },
+                                data: stageAssign
+                            });
+                            try {
+                                emitToWorkspace(workspaceId, 'conversation_updated', {
+                                    conversationId,
+                                    ...stageAssign
+                                });
+                            } catch (_) {}
+                        }
+                    }
                 } catch (e) {
                     console.error('❌ [StatusSync/FLOW] error:', e.message);
                 }

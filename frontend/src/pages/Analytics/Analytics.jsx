@@ -129,7 +129,6 @@ const Analytics = () => {
         return (
             <div className="analytics-loading">
                 <Zap className="spin text-primary" size={32} />
-                <p>Premium veriler hazırlanıyor...</p>
             </div>
         );
     }
@@ -153,11 +152,47 @@ const Analytics = () => {
                         <option value="30d">Son 30 Gün</option>
                         <option value="custom">Özel Aralık</option>
                     </select>
+
+                    {dateFilter === 'custom' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                style={{
+                                    padding: '8px 12px', borderRadius: 8,
+                                    border: '1px solid #e5e7eb', fontSize: '0.85rem',
+                                    background: '#fff', cursor: 'pointer'
+                                }}
+                            />
+                            <span style={{ color: '#9ca3af', fontWeight: 600 }}>—</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                style={{
+                                    padding: '8px 12px', borderRadius: 8,
+                                    border: '1px solid #e5e7eb', fontSize: '0.85rem',
+                                    background: '#fff', cursor: 'pointer'
+                                }}
+                            />
+                            <button
+                                className="btn-secondary"
+                                onClick={loadAnalytics}
+                                disabled={!startDate || !endDate}
+                                style={{ opacity: (!startDate || !endDate) ? 0.5 : 1 }}
+                            >
+                                <Calendar size={15} /> Uygula
+                            </button>
+                        </div>
+                    )}
+
                     <button className="btn-secondary" onClick={loadAnalytics}>
                         <Clock size={16} /> Güncelle
                     </button>
                 </div>
             </div>
+
 
             {/* Top Stats Overview */}
             <div className="stats-overview-grid">
@@ -198,9 +233,19 @@ const Analytics = () => {
                         <Zap size={22} />
                     </div>
                     <span className="stat-label">Çözümleme Oranı</span>
-                    <div className="stat-value-large">84.2%</div>
-                    <div className="stat-trend positive">
-                        <TrendingUp size={12} /> +2.1%
+                    <div className="stat-value-large">{analytics?.resolutionRate ?? 0}%</div>
+                    <div className="stat-trend neutral">Gerçek Veri</div>
+                </div>
+                <div className="stat-card-premium">
+                    <div className="stat-icon-wrapper" style={{ background: '#f0fdf4' }}>
+                        <Calendar size={22} style={{ color: '#10b981' }} />
+                    </div>
+                    <span className="stat-label">Toplam Randevu</span>
+                    <div className="stat-value-large">{formatNumber(analytics?.appointmentStats?.total || 0)}</div>
+                    <div className="stat-trend neutral" style={{ gap: 8 }}>
+                        <span title="Bot tarafından alınan">🤖 {analytics?.appointmentStats?.byBot || 0}</span>
+                        <span style={{ margin: '0 4px', opacity: 0.4 }}>|</span>
+                        <span title="Agent tarafından alınan">👤 {analytics?.appointmentStats?.byAgent || 0}</span>
                     </div>
                 </div>
             </div>
@@ -288,23 +333,28 @@ const Analytics = () => {
                         </div>
                     </div>
                     <div className="flow-summary-list">
-                        {(analytics?.funnelSummary || []).map((flow) => (
-                            <div key={flow.id} className="flow-item-premium">
-                                <div className="flow-icon-circle" style={{ background: (flow.color || '#6366f1') + '20', color: flow.color || '#6366f1' }}>
-                                    {getFlowIcon(flow.name)}
+                        {(() => {
+                            const funnels = analytics?.funnelSummary || [];
+                            const totalFunnelContacts = funnels.reduce((sum, f) => sum + (f.count || 0), 0);
+                            return funnels.map((flow) => (
+                                <div key={flow.id} className="flow-item-premium">
+                                    <div className="flow-icon-circle" style={{ background: (flow.color || '#6366f1') + '20', color: flow.color || '#6366f1' }}>
+                                        {getFlowIcon(flow.name)}
+                                    </div>
+                                    <div className="flow-details-box">
+                                        <span className="flow-name-text">{flow.name}</span>
+                                        <span className="flow-count-badge">{flow.count} Kişi</span>
+                                    </div>
+                                    <div className="flow-share-pill">
+                                        {totalFunnelContacts > 0
+                                            ? ((flow.count / totalFunnelContacts) * 100).toFixed(0)
+                                            : 0}%
+                                    </div>
                                 </div>
-                                <div className="flow-details-box">
-                                    <span className="flow-name-text">{flow.name}</span>
-                                    <span className="flow-count-badge">{flow.count} Kişi</span>
-                                </div>
-                                <div className="flow-share-pill">
-                                    {analytics?.totalContacts > 0 
-                                        ? ((flow.count / analytics.totalContacts) * 100).toFixed(0) 
-                                        : 0}%
-                                </div>
-                            </div>
-                        ))}
+                            ));
+                        })()}
                     </div>
+
                 </div>
 
                 {/* Right: Channel Distribution */}
@@ -342,6 +392,37 @@ const Analytics = () => {
                 </div>
             </div>
 
+            {/* Appointment Breakdown */}
+            {(analytics?.appointmentStats?.total || 0) > 0 && (
+                <div style={{ padding: '0 0 24px' }}>
+                    <div className="premium-section-card">
+                        <div className="section-header-modern">
+                            <div className="section-title-modern">
+                                <div className="section-icon-box"><Calendar size={20} /></div>
+                                <h2>Randevu Dağılımı</h2>
+                            </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, padding: '0 4px 4px' }}>
+                            {[
+                                { label: 'Bot Aldı', value: analytics.appointmentStats.byBot, color: '#6366f1', icon: '🤖' },
+                                { label: 'Agent Aldı', value: analytics.appointmentStats.byAgent, color: '#0ea5e9', icon: '👤' },
+                                { label: 'Planlandı', value: analytics.appointmentStats.scheduled, color: '#f59e0b', icon: '📅' },
+                                { label: 'Tamamlandı', value: analytics.appointmentStats.completed, color: '#10b981', icon: '✅' },
+                                { label: 'İptal Edildi', value: analytics.appointmentStats.cancelled, color: '#ef4444', icon: '❌' },
+                            ].map(item => (
+                                <div key={item.label} style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ fontSize: 24 }}>{item.icon}</div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div>
+                                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color }}>{item.value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Agent Performance Table */}
             <div className="analytics-footer-section">
                 <div className="premium-table-wrapper">
@@ -358,7 +439,7 @@ const Analytics = () => {
                                 <th>Toplam İşlem</th>
                                 <th>Çözümleme</th>
                                 <th>Yanıt Süresi</th>
-                                <th>Durum</th>
+                                <th>Açık Konuşma</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -400,9 +481,9 @@ const Analytics = () => {
                                         </div>
                                     </td>
                                     <td>
-                                        <div className={`status-indicator ${agent.isOnline ? 'online' : 'offline'}`}>
-                                            <div className={`dot ${agent.isOnline ? 'online' : ''}`} />
-                                            {agent.isOnline ? 'Aktif' : 'Çevrimdışı'}
+                                        <div className="performance-metric">
+                                            <span className="metric-top-val">{agent.openConversations ?? '—'}</span>
+                                            <span className="metric-sub-val">Aktif</span>
                                         </div>
                                     </td>
                                 </tr>

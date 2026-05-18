@@ -36,7 +36,7 @@
 /* Stats Grid - Top Bar */
 .stats-overview-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 20px;
     margin-bottom: 32px;
 }
@@ -438,6 +438,9 @@
 .bg-danger-soft { background: #fef2f2; color: #dc2626; }
 
 @media (max-width: 1400px) {
+    .stats-overview-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
     .analytics-main-grid {
         grid-template-columns: 1fr 1fr;
     }
