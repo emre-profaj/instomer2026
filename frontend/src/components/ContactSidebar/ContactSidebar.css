@@ -1793,7 +1793,8 @@
     border-top: 1px solid #e5e7eb;
 }
 
-.reminder-modal-footer .btn-cancel {
+.reminder-modal-footer .btn-cancel,
+.reminder-btn-cancel {
     padding: 8px 16px;
     border: 1px solid #e5e7eb;
     background: #fff;
@@ -1805,11 +1806,13 @@
     transition: all 0.2s;
 }
 
-.reminder-modal-footer .btn-cancel:hover {
+.reminder-modal-footer .btn-cancel:hover,
+.reminder-btn-cancel:hover {
     background: #f3f4f6;
 }
 
-.reminder-modal-footer .btn-save {
+.reminder-modal-footer .btn-save,
+.reminder-btn-save {
     padding: 8px 16px;
     border: none;
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
@@ -1819,14 +1822,19 @@
     color: #fff;
     cursor: pointer;
     transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.reminder-modal-footer .btn-save:hover {
+.reminder-modal-footer .btn-save:hover,
+.reminder-btn-save:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
-.reminder-modal-footer .btn-save:disabled {
+.reminder-modal-footer .btn-save:disabled,
+.reminder-btn-save:disabled {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
