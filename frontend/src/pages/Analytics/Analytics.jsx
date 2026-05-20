@@ -28,6 +28,9 @@ const Analytics = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [callFilter, setCallFilter] = useState('all'); // all | called | notCalled | completed | planned
+    const [showPhoneListModal, setShowPhoneListModal] = useState(false);
+    const [phoneListFilter, setPhoneListFilter] = useState('all'); // all | called | notCalled
+    const [phoneListSearch, setPhoneListSearch] = useState('');
 
     useEffect(() => {
         if (currentWorkspace?.id) {
@@ -446,6 +449,12 @@ const Analytics = () => {
                                 <option value="completed">Tamamlanan Aramalar</option>
                                 <option value="planned">Planlanan Aramalar</option>
                             </select>
+                            <button
+                                onClick={() => setShowPhoneListModal(true)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            >
+                                <Users size={14} /> Listeyi Görüntüle
+                            </button>
                         </div>
                         {/* Stat Cards */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, padding: '0 4px 16px' }}>
@@ -525,6 +534,110 @@ const Analytics = () => {
                                 </table>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Phone List Modal */}
+            {showPhoneListModal && analytics?.callTrackingStats?.phoneContactsList && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)' }} onClick={() => setShowPhoneListModal(false)} />
+                    <div style={{ position: 'relative', background: '#fff', borderRadius: 16, width: '90%', maxWidth: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+                        {/* Modal Header */}
+                        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>Numaralı Kişiler</h3>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                                    {analytics.callTrackingStats.phoneContactsList.length} kişi
+                                </p>
+                            </div>
+                            <button onClick={() => setShowPhoneListModal(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                        </div>
+                        {/* Filters */}
+                        <div style={{ padding: '12px 24px', display: 'flex', gap: 10, alignItems: 'center', borderBottom: '1px solid #f1f5f9', flexShrink: 0, flexWrap: 'wrap' }}>
+                            <input
+                                type="text"
+                                placeholder="İsim veya numara ara..."
+                                value={phoneListSearch}
+                                onChange={(e) => setPhoneListSearch(e.target.value)}
+                                style={{ flex: 1, minWidth: 180, padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.82rem', outline: 'none' }}
+                            />
+                            {[
+                                { val: 'all', label: 'Tümü' },
+                                { val: 'called', label: 'Arandı' },
+                                { val: 'notCalled', label: 'Aranmadı' },
+                            ].map(f => (
+                                <button
+                                    key={f.val}
+                                    onClick={() => setPhoneListFilter(f.val)}
+                                    style={{
+                                        padding: '6px 14px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', border: 'none',
+                                        background: phoneListFilter === f.val ? '#6366f1' : '#f1f5f9',
+                                        color: phoneListFilter === f.val ? '#fff' : '#64748b'
+                                    }}
+                                >{f.label}</button>
+                            ))}
+                        </div>
+                        {/* List */}
+                        <div style={{ overflowY: 'auto', flex: 1, padding: '8px 24px 20px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
+                                        <th style={{ textAlign: 'left', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Kişi</th>
+                                        <th style={{ textAlign: 'left', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Telefon</th>
+                                        <th style={{ textAlign: 'center', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Durum</th>
+                                        <th style={{ textAlign: 'center', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Arama</th>
+                                        <th style={{ textAlign: 'left', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Son Arama</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {analytics.callTrackingStats.phoneContactsList
+                                        .filter(c => {
+                                            if (phoneListFilter === 'called') return c.wasCalled;
+                                            if (phoneListFilter === 'notCalled') return !c.wasCalled;
+                                            return true;
+                                        })
+                                        .filter(c => {
+                                            if (!phoneListSearch) return true;
+                                            const q = phoneListSearch.toLowerCase();
+                                            return c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
+                                        })
+                                        .map(c => (
+                                            <tr key={c.contactId} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                <td style={{ padding: '10px 6px', fontWeight: 600, color: '#0f172a' }}>{c.name}</td>
+                                                <td style={{ padding: '10px 6px', color: '#64748b', fontFamily: 'monospace', fontSize: '0.78rem' }}>{c.phone}</td>
+                                                <td style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                                    {c.wasCalled ? (
+                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ✓ Arandı
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ✗ Aranmadı
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                                    {c.wasCalled ? (
+                                                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{c.totalCalls}</span>
+                                                    ) : (
+                                                        <span style={{ color: '#d1d5db' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '10px 6px', color: '#64748b', fontSize: '0.76rem' }}>
+                                                    {c.lastCallDate ? new Date(c.lastCallDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+                            {analytics.callTrackingStats.phoneContactsList
+                                .filter(c => phoneListFilter === 'called' ? c.wasCalled : phoneListFilter === 'notCalled' ? !c.wasCalled : true)
+                                .filter(c => !phoneListSearch || c.name.toLowerCase().includes(phoneListSearch.toLowerCase()) || (c.phone || '').includes(phoneListSearch))
+                                .length === 0 && (
+                                    <div style={{ textAlign: 'center', color: '#9ca3af', padding: '32px 0', fontSize: '0.85rem' }}>Sonuç bulunamadı.</div>
+                                )}
+                        </div>
                     </div>
                 </div>
             )}

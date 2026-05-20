@@ -1096,6 +1096,40 @@ export const getContactAnalytics = async (req, res) => {
             }
             if (a.assignee) d.assigneeName = a.assignee.name;
         }
+        // Numaralı tüm kişilerin listesi (popup için)
+        const allContactsWithPhone = await prisma.contact.findMany({
+            where: {
+                conversations: { some: { workspaceId } },
+                phone: { not: null },
+                NOT: { phone: '' },
+                ...dateFilter
+            },
+            select: {
+                id: true,
+                name: true,
+                phone: true,
+                status: true,
+                createdAt: true
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const phoneContactsList = allContactsWithPhone.map(c => {
+            const detail = callDetailMap[c.id];
+            return {
+                contactId: c.id,
+                name: c.name || 'İsimsiz',
+                phone: c.phone,
+                status: c.status,
+                createdAt: c.createdAt,
+                wasCalled: !!detail,
+                totalCalls: detail?.totalCalls || 0,
+                completedCalls: detail?.completedCalls || 0,
+                plannedCalls: detail?.plannedCalls || 0,
+                lastCallDate: detail?.lastCallDate || null,
+                assigneeName: detail?.assigneeName || null
+            };
+        });
 
         const callTrackingStats = {
             totalWithPhone: contactsWithPhone,
@@ -1103,7 +1137,8 @@ export const getContactAnalytics = async (req, res) => {
             totalCompleted: completedCallContactIds.size,
             totalNotCalled: contactsWithPhone - calledContactIds.size,
             callRate: contactsWithPhone > 0 ? ((calledContactIds.size / contactsWithPhone) * 100).toFixed(1) : 0,
-            details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate))
+            details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate)),
+            phoneContactsList
         };
 
         res.json({
