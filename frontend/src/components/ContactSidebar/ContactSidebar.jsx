@@ -474,10 +474,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
             setShowActivityModal(false);
             setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '' });
-            alert('Aktivite başarıyla kaydedildi.');
             fetchTimeline(profile.id);
             // Inbox list'teki badge'leri hemen güncelle
             if (onActivitySaved) onActivitySaved({ type: activityForm.type, status: 'PLANNED', contactId: profile.id });
+
+            // Not kaydedildi — konuşma kimseye atanmamışsa üstlenme sorusu sor
+            if (activityForm.type === 'NOTE' && conversationData && !conversationData.assignedToId && onTakeOver) {
+                setTimeout(() => {
+                    if (window.confirm('Bu konuşma henüz kimseye atanmamış. Bu konuşmayı üstlenmek istiyor musunuz?')) {
+                        onTakeOver();
+                    }
+                }, 300);
+            }
         } catch (err) {
             console.error('Save activity err:', err);
             alert('Aktivite kaydedilirken hata oluştu.');
