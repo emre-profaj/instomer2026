@@ -1785,7 +1785,94 @@ export const updateFunnel = async (req, res) => {
         // Trigger when: stage changes OR funnel (akış) changes
         const funnelChanged = funnelType !== undefined && funnelType !== existing.funnelType;
         const stageChanged = funnelStageId && funnelStageId !== existing.funnelStageId;
-        if (stageChanged || (funnelChanged && funnelStageId)) {
+        const hasValidStageId = funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length > 5;
+
+        // 🔄 Handle funnel change with no valid DB stage (e.g. switching to "Genel" or funnel with default stages)
+        if (funnelChanged && !hasValidStageId) {
+            (async () => {
+                try {
+                    const assignUpdate = {};
+
+                    if (!funnelType || funnelType === '') {
+                        // Switching to "Genel Akış" — clear team/user assignments
+                        assignUpdate.teamId = null;
+                        assignUpdate.teamIds = '[]';
+                        assignUpdate.assignedToId = null;
+                        assignUpdate.assignedBotId = null;
+                        assignUpdate.botEnabled = false;
+                        console.log('📂 [FunnelSwitch] Genel akışa dönüldü — atamalar temizlendi');
+                    } else {
+                        // Switching to a funnel that uses default stages (no DB FunnelStage records)
+                        // Apply funnel-level team/user assignment
+                        try {
+                            const targetFunnel = await prisma.funnel.findFirst({
+                                where: { id: funnelType, workspaceId }
+                            });
+                            if (targetFunnel) {
+                                if (targetFunnel.assignedTeamId) {
+                                    assignUpdate.teamId = targetFunnel.assignedTeamId;
+                                    assignUpdate.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
+                                    console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId}`);
+
+                                    // Round-robin
+                                    const teamMembers = await prisma.teamMember.findMany({
+                                        where: { teamId: targetFunnel.assignedTeamId, userId: { not: null } },
+                                        orderBy: { createdAt: 'asc' },
+                                        select: { userId: true }
+                                    });
+                                    if (teamMembers.length > 0) {
+                                        const lastConv = await prisma.conversation.findFirst({
+                                            where: { teamId: targetFunnel.assignedTeamId, assignedToId: { not: null } },
+                                            orderBy: { updatedAt: 'desc' },
+                                            select: { assignedToId: true }
+                                        });
+                                        const lastIdx = lastConv?.assignedToId
+                                            ? teamMembers.findIndex(m => m.userId === lastConv.assignedToId)
+                                            : -1;
+                                        assignUpdate.assignedToId = teamMembers[(lastIdx + 1) % teamMembers.length].userId;
+                                    }
+                                }
+                                if (targetFunnel.assignedUserId && !assignUpdate.assignedToId) {
+                                    assignUpdate.assignedToId = targetFunnel.assignedUserId;
+                                }
+                            }
+                        } catch (fErr) {
+                            console.error('[FunnelSwitch] Funnel lookup error:', fErr.message);
+                        }
+                    }
+
+                    if (Object.keys(assignUpdate).length > 0) {
+                        await prisma.conversation.update({
+                            where: { id: conversationId },
+                            data: assignUpdate
+                        });
+
+                        let assignedToName = null;
+                        if (assignUpdate.assignedToId) {
+                            try {
+                                const u = await prisma.user.findUnique({ where: { id: assignUpdate.assignedToId }, select: { name: true } });
+                                assignedToName = u?.name || null;
+                            } catch (_) {}
+                        }
+
+                        try {
+                            emitToWorkspace(workspaceId, 'conversation_assigned', {
+                                conversationId,
+                                assignedToId: assignUpdate.assignedToId || null,
+                                assignedToName,
+                                botEnabled: assignUpdate.botEnabled || false,
+                                teamIds: assignUpdate.teamIds || '[]'
+                            });
+                        } catch (_) {}
+                        console.log(`📡 [FunnelSwitch] assignment updated — team: ${assignUpdate.teamId || 'cleared'}`);
+                    }
+                } catch (e) {
+                    console.error('❌ [FunnelSwitch] error:', e.message);
+                }
+            })();
+        }
+
+        if (stageChanged || (funnelChanged && hasValidStageId)) {
             (async () => {
                 try {
                     const [oldStageRec, newStageRec] = await Promise.all([
