@@ -154,9 +154,12 @@ function calculateOffer({
     const adatDays = calculateAdat(cashFlow);
     const adatMonths = adatDays / 30;
 
-    // 7. Liste fiyatıyla karşılaştırma (her zaman listPrice referans)
+    // 7. Peşin fiyatla karşılaştırma
+    //    netPrice < listPrice → İndirim (discountAmount > 0)
+    //    netPrice > listPrice → Vade Farkı (discountAmount < 0)
+    //    Oran peşin fiyat (cashPrice) üzerinden hesaplanır
     const discountAmount = listPrice - netPrice;
-    const discountRate = listPrice > 0 ? (discountAmount / listPrice) * 100 : 0;
+    const discountRate = cashPrice > 0 ? ((netPrice - cashPrice) / cashPrice) * 100 : 0;
 
     // 8. Ödeme takvimi (ay ay döküm)
     const paymentSchedule = [];
@@ -877,8 +880,8 @@ const sendOfferEmail = async (req, res) => {
             ${offer.discountAmount !== 0 ? `
             <div style="background: ${isDiscount ? '#d5f5e3' : '#fef9e7'}; border: 1px solid ${isDiscount ? 'rgba(30,132,73,0.2)' : 'rgba(183,149,11,0.2)'}; border-radius: 8px; padding: 10px 16px; margin-top: 12px; font-size: 14px; font-weight: 600; color: ${isDiscount ? '#1e8449' : '#b7950b'}; text-align: center;">
                 ${isDiscount
-                    ? `Liste fiyatından ${fmtTR(offer.discountAmount)} İndirim (%${Math.abs(offer.discountRate).toFixed(1)})`
-                    : `Liste fiyatına ${fmtTR(Math.abs(offer.discountAmount))} Vade Farkı (+%${Math.abs(offer.discountRate).toFixed(1)})`}
+                    ? `Peşin fiyatından ${fmtTR(offer.discountAmount)} İndirim (%${Math.abs(offer.discountRate).toFixed(1)})`
+                    : `Peşin fiyatına ${fmtTR(Math.abs(offer.discountAmount))} Vade Farkı (+%${Math.abs(offer.discountRate).toFixed(1)})`}
             </div>` : ''}
         </td>
     </tr>

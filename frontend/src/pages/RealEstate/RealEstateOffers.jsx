@@ -197,6 +197,7 @@ export default function RealEstateOffers() {
                                         <th>Proje / Daire</th>
                                         <th>Kampanya</th>
                                         <th>Net Fiyat</th>
+                                        <th>Peşin Fiyat</th>
                                         <th>Fark</th>
                                         <th>Vade</th>
                                         <th>Durum</th>
@@ -221,6 +222,7 @@ export default function RealEstateOffers() {
                                                 </td>
                                                 <td style={{ fontSize: '0.8125rem' }}>{o.campaign?.name || '—'}</td>
                                                 <td style={{ fontWeight: 700, color: 'var(--re-primary)' }}>{fmt(o.netPrice)}</td>
+                                                <td style={{ fontSize: '0.8125rem', color: 'var(--re-muted)' }}>{fmt(o.cashPrice)}</td>
                                                 <td>
                                                     {o.discountAmount !== 0 && (
                                                         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: isDiscount ? 'var(--re-success)' : 'var(--re-warning)', fontWeight: 600 }}>
@@ -315,13 +317,14 @@ export default function RealEstateOffers() {
                                 <div className={`re-discount-badge ${selectedOffer.discountAmount > 0 ? 'discount' : 'surcharge'}`}>
                                     {selectedOffer.discountAmount > 0 ? <TrendingDown size={15} /> : <TrendingUp size={15} />}
                                     {selectedOffer.discountAmount > 0
-                                        ? `Liste fiyatından ${fmt(selectedOffer.discountAmount)} İndirim (%${Math.abs(selectedOffer.discountRate).toFixed(1)})`
-                                        : `Liste fiyatına ${fmt(Math.abs(selectedOffer.discountAmount))} Vade Farkı (+%${Math.abs(selectedOffer.discountRate).toFixed(1)})`}
+                                        ? `Peşin fiyatından ${fmt(selectedOffer.discountAmount)} İndirim (%${Math.abs(selectedOffer.discountRate).toFixed(1)})`
+                                        : `Peşin fiyatına ${fmt(Math.abs(selectedOffer.discountAmount))} Vade Farkı (+%${Math.abs(selectedOffer.discountRate).toFixed(1)})`}
                                 </div>
                             )}
 
                             {[
                                 ['Liste Fiyatı', fmt(selectedOffer.listPrice)],
+                                ['Peşin Fiyat', fmt(selectedOffer.cashPrice)],
                                 ['Peşinat', `${fmt(selectedOffer.downPayment)} (%${selectedOffer.downPaymentRate?.toFixed(0)})`],
                                 ['Taksit', selectedOffer.installmentCount > 0 ? `${selectedOffer.installmentCount} × ${fmt(selectedOffer.monthlyPayment)}` : 'Peşin'],
                                 ['Ort. Vade', `${selectedOffer.avgVadeMonth?.toFixed(2)} Ay`],
