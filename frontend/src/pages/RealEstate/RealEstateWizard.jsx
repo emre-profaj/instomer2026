@@ -103,9 +103,9 @@ function localCalculate({ cashPrice, listPrice, downPayment, interimPayments, in
     // remainingPV zaten effectiveBase - downPayment - interimNominal olarak hesaplandı
     const remaining = remainingPV;
 
-    // Liste fiyatı her zaman referans
+    // Peşin fiyat her zaman referans
     const discountAmount = listPrice - netPrice;
-    const discountRate = listPrice > 0 ? (discountAmount / listPrice) * 100 : 0;
+    const discountRate = cashPrice > 0 ? ((netPrice - cashPrice) / cashPrice) * 100 : 0;
     const totalPayable = Math.round(netPrice);
 
     return {
@@ -229,8 +229,8 @@ function SummaryPanel({ form, selected, calc }) {
                                 {calc.isDiscount ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
                                 <span>
                                     {calc.isDiscount
-                                        ? `Liste fiyatından ${fmt(Math.abs(calc.discountAmount))} İndirim (%${Math.abs(calc.discountRate).toFixed(1)})`
-                                        : `Liste fiyatına ${fmt(Math.abs(calc.discountAmount))} Vade Farkı (+%${Math.abs(calc.discountRate).toFixed(1)})`}
+                                        ? `Peşin fiyatından ${fmt(Math.abs(calc.discountAmount))} İndirim (%${Math.abs(calc.discountRate).toFixed(1)})`
+                                        : `Peşin fiyatına ${fmt(Math.abs(calc.discountAmount))} Vade Farkı (+%${Math.abs(calc.discountRate).toFixed(1)})`}
                                 </span>
                             </div>
                         )}
@@ -869,6 +869,12 @@ export default function RealEstateWizard() {
                                                             key={v.months}
                                                             className={`re-vade-btn ${form.installmentCount === v.months ? 'selected' : ''}`}
                                                             onClick={() => {
+                                                                const base = _getPriceBase();
+                                                                if (v.months === 0) {
+                                                                    // Peşin seçildi → %100 peşinat
+                                                                    setForm(f => ({ ...f, installmentCount: 0, downPayment: Math.round(base), downPaymentRate: 100 }));
+                                                                    return;
+                                                                }
                                                                 setForm(f => ({ ...f, installmentCount: v.months }));
                                                                 // Kampanya min peşinatını uygula
                                                                 if (selectedCampaign && selectedCampaign.minDownPaymentRate) {
@@ -1184,8 +1190,10 @@ export default function RealEstateWizard() {
                             </div>
                         </div>
 
-                        {/* Sağ: Özet Panel */}
-                        <SummaryPanel form={{ ...form, downPaymentRate: dpPct }} selected={selectedAptType} calc={calc} />
+                        {/* Sağ: Özet Panel — sadece 3. adımda göster */}
+                        {step === 3 && (
+                            <SummaryPanel form={{ ...form, downPaymentRate: dpPct }} selected={selectedAptType} calc={calc} />
+                        )}
                     </div>
                 </>
             )}
