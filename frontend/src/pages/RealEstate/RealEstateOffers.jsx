@@ -325,7 +325,7 @@ export default function RealEstateOffers() {
                             {[
                                 ['Liste Fiyatı', fmt(selectedOffer.listPrice)],
                                 ['Peşin Fiyat', fmt(selectedOffer.cashPrice)],
-                                ['Peşinat', `${fmt(selectedOffer.downPayment)} (%${selectedOffer.downPaymentRate?.toFixed(0)})`],
+                                ['Peşinat', fmt(selectedOffer.downPayment)],
                                 ['Taksit', selectedOffer.installmentCount > 0 ? `${selectedOffer.installmentCount} × ${fmt(selectedOffer.monthlyPayment)}` : 'Peşin'],
                                 ['Ort. Vade', `${selectedOffer.avgVadeMonth?.toFixed(2)} Ay`],
                             ].map(([label, value]) => (

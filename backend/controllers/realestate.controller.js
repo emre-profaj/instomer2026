@@ -874,7 +874,7 @@ const sendOfferEmail = async (req, res) => {
                 ${[
                     ['Liste Fiyatı', fmtTR(offer.listPrice)],
                     ['Nakit Fiyatı', fmtTR(offer.cashPrice)],
-                    ['Peşinat', `${fmtTR(offer.downPayment)} (%${(offer.downPaymentRate || 0).toFixed(0)})`],
+                    ['Peşinat', fmtTR(offer.downPayment)],
                     ['Taksit', offer.installmentCount > 0 ? `${offer.installmentCount} × ${fmtTR(offer.monthlyPayment)}` : 'Peşin'],
                 ].map(([label, value]) => `
                     <tr style="border-bottom: 1px solid #e8ecef;">
