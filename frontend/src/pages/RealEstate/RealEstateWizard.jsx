@@ -12,6 +12,16 @@ const fmt = (n) =>
 const fmtN = (n) =>
     new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(n || 0);
 
+// Tutar inputu için formatlama (noktalı gösterim)
+const fmtInput = (n) => {
+    if (!n && n !== 0) return '';
+    return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(n);
+};
+const parseInput = (str) => {
+    if (!str) return 0;
+    return parseFloat(String(str).replace(/\./g, '').replace(',', '.')) || 0;
+};
+
 // ─── Vade seçenekleri ───────────────────────────────────────────────────────
 const VADE_OPTIONS = [
     { label: 'Peşin', months: 0 },
@@ -988,10 +998,9 @@ export default function RealEstateWizard() {
                                             <div className="re-form-row" style={{ marginTop: 10 }}>
                                                 <div>
                                                     <label style={{ fontSize: '0.75rem', color: 'var(--re-muted)' }}>Tutar (TL)</label>
-                                                    <input className="re-input" type="number"
-                                                        min={minDP} max={priceBase}
-                                                        value={dp}
-                                                        onChange={e => handleDownPaymentAmt(parseFloat(e.target.value) || 0)} />
+                                                    <input className="re-input" type="text" inputMode="numeric"
+                                                        value={fmtInput(dp)}
+                                                        onChange={e => handleDownPaymentAmt(parseInput(e.target.value))} />
                                                 </div>
                                                 <div>
                                                     <label style={{ fontSize: '0.75rem', color: 'var(--re-muted)' }}>Oran (%)</label>
@@ -1096,9 +1105,9 @@ export default function RealEstateWizard() {
                                                         </div>
                                                         <div>
                                                             <label style={{ fontSize: '0.75rem', color: 'var(--re-muted)' }}>Tutar (TL)</label>
-                                                            <input className="re-input" type="number" placeholder="0"
-                                                                value={ip.amount}
-                                                                onChange={e => updateInterim(i, 'amount', e.target.value)} />
+                                                            <input className="re-input" type="text" inputMode="numeric" placeholder="0"
+                                                                value={fmtInput(ip.amount)}
+                                                                onChange={e => updateInterim(i, 'amount', parseInput(e.target.value))} />
                                                         </div>
                                                         <button className="re-btn re-btn-danger re-btn-sm" onClick={() => removeInterim(i)} style={{ marginTop: 18 }}>
                                                             <Trash2 size={14} />
@@ -1136,11 +1145,13 @@ export default function RealEstateWizard() {
                                                             </tr>
                                                         ))}
                                                         {form.installmentCount > 0 && (
-                                                            <tr>
-                                                                <td>{form.installmentCount} Taksit</td>
-                                                                <td>1–{form.installmentCount}. Ay</td>
-                                                                <td>{fmt(calc.monthly)}/ay</td>
-                                                            </tr>
+                                                            Array.from({ length: form.installmentCount }, (_, i) => (
+                                                                <tr key={`inst-${i}`}>
+                                                                    <td>{i + 1}. Taksit</td>
+                                                                    <td>{i + 1}. Ay</td>
+                                                                    <td>{fmt(calc.monthly)}</td>
+                                                                </tr>
+                                                            ))
                                                         )}
                                                         <tr style={{ fontWeight: 700 }}>
                                                             <td colSpan={2}>Toplam Ödeme</td>
