@@ -1442,9 +1442,16 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 )}
                                                 {pastTimeline.map((item) => {
                                                     const isNote = item.type === 'NOTE' && item.sourceType === 'ACTIVITY';
+                                                    const isActivity = item.sourceType === 'ACTIVITY';
                                                     const isConv = item.sourceType === 'CONVERSATION';
-                                                    const iconClass = `timeline-icon type-${item.type.toLowerCase()}`;
                                                     const isEditing = editingActivity?.id === item.id;
+                                                    const statusConfig = {
+                                                        COMPLETED: { emoji: '✅', label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d', border: '#86efac' },
+                                                        CANCELLED: { emoji: '❌', label: 'İptal', bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db' },
+                                                        PLANNED:   { emoji: '🕜', label: 'Planlandı', bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' },
+                                                    };
+                                                    const sc = isActivity ? statusConfig[item.status] : null;
+
                                                     return (
                                                         <div
                                                             key={item.id}
@@ -1458,45 +1465,67 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 }
                                                             } : undefined}
                                                         >
-                                                            <div className="timeline-header">
-                                                                <div className="timeline-header-left">
-                                                                    <div className={iconClass}>{renderTimelineIcon(item.type)}</div>
-                                                                    <span className="timeline-type-name">{item.title || renderTimelineTypeName(item.type)}</span>
-                                                                    <span className="timeline-author-badge">{item.labelName}</span>
-                                                                    {/* Durum etiketi */}
-                                                                    {item.sourceType === 'ACTIVITY' && (() => {
-                                                                        const s = item.status;
-                                                                        if (s === 'COMPLETED') return <span style={{ fontSize: '0.6rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '1px 7px', fontWeight: 700, whiteSpace: 'nowrap' }}>✅ Tamamlandı</span>;
-                                                                        if (s === 'CANCELLED') return <span style={{ fontSize: '0.6rem', background: '#f3f4f6', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: '999px', padding: '1px 7px', fontWeight: 700, whiteSpace: 'nowrap' }}>❌ İptal</span>;
-                                                                        if (s === 'PLANNED') return <span style={{ fontSize: '0.6rem', background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd', borderRadius: '999px', padding: '1px 7px', fontWeight: 700, whiteSpace: 'nowrap' }}>🕜 Planlandı</span>;
-                                                                        return null;
-                                                                    })()}
+                                                            {/* Row 1: Icon + Title + Status | Date + Actions */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                                                    <div className={`timeline-icon type-${item.type.toLowerCase()}`}>{renderTimelineIcon(item.type)}</div>
+                                                                    <span className="timeline-type-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                        {item.title || renderTimelineTypeName(item.type)}
+                                                                    </span>
+                                                                    {sc && (
+                                                                        <span style={{ fontSize: '0.58rem', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: '999px', padding: '1px 6px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                                            {sc.emoji} {sc.label}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                    <span className="timeline-time">
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                                                                    <span className="timeline-time" style={{ whiteSpace: 'nowrap' }}>
                                                                         {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                                     </span>
                                                                     {isNote && (
-                                                                        <div className="timeline-note-actions">
+                                                                        <div style={{ display: 'inline-flex', gap: '2px' }}>
                                                                             <button
                                                                                 title="Düzenle"
                                                                                 onClick={(e) => { e.stopPropagation(); setEditingActivity(item); setEditActivityText(item.content || ''); }}
                                                                                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#6b7280', display: 'flex', alignItems: 'center' }}
                                                                             >
-                                                                                <Pencil size={13} />
+                                                                                <Pencil size={12} />
                                                                             </button>
                                                                             <button
                                                                                 title="Sil"
                                                                                 onClick={(e) => { e.stopPropagation(); handleDeleteActivity(item.id); }}
                                                                                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#ef4444', display: 'flex', alignItems: 'center' }}
                                                                             >
-                                                                                <Trash2 size={13} />
+                                                                                <Trash2 size={12} />
                                                                             </button>
                                                                         </div>
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                            {/* Inline edit mode */}
+
+                                                            {/* Row 2: Author + Due Date + Assignee */}
+                                                            {(item.labelName || item.dueDate || item.assignedToName) && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                                    {item.labelName && (
+                                                                        <span style={{ fontSize: '0.65rem', color: '#6b7280', background: '#f3f4f6', borderRadius: '4px', padding: '1px 5px', fontWeight: 500 }}>
+                                                                            {item.labelName}
+                                                                        </span>
+                                                                    )}
+                                                                    {item.dueDate && (
+                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.65rem', color: '#6b7280' }}>
+                                                                            <Clock size={9} />
+                                                                            {new Date(item.dueDate).toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    )}
+                                                                    {item.assignedToName && (
+                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.63rem', color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '999px', padding: '1px 7px', fontWeight: 500 }}>
+                                                                            <User size={8} /> {item.assignedToName}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Content / Inline Edit */}
                                                             {isEditing ? (
                                                                 <div style={{ marginTop: '6px' }} onClick={e => e.stopPropagation()}>
                                                                     <textarea
@@ -1517,7 +1546,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 </div>
                                                             ) : (
                                                                 <>
-                                                                    {/* Conversation: son 2 mesajı göster */}
                                                                     {isConv && item.recentMessages?.length > 0 ? (
                                                                         <div style={{ fontSize: '0.78rem', color: '#4b5563', marginTop: '4px' }}>
                                                                             {item.recentMessages.map((msg, idx) => (
@@ -1559,19 +1587,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         </>
                                                                     )}
                                                                 </>
-                                                            )}
-                                                            {/* Due date — temiz format */}
-                                                            {item.dueDate && (
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.7rem', color: '#6b7280' }}>
-                                                                    <Clock size={10} />
-                                                                    {new Date(item.dueDate).toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                                </div>
-                                                            )}
-                                                            {/* Assignee — temiz pill */}
-                                                            {item.assignedToName && (
-                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.68rem', color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '999px', padding: '1px 8px' }}>
-                                                                    <User size={9} /> {item.assignedToName}
-                                                                </div>
                                                             )}
                                                         </div>
                                                     );
