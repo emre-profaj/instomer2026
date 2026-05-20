@@ -1057,30 +1057,52 @@
 
 /* ─── YAZDIRMA (PDF) STİLLERİ ───────────────────────────────────────────────── */
 @media print {
+    /* Tüm sayfa elemanlarını gizle */
     body * { visibility: hidden; }
     .no-print { display: none !important; }
-    
-    /* Yalnızca teklif detay panelini ve içindekileri göster */
-    .re-summary-panel, .re-summary-panel * {
-        visibility: visible;
+
+    /* Sidebar, header gizle */
+    .app-sidebar, .app-header { display: none !important; }
+
+    /* Modal overlay'ı print için düzelt */
+    .re-modal-overlay {
+        position: static !important;
+        background: none !important;
+        padding: 0 !important;
+        display: block !important;
+        overflow: visible !important;
     }
-    .re-summary-panel {
-        position: absolute !important;
-        left: 0;
-        top: 0;
-        width: 100vw !important;
+
+    /* Teklif detay panelini tam sayfa göster */
+    .re-modal-overlay .re-summary-panel,
+    .re-modal-overlay .re-summary-panel * {
+        visibility: visible !important;
+    }
+
+    .re-modal-overlay .re-summary-panel {
+        position: static !important;
+        width: 100% !important;
         max-width: none !important;
-        margin: 0 !important;
-        border: none;
-        box-shadow: none;
-        background: white;
+        max-height: none !important;
         overflow: visible !important;
         height: auto !important;
+        margin: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: white !important;
+        border-radius: 0 !important;
     }
-    
-    /* Gerekirse bazı dış boşlukları sıfırla */
-    .app-sidebar, .app-header { display: none !important; }
 
     /* Logo PDF'te görünsün */
     .print-logo { display: block !important; margin-bottom: 12px; }
+
+    /* Tablo satırlarının sayfa arası bölünmesini engelle */
+    .re-schedule-table tr {
+        page-break-inside: avoid;
+    }
+
+    /* Sayfa kenar boşlukları */
+    @page {
+        margin: 15mm;
+    }
 }
