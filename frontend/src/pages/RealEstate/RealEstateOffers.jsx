@@ -272,7 +272,7 @@ export default function RealEstateOffers() {
                 {/* Detay Paneli (Modal Popup) */}
                 {selectedOffer && (
                     <div className="re-modal-overlay" onClick={() => setSelectedOffer(null)}>
-                        <div className="re-card re-summary-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, margin: '20px auto', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div id="print-offer" className="re-card re-summary-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, margin: '20px auto', maxHeight: '90vh', overflowY: 'auto' }}>
                             <div className="re-summary-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                 {logoUrl && (
