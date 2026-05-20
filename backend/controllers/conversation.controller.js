@@ -1787,6 +1787,10 @@ export const updateFunnel = async (req, res) => {
         const stageChanged = funnelStageId && funnelStageId !== existing.funnelStageId;
         const hasValidStageId = funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length > 5;
 
+        console.log(`🔍 [UpdateFunnel] INPUT: funnelType=${JSON.stringify(funnelType)}, funnelStageId=${JSON.stringify(funnelStageId)}`);
+        console.log(`🔍 [UpdateFunnel] EXISTING: funnelType=${JSON.stringify(existing.funnelType)}, funnelStageId=${JSON.stringify(existing.funnelStageId)}, teamId=${JSON.stringify(existing.teamId)}`);
+        console.log(`🔍 [UpdateFunnel] FLAGS: funnelChanged=${funnelChanged}, stageChanged=${stageChanged}, hasValidStageId=${hasValidStageId}`);
+
         // 🔄 Handle funnel change with no valid DB stage (e.g. switching to "Genel" or funnel with default stages)
         if (funnelChanged && !hasValidStageId) {
             (async () => {

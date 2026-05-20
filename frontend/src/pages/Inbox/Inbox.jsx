@@ -3593,12 +3593,9 @@ const Inbox = () => {
                                                 const handleStageSelect = async (newFunnel, newStage, changedStage) => {
                                                     setStageMegaMenuOpen(false);
                                                     try {
-                                                        // Send both funnelType and funnelStageId in a single call
-                                                        // so the backend auto-assignment logic (team/user/bot) triggers correctly
-                                                        const updatePayload = { funnelStageId: newStage };
-                                                        if (newFunnel !== (selectedItem.funnelType || '')) {
-                                                            updatePayload.funnelType = newFunnel;
-                                                        }
+                                                        // Always send funnelType so backend can detect funnel changes
+                                                        // and trigger team auto-assignment
+                                                        const updatePayload = { funnelStageId: newStage, funnelType: newFunnel };
                                                         await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStage });
                                                         await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, updatePayload);
                                                         setSelectedItem(prev => ({ ...prev, funnelType: newFunnel, contact: { ...prev.contact, status: newStage }, funnelStageId: newStage, _effectiveStageId: newStage }));
