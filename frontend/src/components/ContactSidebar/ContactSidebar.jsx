@@ -518,6 +518,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setPastTimeline(prev => [completedItem, ...prev]);
             setCompletingActivity(null);
             setCompleteResult('');
+
+            // Inbox'taki aktivite badge'ini anında yeşile çevir
+            if (onActivitySaved && profile?.id) {
+                const actType = completingActivity.type || completingActivity.activityType || 'CALL';
+                onActivitySaved({ type: actType, status: 'COMPLETED', contactId: profile.id });
+            }
         } catch (err) {
             console.error('Complete activity error:', err);
             alert('Tamamlama başarısız.');
