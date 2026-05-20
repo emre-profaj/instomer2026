@@ -317,8 +317,8 @@ export default function RealEstateOffers() {
                                 <div className={`re-discount-badge ${selectedOffer.discountAmount > 0 ? 'discount' : 'surcharge'}`}>
                                     {selectedOffer.discountAmount > 0 ? <TrendingDown size={15} /> : <TrendingUp size={15} />}
                                     {selectedOffer.discountAmount > 0
-                                        ? `Peşin fiyatından ${fmt(selectedOffer.discountAmount)} İndirim (%${Math.abs(selectedOffer.discountRate).toFixed(1)})`
-                                        : `Peşin fiyatına ${fmt(Math.abs(selectedOffer.discountAmount))} Vade Farkı (+%${Math.abs(selectedOffer.discountRate).toFixed(1)})`}
+                                        ? `Liste fiyatından ${fmt(selectedOffer.discountAmount)} İndirim (%${Math.abs(selectedOffer.discountRate).toFixed(1)})`
+                                        : `Liste fiyatına ${fmt(Math.abs(selectedOffer.discountAmount))} Vade Farkı (+%${Math.abs(selectedOffer.discountRate).toFixed(1)})`}
                                 </div>
                             )}
 

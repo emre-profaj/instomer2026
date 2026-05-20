@@ -97,54 +97,32 @@ function calculateOffer({
     interimPayments = [],
     installmentCount,
     monthlyInterestRate,  // % (ör: 1.5 = %1.5)
-    basePrice,            // Hesaplama tabanı: liste veya nakit fiyat (kampanyaya göre seçilir)
-    manualMonthly,        // Manuel taksit override (kullanıcı tarafından girilmişse)
-    discountTierRate,     // Vadeye göre indirim oranı (% — Emlak Konut tipi kampanyalar)
+    basePrice,
+    manualMonthly,
+    discountTierRate,
 }) {
-    // İndirim uygulanmış efektif taban fiyat
-    const rawBase = basePrice || cashPrice;
-    const tierDiscount = parseFloat(discountTierRate) || 0;
-    const effectiveBase = tierDiscount > 0 ? rawBase * (1 - tierDiscount / 100) : rawBase;
     const r = monthlyInterestRate / 100; // aylık faiz (ondalık)
 
     // 1. Ara ödemelerin nominal toplamı
-    // NOT: Ara ödemeler nominal tutarlarıyla düşülür (iskonto uygulanmaz).
-    // Mantık: Müşteri 3M+3M=6M ödüyor → taksit tabanı 6M azalır, daha düşük aylık taksit çıkar.
     let interimNominal = 0;
     for (const ip of interimPayments) {
-        const amt = ip.amount || 0;
-        const month = ip.month || 0;
-        if (amt > 0 && month > 0) {
-            interimNominal += amt;
+        if ((ip.amount || 0) > 0 && (ip.month || 0) > 0) {
+            interimNominal += ip.amount;
         }
     }
 
-    // 2. Kalan taksit tabanı — ara ödemeler nominal olarak düşülür
-    const remainingPV = Math.max(0, effectiveBase - downPayment - interimNominal);
+    // 2. Kalan bakiye (basit bölme — faiz taksitlere uygulanmaz)
+    const remainingBalance = Math.max(0, cashPrice - downPayment - interimNominal);
 
-    // 3. Aylık taksit hesabı
-    //    - Manuel override varsa doğrudan kullanılır (esnek ödeme planı)
-    //    - Yoksa annuity formülü ile hesaplanır
+    // 3. Aylık taksit (basit bölme)
     let actualMonthlyPayment = 0;
     if (manualMonthly && parseFloat(manualMonthly) > 0) {
-        // Manuel mod: kullanıcının girdiği tutar baz alınır
         actualMonthlyPayment = parseFloat(manualMonthly);
-    } else if (installmentCount > 0 && remainingPV > 0) {
-        if (r > 0) {
-            const pva = (1 - Math.pow(1 + r, -installmentCount)) / r;
-            actualMonthlyPayment = remainingPV / pva;
-        } else {
-            actualMonthlyPayment = remainingPV / installmentCount;
-        }
+    } else if (installmentCount > 0 && remainingBalance > 0) {
+        actualMonthlyPayment = remainingBalance / installmentCount;
     }
 
-    // 4. Toplam nominal ödeme (müşterinin ödeyeceği gerçek tutar)
-    const netPrice = downPayment + interimNominal + actualMonthlyPayment * installmentCount;
-
-    // 5. Kalan bakiye (nominal)
-    const remainingBalance = Math.max(0, netPrice - downPayment - interimNominal);
-
-    // 6. Adat (bilgilendirme amaçlı)
+    // 4. ADAT: Ağırlıklı ortalama vade
     const cashFlow = buildCashFlow({
         downPayment,
         interimPayments,
@@ -154,14 +132,17 @@ function calculateOffer({
     const adatDays = calculateAdat(cashFlow);
     const adatMonths = adatDays / 30;
 
-    // 7. Peşin fiyatla karşılaştırma
-    //    netPrice < listPrice → İndirim (discountAmount > 0)
-    //    netPrice > listPrice → Vade Farkı (discountAmount < 0)
-    //    Oran peşin fiyat (cashPrice) üzerinden hesaplanır
-    const discountAmount = listPrice - netPrice;
-    const discountRate = cashPrice > 0 ? ((netPrice - cashPrice) / cashPrice) * 100 : 0;
+    // 5. Vade farkı = peşin fiyat × aylık faiz × adat ay
+    const surcharge = cashPrice * r * adatMonths;
 
-    // 8. Ödeme takvimi (ay ay döküm)
+    // 6. Net fiyat = peşin fiyat + vade farkı
+    const netPrice = cashPrice + surcharge;
+
+    // 7. Liste fiyatı ile karşılaştırma
+    const discountAmount = listPrice - netPrice;
+    const discountRate = listPrice > 0 ? (discountAmount / listPrice) * 100 : 0;
+
+    // 8. Ödeme takvimi
     const paymentSchedule = [];
     const today = new Date();
 
@@ -208,11 +189,11 @@ function calculateOffer({
         totalPayable: Math.round(netPrice * 100) / 100,
         monthlyPayment: Math.round(actualMonthlyPayment * 100) / 100,
         remainingBalance: Math.round(remainingBalance * 100) / 100,
+        surcharge: Math.round(surcharge * 100) / 100,
         discountAmount: Math.round(discountAmount * 100) / 100,
         discountRate: Math.round(discountRate * 100) / 100,
         isDiscount: discountAmount > 0,
         isManualMonthly: !!(manualMonthly && parseFloat(manualMonthly) > 0),
-        tierDiscount,
         paymentSchedule,
     };
 }
@@ -880,8 +861,8 @@ const sendOfferEmail = async (req, res) => {
             ${offer.discountAmount !== 0 ? `
             <div style="background: ${isDiscount ? '#d5f5e3' : '#fef9e7'}; border: 1px solid ${isDiscount ? 'rgba(30,132,73,0.2)' : 'rgba(183,149,11,0.2)'}; border-radius: 8px; padding: 10px 16px; margin-top: 12px; font-size: 14px; font-weight: 600; color: ${isDiscount ? '#1e8449' : '#b7950b'}; text-align: center;">
                 ${isDiscount
-                    ? `Peşin fiyatından ${fmtTR(offer.discountAmount)} İndirim (%${Math.abs(offer.discountRate).toFixed(1)})`
-                    : `Peşin fiyatına ${fmtTR(Math.abs(offer.discountAmount))} Vade Farkı (+%${Math.abs(offer.discountRate).toFixed(1)})`}
+                    ? `Liste fiyatından ${fmtTR(offer.discountAmount)} İndirim (%${Math.abs(offer.discountRate).toFixed(1)})`
+                    : `Liste fiyatına ${fmtTR(Math.abs(offer.discountAmount))} Vade Farkı (+%${Math.abs(offer.discountRate).toFixed(1)})`}
             </div>` : ''}
         </td>
     </tr>

@@ -44,75 +44,63 @@ const VADE_OPTIONS = [
 // manualMonthly: Manuel taksit override (kullanıcının girdiği)
 // discountTierRate: Vadeye göre indirim oranı (% — Emlak Konut tipi kampanyalar için)
 function localCalculate({ cashPrice, listPrice, downPayment, interimPayments, installmentCount, monthlyInterestRate, basePrice, manualMonthly, discountTierRate }) {
-    // İndirim uygulanmış efektif taban fiyat
-    const rawBase = basePrice || cashPrice;
-    const tierDiscount = parseFloat(discountTierRate) || 0;
-    const effectiveBase = tierDiscount > 0 ? rawBase * (1 - tierDiscount / 100) : rawBase;
-
     const r = monthlyInterestRate / 100; // aylık faiz (ondalık)
 
-    // Ara ödemelerin nominal toplamı (taksit tabanından düşülür)
-    // NOT: Ara ödemeler nominal tutarlarıyla düşülür (iskonto uygulanmaz).
-    // Mantık: Müşteri 3M+3M=6M ödüyor → taksit tabanı 6M azalır.
+    // Ara ödemelerin nominal toplamı
     let interimNominal = 0;
     interimPayments.forEach(ip => {
         const amt = ip.amount || 0;
         const month = ip.month || 0;
-        if (amt > 0 && month > 0) {
-            interimNominal += amt;
-        }
+        if (amt > 0 && month > 0) interimNominal += amt;
     });
 
-    // Kalan taksit tabanı — ara ödemeler nominal olarak düşülür
-    const remainingPV = Math.max(0, effectiveBase - downPayment - interimNominal);
+    // Kalan bakiye (basit bölme — faiz taksitlere uygulanmaz)
+    const remaining = Math.max(0, cashPrice - downPayment - interimNominal);
 
-    // Aylık taksit: manuel override varsa onu kullan, yoksa annuity formülü
+    // Aylık taksit (basit bölme)
     let monthly = 0;
     const parsedManual = parseFloat(manualMonthly) || 0;
     if (parsedManual > 0) {
         monthly = parsedManual;
-    } else if (installmentCount > 0 && remainingPV > 0) {
-        if (r > 0) {
-            const pva = (1 - Math.pow(1 + r, -installmentCount)) / r;
-            monthly = remainingPV / pva;
-        } else {
-            monthly = remainingPV / installmentCount;
-        }
+    } else if (installmentCount > 0 && remaining > 0) {
+        monthly = remaining / installmentCount;
     }
 
-    // Toplam nominal ödeme
-    const netPrice = downPayment + interimNominal + monthly * installmentCount;
-
-    // Adat (bilgilendirme amaçlı)
+    // ── ADAT: Ağırlıklı ortalama vade ──
+    // Tüm ödemelerin nakit akış dizisi
     const flows = [];
     if (downPayment > 0) flows.push({ day: 0, amount: downPayment });
     interimPayments.forEach(ip => {
-        if ((ip.amount || 0) > 0 && (ip.month || 0) > 0) flows.push({ day: ip.month * 30, amount: ip.amount });
-    });
-    if (installmentCount > 0 && monthly > 0) {
-        for (let i = 1; i <= installmentCount; i++) {
-            flows.push({ day: i * 30, amount: monthly });
+        if ((ip.amount || 0) > 0 && (ip.month || 0) > 0) {
+            flows.push({ day: ip.month * 30, amount: ip.amount });
         }
+    });
+    for (let i = 1; i <= installmentCount; i++) {
+        if (monthly > 0) flows.push({ day: i * 30, amount: monthly });
     }
-    if (flows.length === 0) flows.push({ day: 0, amount: effectiveBase });
+    if (flows.length === 0) flows.push({ day: 0, amount: cashPrice });
+
     const totalAmt = flows.reduce((s, f) => s + f.amount, 0);
     const adatDays = totalAmt > 0 ? flows.reduce((s, f) => s + f.amount * f.day, 0) / totalAmt : 0;
     const adatMonths = adatDays / 30;
 
-    // Taksitlendirilecek Bakiye = gerçek finansman tutari (baz - peşinat - ara ödemeler)
-    // remainingPV zaten effectiveBase - downPayment - interimNominal olarak hesaplandı
-    const remaining = remainingPV;
+    // ── Vade farkı = peşin fiyat × aylık faiz × adat ay ──
+    const surcharge = cashPrice * r * adatMonths;
 
-    // Peşin fiyat her zaman referans
+    // ── Net fiyat = peşin fiyat + vade farkı ──
+    const netPrice = cashPrice + surcharge;
+
+    // ── Liste fiyatı ile karşılaştırma ──
     const discountAmount = listPrice - netPrice;
-    const discountRate = cashPrice > 0 ? ((netPrice - cashPrice) / cashPrice) * 100 : 0;
-    const totalPayable = Math.round(netPrice);
+    const discountRate = listPrice > 0 ? (discountAmount / listPrice) * 100 : 0;
 
     return {
-        adatMonths, netPrice: Math.round(netPrice), monthly: Math.round(monthly),
-        remaining: Math.round(remaining), discountAmount, discountRate, totalPayable,
+        adatMonths, adatDays: Math.round(adatDays),
+        netPrice: Math.round(netPrice), monthly: Math.round(monthly),
+        remaining: Math.round(remaining), surcharge: Math.round(surcharge),
+        discountAmount: Math.round(discountAmount), discountRate,
+        totalPayable: Math.round(netPrice),
         isDiscount: discountAmount > 0, isManualMonthly: parsedManual > 0,
-        effectiveBase: Math.round(effectiveBase), tierDiscount,
     };
 }
 
@@ -138,10 +126,11 @@ function WizardSteps({ current }) {
 }
 
 // ─── ÖZET PANELİ ───────────────────────────────────────────────────────────
-function SummaryPanel({ form, selected, calc }) {
+function SummaryPanel({ form, selected, calc, paymentConfigured }) {
     const hasApt = !!selected;
     const listPrice = hasApt ? (selected.listPrice || 0) : 0;
     const cashPrice = hasApt ? (selected.cashPrice || selected.listPrice || 0) : 0;
+    const showFinancials = paymentConfigured && calc && cashPrice > 0;
 
     return (
         <div className="re-summary-panel">
@@ -157,7 +146,6 @@ function SummaryPanel({ form, selected, calc }) {
                         <span className="value">{form.customerName}</span>
                     </div>
                 )}
-
                 {/* Seçilen Daire */}
                 {hasApt && (
                     <div className="re-summary-row">
@@ -165,79 +153,81 @@ function SummaryPanel({ form, selected, calc }) {
                         <span className="value">{selected.name}</span>
                     </div>
                 )}
-
-                {/* Metraj */}
                 {selected?.netArea && (
                     <div className="re-summary-row">
                         <span className="label">Net Alan</span>
                         <span className="value">{selected.netArea} m²</span>
                     </div>
                 )}
-
-                {/* Liste fiyatı */}
                 {listPrice > 0 && (
                     <div className="re-summary-row">
                         <span className="label">Liste Fiyatı</span>
                         <span className="value">{fmt(listPrice)}</span>
                     </div>
                 )}
-
-                {/* Peşinat */}
-                {form.downPayment > 0 && (
+                {cashPrice > 0 && cashPrice !== listPrice && (
                     <div className="re-summary-row">
-                        <span className="label">Peşinat ({form.downPaymentRate?.toFixed(0)}%)</span>
-                        <span className="value">{fmt(form.downPayment)}</span>
+                        <span className="label">Peşin Fiyat</span>
+                        <span className="value">{fmt(cashPrice)}</span>
                     </div>
                 )}
 
-                {/* Vade */}
-                {form.installmentCount > 0 && (
-                    <div className="re-summary-row">
-                        <span className="label">Vade Süresi</span>
-                        <span className="value">{form.installmentCount} Ay</span>
+                {!showFinancials && (
+                    <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--re-muted)', fontSize: '0.82rem' }}>
+                        Vade ve peşinat seçimi yapıldığında hesaplama burada görünecektir.
                     </div>
                 )}
 
-                {/* Hesaplanmış sonuçlar */}
-                {calc && cashPrice > 0 && (
+                {showFinancials && (
                     <>
-                        {/* Aylık Taksit */}
+                        <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.15)', margin: '12px 0' }} />
+                        {form.downPayment > 0 && (
+                            <div className="re-summary-row">
+                                <span className="label">Peşinat ({form.downPaymentRate?.toFixed(0)}%)</span>
+                                <span className="value">{fmt(form.downPayment)}</span>
+                            </div>
+                        )}
+                        {form.installmentCount > 0 && (
+                            <div className="re-summary-row">
+                                <span className="label">Vade</span>
+                                <span className="value">{form.installmentCount} Ay</span>
+                            </div>
+                        )}
                         {calc.monthly > 0 && (
                             <div className="re-summary-row">
                                 <span className="label">Aylık Taksit</span>
                                 <span className="value">{fmt(calc.monthly)}</span>
                             </div>
                         )}
-
-                        {/* Adat + Faiz Bilgisi */}
                         {calc.adatMonths > 0 && (
                             <div className="re-summary-row">
                                 <span className="label">Ort. Vade (Adat)</span>
                                 <span className="value">{calc.adatMonths.toFixed(2)} Ay</span>
                             </div>
                         )}
-
-                        {/* Teklif Satış Fiyatı = nakit fiyat + vade faizi */}
+                        {calc.surcharge > 0 && (
+                            <div className="re-summary-row">
+                                <span className="label">Vade Farkı</span>
+                                <span className="value">{fmt(calc.surcharge)}</span>
+                            </div>
+                        )}
                         <div className="re-summary-price-block">
                             <div className="re-summary-price-label">Teklif Satış Fiyatı</div>
                             <div className="re-summary-price-value">{fmt(calc.netPrice)}</div>
                         </div>
-
-                        {/* İndirim (netPrice < listPrice) veya Vade Farkı (netPrice > listPrice) */}
-                        {listPrice > 0 && (
+                        {listPrice > 0 && calc.discountAmount !== 0 && (
                             <div className={`re-discount-badge ${calc.isDiscount ? 'discount' : 'surcharge'}`}>
                                 {calc.isDiscount ? <TrendingDown size={16} /> : <TrendingUp size={16} />}
                                 <span>
                                     {calc.isDiscount
-                                        ? `Peşin fiyatından ${fmt(Math.abs(calc.discountAmount))} İndirim (%${Math.abs(calc.discountRate).toFixed(1)})`
-                                        : `Peşin fiyatına ${fmt(Math.abs(calc.discountAmount))} Vade Farkı (+%${Math.abs(calc.discountRate).toFixed(1)})`}
+                                        ? `Liste fiyatından ${fmt(Math.abs(calc.discountAmount))} İndirim (%${Math.abs(calc.discountRate).toFixed(1)})`
+                                        : `Liste fiyatına ${fmt(Math.abs(calc.discountAmount))} Vade Farkı (+%${Math.abs(calc.discountRate).toFixed(1)})`}
                                 </span>
                             </div>
                         )}
                     </>
                 )}
 
-                {/* Yasal uyarı */}
                 <p style={{ fontSize: '0.6875rem', color: 'var(--re-muted)', marginTop: 16, lineHeight: 1.5 }}>
                     * Bu hesaplama bilgilendirme amaçlıdır. Kesin fiyat ve koşullar sözleşmede belirlenir.
                 </p>
@@ -259,6 +249,7 @@ export default function RealEstateWizard() {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState('');
+    const [paymentConfigured, setPaymentConfigured] = useState(false);
 
     // Veriler
     const [projects, setProjects] = useState([]);
@@ -869,9 +860,9 @@ export default function RealEstateWizard() {
                                                             key={v.months}
                                                             className={`re-vade-btn ${form.installmentCount === v.months ? 'selected' : ''}`}
                                                             onClick={() => {
+                                                                setPaymentConfigured(true);
                                                                 const base = _getPriceBase();
                                                                 if (v.months === 0) {
-                                                                    // Peşin seçildi → %100 peşinat
                                                                     setForm(f => ({ ...f, installmentCount: 0, downPayment: Math.round(base), downPaymentRate: 100 }));
                                                                     return;
                                                                 }
@@ -1202,7 +1193,7 @@ export default function RealEstateWizard() {
 
                         {/* Sağ: Özet Panel — sadece 3. adımda göster */}
                         {step === 3 && (
-                            <SummaryPanel form={{ ...form, downPaymentRate: dpPct }} selected={selectedAptType} calc={calc} />
+                            <SummaryPanel form={{ ...form, downPaymentRate: dpPct }} selected={selectedAptType} calc={calc} paymentConfigured={paymentConfigured} />
                         )}
                     </div>
                 </>
