@@ -1782,7 +1782,10 @@ export const updateFunnel = async (req, res) => {
         } catch (_) {}
 
         // 🔥 STAGE_CHANGED Flow Trigger & Contact Status Sync
-        if (funnelStageId && funnelStageId !== existing.funnelStageId) {
+        // Trigger when: stage changes OR funnel (akış) changes
+        const funnelChanged = funnelType !== undefined && funnelType !== existing.funnelType;
+        const stageChanged = funnelStageId && funnelStageId !== existing.funnelStageId;
+        if (stageChanged || (funnelChanged && funnelStageId)) {
             (async () => {
                 try {
                     const [oldStageRec, newStageRec] = await Promise.all([
@@ -1845,32 +1848,58 @@ export const updateFunnel = async (req, res) => {
                     });
                     console.log('🔀 [FLOW:STAGE_CHANGED] stage changed');
 
-                    // 🎯 Aşamaya özel atama — Round-Robin + Bot + Kişi
+                    // 🎯 Aşamaya özel atama — Round-Robin + Bot + Kişi + Funnel-level fallback
                     if (newStageRec) {
                         const stageAssign = {};
 
-                        // Bot atama
+                        // Bot atama (stage-level only)
                         if (newStageRec.assignedBotId) {
                             stageAssign.assignedBotId = newStageRec.assignedBotId;
                             stageAssign.botEnabled = true;
                             console.log(`🤖 [StageAssign] Bot atandı: ${newStageRec.assignedBotId}`);
                         }
 
+                        // Determine effective teamId: Stage → Funnel fallback
+                        let effectiveTeamId = newStageRec.assignedTeamId || null;
+                        let effectiveUserId = newStageRec.assignedUserId || null;
+
+                        // If stage has no team/user, check parent Funnel
+                        if (!effectiveTeamId || !effectiveUserId) {
+                            try {
+                                const parentFunnel = await prisma.funnel.findUnique({
+                                    where: { id: newStageRec.funnelId },
+                                    select: { assignedTeamId: true, assignedUserId: true }
+                                });
+                                if (parentFunnel) {
+                                    if (!effectiveTeamId && parentFunnel.assignedTeamId) {
+                                        effectiveTeamId = parentFunnel.assignedTeamId;
+                                        console.log(`📂 [FunnelFallback] Funnel-level takım: ${effectiveTeamId}`);
+                                    }
+                                    if (!effectiveUserId && parentFunnel.assignedUserId) {
+                                        effectiveUserId = parentFunnel.assignedUserId;
+                                        console.log(`📂 [FunnelFallback] Funnel-level kişi: ${effectiveUserId}`);
+                                    }
+                                }
+                            } catch (fErr) {
+                                console.error('[FunnelFallback] error:', fErr.message);
+                            }
+                        }
+
                         // Takım atama + Round-Robin
-                        if (newStageRec.assignedTeamId) {
-                            stageAssign.teamId = newStageRec.assignedTeamId;
-                            stageAssign.teamIds = JSON.stringify([newStageRec.assignedTeamId]);
+                        if (effectiveTeamId) {
+                            stageAssign.teamId = effectiveTeamId;
+                            stageAssign.teamIds = JSON.stringify([effectiveTeamId]);
 
                             // Round-robin ile kullanıcı seç
                             try {
                                 const teamMembers = await prisma.teamMember.findMany({
-                                    where: { teamId: newStageRec.assignedTeamId, userId: { not: null } },
+                                    where: { teamId: effectiveTeamId, userId: { not: null } },
                                     orderBy: { createdAt: 'asc' },
                                     select: { userId: true }
                                 });
                                 if (teamMembers.length > 0) {
                                     const lastConv = await prisma.conversation.findFirst({
-                                        where: { teamId: newStageRec.assignedTeamId, assignedToId: { not: null } },
+                                        where: { teamId: effectiveTeamId, assignedToId: { not: null } },
                                         orderBy: { updatedAt: 'desc' },
                                         select: { assignedToId: true }
                                     });
@@ -1886,9 +1915,9 @@ export const updateFunnel = async (req, res) => {
                         }
 
                         // Kişi atama (round-robin yoksa)
-                        if (newStageRec.assignedUserId && !stageAssign.assignedToId) {
-                            stageAssign.assignedToId = newStageRec.assignedUserId;
-                            console.log(`👤 [StageAssign] Kişi atandı: ${newStageRec.assignedUserId}`);
+                        if (effectiveUserId && !stageAssign.assignedToId) {
+                            stageAssign.assignedToId = effectiveUserId;
+                            console.log(`👤 [StageAssign] Kişi atandı: ${effectiveUserId}`);
                         }
 
                         if (Object.keys(stageAssign).length > 0) {

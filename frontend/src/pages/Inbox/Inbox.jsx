@@ -3592,12 +3592,15 @@ const Inbox = () => {
                                                 })();
                                                 const handleStageSelect = async (newFunnel, newStage, changedStage) => {
                                                     setStageMegaMenuOpen(false);
-                                                    if (newFunnel !== (selectedItem.funnelType || '')) {
-                                                        try { await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelType: newFunnel }); } catch {}
-                                                    }
                                                     try {
+                                                        // Send both funnelType and funnelStageId in a single call
+                                                        // so the backend auto-assignment logic (team/user/bot) triggers correctly
+                                                        const updatePayload = { funnelStageId: newStage };
+                                                        if (newFunnel !== (selectedItem.funnelType || '')) {
+                                                            updatePayload.funnelType = newFunnel;
+                                                        }
                                                         await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStage });
-                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelStageId: newStage });
+                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, updatePayload);
                                                         setSelectedItem(prev => ({ ...prev, funnelType: newFunnel, contact: { ...prev.contact, status: newStage }, funnelStageId: newStage, _effectiveStageId: newStage }));
                                                         window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
                                                             detail: { conversationId: selectedItem.id, funnelStageId: newStage, stageName: changedStage?.label || changedStage?.name || newStage, stageColor: changedStage?.color || '#6366f1' }
@@ -3680,7 +3683,11 @@ const Inbox = () => {
 
                                                                     {/* Sağ panel: Hover/aktif akışın aşamaları */}
                                                                     {(() => {
-                                                                        const displayFunnelVal = stageMegaMenuHoverFunnel || (selectedItem.funnelType || '') || funnelOptions.filter(f => f.value !== '')[0]?.value;
+                                                                        const displayFunnelVal = stageMegaMenuHoverFunnel !== null 
+                                                                            ? stageMegaMenuHoverFunnel 
+                                                                            : ((selectedItem.funnelType !== undefined && selectedItem.funnelType !== null) 
+                                                                                ? selectedItem.funnelType 
+                                                                                : (funnelOptions.filter(f => f.value !== '')[0]?.value || ''));
                                                                         const displayFunnel = funnelOptions.find(f => f.value === displayFunnelVal);
                                                                         if (!displayFunnel) return null;
                                                                         const stages = (displayFunnel.stages && displayFunnel.stages.length > 0) ? displayFunnel.stages : CUSTOMER_STATUS_OPTIONS;

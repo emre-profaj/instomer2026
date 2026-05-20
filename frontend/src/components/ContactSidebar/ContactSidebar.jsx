@@ -3,6 +3,7 @@ import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Lo
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import TransferModal from '../TransferModal/TransferModal';
+import ChatPopup from '../ChatPopup/ChatPopup';
 import CallHistory from './CallHistory';
 import './ContactSidebar.css';
 import { useAuth } from '../../context/AuthContext';
@@ -194,6 +195,19 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [completingActivity, setCompletingActivity] = useState(null);
     const [completeResult, setCompleteResult] = useState('');
     const [activityFunnels, setActivityFunnels] = useState([]); // stage seçici için
+    const [popupConversationId, setPopupConversationId] = useState(null); // Chat popup state
+
+    // Inline Quote Form State
+    const [showQuoteForm, setShowQuoteForm] = useState(false);
+    const [quoteFormData, setQuoteFormData] = useState({
+        title: '',
+        description: '',
+        amount: '',
+        currency: 'TRY',
+        products: [{ name: '', quantity: 1, unitPrice: 0 }],
+        notes: ''
+    });
+    const [quoteSubmitting, setQuoteSubmitting] = useState(false);
 
     // If external profile is provided (e.g., for comments), use it directly
     useEffect(() => {
@@ -1220,7 +1234,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
 
                             {/* ACTION BUTTONS — Row 1: Aktiviteler */}
-                            <div style={{ display: 'flex', gap: '4px', padding: '4px 16px 0', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px', padding: '8px 16px 4px', justifyContent: 'center' }}>
                                 <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
                                     <StickyNote size={18} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Not</span>
@@ -1382,7 +1396,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 if (onConversationOpen) {
                                                                     onConversationOpen(item.conversationId);
                                                                 } else {
-                                                                    navigate(`/inbox?conversationId=${item.conversationId}`);
+                                                                    setPopupConversationId(item.conversationId);
                                                                 }
                                                             } : undefined}
                                                         >
@@ -1710,7 +1724,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     </div>
                                     <button
                                         className="reminder-add-btn"
-                                        onClick={() => navigate('/quotes')}
+                                        onClick={() => setShowQuoteForm(true)}
                                         title="Yeni teklif oluştur"
                                     >
                                         <Plus size={16} />
@@ -1968,6 +1982,136 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                         )}
                     </div>
                 </div>
+            )}
+            {/* Inline Quote Form Modal */}
+            {showQuoteForm && (
+                <div className="chat-popup-overlay" onClick={() => setShowQuoteForm(false)} style={{ zIndex: 10000 }}>
+                    <div className="chat-popup-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '94vw', maxHeight: '88vh' }}>
+                        <div className="chat-popup-header" style={{ borderBottom: '2px solid #fef2f2' }}>
+                            <div className="chat-popup-header-left">
+                                <div className="chat-popup-avatar" style={{ background: '#fef2f2', width: 48, height: 48 }}>
+                                    <TrendingUp size={22} style={{ color: '#ef4444' }} />
+                                </div>
+                                <div className="chat-popup-header-info">
+                                    <h3 className="chat-popup-contact-name" style={{ fontSize: '17px' }}>Yeni Teklif Oluştur</h3>
+                                    <span className="chat-popup-channel-badge" style={{ color: '#ef4444' }}>{profile?.name || 'Müşteri'} için</span>
+                                </div>
+                            </div>
+                            <div className="chat-popup-header-actions">
+                                <button className="chat-popup-icon-btn chat-popup-close-btn" onClick={() => setShowQuoteForm(false)}><X size={18} /></button>
+                            </div>
+                        </div>
+                        <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (quoteSubmitting) return;
+                                setQuoteSubmitting(true);
+                                try {
+                                    const totalAmount = quoteFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0);
+                                    await dealAPI.create(currentWorkspace.id, {
+                                        contactId: profile?.id,
+                                        title: quoteFormData.title,
+                                        description: quoteFormData.description,
+                                        currency: quoteFormData.currency,
+                                        amount: totalAmount,
+                                        products: quoteFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
+                                        notes: quoteFormData.notes
+                                    });
+                                    setShowQuoteForm(false);
+                                    setQuoteFormData({ title: '', description: '', amount: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
+                                    // Refresh deals
+                                    if (profile?.id && currentWorkspace?.id) {
+                                        const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
+                                        setDeals(r.data.deals || []);
+                                    }
+                                } catch (err) {
+                                    console.error('Quote create error:', err);
+                                    alert('Teklif oluşturulamadı: ' + (err?.response?.data?.error || err?.message));
+                                } finally {
+                                    setQuoteSubmitting(false);
+                                }
+                            }}>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Teklif Başlığı *</label>
+                                    <input type="text" required value={quoteFormData.title} onChange={e => setQuoteFormData(p => ({ ...p, title: e.target.value }))}
+                                        placeholder="Örn: Web Sitesi Projesi" style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Açıklama</label>
+                                    <textarea value={quoteFormData.description} onChange={e => setQuoteFormData(p => ({ ...p, description: e.target.value }))}
+                                        placeholder="Teklif detayları..." rows={3} style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Para Birimi</label>
+                                    <select value={quoteFormData.currency} onChange={e => setQuoteFormData(p => ({ ...p, currency: e.target.value }))}
+                                        style={{ padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none' }}>
+                                        <option value="TRY">₺ TRY</option>
+                                        <option value="USD">$ USD</option>
+                                        <option value="EUR">€ EUR</option>
+                                        <option value="GBP">£ GBP</option>
+                                    </select>
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>Ürünler / Hizmetler</label>
+                                    {quoteFormData.products.map((product, idx) => (
+                                        <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                                            <input type="text" placeholder="Ürün adı" value={product.name}
+                                                onChange={e => { const p = [...quoteFormData.products]; p[idx].name = e.target.value; setQuoteFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ flex: 2, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
+                                            <input type="number" placeholder="Adet" min="1" value={product.quantity}
+                                                onChange={e => { const p = [...quoteFormData.products]; p[idx].quantity = parseInt(e.target.value) || 1; setQuoteFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ width: 70, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'center' }} />
+                                            <input type="number" placeholder="Birim Fiyat" min="0" value={product.unitPrice}
+                                                onChange={e => { const p = [...quoteFormData.products]; p[idx].unitPrice = parseFloat(e.target.value) || 0; setQuoteFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ width: 110, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'right' }} />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ef4444', minWidth: 70, textAlign: 'right' }}>
+                                                {(quoteFormData.currency === 'TRY' ? '₺' : quoteFormData.currency === 'USD' ? '$' : quoteFormData.currency === 'EUR' ? '€' : '£')}{(product.quantity * product.unitPrice).toLocaleString('tr-TR')}
+                                            </span>
+                                            {quoteFormData.products.length > 1 && (
+                                                <button type="button" onClick={() => { const p = quoteFormData.products.filter((_, i) => i !== idx); setQuoteFormData(prev => ({ ...prev, products: p })); }}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => setQuoteFormData(prev => ({ ...prev, products: [...prev.products, { name: '', quantity: 1, unitPrice: 0 }] }))}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fef2f2', border: '1px dashed #fca5a5', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#ef4444', cursor: 'pointer', marginTop: 6, fontWeight: 500 }}>
+                                        <Plus size={13} /> Ürün Ekle
+                                    </button>
+                                    <div style={{ textAlign: 'right', fontSize: '0.92rem', fontWeight: 700, color: '#dc2626', marginTop: 10, padding: '8px 0', borderTop: '1px solid #fef2f2' }}>
+                                        Toplam: {(quoteFormData.currency === 'TRY' ? '₺' : quoteFormData.currency === 'USD' ? '$' : quoteFormData.currency === 'EUR' ? '€' : '£')}
+                                        {quoteFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0).toLocaleString('tr-TR')}
+                                    </div>
+                                </div>
+                                <div style={{ marginBottom: 20 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Notlar</label>
+                                    <textarea value={quoteFormData.notes} onChange={e => setQuoteFormData(p => ({ ...p, notes: e.target.value }))}
+                                        placeholder="Ek notlar..." rows={3} style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+                                    <button type="button" onClick={() => setShowQuoteForm(false)}
+                                        style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>İptal</button>
+                                    <button type="submit" disabled={quoteSubmitting}
+                                        style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: quoteSubmitting ? '#fca5a5' : '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: quoteSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)' }}>
+                                        {quoteSubmitting ? 'Oluşturuluyor...' : 'Teklif Oluştur'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Chat Popup Modal */}
+            {popupConversationId && (
+                <ChatPopup
+                    conversationId={popupConversationId}
+                    onClose={() => setPopupConversationId(null)}
+                />
             )}
         </>
     );
