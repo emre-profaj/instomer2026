@@ -555,7 +555,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             case 'TASK': return <Check size={14} />;
             case 'MEETING': return <Calendar size={14} />;
             case 'VISIT': return <MapPin size={14} />;
-            case 'VISIT': return <MapPin size={14} />;
             case 'REMINDER': return <PhoneCall size={14} />;
             case 'PROPOSAL': return <FileText size={14} />;
             case 'ORDER': return <TrendingUp size={14} />;
@@ -576,7 +575,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             case 'NOTE': return 'Not';
             case 'TASK': return 'Görev';
             case 'MEETING': return 'Görüşme';
-            case 'VISIT': return 'Ziyaret';
             case 'VISIT': return 'Ziyaret';
             case 'REMINDER': return 'Arama';
             case 'PROPOSAL': return 'Teklif';
@@ -1370,15 +1368,33 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                             </div>
                                                                         )}
                                                                     </div>
-                                                                    {/* Complete button */}
-                                                                    <button
-                                                                        onClick={(e) => { e.stopPropagation(); setCompletingActivity(item); setCompleteResult(''); }}
-                                                                        title="Tamamlandı — Not gir"
-                                                                        style={{ flexShrink: 0, background: '#10b981', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.68rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', lineHeight: 1.2 }}
-                                                                    >
-                                                                        <Check size={14} />
-                                                                        <span>Tamamla</span>
-                                                                    </button>
+                                                                    {/* Action buttons */}
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); setCompletingActivity(item); setCompleteResult(''); }}
+                                                                            title="Tamamlandı — Not gir"
+                                                                            style={{ background: '#10b981', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
+                                                                        >
+                                                                            <Check size={12} />
+                                                                            <span>Tamamla</span>
+                                                                        </button>
+                                                                        <div style={{ display: 'flex', gap: '3px' }}>
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); setEditingActivity(item); setEditActivityText(item.content || item.description || ''); }}
+                                                                                title="Düzenle"
+                                                                                style={{ flex: 1, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '5px', padding: '4px', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                                            >
+                                                                                <Pencil size={11} />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteActivity(item.id); }}
+                                                                                title="Sil"
+                                                                                style={{ flex: 1, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '5px', padding: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                                            >
+                                                                                <Trash2 size={11} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
