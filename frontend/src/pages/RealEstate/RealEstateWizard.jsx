@@ -425,13 +425,9 @@ export default function RealEstateWizard() {
         setCalc({ ...result, activeTier, discountTiers, isMaxInstallments });
     }, [form.downPayment, form.installmentCount, form.interimPayments, form.manualInterestRate, form.manualMonthly, form.manualMonthlyEnabled, selectedAptType, selectedCampaign]);
 
-    // Peşinat oranı ↔ tutar senkronizasyonu
-    // Kural: SADECE sıfır faizli kampanya (Emlak Konut vb.) → listPrice baz; faizli kampanya → cashPrice baz
+    // Peşinat her zaman peşin fiyat (cashPrice) üzerinden hesaplanır
     const _getPriceBase = () => {
-        const cp = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
-        const lp = selectedAptType?.listPrice || cp;
-        // Kampanya varsa her zaman liste fiyatı baz alınır
-        return selectedCampaign ? lp : cp;
+        return selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
     };
 
     const handleDownPaymentRate = (rate) => {
@@ -541,10 +537,9 @@ export default function RealEstateWizard() {
     const cashPrice = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
     const listPriceForCalc = selectedAptType?.listPrice || cashPrice;
 
-    // Kampanya tiplerini belirle (render-time)
-    // Kampanya varsa her zaman listPrice baz alınır (sıfır faiz de, şirket bünyesi de)
+    // Peşinat her zaman cashPrice üzerinden
+    const priceBase = cashPrice;
     const isZeroIRActive = selectedCampaign && selectedCampaign.monthlyInterestRate === 0 && form.installmentCount > 0;
-    const priceBase = selectedCampaign ? listPriceForCalc : cashPrice;
 
     // Peşinat min oranı: Emlak Konut flex → flexDownPaymentRate, diğerleri kampanya minDP
     const flexMinRate = selectedCampaign?.flexDownPaymentRate ?? null;
@@ -866,13 +861,11 @@ export default function RealEstateWizard() {
                                                             className={`re-vade-btn ${form.installmentCount === v.months ? 'selected' : ''}`}
                                                             onClick={() => {
                                                                 setPaymentConfigured(true);
+                                                                const base = _getPriceBase();
                                                                 if (v.months === 0) {
-                                                                    // Peşin = nakit fiyat üzerinden %100
-                                                                    const cp = selectedAptType?.cashPrice || selectedAptType?.listPrice || 0;
-                                                                    setForm(f => ({ ...f, installmentCount: 0, downPayment: Math.round(cp), downPaymentRate: 100 }));
+                                                                    setForm(f => ({ ...f, installmentCount: 0, downPayment: Math.round(base), downPaymentRate: 100 }));
                                                                     return;
                                                                 }
-                                                                const base = _getPriceBase();
                                                                 setForm(f => ({ ...f, installmentCount: v.months }));
                                                                 // Kampanya min peşinatını uygula
                                                                 if (selectedCampaign && selectedCampaign.minDownPaymentRate) {
@@ -1018,7 +1011,7 @@ export default function RealEstateWizard() {
                                             <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#d5f5e3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1e8449', fontWeight: 800, fontSize: '0.9rem' }}>✓</div>
                                             <div>
                                                 <div style={{ fontWeight: 700, color: '#1e8449', fontSize: '0.95rem' }}>Peşin Ödeme — %100</div>
-                                                <div style={{ fontSize: '0.82rem', color: '#27ae60', marginTop: 2 }}>Toplam: {fmt(cashPrice)}</div>
+                                                <div style={{ fontSize: '0.82rem', color: '#27ae60', marginTop: 2 }}>Toplam: {fmt(priceBase)}</div>
                                             </div>
                                         </div>
                                         )}
