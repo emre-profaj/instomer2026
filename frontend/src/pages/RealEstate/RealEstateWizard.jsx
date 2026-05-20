@@ -524,7 +524,7 @@ export default function RealEstateWizard() {
             setSaved(true);
             setTimeout(() => {
                 setSaved(false);
-                navigate('/realestate/offers');
+                navigate('/real-estate/offers');
             }, 1500);
         } catch (e) {
             setError('Teklif kaydedilemedi. Lütfen tekrar deneyin.');
