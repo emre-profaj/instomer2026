@@ -182,6 +182,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [localAgentId, setLocalAgentId] = useState(() => conversationData?.assignedToId || '');
     const [editingActivity, setEditingActivity] = useState(null); // { id, description, title }
     const [editActivityText, setEditActivityText] = useState('');
+    const [editingActivityId, setEditingActivityId] = useState(null); // For modal edit mode
     const [activityForm, setActivityForm] = useState({
         type: 'NOTE',
         title: '',
@@ -445,7 +446,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 teamId: activityForm.teamId || null
             };
 
-            await activityAPI.createActivity(profile.id, dataToSave);
+            if (editingActivityId) {
+                // Update existing activity
+                const rawId = editingActivityId.replace(/^act_/, '');
+                await activityAPI.updateActivity(rawId, dataToSave);
+            } else {
+                // Create new activity
+                await activityAPI.createActivity(profile.id, dataToSave);
+            }
 
             // CALL veya MEETING planlandıysa → conversation'ı ilgili aşamaya taşı
             if ((activityForm.type === 'CALL' || activityForm.type === 'MEETING') && activityForm.dueDate) {
@@ -473,6 +481,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             }
 
             setShowActivityModal(false);
+            setEditingActivityId(null);
             setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '' });
             fetchTimeline(profile.id);
             // Inbox list'teki badge'leri hemen güncelle
@@ -1380,7 +1389,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         </button>
                                                                         <div style={{ display: 'flex', gap: '3px' }}>
                                                                             <button
-                                                                                onClick={(e) => { e.stopPropagation(); setEditingActivity(item); setEditActivityText(item.content || item.description || ''); }}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setEditingActivityId(item.id);
+                                                                                    setActivityForm({
+                                                                                        type: item.type || 'CALL',
+                                                                                        title: item.title || '',
+                                                                                        description: item.content || item.description || '',
+                                                                                        dueDate: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 16) : '',
+                                                                                        assignedToId: item.assignedToId || '',
+                                                                                        teamId: item.teamId || '',
+                                                                                        funnelStageId: ''
+                                                                                    });
+                                                                                    setShowActivityModal(true);
+                                                                                }}
                                                                                 title="Düzenle"
                                                                                 style={{ flex: 1, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '5px', padding: '4px', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                                             >
@@ -1396,31 +1418,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                {/* Description & Inline Edit */}
-                                                                {editingActivity?.id === item.id ? (
-                                                                    <div style={{ marginTop: '8px' }} onClick={e => e.stopPropagation()}>
-                                                                        <textarea
-                                                                            value={editActivityText}
-                                                                            onChange={e => setEditActivityText(e.target.value)}
-                                                                            rows={3}
-                                                                            style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 8px', fontSize: '0.82rem', resize: 'vertical', boxSizing: 'border-box' }}
-                                                                            autoFocus
-                                                                        />
-                                                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                                                            <button onClick={handleUpdateActivity} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
-                                                                                <Save size={12} style={{ marginRight: '3px' }} />Kaydet
-                                                                            </button>
-                                                                            <button onClick={() => { setEditingActivity(null); setEditActivityText(''); }} style={{ background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
-                                                                                İptal
-                                                                            </button>
-                                                                        </div>
+                                                                {/* Description text */}
+                                                                {(item.content || item.description) && (
+                                                                    <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.4, borderTop: '1px dashed #e5e7eb', paddingTop: '6px' }}>
+                                                                        {item.content || item.description}
                                                                     </div>
-                                                                ) : (
-                                                                    (item.content || item.description) && (
-                                                                        <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.4, borderTop: '1px dashed #e5e7eb', paddingTop: '6px' }}>
-                                                                            {item.content || item.description}
-                                                                        </div>
-                                                                    )
                                                                 )}
                                                             </div>
                                                         </div>
@@ -1599,23 +1601,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
                             {/* Activity Modal */}
                             {showActivityModal && (
-                                <div className="reminder-modal-overlay" onClick={() => setShowActivityModal(false)}>
+                                <div className="reminder-modal-overlay" onClick={() => { setShowActivityModal(false); setEditingActivityId(null); }}>
                                     <div className="reminder-modal" onClick={e => e.stopPropagation()}>
                                         <div className="reminder-modal-header">
                                             {renderTimelineIcon(activityForm.type)}
                                             <h3>
+                                                {editingActivityId ? 'Düzenle: ' : ''}
                                                 {({
-                                                    'NOTE': 'Yeni Not Ekle',
-                                                    'CALL': 'Arama Planla',
-                                                    'MEETING': 'Görüşme Planla',
-                                                    'TASK': 'Yeni Görev Ekle',
+                                                    'NOTE': editingActivityId ? 'Not' : 'Yeni Not Ekle',
+                                                    'CALL': editingActivityId ? 'Arama' : 'Arama Planla',
+                                                    'MEETING': editingActivityId ? 'Görüşme' : 'Görüşme Planla',
+                                                    'TASK': editingActivityId ? 'Görev' : 'Yeni Görev Ekle',
                                                     'PROPOSAL': 'Teklif Kaydı',
                                                     'ORDER': 'Sipariş Kaydı',
                                                     'INVOICE': 'Fatura Kaydı',
                                                     'PAYMENT': 'Ödeme Kaydı',
-                                                })[activityForm.type] || 'Yeni Aktivite'}
+                                                })[activityForm.type] || 'Aktivite'}
                                             </h3>
-                                            <button className="reminder-modal-close" onClick={() => setShowActivityModal(false)}>
+                                            <button className="reminder-modal-close" onClick={() => { setShowActivityModal(false); setEditingActivityId(null); }}>
                                                 <X size={18} />
                                             </button>
                                         </div>
@@ -1711,7 +1714,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </div>
                                         </div>
                                         <div className="reminder-modal-footer">
-                                            <button className="reminder-btn-cancel" onClick={() => setShowActivityModal(false)}>İptal</button>
+                                            <button className="reminder-btn-cancel" onClick={() => { setShowActivityModal(false); setEditingActivityId(null); }}>İptal</button>
                                             <button className="reminder-btn-save" onClick={handleSaveActivity} disabled={activitySaving}>
                                                 {activitySaving ? <Loader className="spin" size={16} /> : <Save size={16} />}
                                                 Kaydet
