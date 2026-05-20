@@ -120,7 +120,7 @@ export default function RealEstateOffers() {
         }
     };
 
-    const printRef = React.useRef(null);
+    const printRef = useRef(null);
 
     const handleDownloadPDF = (offer = null) => {
         const target = offer ? null : printRef.current;
