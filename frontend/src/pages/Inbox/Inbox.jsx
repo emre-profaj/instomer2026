@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI } from '../../services/api';
+import { activityAPI } from '../../services/activity.api';
 import { io } from 'socket.io-client';
 import DOMPurify from 'dompurify';
 import {
     MessageSquare, MessageCircle, Facebook, Instagram, Mail, UserCheck,
     Search, User, Users, Bot, Trash2, Send, StickyNote, RefreshCw,
-    Check, CheckCheck, Phone, Calendar, Tag, FileText, TrendingUp,
+    Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
@@ -308,7 +310,7 @@ const CUSTOMER_STATUS_OPTIONS = [
 // Funnel tipi seçenekleri — dinamik olarak API'den yüklenir (bkz. useFunnels)
 // Bu sabit boş bir fallback'tir; gerçek liste Inbox bileşeni içinde state'e yüklenir.
 const FUNNEL_TYPE_OPTIONS_DEFAULT = [
-    { value: '', label: 'Akış Seç', color: '#9ca3af' },
+    { value: '', label: 'Genel Akış', color: '#9ca3af' },
 ];
 
 // Customer category options (synced with Customers page)
@@ -381,6 +383,16 @@ const Inbox = () => {
     const [funnelFilter, setFunnelFilter] = useState(null); // null = All, funnel ID = filter by funnel type
     const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
     const funnelFilterRef = useRef(null);
+    const [stageMegaMenuOpen, setStageMegaMenuOpen] = useState(false);
+    const stageMegaMenuRef = useRef(null);
+    const stageMenuDivRef = useRef(null); // fixed menü div ref
+    const [stageMegaMenuPos, setStageMegaMenuPos] = useState({ top: 0, left: 0 });
+    const [stageMegaMenuHoverFunnel, setStageMegaMenuHoverFunnel] = useState(null);
+    const [assignMegaMenuOpen, setAssignMegaMenuOpen] = useState(false);
+    const assignMegaMenuRef = useRef(null);
+    const assignMenuDivRef = useRef(null); // fixed menü div ref
+    const [assignMegaMenuPos, setAssignMegaMenuPos] = useState({ top: 0, left: 0 });
+    const [assignSelectedTeam, setAssignSelectedTeam] = useState(null);
     const [agentFilter, setAgentFilter] = useState(null); // null = All, user ID = filter by assigned agent
     const [agentFilterOpen, setAgentFilterOpen] = useState(false);
     const agentFilterRef = useRef(null);
@@ -441,12 +453,13 @@ const Inbox = () => {
         funnelAPI.getAll(currentWorkspace.id).then(res => {
             const list = res.data.funnels || [];
             setFunnelOptions([
-                { value: '', label: 'Akış Seç', color: '#9ca3af', stages: null },
+                { value: '', label: 'Genel Akış', color: '#9ca3af', stages: null, assignedTeamId: null },
                 ...list.map(f => ({
                     value: f.id,
                     label: f.name,
                     color: f.color,
                     icon: f.icon,
+                    assignedTeamId: f.assignedTeamId || null,
                     stages: (f.stages && f.stages.length > 0)
                         ? f.stages.map(s => ({ value: s.id, label: s.name, color: s.color }))
                         : getDefaultStagesForFunnel(f.name)
@@ -496,6 +509,7 @@ const Inbox = () => {
             if (funnelFilterRef.current && !funnelFilterRef.current.contains(event.target)) {
                 setFunnelFilterOpen(false);
             }
+            // Koordinat bazlı outside-click — stage/assign menü backdrop ile yönetiliyor, buraya gerek yok
             if (agentFilterRef.current && !agentFilterRef.current.contains(event.target)) {
                 setAgentFilterOpen(false);
             }
@@ -562,6 +576,7 @@ const Inbox = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [selectedItemType, setSelectedItemType] = useState(null);
     const [showContactSidebar, setShowContactSidebar] = useState(() => window.innerWidth > 768);
+    const [plannedActivityMap, setPlannedActivityMap] = useState({});
     const [loading, setLoading] = useState(true);
     const [markingAllRead, setMarkingAllRead] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -725,6 +740,20 @@ const Inbox = () => {
         window.addEventListener('newConversationCreated', handleNewConversation);
         return () => window.removeEventListener('newConversationCreated', handleNewConversation);
     }, [currentWorkspace]);
+
+    // URL ?tab= parametresinden assignment tab'ı oku ve set et
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        if (!tab || tab === 'all') {
+            setAssignmentTab('ALL');
+        } else if (tab === 'mine') {
+            setAssignmentTab('MINE');
+        } else if (tab === 'unassigned') {
+            setAssignmentTab('PENDING');
+        } else if (tab.startsWith('team:')) {
+            setAssignmentTab(tab.toUpperCase()); // 'TEAM:xxx-id'
+        }
+    }, [searchParams]);
 
     // Handle conversationId from URL query params
     useEffect(() => {
@@ -1254,11 +1283,47 @@ const Inbox = () => {
             setPages(pagesRes.data.pages || []);
             setTemplates(templatesRes.data.templates || []);
 
+            // Planned activity badges
+            activityAPI.getPlannedActivities(currentWorkspace.id)
+                .then(data => {
+                    const acts = Array.isArray(data) ? data : (data?.data || []);
+                    const map = {};
+                    acts.forEach(act => {
+                        if (!act.contact?.id) return;
+                        const cid = act.contact.id;
+                        if (!map[cid]) map[cid] = [];
+                        const exists = map[cid].find(e => e.type === act.type);
+                        if (!exists) map[cid].push({ type: act.type, status: act.status });
+                        else if (act.status === 'PLANNED') exists.status = 'PLANNED';
+                    });
+                    setPlannedActivityMap(map);
+                })
+                .catch(() => {});
         } catch (error) {
             console.error('Error loading support data:', error);
         }
     };
 
+    // Aktivite kaydedilince inbox badge'lerini anında güncelle (sayfa yenileme gerekmez)
+    const handleActivitySaved = ({ type, status = 'PLANNED', contactId }) => {
+        if (!contactId) return;
+        setPlannedActivityMap(prev => {
+            const existing = prev[contactId] || [];
+            const alreadyExists = existing.find(e => e.type === type);
+            if (alreadyExists) {
+                return {
+                    ...prev,
+                    [contactId]: existing.map(e =>
+                        e.type === type ? { ...e, status } : e
+                    )
+                };
+            }
+            return {
+                ...prev,
+                [contactId]: [...existing, { type, status }]
+            };
+        });
+    };
     // Load more conversations - wrapped in useCallback to prevent stale closure
     const loadMoreItems = useCallback(async () => {
         if (!hasMore || loadingMore) return;
@@ -1270,6 +1335,7 @@ const Inbox = () => {
             // Set assignment filter
             if (assignmentTab === 'MINE') params.assignedToId = 'mine';
             else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+            else if (assignmentTab.startsWith('TEAM:')) params.teamId = assignmentTab.split(':')[1];
             
             // Admin/Owner Agent Filter overrides assignment tab
             if (agentFilter) {
@@ -1518,6 +1584,7 @@ const Inbox = () => {
                 // Set assignment filter
                 if (assignmentTab === 'MINE') params.assignedToId = 'mine';
                 else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+                else if (assignmentTab.startsWith('TEAM:')) params.teamId = assignmentTab.split(':')[1];
                 
                 // Admin/Owner Agent Filter overrides assignment tab
                 if (agentFilter) {
@@ -2356,6 +2423,42 @@ const Inbox = () => {
         }
     };
 
+    // Konuşmayı takıma veya kişiye ata (atama kuralı destekli)
+    const handleAssignConversation = async (teamId, agentId) => {
+        if (!selectedItem) return;
+        setAssignMegaMenuOpen(false); // Her durumda kapat
+        try {
+            const res = await conversationAPI.assignNew(currentWorkspace.id, selectedItem.id, { teamId, agentId });
+            const conv = res.data.conversation;
+            const updateFn = item => item.id === selectedItem.id
+                ? { ...item, assignedToId: conv.assignedToId, assignedTo: conv.assignedTo, teamIds: conv.teamIds }
+                : item;
+            setSelectedItem(prev => ({ ...prev, assignedToId: conv.assignedToId, assignedTo: conv.assignedTo, teamIds: conv.teamIds }));
+            setInboxItems(prev => prev.map(updateFn));
+        } catch (e) {
+            console.error('Assign error:', e);
+            alert('Atama yapılamadı: ' + (e?.response?.data?.error || e?.message || 'Bilinmeyen hata'));
+        }
+    };
+
+    // Üstlen — havuzdaki konuşmayı kendine al
+    const handleClaimConversation = async () => {
+        if (!selectedItem || takingOver) return;
+        setTakingOver(true);
+        try {
+            const res = await conversationAPI.claim(currentWorkspace.id, selectedItem.id);
+            const conv = res.data.conversation;
+            setSelectedItem(prev => ({ ...prev, assignedToId: user.id, assignedTo: { id: user.id, name: user.name } }));
+            setInboxItems(prev => prev.map(item => item.id === selectedItem.id
+                ? { ...item, assignedToId: user.id, assignedTo: { id: user.id, name: user.name } }
+                : item));
+        } catch (e) {
+            console.error('Claim error:', e);
+        } finally {
+            setTakingOver(false);
+        }
+    };
+
     const handleConversationStatusChange = async (conversationId, newStatus) => {
         console.log(`🔄 Attempting to update conversation ${conversationId} to status: ${newStatus}`);
         console.log(`📌 Workspace ID: ${currentWorkspace?.id}`);
@@ -2540,9 +2643,6 @@ const Inbox = () => {
                                 <Plus size={16} />
                                 <span>{t('inbox.newConversation')}</span>
                             </button>
-                        </div>
-                        <div className="inbox-header-actions">
-
                             <button
                                 className="inbox-refresh-btn"
                                 onClick={() => loadInboxItems()}
@@ -3240,12 +3340,58 @@ const Inbox = () => {
                                                     {item.assignedTo.name}
                                                 </div>
                                             )}
-                                            {/* Reminder Indicator */}
-                                            {hasReminder(item) && (
-                                                <div className="reminder-indicator" title="Hatırlatıcı var">
-                                                    <Bell size={12} />
-                                                </div>
-                                            )}
+                                            {/* Activity Icons from plannedActivityMap */}
+                                            {(() => {
+                                                const cid = item.contactId || item.contact?.id;
+                                                const entries = cid ? (plannedActivityMap[cid] || []) : [];
+                                                if (entries.length === 0 && !hasReminder(item)) return null;
+                                                const iconMap = (done) => ({
+                                                    NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    CALL:     <PhoneCall size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    VISIT:    <MapPin size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                });
+                                                return (
+                                                    <span className="planned-activity-badges"
+                                                        onClick={e => { e.stopPropagation(); setSelectedItem(item); setShowContactSidebar(true); }}
+                                                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                                                        title="Aktiviteleri gör"
+                                                    >
+                                                        {entries.map((e, idx) => {
+                                                            const done = e.status === 'COMPLETED';
+                                                            return (
+                                                                <span key={idx}
+                                                                    className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
+                                                                    title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}`}
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                        width: 22, height: 22, borderRadius: '50%',
+                                                                        background: done ? '#dcfce7' : '#fee2e2',
+                                                                        border: `1px solid ${done ? '#86efac' : '#fca5a5'}`
+                                                                    }}
+                                                                >
+                                                                    {iconMap(done)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                        {hasReminder(item) && (
+                                                            <span
+                                                                className="reminder-indicator"
+                                                                title="Hatırlatıcı var"
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                    width: 22, height: 22, borderRadius: '50%',
+                                                                    background: '#fee2e2', border: '1px solid #fca5a5'
+                                                                }}
+                                                            >
+                                                                <Bell size={13} color="#ef4444" />
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </div>
@@ -3276,7 +3422,7 @@ const Inbox = () => {
             </div>
 
             {/* Middle Panel - Detail View */}
-            <div className={`inbox-detail-panel${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
+            <div className={`inbox-detail-panel${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}${showContactSidebar && selectedItem && viewMode !== 'pipeline' ? ' sidebar-open' : ''}`}>
                 {selectedItem ? (
                     <>
                         {/* Message/Email Detail View */}
@@ -3393,133 +3539,40 @@ const Inbox = () => {
                                                 );
                                             })()}
 
-                                            {/* Sohbet Durumu Toggle - Açık / Çözüldü */}
+                                            {/* Durum toggle + Sil — konu başlığının yanında */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
-                                                <button
-                                                    className={`conv-status-toggle ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
-                                                    onClick={() => handleConversationStatusChange(selectedItem.id, selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED')}
-                                                    title={selectedItem.status === 'RESOLVED' ? 'Açık olarak işaretle' : 'Çözüldü olarak işaretle'}
-                                                >
-                                                    <span className="conv-status-toggle-track">
-                                                        <span className="conv-status-toggle-thumb">
-                                                            {selectedItem.status === 'RESOLVED'
-                                                                ? <CheckCircle2 size={11} />
-                                                                : <Circle size={11} />}
+                                                <>
+                                                    <button
+                                                        className={`conv-status-toggle ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
+                                                        onClick={() => handleConversationStatusChange(selectedItem.id, selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED')}
+                                                        title={selectedItem.status === 'RESOLVED' ? 'Açık yap' : 'Çözüldü yap'}
+                                                    >
+                                                        <span className="conv-status-toggle-track">
+                                                            <span className="conv-status-toggle-thumb">
+                                                                {selectedItem.status === 'RESOLVED' ? <CheckCircle2 size={11} /> : <Circle size={11} />}
+                                                            </span>
                                                         </span>
-                                                    </span>
-                                                    <span className="conv-status-toggle-label">
-                                                        {selectedItem.status === 'RESOLVED' ? 'Çözüldü' : 'Açık'}
-                                                    </span>
-                                                </button>
+                                                        <span className="conv-status-toggle-label">
+                                                            {selectedItem.status === 'RESOLVED' ? 'Çözüldü' : 'Açık'}
+                                                        </span>
+                                                    </button>
+                                                    <button
+                                                        className="profile-action-btn delete"
+                                                        onClick={() => handleDeleteItem(selectedItem)}
+                                                        title="Sohbeti Sil"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </>
                                             )}
-                                            <button
-                                                className="profile-action-btn delete"
-                                                onClick={() => handleDeleteItem(selectedItem)}
-                                                title="Sohbeti Sil"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+
                                         </div>
                                     </div>
 
                                     {/* Assignment Bar */}
                                     <div className="assignment-bar">
-                                        {/* Left Group: Team, Agent, Üstlen, Bot Toggle */}
+                                        {/* Left Group: Akış Seç + Müşteri Durumu */}
                                         <div className="assignment-left-group">
-                                            {/* Atama dropdown'ları - Owner'lar HER ZAMAN, Agent'lar sadece kendisine atanmışsa görebilir */}
-                                            {(isOwner || selectedItem.assignedToId === user.id) && (
-                                                <>
-                                                    {/* Önce Takım Seçimi */}
-                                                    <div className="assignment-item">
-                                                        <Users size={14} />
-                                                        <select
-                                                            value={selectedItem.teamIds ? JSON.parse(selectedItem.teamIds)[0] || '' : ''}
-                                                            onChange={(e) => handleAssignTeam(selectedItem.id, e.target.value)}
-                                                        >
-                                                            <option value="">Takım Seç</option>
-                                                            {(() => {
-                                                                const renderTeamOptions = (teamList, depth = 0) => {
-                                                                    const options = [];
-                                                                    for (const t of teamList) {
-                                                                        const prefix = depth > 0 ? '↳'.repeat(depth) + ' ' : '';
-                                                                        const suffix = t.children && t.children.length > 0 && depth === 0 ? ' (Ana Takım)' : '';
-                                                                        options.push(
-                                                                            <option key={t.id} value={t.id}>{prefix}{t.name}{suffix}</option>
-                                                                        );
-                                                                        if (t.children && t.children.length > 0) {
-                                                                            options.push(...renderTeamOptions(t.children, depth + 1));
-                                                                        }
-                                                                    }
-                                                                    return options;
-                                                                };
-                                                                return renderTeamOptions(teams);
-                                                            })()}
-                                                        </select>
-                                                    </div>
-                                                    {/* Sonra Agent Seçimi (opsiyonel) */}
-                                                    <div className="assignment-item">
-                                                        <User size={14} />
-                                                        <select
-                                                            value={selectedItem.assignedToId || ''}
-                                                            onChange={(e) => handleAssignUser(selectedItem.id, e.target.value)}
-                                                            title={!selectedItem.teamIds || selectedItem.teamIds === '[]' ? 'Önce takım seçin' : 'Takımdaki bir agent\'a atayın'}
-                                                        >
-                                                            <option value="">Agent Seç</option>
-                                                            {(() => {
-                                                                // Seçili takımın ID'sini al
-                                                                const selectedTeamId = selectedItem.teamIds ? JSON.parse(selectedItem.teamIds)[0] : null;
-                                                                // Recursive team finder
-                                                                const findTeamById = (list, id) => {
-                                                                    for (const t of list) {
-                                                                        if (t.id === id) return t;
-                                                                        if (t.children) {
-                                                                            const found = findTeamById(t.children, id);
-                                                                            if (found) return found;
-                                                                        }
-                                                                    }
-                                                                    return null;
-                                                                };
-                                                                const selectedTeam = findTeamById(teams, selectedTeamId);
-                                                                // Takımdaki agent'ları filtrele (ana takım + tüm alt takımlar)
-                                                                const collectMemberIds = (team) => {
-                                                                    let ids = team?.members?.map(m => m.userId) || [];
-                                                                    if (team?.children) {
-                                                                        for (const child of team.children) {
-                                                                            ids = [...ids, ...collectMemberIds(child)];
-                                                                        }
-                                                                    }
-                                                                    return ids;
-                                                                };
-                                                                let teamMemberIds = collectMemberIds(selectedTeam);
-
-                                                                // Eğer takım seçili değilse tüm agent'ları göster, seçiliyse sadece takımdakileri
-                                                                const filteredMembers = selectedTeamId
-                                                                    ? members.filter(m => teamMemberIds.includes(m.user.id))
-                                                                    : members;
-
-                                                                return filteredMembers.map(m => (
-                                                                    <option key={m.id} value={m.user.id}>{(onlineUsers.get(m.user.id)?.isOnline || m.user?.isOnline) ? '🟢' : '⚪'} {m.user.name}</option>
-                                                                ));
-                                                            })()}
-                                                        </select>
-                                                        {(!selectedItem.assignedToId || selectedItem.assignedToId !== user?.id) && (
-                                                            <button 
-                                                                className="assignment-claim-btn"
-                                                                onClick={handleTakeOver}
-                                                                title="Sohbeti Üzerime Al"
-                                                            >
-                                                                <UserPlus size={14} /> Üstlen
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            {/* Üstlen button moved to message input area */}
-                                        </div>
-
-                                        {/* Right Group: Akış Seç + Müşteri Durumu */}
-                                        <div className="assignment-right-group">
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact && (() => {
                                                 // Get active funnel's stages, fallback to default CUSTOMER_STATUS_OPTIONS
                                                 const activeFunnel = funnelOptions.find(o => o.value === (selectedItem.funnelType || ''));
@@ -3528,66 +3581,326 @@ const Inbox = () => {
                                                     : CUSTOMER_STATUS_OPTIONS;
                                                 const activeStageVal = selectedItem._effectiveStageId || selectedItem.funnelStageId || selectedItem.contact?.funnelStageId || stageOptions[0]?.value;
                                                 const currentStageColor = stageOptions.find(o => o.value === activeStageVal)?.color || '#3b82f6';
+                                                // Seçili aşamanın adını bul (tüm funnel'lardan)
+                                                const activeStageLabel = (() => {
+                                                    for (const f of funnelOptions) {
+                                                        const stages = (f.stages && f.stages.length > 0) ? f.stages : (f.value === '' ? CUSTOMER_STATUS_OPTIONS : []);
+                                                        const found = stages.find(s => s.value === activeStageVal);
+                                                        if (found) return found.label || found.name;
+                                                    }
+                                                    return activeStageVal;
+                                                })();
+                                                const handleStageSelect = async (newFunnel, newStage, changedStage) => {
+                                                    setStageMegaMenuOpen(false);
+                                                    if (newFunnel !== (selectedItem.funnelType || '')) {
+                                                        try { await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelType: newFunnel }); } catch {}
+                                                    }
+                                                    try {
+                                                        await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStage });
+                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelStageId: newStage });
+                                                        setSelectedItem(prev => ({ ...prev, funnelType: newFunnel, contact: { ...prev.contact, status: newStage }, funnelStageId: newStage, _effectiveStageId: newStage }));
+                                                        window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                            detail: { conversationId: selectedItem.id, funnelStageId: newStage, stageName: changedStage?.label || changedStage?.name || newStage, stageColor: changedStage?.color || '#6366f1' }
+                                                        }));
+                                                    } catch (err) { console.error('Stage update error:', err); }
+                                                };
                                                 return (
                                                     <>
-                                                        {/* Akış Seçici — sol */}
-                                                        <div className="status-dropdown-compact funnel-dropdown-compact">
-                                                            <span
-                                                                className="status-dot"
-                                                                style={{ backgroundColor: activeFunnel?.color || '#9ca3af' }}
-                                                            />
-                                                            <select
-                                                                value={selectedItem.funnelType || ''}
-                                                                onChange={async (e) => {
-                                                                    const val = e.target.value;
-                                                                    setSelectedItem(prev => ({ ...prev, funnelType: val }));
-                                                                    try {
-                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelType: val });
-                                                                    } catch (err) { console.error('Funnel update error:', err); }
+                                                        {/* Tek Kutucuk: Mega Menü Trigger */}
+                                                        <div ref={stageMegaMenuRef} style={{ position: 'relative' }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                    setStageMegaMenuPos({ top: rect.bottom + 4, left: rect.left });
+                                                                    setStageMegaMenuOpen(v => !v);
+                                                                }}
+                                                                style={{
+                                                                    display: 'flex', alignItems: 'center', gap: '6px',
+                                                                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                                                                    borderRadius: '8px', padding: '4px 10px',
+                                                                    cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, color: '#374151',
+                                                                    whiteSpace: 'nowrap', maxWidth: '200px'
                                                                 }}
                                                             >
-                                                                {funnelOptions.map(opt => (
-                                                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-                                                        {/* Aşama Durumu — sağ (funnel'a göre değişir) */}
-                                                        <div className="assignment-item contact-status-item">
-                                                            <span
-                                                                className="status-dot"
-                                                                style={{ backgroundColor: currentStageColor }}
-                                                            />
-                                                            <select
-                                                                value={activeStageVal}
-                                                                onChange={async (e) => {
-                                                                    const newStatus = e.target.value;
-                                                                    try {
-                                                                        await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStatus });
-                                                                        // Also persist the funnelStageId on the conversation so it survives page refresh
-                                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, { funnelStageId: newStatus });
-                                                                        setSelectedItem(prev => ({ ...prev, contact: { ...prev.contact, status: newStatus }, funnelStageId: newStatus, _effectiveStageId: newStatus }));
-                                                                        // Update sidebar funnel stage tag in real time
-                                                                        const changedStage = stageOptions.find(o => o.value === newStatus);
-                                                                        window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
-                                                                            detail: {
-                                                                                conversationId: selectedItem.id,
-                                                                                funnelStageId: newStatus,
-                                                                                stageName: changedStage?.label || changedStage?.name || newStatus,
-                                                                                stageColor: changedStage?.color || '#6366f1'
-                                                                            }
-                                                                        }));
-                                                                    } catch (err) { console.error('Status update error:', err); }
-                                                                }}
-                                                            >
-                                                                {stageOptions.map(option => (
-                                                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                                                ))}
-                                                            </select>
+                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />
+                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130 }}>{activeStageLabel || 'Aşama Seç'}</span>
+                                                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 2, flexShrink: 0 }}><path d="M2 3.5L5 6.5L8 3.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                                            </button>
+
+                                                            {/* Stage menu backdrop + panel */}
+                                                            {stageMegaMenuOpen && ReactDOM.createPortal(
+                                                                <>
+                                                                    {/* Backdrop: dışarıya tıklayınca kapat */}
+                                                                    <div
+                                                                        style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+                                                                        onClick={() => { setStageMegaMenuOpen(false); setStageMegaMenuHoverFunnel(null); }}
+                                                                    />
+                                                                    <div ref={stageMenuDivRef} style={{
+                                                                        position: 'fixed',
+                                                                        top: stageMegaMenuPos.top,
+                                                                        left: stageMegaMenuPos.left,
+                                                                    zIndex: 99999,
+                                                                    background: '#fff',
+                                                                    border: '1px solid #e2e8f0',
+                                                                    borderRadius: 12,
+                                                                    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                                                                    padding: 8,
+                                                                    display: 'flex',
+                                                                    flexDirection: 'row',
+                                                                    gap: 4,
+                                                                    minWidth: 340,
+                                                                }}>
+                                                                    {/* Sol panel: Akışlar */}
+                                                                    <div style={{ minWidth: 170, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
+                                                                        <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Akış</div>
+                                                                        {funnelOptions.filter(f => f.value !== '').map(funnel => {
+                                                                            const isActiveFunnel = (selectedItem.funnelType || '') === funnel.value;
+                                                                            const isHovered = stageMegaMenuHoverFunnel === funnel.value;
+                                                                            const isHighlighted = isActiveFunnel || isHovered;
+                                                                            return (
+                                                                                <button
+                                                                                    key={funnel.value}
+                                                                                    onMouseEnter={() => setStageMegaMenuHoverFunnel(funnel.value)}
+                                                                                    style={{
+                                                                                        display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                                                                                        padding: '7px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                                                                                        fontSize: '0.8rem', fontWeight: isActiveFunnel ? 700 : 500,
+                                                                                        background: isHighlighted ? '#eff6ff' : 'transparent',
+                                                                                        color: isHighlighted ? '#1d4ed8' : '#374151',
+                                                                                        transition: 'background 0.1s'
+                                                                                    }}
+                                                                                >
+                                                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: funnel.color || '#6366f1', flexShrink: 0 }} />
+                                                                                    {funnel.label}
+                                                                                    <svg width="12" height="12" viewBox="0 0 12 12" style={{ marginLeft: 'auto', opacity: 0.4 }}><path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+
+                                                                    {/* Sağ panel: Hover/aktif akışın aşamaları */}
+                                                                    {(() => {
+                                                                        const displayFunnelVal = stageMegaMenuHoverFunnel || (selectedItem.funnelType || '') || funnelOptions.filter(f => f.value !== '')[0]?.value;
+                                                                        const displayFunnel = funnelOptions.find(f => f.value === displayFunnelVal);
+                                                                        if (!displayFunnel) return null;
+                                                                        const stages = (displayFunnel.stages && displayFunnel.stages.length > 0) ? displayFunnel.stages : CUSTOMER_STATUS_OPTIONS;
+                                                                        const isActiveFunnel = (selectedItem.funnelType || '') === displayFunnel.value;
+                                                                        return (
+                                                                            <div style={{ minWidth: 190 }}>
+                                                                                <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>{displayFunnel.label}</div>
+                                                                                {stages.map(stage => {
+                                                                                    const isActive = activeStageVal === stage.value && isActiveFunnel;
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={stage.value}
+                                                                                            onClick={() => handleStageSelect(displayFunnel.value, stage.value, stage)}
+                                                                                            style={{
+                                                                                                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                                                                                                padding: '7px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                                                                                                fontSize: '0.8rem', fontWeight: isActive ? 700 : 400,
+                                                                                                background: isActive ? (stage.color || '#6366f1') + '18' : 'transparent',
+                                                                                                color: isActive ? (stage.color || '#6366f1') : '#374151',
+                                                                                                transition: 'background 0.1s'
+                                                                                            }}
+                                                                                            onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f8fafc'; }}
+                                                                                            onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isActive ? (stage.color || '#6366f1') + '18' : 'transparent'; }}
+                                                                                        >
+                                                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: stage.color || '#6366f1' }} />
+                                                                                            {stage.label || stage.name}
+                                                                                            {isActive && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
+                                                                </div>
+                                                                </>,
+                                                                document.body
+                                                            )}
                                                         </div>
                                                     </>
                                                 );
                                             })()}
+
+                                            {/* ── Atama Pill Widget ── */}
+                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (() => {
+                                                // Mevcut atama bilgisini oluştur
+                                                let convTeamIds = [];
+                                                try { convTeamIds = JSON.parse(selectedItem.teamIds || '[]'); } catch {}
+                                                const assignedTeam = convTeamIds.length > 0 ? teams.find(t => t.id === convTeamIds[0]) : null;
+                                                const assignedAgent = selectedItem.assignedTo || (selectedItem.assignedToId ? members.find(m => m.id === selectedItem.assignedToId) : null);
+
+                                                // Pill label
+                                                let pillLabel = 'Atanmadı';
+                                                if (assignedTeam && assignedAgent) pillLabel = `${assignedTeam.name} / ${assignedAgent.name}`;
+                                                else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
+                                                else if (assignedAgent) pillLabel = assignedAgent.name;
+
+                                                // Üstlen butonu: konuşma bana atanmamışsa göster
+                                                const canClaim = !selectedItem.assignedToId || selectedItem.assignedToId !== user?.id;
+
+                                                return (
+                                                    <>
+                                                        <div ref={assignMegaMenuRef} style={{ position: 'relative' }}>
+                                                            <button
+                                                                className="stage-mega-trigger"
+                                                                onClick={e => {
+                                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                                    setAssignMegaMenuPos({ top: rect.bottom + 6, left: rect.left });
+                                                                    setAssignSelectedTeam(assignedTeam?.id || null);
+                                                                    setAssignMegaMenuOpen(o => !o);
+                                                                }}
+                                                                title="Atama"
+                                                            >
+                                                                <Users size={12} style={{ marginRight: 4 }} />
+                                                                {pillLabel}
+                                                                <ChevronDown size={10} style={{ marginLeft: 4 }} />
+                                                            </button>
+
+                                                            {assignMegaMenuOpen && (() => {
+                                                                // Seçili takımın üyelerini bul
+                                                                const menuTeam = assignSelectedTeam ? teams.find(t => t.id === assignSelectedTeam) : null;
+                                                                // teams API zaten members[] içeriyor: { id, user: { id, name, avatar } }
+                                                                const teamMembers = menuTeam?.members || [];
+
+                                                                const ruleLabel = { POOL: 'Havuza At', ROUND_ROBIN: 'Sırayla At', LEAST_BUSY: 'En Az Yüklüye', ONLINE_ROUND_ROBIN: "Online'a Sırayla" };
+
+                                                                return ReactDOM.createPortal(
+                                                                    <>
+                                                                        {/* Backdrop */}
+                                                                        <div
+                                                                            style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+                                                                            onClick={() => setAssignMegaMenuOpen(false)}
+                                                                        />
+                                                                        <div ref={assignMenuDivRef}
+                                                                            style={{
+                                                                                position: 'fixed',
+                                                                                top: assignMegaMenuPos.top,
+                                                                                left: assignMegaMenuPos.left,
+                                                                            zIndex: 99999,
+                                                                            background: '#fff',
+                                                                            border: '1px solid #e2e8f0',
+                                                                            borderRadius: 12,
+                                                                            boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                                                                            padding: 8,
+                                                                            display: 'flex',
+                                                                            flexDirection: 'row',
+                                                                            gap: 4,
+                                                                            minWidth: 340,
+                                                                        }}
+                                                                    >
+                                                                        {/* Sol panel: Takımlar */}
+                                                                        <div style={{ minWidth: 160, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
+                                                                            <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Takım</div>
+                                                                            {/* Takımsız seçenek */}
+                                                                            <button
+                                                                                onClick={() => handleAssignConversation(null, null)}
+                                                                                style={{
+                                                                                    display: 'block', width: '100%', textAlign: 'left',
+                                                                                    padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                    fontSize: '0.72rem', fontWeight: 500,
+                                                                                    background: !assignSelectedTeam ? '#f0fdf4' : 'transparent',
+                                                                                    color: !assignSelectedTeam ? '#166534' : '#374151'
+                                                                                }}
+                                                                            >
+                                                                                🚫 Atamasız
+                                                                            </button>
+                                                                            {teams.map(t => (
+                                                                                <button
+                                                                                    key={t.id}
+                                                                                    onClick={() => setAssignSelectedTeam(t.id)}
+                                                                                    style={{
+                                                                                        display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                                        padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                        fontSize: '0.72rem', fontWeight: 500,
+                                                                                        background: assignSelectedTeam === t.id ? '#eff6ff' : 'transparent',
+                                                                                        color: assignSelectedTeam === t.id ? '#1d4ed8' : '#374151'
+                                                                                    }}
+                                                                                >
+                                                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color || '#3b82f6', flexShrink: 0 }} />
+                                                                                    {t.name}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+
+                                                                        {/* Sağ panel: Seçili takım üyeleri + kural */}
+                                                                        {assignSelectedTeam && (
+                                                                            <div style={{ minWidth: 180 }}>
+                                                                                <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Atama</div>
+                                                                                {/* Takıma at (kural uygula) */}
+                                                                                <button
+                                                                                    onClick={() => handleAssignConversation(assignSelectedTeam, null)}
+                                                                                    style={{
+                                                                                        display: 'block', width: '100%', textAlign: 'left',
+                                                                                        padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                        fontSize: '0.72rem', fontWeight: 600,
+                                                                                        background: '#fef3c7', color: '#92400e', marginBottom: 4
+                                                                                    }}
+                                                                                >
+                                                                                    {ruleLabel[menuTeam?.assignmentRule] || 'Takıma At'} →
+                                                                                </button>
+                                                                                <div style={{ fontSize: '0.6rem', color: '#94a3b8', padding: '2px 6px 4px' }}>veya kişiye ata:</div>
+                                                                                {teamMembers.length === 0 && (
+                                                                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '4px 8px' }}>Üye yok</div>
+                                                                                )}
+                                                                                {teamMembers.map(m => {
+                                                                                    const uid = m.user?.id || m.id;
+                                                                                    const uname = m.user?.name || m.name || '?';
+                                                                                    const uOnline = m.user?.isOnline || false;
+                                                                                    return (
+                                                                                    <button
+                                                                                        key={uid}
+                                                                                        onClick={() => handleAssignConversation(assignSelectedTeam, uid)}
+                                                                                        style={{
+                                                                                            display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                                            padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                            fontSize: '0.72rem',
+                                                                                            background: selectedItem.assignedToId === uid ? '#eff6ff' : 'transparent',
+                                                                                            color: selectedItem.assignedToId === uid ? '#1d4ed8' : '#374151'
+                                                                                        }}
+                                                                                    >
+                                                                                        <span style={{
+                                                                                            width: 20, height: 20, borderRadius: '50%', background: '#3b82f6',
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                            fontSize: '0.6rem', color: '#fff', fontWeight: 700, flexShrink: 0
+                                                                                        }}>
+                                                                                            {uname[0].toUpperCase()}
+                                                                                        </span>
+                                                                                        {uname}
+                                                                                        {uOnline && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', marginLeft: 'auto' }} />}
+                                                                                        {selectedItem.assignedToId === uid && <span style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>✓</span>}
+                                                                                    </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    </>,
+                                                                    document.body
+                                                                );
+                                                            })()}
+                                                        </div>
+
+                                                        {/* Üstlen butonu */}
+                                                        {canClaim && (
+                                                            <button
+                                                                className="assign-claim-btn"
+                                                                onClick={handleClaimConversation}
+                                                                disabled={takingOver}
+                                                                title="Bu konuşmayı üstlen"
+                                                            >
+                                                                <UserCheck size={12} />
+                                                                Üstlen
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
+
+                                        {/* Right Group — boş, butonlar üst bara taşındı */}
+                                        <div className="assignment-right-group" />
                                     </div>
 
                                 </div>
@@ -4447,23 +4760,58 @@ const Inbox = () => {
                 )}
             </div>
 
-            {/* Right Panel - Contact Sidebar (for all types) */}
-            {selectedItem && showContactSidebar && (selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
-                <div
-                    className="inbox-contact-sidebar-wrapper"
-                    onClick={e => {
-                        // Sadece mobilde ve wrapper'ın kendisine (backdrop) tıklanınca kapat
-                        if (window.innerWidth <= 768 && e.target === e.currentTarget) {
-                            setShowContactSidebar(false);
-                        }
-                    }}
-                >
+            {/* Right Panel - Contact Sidebar */}
+            {selectedItem && showContactSidebar && viewMode !== 'pipeline' && (
+                <div style={{
+                    position: 'fixed', top: 0, right: 0,
+                    width: 320, height: '100vh',
+                    zIndex: 1499, overflowY: 'auto',
+                    boxShadow: '-4px 0 24px rgba(0,0,0,0.12)'
+                }}>
                     <ContactSidebar
                         conversationId={selectedItem.id}
+                        conversationData={selectedItem}
                         isOpen={true}
                         members={members}
+                        teams={teams}
                         onAssign={userId => handleAssignUser(selectedItem.id, userId)}
+                        onAssignTeam={async (convId, teamId) => {
+                            try {
+                                await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { teamId: teamId || null });
+                                const newTeamIds = teamId ? JSON.stringify([teamId]) : '[]';
+                                setSelectedItem(prev => prev ? { ...prev, teamIds: newTeamIds } : prev);
+                                setInboxItems(prev => prev.map(item =>
+                                    item.id === selectedItem.id ? { ...item, teamIds: newTeamIds } : item
+                                ));
+                            } catch(e) {
+                                console.error('[Inbox] Team assign error:', e?.response?.data || e);
+                                alert('Takım ataması başarısız: ' + (e?.response?.data?.error || e.message));
+                            }
+                        }}
+                        onAssignUser={async (convId, userId) => {
+                            try {
+                                await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { userId: userId || null });
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null } : prev);
+                                setInboxItems(prev => prev.map(item =>
+                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null } : item
+                                ));
+                            } catch(e) {
+                                console.error('[Inbox] User assign error:', e?.response?.data || e);
+                                alert('Agent ataması başarısız: ' + (e?.response?.data?.error || e.message));
+                            }
+                        }}
+                        onTakeOver={async () => {
+                            try {
+                                await conversationAPI.takeOver(currentWorkspace.id, selectedItem.id);
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: user?.id || null } : prev);
+                                setInboxItems(prev => prev.map(item =>
+                                    item.id === selectedItem.id ? { ...item, assignedToId: user?.id || null } : item
+                                ));
+                            } catch(e) { console.error(e); }
+                        }}
                         isOwner={isOwner}
+                        currentUserId={user?.id}
+                        onActivitySaved={handleActivitySaved}
                         onClose={() => setShowContactSidebar(false)}
                     />
                 </div>

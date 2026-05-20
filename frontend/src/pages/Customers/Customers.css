@@ -97,15 +97,22 @@
 
 .filter-dropdowns-row {
     display: flex;
-    gap: 16px;
+    gap: 10px;
     align-items: flex-end;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;      /* Firefox */
+    padding-bottom: 4px;        /* scrollbar boşluğu */
+    flex-wrap: nowrap;          /* asla alt satıra sarmasın */
 }
+.filter-dropdowns-row::-webkit-scrollbar { display: none; }
 
 .filter-dropdown-item {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    min-width: 160px;
+    min-width: 120px;   /* 160 → 120 */
+    flex-shrink: 0;     /* küçülmesin, scroll olsun */
 }
 
 .filter-dropdown-item label {
@@ -429,7 +436,7 @@
 
 .contacts-table th {
     text-align: left;
-    padding: 12px 24px;
+    padding: 6px 10px;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
@@ -440,9 +447,9 @@
 }
 
 .contacts-table td {
-    padding: 16px 24px;
+    padding: 6px 10px;
     border-bottom: 1px solid #f3f4f6;
-    font-size: 14px;
+    font-size: 13px;
     color: #374151;
     white-space: nowrap;
 }

@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { emitToWorkspace } from '../socket.js';
 
 // Default keyword list for HOT_KEYWORD rule
 const DEFAULT_HOT_KEYWORDS = [
@@ -38,6 +39,11 @@ const DEFAULT_RULES = [
         ruleType: 'HOT_OPPORT_EMAIL',
         isActive: false,
         config: JSON.stringify({ teamId: null, emailChannelId: null })
+    },
+    {
+        ruleType: 'SALES_PHONE_CALL',
+        isActive: false,
+        config: JSON.stringify({ funnelName: 'Satış Akışı', teamId: null })
     }
 ];
 
@@ -81,7 +87,7 @@ export const upsertRule = async (req, res) => {
         const { workspaceId, ruleType } = req.params;
         const { isActive, config } = req.body;
 
-        const validTypes = ['PHONE_CAPTURE', 'HOT_KEYWORD', 'HOT_OPPORT_EMAIL'];
+        const validTypes = ['PHONE_CAPTURE', 'HOT_KEYWORD', 'HOT_OPPORT_EMAIL', 'SALES_PHONE_CALL'];
         if (!validTypes.includes(ruleType)) {
             return res.status(400).json({ error: 'Geçersiz kural tipi' });
         }
@@ -323,3 +329,191 @@ function safeParseJSON(str, fallback) {
         return fallback;
     }
 }
+
+// ============================================
+// Rule 4 — SALES_PHONE_CALL
+// ============================================
+/**
+ * Triggered when an incoming message contains a phone number AND
+ * there is a recent "we'll call you" intent in conversation messages.
+ * Actions:
+ *   1. Move conversation to "Satış Akışı" funnel (first stage)
+ *   2. Assign to sales team (round-robin)
+ *   3. Create CALL activity (15 min from now, or customer-stated time)
+ */
+export const executeSalesPhoneCallRule = async (workspaceId, conversationId, messageContent) => {
+    try {
+        // 1. Check if rule is active
+        const rule = await prisma.workspaceRule.findUnique({
+            where: { workspaceId_ruleType: { workspaceId, ruleType: 'SALES_PHONE_CALL' } }
+        });
+        if (!rule || !rule.isActive) return;
+
+        const config = safeParseJSON(rule.config, {});
+        const salesFunnelName = config.funnelName || 'Satış Akışı';
+
+        // 2. Detect phone number in incoming message
+        const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
+        if (!phoneRegex.test(messageContent)) return;
+
+        // 3. Detect call intent in recent conversation messages (last 10)
+        const CALL_INTENT_KEYWORDS = [
+            'arayalım', 'arayacağız', 'sizi arayalım', 'sizi arayacağız',
+            'numaranızı', 'aranacaksınız', 'beni arayın', 'arar mısınız',
+            'arar misin', 'arayabilir misiniz', 'iletişime geçelim',
+        ];
+        const recentMessages = await prisma.message.findMany({
+            where: { conversationId },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { content: true, messageType: true }
+        });
+        const hasCallIntent = recentMessages.some(msg => {
+            const lower = (msg.content || '').toLowerCase();
+            return CALL_INTENT_KEYWORDS.some(kw => lower.includes(kw));
+        });
+        if (!hasCallIntent) return;
+
+        // 4. Get conversation + contact
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { contact: true }
+        });
+        if (!conversation || !conversation.contact) return;
+
+        // 5. Already in sales funnel? → skip to avoid duplicate
+        if (conversation.funnelStageId) {
+            const stage = await prisma.funnelStage.findUnique({
+                where: { id: conversation.funnelStageId },
+                include: { funnel: true }
+            });
+            if (stage?.funnel?.name?.toLowerCase().includes('satış')) {
+                console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Conversation ${conversationId} already in sales funnel, skipping`);
+                return;
+            }
+        }
+
+        // 6. Find "Satış Akışı" funnel
+        const salesFunnel = await prisma.funnel.findFirst({
+            where: { workspaceId, name: { contains: salesFunnelName.split(' ')[0], mode: 'insensitive' } },
+            include: { stages: { orderBy: { order: 'asc' } } }
+        });
+        if (!salesFunnel || salesFunnel.stages.length === 0) {
+            console.log(`⚠️ [RULE:SALES_PHONE_CALL] Sales funnel "${salesFunnelName}" not found`);
+            return;
+        }
+        const firstStage = salesFunnel.stages[0];
+
+        // 7. Find sales team (funnel.assignedTeamId → config.teamId → name match)
+        let salesTeamId = salesFunnel.assignedTeamId || config.teamId;
+        if (!salesTeamId) {
+            const namedTeam = await prisma.team.findFirst({
+                where: { workspaceId, name: { contains: 'satış', mode: 'insensitive' } }
+            });
+            salesTeamId = namedTeam?.id;
+        }
+
+        // 8. Round-robin agent selection from sales team
+        let assignedUserId = null;
+        if (salesTeamId) {
+            const teamMembers = await prisma.teamMember.findMany({
+                where: { teamId: salesTeamId, userId: { not: null } },
+                include: { user: { select: { id: true, name: true } } },
+                orderBy: { createdAt: 'asc' }
+            });
+            const userMembers = teamMembers.filter(m => m.userId);
+            if (userMembers.length > 0) {
+                // Find last assigned user in this team for round-robin
+                const lastConv = await prisma.conversation.findFirst({
+                    where: {
+                        workspaceId,
+                        teamIds: { contains: salesTeamId },
+                        assignedToId: { not: null },
+                        id: { not: conversationId }
+                    },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { assignedToId: true }
+                });
+                const lastIdx = lastConv
+                    ? userMembers.findIndex(m => m.userId === lastConv.assignedToId)
+                    : -1;
+                const nextIdx = lastIdx >= 0 && lastIdx < userMembers.length - 1 ? lastIdx + 1 : 0;
+                assignedUserId = userMembers[nextIdx].userId;
+                console.log(`👤 [RULE:SALES_PHONE_CALL] Round-robin → ${userMembers[nextIdx].user?.name}`);
+            }
+        }
+
+        // 9. Update conversation: funnel stage + team + agent
+        const updateData = {
+            funnelStageId: firstStage.id,
+            botEnabled: false,
+        };
+        if (salesTeamId) {
+            updateData.teamIds = JSON.stringify([salesTeamId]);
+        }
+        if (assignedUserId) {
+            updateData.assignedToId = assignedUserId;
+        }
+        await prisma.conversation.update({ where: { id: conversationId }, data: updateData });
+        console.log(`🔀 [RULE:SALES_PHONE_CALL] Conversation ${conversationId} → "${salesFunnel.name}" / "${firstStage.name}"`);
+
+        // 10. Detect customer-stated time (HH:MM or HH.MM format)
+        const timeRegex = /\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/;
+        const allMessageContent = recentMessages.map(m => m.content || '').join(' ') + ' ' + messageContent;
+        const timeMatch = allMessageContent.match(timeRegex);
+
+        let dueDate;
+        if (timeMatch) {
+            const [, h, m] = timeMatch;
+            const dt = new Date();
+            dt.setHours(parseInt(h), parseInt(m), 0, 0);
+            if (dt < new Date()) dt.setDate(dt.getDate() + 1); // tomorrow if past
+            dueDate = dt;
+            console.log(`⏰ [RULE:SALES_PHONE_CALL] Customer-stated time: ${h}:${m}`);
+        } else {
+            // Business hours check (09:00 - 18:00 Turkey time, UTC+3)
+            const now = new Date();
+            const turkeyOffset = 3 * 60;
+            const localMs = now.getTime() + (turkeyOffset - now.getTimezoneOffset()) * 60000;
+            const localNow = new Date(localMs);
+            const hour = localNow.getHours();
+            if (hour >= 9 && hour < 18) {
+                // Within business hours → 15 min from now
+                dueDate = new Date(now.getTime() + 15 * 60 * 1000);
+            } else {
+                // Outside business hours → next day 09:15
+                dueDate = new Date(now);
+                dueDate.setDate(dueDate.getDate() + (hour >= 18 ? 1 : 0));
+                dueDate.setHours(9, 15, 0, 0);
+            }
+        }
+
+        // 11. Create CALL activity
+        const contact = conversation.contact;
+        await prisma.activity.create({
+            data: {
+                workspaceId,
+                contactId: contact.id,
+                type: 'CALL',
+                title: 'Arama Planlandı (Otomatik)',
+                description: `Müşteri telefon numarası paylaştı. Otomatik arama planlandı.\nNumara: ${contact.phone || messageContent.match(phoneRegex)?.[0] || '-'}`,
+                dueDate,
+                status: 'PLANNED',
+                assignedToId: assignedUserId || null,
+            }
+        });
+        console.log(`📞 [RULE:SALES_PHONE_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contact.id}`);
+
+        // 12. Emit socket update so inbox badges refresh instantly
+        emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });
+        emitToWorkspace(workspaceId, 'activity_created', {
+            conversationId,
+            contactId: contact.id,
+            type: 'CALL',
+            status: 'PLANNED',
+        });
+
+    } catch (error) {
+        console.error('❌ [RULE:SALES_PHONE_CALL] Error:', error.message);
+    }
+};

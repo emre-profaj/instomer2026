@@ -277,6 +277,10 @@ export const conversationAPI = {
         api.post(`/conversations/${workspaceId}/${conversationId}/messages`, data),
     assign: (workspaceId, conversationId, data) =>
         api.put(`/conversations/${workspaceId}/${conversationId}/assign`, data),
+    assignNew: (workspaceId, conversationId, data) =>
+        api.post(`/conversations/${workspaceId}/${conversationId}/smart-assign`, data),
+    claim: (workspaceId, conversationId) =>
+        api.post(`/conversations/${workspaceId}/${conversationId}/claim`, {}),
     updateStatus: (workspaceId, conversationId, data) =>
         api.put(`/conversations/${workspaceId}/${conversationId}/status`, data),
     delete: (workspaceId, conversationId) =>
@@ -310,7 +314,11 @@ export const conversationAPI = {
 
     // Update funnelType and/or funnelStageId
     updateFunnel: (workspaceId, conversationId, data) =>
-        api.patch(`/conversations/${workspaceId}/${conversationId}/funnel`, data)
+        api.patch(`/conversations/${workspaceId}/${conversationId}/funnel`, data),
+
+    // Mark conversation as unread
+    markUnread: (workspaceId, conversationId) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/mark-unread`)
 };
 
 // Funnel API (user-defined pipeline categories)

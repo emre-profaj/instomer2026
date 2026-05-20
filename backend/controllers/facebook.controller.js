@@ -1705,11 +1705,14 @@ async function processWebhookAsync(body) {
                     if (!isOutgoingMessage && message?.text) {
                         // Automation rules: phone capture (awaited so status is updated before auto-call)
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule } = await import('./rules.controller.js');
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
                             // IMPORTANT: await phone capture so contact.status is updated before auto-call status check
                             await executePhoneCaptureRule(facebookPage.workspaceId, conversation.id, message.text);
                             executeHotKeywordRule(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [RULE:HOT_KEYWORD] FB/IG async error:', e.message)
+                            );
+                            executeSalesPhoneCallRule(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
+                                console.error('❌ [RULE:SALES_PHONE_CALL] FB/IG async error:', e.message)
                             );
                         } catch (ruleErr) {
                             console.error('❌ [RULES] FB/IG error:', ruleErr.message);

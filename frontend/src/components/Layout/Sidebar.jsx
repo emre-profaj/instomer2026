@@ -19,6 +19,8 @@ const Sidebar = () => {
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [isSalesOpen, setIsSalesOpen] = useState(false);
     const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
+    const [isInboxOpen, setIsInboxOpen] = useState(true);  // Inbox alt menü
+    const [inboxSubTeams, setInboxSubTeams] = useState([]); // Kullanıcının takımları
 
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -79,6 +81,28 @@ const Sidebar = () => {
         };
         if (user) fetchWorkspaces();
     }, [user]);
+
+    // Kullanıcının takımlarını çek — Inbox alt menü için
+    useEffect(() => {
+        const fetchMyTeams = async () => {
+            if (!currentWorkspace?.id) return;
+            try {
+                const { teamAPI } = await import('../../services/api');
+                const res = await teamAPI.getWorkspaceTeams(currentWorkspace.id);
+                const allTeams = res.data.teams || [];
+                // Düz liste yap (nested flatten)
+                const flatten = (list) => list.flatMap(t => [t, ...(t.children ? flatten(t.children) : [])]);
+                const flat = flatten(allTeams);
+                // Kullanıcının üyesi olduğu takımlar (members array bak)
+                const myTeams = flat.filter(t =>
+                    (t.members || []).some(m => m.userId === user?.id)
+                );
+                setInboxSubTeams(myTeams.length > 0 ? myTeams : flat.slice(0, 8));
+            } catch {}
+        };
+        if (user && currentWorkspace) fetchMyTeams();
+    }, [user, currentWorkspace]);
+
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -204,15 +228,81 @@ const Sidebar = () => {
                         <nav className="sidebar-nav">
                             {filteredMenuItems.map((item) => {
                                 const isActive = location.pathname === item.path || (item.path === '/inbox' && location.pathname === '/');
+                                const isInbox = item.path === '/inbox';
+                                // Inbox için URL paramı oku
+                                const currentTab = isInbox ? new URLSearchParams(location.search).get('tab') || 'all' : null;
+
+                                if (isInbox) {
+                                    return (
+                                        <div key={item.path}>
+                                            {/* Inbox ana başlık */}
+                                            <div
+                                                className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                                                style={{ cursor: 'pointer' }}
+                                                onClick={() => {
+                                                    if (isCollapsed) { navigate('/inbox'); return; }
+                                                    setIsInboxOpen(v => !v);
+                                                    navigate('/inbox');
+                                                }}
+                                                title={item.label}
+                                            >
+                                                <item.icon size={20} className="nav-icon" />
+                                                {!isCollapsed && <span>{item.label}</span>}
+                                                {unreadCount > 0 && !isCollapsed && (
+                                                    <span className="unread-badge-sidebar">{unreadCount > 99 ? '99+' : unreadCount}</span>
+                                                )}
+                                                {!isCollapsed && <ChevronDown size={14} style={{ marginLeft: 'auto', transition: '0.2s', transform: isInboxOpen ? 'rotate(180deg)' : 'none', color: '#9ca3af' }} />}
+                                            </div>
+                                            {/* Inbox alt menü */}
+                                            {isInboxOpen && !isCollapsed && (
+                                                <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
+                                                    {[
+                                                        { label: 'Hepsi', tab: 'all', icon: '📥' },
+                                                        { label: 'Bana Atananlar', tab: 'mine', icon: '👤' },
+                                                        { label: 'Atanmamışlar', tab: 'unassigned', icon: '⏳' },
+                                                    ].map(sub => (
+                                                        <Link
+                                                            key={sub.tab}
+                                                            to={`/inbox${sub.tab === 'all' ? '' : `?tab=${sub.tab}`}`}
+                                                            className={`sidebar-nav-item submenu-item ${
+                                                                currentTab === sub.tab ||
+                                                                (sub.tab === 'all' && currentTab === 'all') ? 'active' : ''
+                                                            }`}
+                                                            style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
+                                                        >
+                                                            <span style={{ fontSize: '0.9rem', width: 18, flexShrink: 0 }}>{sub.icon}</span>
+                                                            <span>{sub.label}</span>
+                                                        </Link>
+                                                    ))}
+                                                    {/* Takım filtreleri */}
+                                                    {inboxSubTeams.length > 0 && (
+                                                        <>
+                                                            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9ca3af', letterSpacing: '0.06em', textTransform: 'uppercase', padding: '6px 12px 2px' }}>TAKIMLAR</div>
+                                                            {inboxSubTeams.map(team => (
+                                                                <Link
+                                                                    key={team.id}
+                                                                    to={`/inbox?tab=team:${team.id}`}
+                                                                    className={`sidebar-nav-item submenu-item ${currentTab === `team:${team.id}` ? 'active' : ''}`}
+                                                                    style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
+                                                                >
+                                                                    <Users size={13} style={{ flexShrink: 0, color: '#6366f1' }} />
+                                                                    <span>{team.name}</span>
+                                                                </Link>
+                                                            ))}
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+
                                 return (
                                     <Link key={item.path} to={item.path}
                                         className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
                                         title={item.label}>
                                         <item.icon size={20} className="nav-icon" />
                                         {!isCollapsed && <span>{item.label}</span>}
-                                        {item.path === '/inbox' && unreadCount > 0 && !isCollapsed && (
-                                            <span className="unread-badge-sidebar">{unreadCount > 99 ? '99+' : unreadCount}</span>
-                                        )}
                                     </Link>
                                 );
                             })}

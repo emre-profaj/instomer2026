@@ -22,7 +22,10 @@ import {
     toggleBotEnabled,
     getBotStatus,
     updateTopic,
-    updateFunnel
+    updateFunnel,
+    markUnread,
+    claimConversation,
+    smartAssignConversation
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -109,5 +112,10 @@ router.patch('/:workspaceId/:conversationId/topic', requireWorkspaceAccess, upda
 
 // Update funnelType
 router.patch('/:workspaceId/:conversationId/funnel', requireWorkspaceAccess, updateFunnel);
+
+// Mark conversation as unread
+router.patch('/:workspaceId/:conversationId/mark-unread', requireWorkspaceAccess, markUnread);
+router.post('/:workspaceId/:conversationId/claim', requireWorkspaceAccess, claimConversation);
+router.post('/:workspaceId/:conversationId/smart-assign', requireWorkspaceAccess, smartAssignConversation);
 
 export default router;

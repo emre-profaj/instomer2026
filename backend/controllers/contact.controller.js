@@ -8,7 +8,7 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, limit = 50, offset = 0 } = req.query;
+        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, limit = 50, offset = 0, dateFilter, dateFrom, dateTo } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -179,6 +179,32 @@ export const getContacts = async (req, res) => {
                     { funnelType: funnelType }
                 ] 
             };
+        }
+
+        // Add date filter (createdAt)
+        if (dateFilter && dateFilter !== 'ALL') {
+            const now = new Date();
+            let gte, lte;
+            if (dateFilter === 'TODAY') {
+                gte = new Date(now); gte.setHours(0, 0, 0, 0);
+                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'WEEK') {
+                gte = new Date(now); gte.setDate(now.getDate() - now.getDay()); gte.setHours(0, 0, 0, 0);
+                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'MONTH') {
+                gte = new Date(now.getFullYear(), now.getMonth(), 1);
+                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'CUSTOM') {
+                if (dateFrom) { gte = new Date(dateFrom); gte.setHours(0, 0, 0, 0); }
+                if (dateTo)   { lte = new Date(dateTo);   lte.setHours(23, 59, 59, 999); }
+            }
+            if (gte || lte) {
+                const createdAtFilter = {};
+                if (gte) createdAtFilter.gte = gte;
+                if (lte) createdAtFilter.lte = lte;
+                where = { AND: [where, { createdAt: createdAtFilter }] };
+                console.log(`   DateFilter '${dateFilter}' applied: ${gte?.toISOString()} → ${lte?.toISOString()}`);
+            }
         }
 
         // Add search filter if provided

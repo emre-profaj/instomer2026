@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI } from '../../services/api';
+import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI } from '../../services/api';
 import * as XLSX from 'xlsx';
 import {
     User,
@@ -49,7 +49,7 @@ import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
 const Customers = () => {
-    const { currentWorkspace } = useAuth();
+    const { currentWorkspace, user } = useAuth();
     const navigate = useNavigate();
     const { t } = useTranslation();
 
@@ -110,13 +110,20 @@ const Customers = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '', confirmText: '', type: 'danger' });
     const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
     const funnelFilterRef = useRef(null);
+    const [dateFilterOpen, setDateFilterOpen] = useState(false);
+    const [dateFilterOpenUp, setDateFilterOpenUp] = useState(false);
+    const dateFilterRef = useRef(null);
     const [showArchived, setShowArchived] = useState(false);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
-    const limit = 15;
+    const [limit, setLimit] = useState(20);
 
     // Selected contact for sidebar
     const [selectedContact, setSelectedContact] = useState(null);
+
+    // Teams & members for assignment
+    const [teams, setTeams] = useState([]);
+    const [members, setMembers] = useState([]);
     const [noteTitle, setNoteTitle] = useState('');
     const [contactNotes, setContactNotes] = useState('');
     const [savingNotes, setSavingNotes] = useState(false);
@@ -188,6 +195,11 @@ const Customers = () => {
     const [importGroupFilter, setImportGroupFilter] = useState('ALL');
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
 
+    // Date filter
+    const [dateFilter, setDateFilter] = useState('ALL'); // ALL | TODAY | WEEK | MONTH | CUSTOM
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+
     // Filter labels to show on the main button
     const getActiveFilterLabel = () => {
         if (mergedFunnelIds) {
@@ -230,6 +242,17 @@ const Customers = () => {
             .catch(() => {});
     }, [currentWorkspace]);
 
+    // Load teams and members for assignment sidebar
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        teamAPI.getWorkspaceTeams(currentWorkspace.id)
+            .then(res => setTeams(res.data.teams || []))
+            .catch(() => {});
+        workspaceAPI.getMembers(currentWorkspace.id)
+            .then(res => setMembers(res.data.members || []))
+            .catch(() => {});
+    }, [currentWorkspace]);
+
     // Fetch Retell agents for bulk call modal
     useEffect(() => {
         if (showBulkCall && currentWorkspace) {
@@ -244,12 +267,15 @@ const Customers = () => {
         if (currentWorkspace) {
             loadContacts();
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds, limit, dateFilter, dateFrom, dateTo]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (funnelFilterRef.current && !funnelFilterRef.current.contains(event.target)) {
                 setFunnelFilterOpen(false);
+            }
+            if (dateFilterRef.current && !dateFilterRef.current.contains(event.target)) {
+                setDateFilterOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -331,7 +357,11 @@ const Customers = () => {
                 funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
                 limit,
-                offset: (page - 1) * limit
+                offset: (page - 1) * limit,
+                // Date filter
+                dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
+                dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
+                dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);
@@ -1213,27 +1243,68 @@ const Customers = () => {
                                 </select>
                             </div>
 
-                            {/* Import Button - red, next to Export */}
-                            <button
-                                className="export-csv-btn import-csv-btn"
-                                onClick={() => { setShowImportModal(true); setImportData([]); setImportResult(null); setImportFileName(''); setImportTag(''); }}
-                                title="Excel İçe Aktar"
-                            >
-                                <Upload size={16} />
-                                İçe Aktar
-                            </button>
+                            {/* Date Filter Dropdown */}
+                            <div className="filter-dropdown-item" ref={dateFilterRef} style={{ position: 'relative', flexShrink: 0 }}>
+                                <label><Calendar size={12} /> Kayıt Tarihi</label>
+                                <button
+                                    className={`filter-select${dateFilter !== 'ALL' ? ' active' : ''}`}
+                                    onClick={() => {
+                                        if (dateFilterRef.current) {
+                                            const rect = dateFilterRef.current.getBoundingClientRect();
+                                            setDateFilterOpenUp(window.innerHeight - rect.bottom < 260);
+                                        }
+                                        setDateFilterOpen(o => !o);
+                                    }}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', background: 'none', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', color: dateFilter !== 'ALL' ? '#ef4444' : '#374151', fontWeight: dateFilter !== 'ALL' ? 600 : 400, whiteSpace: 'nowrap' }}
+                                >
+                                    {dateFilter === 'TODAY' ? 'Bugün' : dateFilter === 'WEEK' ? 'Bu Hafta' : dateFilter === 'MONTH' ? 'Bu Ay' : (dateFrom || dateTo) ? `${dateFrom || '...'} - ${dateTo || '...'}` : 'Tüm Zamanlar'}
+                                    <ChevronDown size={12} />
+                                </button>
+                                {dateFilterOpen && (() => {
+                                    const rect = dateFilterRef.current?.getBoundingClientRect();
+                                    if (!rect) return null;
+                                    return (
+                                        <div style={{
+                                            position: 'fixed',
+                                            top: dateFilterOpenUp ? undefined : rect.bottom + 4,
+                                            bottom: dateFilterOpenUp ? window.innerHeight - rect.top + 4 : undefined,
+                                            left: rect.left,
+                                            zIndex: 9999,
+                                            background: '#fff',
+                                            border: '1px solid #e5e7eb',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                                            minWidth: '190px',
+                                            padding: '6px 0'
+                                        }}>
+                                            {[
+                                                { key: 'ALL', label: 'Tüm Zamanlar' },
+                                                { key: 'TODAY', label: 'Bugün' },
+                                                { key: 'WEEK', label: 'Bu Hafta' },
+                                                { key: 'MONTH', label: 'Bu Ay' },
+                                            ].map(({ key, label }) => (
+                                                <button
+                                                    key={key}
+                                                    onClick={() => { setDateFilter(key); setDateFrom(''); setDateTo(''); setPage(1); setDateFilterOpen(false); }}
+                                                    style={{ display: 'block', width: '100%', padding: '8px 14px', textAlign: 'left', background: dateFilter === key ? '#fef2f2' : 'none', color: dateFilter === key ? '#ef4444' : '#374151', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: dateFilter === key ? 600 : 400 }}
+                                                >
+                                                    {label}
+                                                </button>
+                                            ))}
+                                            <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
+                                                <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
+                                                <button onClick={() => setDateFilterOpen(false)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '5px 0', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>Uygula</button>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
 
-                            {/* Export Button */}
-                            <button
-                                className="export-csv-btn"
-                                onClick={() => setShowExportModal(true)}
-                                title="CSV Dışa Aktar"
-                            >
-                                <Download size={16} />
-                                Dışa Aktar
-                            </button>
                         </div>
                     </div>
+
+
 
                     {/* Table */}
                     <div className="contacts-table-container">
@@ -1433,30 +1504,59 @@ const Customers = () => {
                         )}
                     </div>
 
-                    {/* Pagination */}
-                    {total > limit && (
-                        <div className="contacts-pagination">
+                    {/* Pagination + Limit + Import/Export — tek satır */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 0 6px', borderTop: '1px solid #f3f4f6' }}>
+                        {/* Sol: Limit seçici */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: '#6b7280' }}>
+                            <span>Göster:</span>
+                            {[20, 50, 100, 'Tümü'].map(val => (
+                                <button
+                                    key={val}
+                                    onClick={() => { setLimit(val === 'Tümü' ? 999999 : val); setPage(1); }}
+                                    style={{ padding: '3px 8px', borderRadius: '5px', border: '1px solid', borderColor: limit === (val === 'Tümü' ? 999999 : val) ? '#ef4444' : '#e5e7eb', background: limit === (val === 'Tümü' ? 999999 : val) ? '#fef2f2' : '#fff', color: limit === (val === 'Tümü' ? 999999 : val) ? '#ef4444' : '#6b7280', fontWeight: limit === (val === 'Tümü' ? 999999 : val) ? 700 : 400, fontSize: '0.75rem', cursor: 'pointer' }}
+                                >{val}</button>
+                            ))}
+                        </div>
+
+                        {/* Orta: Sayfa navigasyon */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0 auto' }}>
                             <button
                                 className="pagination-btn"
                                 disabled={page === 1}
                                 onClick={() => setPage(p => p - 1)}
                             >
-                                <ChevronLeft size={16} />
-                                Önceki
+                                <ChevronLeft size={16} /> Önceki
                             </button>
                             <span className="pagination-info">
-                                {page} / {Math.ceil(total / limit)}
+                                {page} / {Math.max(1, Math.ceil(total / limit))}
                             </span>
                             <button
                                 className="pagination-btn"
                                 disabled={page >= Math.ceil(total / limit)}
                                 onClick={() => setPage(p => p + 1)}
                             >
-                                Sonraki
-                                <ChevronRight size={16} />
+                                Sonraki <ChevronRight size={16} />
                             </button>
                         </div>
-                    )}
+
+                        {/* Sağ: İçe / Dışa Aktar */}
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                                className="export-csv-btn import-csv-btn"
+                                onClick={() => { setShowImportModal(true); setImportData([]); setImportResult(null); setImportFileName(''); setImportTag(''); }}
+                                title="Excel İçe Aktar"
+                            >
+                                <Upload size={14} /> İçe Aktar
+                            </button>
+                            <button
+                                className="export-csv-btn"
+                                onClick={() => setShowExportModal(true)}
+                                title="CSV Dışa Aktar"
+                            >
+                                <Download size={14} /> Dışa Aktar
+                            </button>
+                        </div>
+                    </div>
 
                     {/* Bulk Actions */}
                     {selectedIds.length > 0 && (
@@ -1785,6 +1885,25 @@ const Customers = () => {
                         contactId={selectedContact.id}
                         isOpen={!!selectedContact}
                         onClose={() => setSelectedContact(null)}
+                        members={members}
+                        teams={teams}
+                        isOwner={true}
+                        onAssignTeam={async (convId, teamId) => {
+                            try {
+                                await conversationAPI.assign(currentWorkspace.id, convId, { teamId });
+                            } catch (err) { console.error('Team assign error:', err); }
+                        }}
+                        onAssignUser={async (convId, userId) => {
+                            try {
+                                await conversationAPI.assign(currentWorkspace.id, convId, { assignedToId: userId || null });
+                            } catch (err) { console.error('User assign error:', err); }
+                        }}
+                        onTakeOver={async (convId) => {
+                            try {
+                                await conversationAPI.takeOver(currentWorkspace.id, convId);
+                            } catch (err) { console.error('TakeOver error:', err); }
+                        }}
+                        currentUserId={user?.id}
                     />
                 )}
                 {/* Create/Edit Contact Modal - Google Contacts Style */}

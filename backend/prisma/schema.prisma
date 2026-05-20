@@ -547,6 +547,8 @@ model Team {
   parentId        String?
   parent          Team?                  @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children        Team[]                 @relation("TeamHierarchy")
+  assignmentRule  String                 @default("POOL") // POOL | ROUND_ROBIN | ONLINE_ONLY
+  roundRobinIndex Int                    @default(0)
   createdAt       DateTime               @default(now())
   transfers       ConversationTransfer[]
   members         TeamMember[]
@@ -1340,11 +1342,16 @@ model ContactActivity {
   id              String       @id @default(uuid())
   contactId       String
   workspaceId     String
-  type            String       // "NOTE", "REMINDER", "TASK", "MEETING" vb.
+  type            String       // "NOTE", "CALL", "MEETING", "TASK", "REMINDER", "PROPOSAL", "ORDER", "INVOICE", "PAYMENT"
   title           String?      // Görev veya etkinlik başlığı
   description     String?      @db.Text // Detaylı not veya içerik
   dueDate         DateTime?    // Hatırlatıcı, görev veya toplantı tarihi
-  isCompleted     Boolean      @default(false)
+  isCompleted     Boolean      @default(false)  // ← ESKİ ALAN — SİLİNMEDİ, yerinde duruyor
+  status          String       @default("PLANNED") // PLANNED | IN_PROGRESS | COMPLETED | CANCELLED
+  completedAt     DateTime?    // Tamamlanma zamanı
+  result          String?      @db.Text // Tamamlama notu / sonuç
+  source          String       @default("MANUAL") // MANUAL | AUTOMATION | RETELL | SYSTEM
+  priority        String       @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
   assignedToId    String?      // Atanan agent
   teamId          String?      // Atanan takım
   createdBy       String?      // Oluşturan user id (Sistem/Bot ise null)
@@ -1359,8 +1366,10 @@ model ContactActivity {
 
   @@index([contactId, createdAt])
   @@index([workspaceId])
+  @@index([status])
   @@map("contact_activities")
 }
+
 
 // Global Flow Templates for Super Admin
 model FlowTemplate {

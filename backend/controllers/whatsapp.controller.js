@@ -1320,13 +1320,16 @@ export const webhookHandler = async (req, res) => {
                     // --- AUTOMATION RULES START ---
                     if (msg_body && message.type === 'text') {
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule } = await import('./rules.controller.js');
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
                             // Run rules async (non-blocking)
                             executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:PHONE_CAPTURE] async error:', e.message)
                             );
                             executeHotKeywordRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:HOT_KEYWORD] async error:', e.message)
+                            );
+                            executeSalesPhoneCallRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
+                                console.error('❌ [RULE:SALES_PHONE_CALL] async error:', e.message)
                             );
                         } catch (ruleErr) {
                             console.error('❌ [RULES] Import error:', ruleErr.message);

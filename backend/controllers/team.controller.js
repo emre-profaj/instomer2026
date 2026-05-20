@@ -20,6 +20,7 @@ export const createTeam = async (req, res) => {
             workspaceId,
             assignedBotId: req.body.assignedBotId || null,
             parentId: parentId || null,
+            assignmentRule: req.body.assignmentRule || 'POOL',
             members: {
                 create: {
                     userId: req.user.id,
@@ -232,7 +233,8 @@ export const updateTeam = async (req, res) => {
                 ...(description !== undefined && { description }),
                 ...(color && { color }),
                 ...(req.body.hasOwnProperty('assignedBotId') && { assignedBotId: req.body.assignedBotId }),
-                ...(req.body.hasOwnProperty('parentId') && { parentId: req.body.parentId || null })
+                ...(req.body.hasOwnProperty('parentId') && { parentId: req.body.parentId || null }),
+                ...(req.body.assignmentRule && { assignmentRule: req.body.assignmentRule }),
             },
             include: {
                 _count: { select: { members: true } },

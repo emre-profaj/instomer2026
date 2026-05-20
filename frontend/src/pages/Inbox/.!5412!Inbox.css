@@ -8,8 +8,8 @@
 
 /* Left Panel - Inbox List */
 .inbox-list-panel {
-    width: 300px;
-    min-width: 300px;
+    width: 400px;
+    min-width: 400px;
     background: #ffffff;
     border-right: 1px solid #e2e8f0;
     display: flex;
@@ -1065,10 +1065,6 @@
     flex-direction: column;
     overflow: hidden;
     border-right: 1px solid #e2e8f0;
-    transition: margin-right 0.2s ease;
-}
-.inbox-detail-panel.sidebar-open {
-    /* sidebar artık position:fixed overlay — margin gerekmiyor */
 }
 
 .inbox-detail-empty {
@@ -1354,88 +1350,21 @@
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 6px 12px;
+    padding: 10px 16px;
     background: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
-    flex-wrap: nowrap;
-    overflow: visible;
-    min-height: 44px;
-    position: relative;
-    z-index: 10;
 }
 
 .assignment-left-group {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 1;
-    min-width: 0;
-    overflow: visible;
-    position: relative;
-}
-
-/* Aşama & Atama Pill Tetikleyicisi */
-.stage-mega-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    border: 1px solid #d1d5db;
-    background: #fff;
-    color: #374151;
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-    height: 28px;
-    line-height: 1;
-}
-.stage-mega-trigger:hover {
-    border-color: #6366f1;
-    color: #4f46e5;
-    background: #f0f0ff;
-    box-shadow: 0 1px 4px rgba(99,102,241,0.12);
-}
-.stage-mega-trigger:active {
-    transform: scale(0.97);
-}
-
-/* Üstlen butonu */
-.assign-claim-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    border: 1px solid #bbf7d0;
-    background: #f0fdf4;
-    color: #166534;
-    font-size: 0.72rem;
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s ease;
-    height: 28px;
-    line-height: 1;
-}
-.assign-claim-btn:hover {
-    background: #dcfce7;
-    border-color: #86efac;
-    box-shadow: 0 1px 4px rgba(34,197,94,0.15);
-}
-.assign-claim-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+    gap: 10px;
 }
 
 .assignment-right-group {
     display: flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-    margin-left: 8px;
+    gap: 10px;
 }
 
 .assignment-items {
@@ -2193,7 +2122,7 @@
     align-self: flex-start !important;
     margin-right: auto !important;
     margin-left: 0 !important;
-    max-width: 320px;
+    max-width: 400px;
 }
 
 .message.lead-message .message-content {
@@ -2364,7 +2293,7 @@
     position: absolute;
     bottom: 36px;
     right: 0;
-    width: 320px;
+    width: 400px;
     max-height: 320px;
     overflow-y: auto;
     background: #fff;
@@ -3066,19 +2995,16 @@
 
 /* Contact Sidebar Wrapper in Inbox - narrower */
 .inbox-contact-sidebar-wrapper {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: 320px;
-    min-width: 320px;
-    max-width: 320px;
+    width: 400px;
+    min-width: 400px;
+    max-width: 400px;
+    flex-shrink: 0;
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Prevent horizontal scroll */
     border-left: 1px solid #e2e8f0;
     background: #ffffff;
-    z-index: 100;
-    box-shadow: -4px 0 24px rgba(0,0,0,0.08);
 }
 
 .inbox-contact-sidebar-wrapper .contact-sidebar {
@@ -3494,7 +3420,7 @@
 /* ====== Form Message Table Styles ====== */
 .form-message-table {
     width: 100%;
-    max-width: 320px;
+    max-width: 400px;
 }
 
 .form-message-header {
@@ -5512,8 +5438,6 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    min-height: 0;
-    min-width: 0;
 }
 
 .inbox-pipeline-embed > * {
@@ -5683,316 +5607,4 @@
     border-radius: 4px;
     font-weight: 500;
     color: #4b5563;
-}
-.sentiment-y�ksek, .sentiment-y�ksek.ilgili {
-    color: #f59e0b; /* Alt�n Sar�s� */
-}
-.sentiment-olumlu {
-    color: #10b981; /* Ye�il */
-}
-.sentiment-n�tr {
-    color: #6b7280; /* Gri */
-}
-.sentiment-k�zg�n, .sentiment-�ikayet, .sentiment-k�zg�n.�ikayet {
-    color: #ef4444; /* K�rm�z� */
-}
-.sentiment-ilgisiz {
-    color: #9ca3af; /* Soluk gri */
-}
-
-/* Arsivle / Cozuldu toggle butonu */
-.conversation-archive-btn {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid #e5e7eb;
-    transition: all 0.2s;
-}
-
-.conversation-archive-btn.open {
-    background: #f9fafb;
-    color: #6b7280;
-    border-color: #e5e7eb;
-}
-
-.conversation-archive-btn.open:hover {
-    background: #ecfdf5;
-    color: #10b981;
-    border-color: #10b981;
-}
-
-.conversation-archive-btn.resolved {
-    background: #ecfdf5;
-    color: #10b981;
-    border-color: #10b981;
-}
-
-.conversation-archive-btn.resolved:hover {
-    background: #eff6ff;
-    color: #3b82f6;
-    border-color: #3b82f6;
-}
-
-/* Acik / Cozuldu Select Dropdown */
-.conversation-status-select-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 5px 8px 5px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    border: 1px solid #e5e7eb;
-    transition: all 0.2s;
-    cursor: pointer;
-}
-
-.conversation-status-select-wrapper.open {
-    background: #f9fafb;
-    color: #6b7280;
-    border-color: #e5e7eb;
-}
-
-.conversation-status-select-wrapper.open .conv-status-icon {
-    color: #9ca3af;
-}
-
-.conversation-status-select-wrapper.resolved {
-    background: #ecfdf5;
-    color: #10b981;
-    border-color: #10b981;
-}
-
-.conversation-status-select-wrapper.resolved .conv-status-icon {
-    color: #10b981;
-}
-
-.conversation-status-select-wrapper:hover {
-    filter: brightness(0.97);
-}
-
-.conversation-status-select {
-    background: transparent;
-    border: none;
-    outline: none;
-    font-size: 12px;
-    font-weight: 600;
-    color: inherit;
-    cursor: pointer;
-    padding: 0;
-    -webkit-appearance: none;
-    appearance: none;
-}
-
-.conversation-status-select option {
-    background: #ffffff;
-    color: #374151;
-    font-weight: 500;
-}
-
-
-/* Channel Badge on outgoing messages */
-.message-channel-badge {
-    font-size: 10px;
-    font-weight: 500;
-    padding: 1px 6px;
-    border-radius: 4px;
-    opacity: 0.85;
-    line-height: 1.4;
-    white-space: nowrap;
-}
-
-.message-channel-badge.channel-whatsapp {
-    background: rgba(37, 211, 102, 0.2);
-    color: #15803d;
-}
-.message.outgoing .message-channel-badge.channel-whatsapp {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-.message-channel-badge.channel-facebook {
-    background: rgba(24, 119, 242, 0.15);
-    color: #1d4ed8;
-}
-.message.outgoing .message-channel-badge.channel-facebook {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-.message-channel-badge.channel-instagram {
-    background: rgba(228, 64, 95, 0.15);
-    color: #be185d;
-}
-.message.outgoing .message-channel-badge.channel-instagram {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-.message-channel-badge.channel-email {
-    background: rgba(245, 158, 11, 0.15);
-    color: #b45309;
-}
-.message.outgoing .message-channel-badge.channel-email {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-.message-channel-badge.channel-widget {
-    background: rgba(99, 102, 241, 0.15);
-    color: #4338ca;
-}
-.message.outgoing .message-channel-badge.channel-widget {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-.message-channel-badge.channel-lead {
-    background: rgba(139, 92, 246, 0.15);
-    color: #6d28d9;
-}
-.message.outgoing .message-channel-badge.channel-lead {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-/* Sender Badge on outgoing messages */
-.message-sender-badge {
-    font-size: 10px;
-    font-weight: 500;
-    padding: 1px 6px;
-    border-radius: 4px;
-    line-height: 1.4;
-    white-space: nowrap;
-}
-
-.message-sender-badge.bot {
-    background: rgba(139, 92, 246, 0.15);
-    color: #7c3aed;
-}
-.message.outgoing .message-sender-badge.bot {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-.message-sender-badge.human {
-    background: rgba(16, 185, 129, 0.15);
-    color: #059669;
-}
-.message.outgoing .message-sender-badge.human {
-    background: rgba(255,255,255,0.2);
-    color: rgba(255,255,255,0.85);
-}
-
-/* ─── Sohbet Durumu Toggle (Açık / Çözüldü) ────────────────────────────────── */
-.conv-status-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px;
-    border-radius: 20px;
-    border: 1.5px solid #e5e7eb;
-    background: #f9fafb;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    color: #6b7280;
-    white-space: nowrap;
-    outline: none;
-}
-
-.conv-status-toggle:hover {
-    filter: brightness(0.96);
-    transform: scale(1.02);
-}
-
-.conv-status-toggle-track {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #e5e7eb;
-    flex-shrink: 0;
-    transition: background 0.2s;
-}
-
-.conv-status-toggle-thumb {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #9ca3af;
-    transition: color 0.2s;
-}
-
-.conv-status-toggle-label {
-    font-size: 12px;
-    font-weight: 600;
-    transition: color 0.2s;
-}
-
-/* Açık durumu */
-.conv-status-toggle.open {
-    background: #f9fafb;
-    border-color: #e5e7eb;
-    color: #6b7280;
-}
-
-.conv-status-toggle.open .conv-status-toggle-track {
-    background: #e5e7eb;
-}
-
-.conv-status-toggle.open .conv-status-toggle-thumb {
-    color: #9ca3af;
-}
-
-/* Çözüldü durumu */
-.conv-status-toggle.resolved {
-    background: #ecfdf5;
-    border-color: #10b981;
-    color: #059669;
-}
-
-.conv-status-toggle.resolved .conv-status-toggle-track {
-    background: #d1fae5;
-}
-
-.conv-status-toggle.resolved .conv-status-toggle-thumb {
-    color: #10b981;
-}
-
-/* ─── Okundu / Okunmadı Toggle ─── */
-.conv-read-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    border-radius: 8px;
-    border: 1.5px solid #e5e7eb;
-    background: #f9fafb;
-    font-size: 0.72rem;
-    font-weight: 500;
-    cursor: pointer;
-    color: #6b7280;
-    transition: all 0.18s ease;
-    white-space: nowrap;
-}
-.conv-read-toggle:hover {
-    background: #f3f4f6;
-    border-color: #d1d5db;
-}
-.conv-read-toggle.unread {
-    background: #eff6ff;
-    border-color: #93c5fd;
-    color: #2563eb;
-}
-.conv-read-toggle.unread:hover {
-    background: #dbeafe;
 }

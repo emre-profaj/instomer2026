@@ -28,7 +28,12 @@ export const createActivity = async (req, res) => {
                 dueDate: dueDate ? new Date(dueDate) : null,
                 assignedToId: assignedToId ? assignedToId : null,
                 teamId: teamId ? teamId : null,
-                createdBy: userId
+                createdBy: userId,
+                status: type === 'NOTE' ? 'COMPLETED' : (dueDate ? 'PLANNED' : 'COMPLETED'),
+                completedAt: type === 'NOTE' ? new Date() : null,
+                source: req.body.source || 'MANUAL',
+                priority: req.body.priority || 'NORMAL',
+                isCompleted: type === 'NOTE' ? true : false
             },
             include: {
                 creator: { select: { name: true, role: true } },
@@ -154,12 +159,14 @@ export const getContactTimeline = async (req, res) => {
             timeline.push({
                 id: `act_${act.id}`,
                 sourceType: 'ACTIVITY',
-                type: act.type, // NOTE, REMINDER, TASK, MEETING
+                type: act.type,
                 title: act.title,
                 content: act.description,
                 date: act.createdAt,
                 dueDate: act.dueDate,
+                status: act.status,
                 isCompleted: act.isCompleted,
+                result: act.result,
                 labelName,
                 assignedToName: act.assignee?.name,
                 raw: act
@@ -175,7 +182,6 @@ export const getContactTimeline = async (req, res) => {
             else if (conv.channel === 'INSTAGRAM') type = 'INSTAGRAM';
             else if (conv.channel === 'WIDGET') type = 'WIDGET';
 
-            // Son 2 mesajı al (messages zaten desc sıralı)
             const recentMessages = (conv.messages || []).slice(0, 2).map(msg => {
                 let senderName = 'Sistem';
                 if (msg.isFromContact) {
@@ -195,29 +201,24 @@ export const getContactTimeline = async (req, res) => {
                 };
             });
 
-            // Toplam mesaj sayısı
             const totalMessages = conv.messages?.length || 0;
             const lastMessage = conv.messages?.[0];
             const lastMessageDate = lastMessage?.createdAt || conv.lastMessageAt || conv.createdAt;
 
-            // Konuşma başına tek satır özet
             let summaryContent = '';
             if (recentMessages.length > 0) {
-                summaryContent = recentMessages.map(m => 
-                    `${m.senderName}: ${m.content}`
-                ).join('\n');
+                summaryContent = recentMessages.map(m => `${m.senderName}: ${m.content}`).join('\n');
             }
 
-            // Konuşmayı tek bir timeline girişi olarak ekle
             timeline.push({
                 id: `conv_${conv.id}`,
                 sourceType: 'CONVERSATION',
                 type: type,
-                title: type === 'EMAIL' ? (lastMessage?.emailSubject || 'E-posta') : 
-                       (conv.channel === 'WHATSAPP' ? 'WhatsApp' : 
-                        conv.channel === 'FACEBOOK' ? 'Facebook' : 
-                        conv.channel === 'INSTAGRAM' ? 'Instagram' : 
-                        conv.channel === 'WIDGET' ? 'Web Widget' : 'Sohbet'),
+                title: type === 'EMAIL' ? (lastMessage?.emailSubject || 'E-posta') :
+                    (conv.channel === 'WHATSAPP' ? 'WhatsApp' :
+                        conv.channel === 'FACEBOOK' ? 'Facebook' :
+                            conv.channel === 'INSTAGRAM' ? 'Instagram' :
+                                conv.channel === 'WIDGET' ? 'Web Widget' : 'Sohbet'),
                 content: summaryContent,
                 date: lastMessageDate,
                 totalMessages,
@@ -228,13 +229,12 @@ export const getContactTimeline = async (req, res) => {
             });
         });
 
-        // Internal Notes (Eskiden kalanlar)
+        // Internal Notes
         internalNotes.forEach(note => {
             let labelName = note.user?.name || 'Sistem';
             if (note.user?.teamMemberships && note.user.teamMemberships.length > 0) {
                 labelName += ` (${note.user.teamMemberships[0].team.name})`;
             }
-
             timeline.push({
                 id: `inote_${note.id}`,
                 sourceType: 'ACTIVITY',
@@ -247,20 +247,19 @@ export const getContactTimeline = async (req, res) => {
             });
         });
 
-        // Appointments (Eskiden kalanlar veya farklı eklenenler)
+        // Appointments
         appointments.forEach(apt => {
             let labelName = apt.assignedTo?.name || 'Sistem';
             if (apt.assignedTo?.teamMemberships && apt.assignedTo.teamMemberships.length > 0) {
                 labelName += ` (${apt.assignedTo.teamMemberships[0].team.name})`;
             }
-
             timeline.push({
                 id: `apt_${apt.id}`,
                 sourceType: 'ACTIVITY',
                 type: 'MEETING',
                 title: apt.title || 'Planlanan',
                 content: apt.description,
-                date: apt.createdAt || apt.startTime, // Fallback to startTime if createdAt missing
+                date: apt.createdAt || apt.startTime,
                 dueDate: apt.startTime,
                 isCompleted: apt.status === 'COMPLETED',
                 labelName,
@@ -269,21 +268,18 @@ export const getContactTimeline = async (req, res) => {
             });
         });
 
-        // Contact.notes JSON alanındaki manuel notlar (5. kaynak)
+        // Contact.notes JSON
         contactNotes.forEach((note, idx) => {
             if (!note?.content) return;
-            // timestamp alanı "GG.AA.YYYY SS:DD" formatında string — Date'e çevir
             let noteDate = new Date();
             try {
                 if (note.timestamp) {
-                    // "11.05.2026 11:24" → parse
                     const parts = note.timestamp.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
                     if (parts) {
                         noteDate = new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]), parseInt(parts[4]), parseInt(parts[5]));
                     }
                 }
             } catch {}
-
             timeline.push({
                 id: `cnote_${contactId}_${idx}`,
                 sourceType: 'ACTIVITY',
@@ -296,24 +292,20 @@ export const getContactTimeline = async (req, res) => {
             });
         });
 
-        // Planlanan/gelecek aktiviteleri en üste, geçmişi aşağıya koy
-        const now = new Date();
         const planned = [];
         const past = [];
 
         timeline.forEach(item => {
-            const hasFutureDate = item.dueDate && new Date(item.dueDate) > now && !item.isCompleted;
-            item.isPlanned = !!hasFutureDate;
-            if (hasFutureDate) {
+            const isStillPlanned = item.status === 'PLANNED' && !item.isCompleted && item.type !== 'NOTE' && item.sourceType === 'ACTIVITY';
+            item.isPlanned = isStillPlanned;
+            if (isStillPlanned) {
                 planned.push(item);
             } else {
                 past.push(item);
             }
         });
 
-        // Planlananlar: yakın tarih en üstte (ascending)
         planned.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-        // Geçmiş: en yeni en üstte (descending)
         past.sort((a, b) => new Date(b.date) - new Date(a.date));
 
         res.json({ planned, past });
@@ -370,5 +362,116 @@ export const deleteActivity = async (req, res) => {
     } catch (error) {
         console.error('Delete Activity Error:', error);
         res.status(500).json({ error: 'Aktivite silinirken bir hata oluştu.' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// COMPLETE ACTIVITY — Tamamla + sonuç notu gir
+// ────────────────────────────────────────────────────────────────────────────
+export const completeActivity = async (req, res) => {
+    try {
+        const { activityId } = req.params;
+        const { result } = req.body;
+
+        const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
+        if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
+
+        const updated = await prisma.contactActivity.update({
+            where: { id: activityId },
+            data: {
+                status: 'COMPLETED',
+                isCompleted: true,
+                completedAt: new Date(),
+                result: result || null
+            },
+            include: {
+                creator: { select: { name: true, role: true } },
+                assignee: { select: { name: true } },
+                team: { select: { name: true } }
+            }
+        });
+
+        res.json(updated);
+    } catch (error) {
+        console.error('Complete Activity Error:', error);
+        res.status(500).json({ error: 'Aktivite tamamlanırken bir hata oluştu.' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// CLAIM ACTIVITY — Havuzdan üstlen (POOL kuralı)
+// ────────────────────────────────────────────────────────────────────────────
+export const claimActivity = async (req, res) => {
+    try {
+        const { activityId } = req.params;
+        const userId = req.user.id;
+
+        const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
+        if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
+
+        if (existing.assignedToId && existing.assignedToId !== userId) {
+            return res.status(400).json({ error: 'Bu aktivite zaten başka birine atanmış.' });
+        }
+
+        const updated = await prisma.contactActivity.update({
+            where: { id: activityId },
+            data: {
+                assignedToId: userId,
+                status: 'IN_PROGRESS'
+            },
+            include: {
+                creator: { select: { name: true, role: true } },
+                assignee: { select: { name: true } },
+                team: { select: { name: true } }
+            }
+        });
+
+        res.json(updated);
+    } catch (error) {
+        console.error('Claim Activity Error:', error);
+        res.status(500).json({ error: 'Aktivite üstlenilirken bir hata oluştu.' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// WORKSPACE CALL QUEUE — CALL + MEETING activities (planned & recent completed)
+// ────────────────────────────────────────────────────────────────────────────
+export const getWorkspaceCallQueue = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        const activities = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId,
+                type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
+                status: { in: ['PLANNED', 'COMPLETED'] },
+            },
+            include: {
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        conversations: {
+                            select: { id: true },
+                            take: 1,
+                            orderBy: { updatedAt: 'desc' }
+                        }
+                    }
+                },
+                assignee: { select: { name: true } },
+            },
+            orderBy: [
+                { isCompleted: 'asc' },
+                { dueDate: 'asc' },
+                { createdAt: 'desc' }
+            ],
+            take: 100,
+        });
+
+        res.json(activities);
+    } catch (error) {
+        console.error('Call Queue Error:', error);
+        res.status(500).json({ error: 'Arama kuyruğu alınırken hata oluştu.' });
     }
 };

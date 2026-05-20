@@ -1916,3 +1916,185 @@ export const updateFunnel = async (req, res) => {
     }
 };
 
+
+// Mark conversation as unread (set unreadCount = 1)
+export const markUnread = async (req, res) => {
+    try {
+        const { workspaceId, conversationId } = req.params;
+        const existing = await prisma.conversation.findFirst({ where: { id: conversationId, workspaceId } });
+        if (!existing) return res.status(404).json({ error: 'Konuşma bulunamadı' });
+
+        const updated = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { unreadCount: 1 }
+        });
+
+        console.log(`📩 [MarkUnread] Conversation ${conversationId} marked as unread`);
+        res.json({ conversation: updated });
+    } catch (error) {
+        console.error('Mark unread error:', error);
+        res.status(500).json({ error: 'Okunmadı olarak işaretlenemedi' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// ASSIGN CONVERSATION — Takıma veya kişiye ata (atama kuralı destekli)
+// POST /api/workspaces/:workspaceId/conversations/:conversationId/assign
+// Body: { teamId?, agentId? }
+//   - agentId verilirse: direkt kişiye ata (takıma da ekle)
+//   - sadece teamId: takımın assignmentRule'una göre otomatik ata
+//   - ikisi de yok: atamaları temizle (havuza al)
+// ────────────────────────────────────────────────────────────────────────────
+export const smartAssignConversation = async (req, res) => {
+    try {
+        const { workspaceId, conversationId } = req.params;
+        const { teamId, agentId } = req.body;
+
+        const conversation = await prisma.conversation.findFirst({
+            where: { id: conversationId, workspaceId }
+        });
+        if (!conversation) return res.status(404).json({ error: 'Konuşma bulunamadı' });
+
+        let resolvedAgentId = agentId || null;
+
+        // Takım ID'si verilmişse ve kişi belirtilmemişse → atama kuralını uygula
+        if (teamId && !agentId) {
+            try {
+                const team = await prisma.team.findFirst({
+                    where: { id: teamId, workspaceId },
+                    include: {
+                        members: {
+                            include: { user: { select: { id: true, isOnline: true } } }
+                        }
+                    }
+                });
+
+                if (team) {
+                    const allMembers = team.members.map(m => m.user);
+                    const rule = team.assignmentRule || 'POOL';
+
+                    if (rule === 'POOL') {
+                        resolvedAgentId = null;
+                    } else if (rule === 'ROUND_ROBIN') {
+                        if (allMembers.length > 0) {
+                            const nextIdx = (team.roundRobinIndex || 0) % allMembers.length;
+                            resolvedAgentId = allMembers[nextIdx].id;
+                            await prisma.team.update({ where: { id: teamId }, data: { roundRobinIndex: nextIdx + 1 } });
+                        }
+                    } else if (rule === 'LEAST_BUSY') {
+                        if (allMembers.length > 0) {
+                            const counts = await Promise.all(
+                                allMembers.map(async m => ({
+                                    id: m.id,
+                                    count: await prisma.conversation.count({ where: { assignedToId: m.id, status: 'OPEN' } })
+                                }))
+                            );
+                            counts.sort((a, b) => a.count - b.count);
+                            resolvedAgentId = counts[0].id;
+                        }
+                    } else if (rule === 'ONLINE_ROUND_ROBIN') {
+                        const onlineMembers = allMembers.filter(m => m.isOnline);
+                        const pool = onlineMembers.length > 0 ? onlineMembers : allMembers;
+                        if (pool.length > 0) {
+                            const nextIdx = (team.roundRobinIndex || 0) % pool.length;
+                            resolvedAgentId = pool[nextIdx].id;
+                            await prisma.team.update({ where: { id: teamId }, data: { roundRobinIndex: nextIdx + 1 } });
+                        }
+                    }
+                }
+            } catch (teamErr) {
+                console.error('Team rule error (falling back to POOL):', teamErr.message);
+                resolvedAgentId = null;
+            }
+        }
+
+        // teamIds JSON array güncelle
+        let teamIds = [];
+        try { teamIds = JSON.parse(conversation.teamIds || '[]'); } catch {}
+        if (teamId && !teamIds.includes(teamId)) {
+            teamIds = [teamId];
+        } else if (!teamId) {
+            teamIds = [];
+        }
+
+        // Basit update — include olmadan (eski Prisma Client uyumluluğu)
+        const updated = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: {
+                assignedToId: resolvedAgentId,
+                teamIds: JSON.stringify(teamIds)
+            }
+        });
+
+        // assignedTo bilgisini ayrı al
+        let assignedTo = null;
+        if (resolvedAgentId) {
+            try {
+                assignedTo = await prisma.user.findUnique({
+                    where: { id: resolvedAgentId },
+                    select: { id: true, name: true }
+                });
+            } catch {}
+        }
+
+        // WebSocket broadcast
+        try {
+            if (req.app?.locals?.io) {
+                req.app.locals.io.to(workspaceId).emit('conversation:assigned', {
+                    conversationId,
+                    teamId: teamId || null,
+                    agentId: resolvedAgentId,
+                    agentName: assignedTo?.name || null
+                });
+            }
+        } catch {}
+
+        console.log(`✅ [Assign] Conv ${conversationId} → team:${teamId || 'none'} agent:${resolvedAgentId || 'pool'}`);
+        res.json({ success: true, conversation: { ...updated, assignedTo }, resolvedAgentId });
+    } catch (error) {
+        console.error('Assign Conversation Error:', error);
+        res.status(500).json({ error: 'Atama yapılırken hata oluştu: ' + (error.message || String(error)) });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// CLAIM CONVERSATION — Üstlen (POOL'daki konuşmayı al)
+// POST /api/workspaces/:workspaceId/conversations/:conversationId/claim
+// ────────────────────────────────────────────────────────────────────────────
+export const claimConversation = async (req, res) => {
+    try {
+        const { workspaceId, conversationId } = req.params;
+        const userId = req.user.id;
+
+        const conversation = await prisma.conversation.findFirst({
+            where: { id: conversationId, workspaceId }
+        });
+        if (!conversation) return res.status(404).json({ error: 'Konuşma bulunamadı' });
+
+        if (conversation.assignedToId && conversation.assignedToId !== userId) {
+            return res.status(400).json({ error: 'Bu konuşma zaten başka birine atanmış.' });
+        }
+
+        const updated = await prisma.conversation.update({
+            where: { id: conversationId },
+            data: { assignedToId: userId },
+            include: {
+                assignedTo: { select: { id: true, name: true, avatarUrl: true } }
+            }
+        });
+
+        if (req.app?.locals?.io) {
+            req.app.locals.io.to(workspaceId).emit('conversation:assigned', {
+                conversationId,
+                agentId: userId,
+                agentName: updated.assignedTo?.name
+            });
+        }
+
+        console.log(`🤝 [Claim] Conv ${conversationId} → agent:${userId}`);
+        res.json({ success: true, conversation: updated });
+    } catch (error) {
+        console.error('Claim Conversation Error:', error);
+        res.status(500).json({ error: 'Üstlenme yapılırken hata oluştu' });
+    }
+};

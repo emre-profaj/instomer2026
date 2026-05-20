@@ -1,8 +1,14 @@
 import express from 'express';
-import { createActivity, getContactTimeline, updateActivity, deleteActivity } from '../controllers/activity.controller.js';
+import { createActivity, getContactTimeline, updateActivity, deleteActivity, completeActivity, claimActivity, getWorkspaceCallQueue } from '../controllers/activity.controller.js';
 import { authenticateJWT } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
+
+// Tüm route'lar için auth kontrolü
+router.use(authenticateJWT);
+
+// Workspace call queue (CALL + MEETING activities)
+router.get('/workspace/:workspaceId/call-queue', getWorkspaceCallQueue);
 
 // Tüm route'lar için auth kontrolü
 router.use(authenticateJWT);
@@ -14,5 +20,9 @@ router.post('/contacts/:contactId', createActivity);
 // Aktivite güncelleme ve silme
 router.put('/:activityId', updateActivity);
 router.delete('/:activityId', deleteActivity);
+
+// Aktivite tamamlama ve üstlenme
+router.put('/:activityId/complete', completeActivity);
+router.put('/:activityId/claim', claimActivity);
 
 export default router;

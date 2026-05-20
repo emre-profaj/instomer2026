@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Phone, Mail, User, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, History, Pencil } from 'lucide-react';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import TransferModal from '../TransferModal/TransferModal';
@@ -7,6 +7,7 @@ import CallHistory from './CallHistory';
 import './ContactSidebar.css';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { detectCallIntent } from '../../utils/callIntentDetector';
 
 // Phone normalization (frontend mirror of backend)
 const normalizePhone = (phone) => {
@@ -120,7 +121,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
     );
 };
 
-const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen }) => {
+const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null }) => {
     const { currentWorkspace, onlineUsers } = useAuth();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
@@ -172,16 +173,27 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [pastTimeline, setPastTimeline] = useState([]);
     const [timelineLoading, setTimelineLoading] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
+    // Local atama state — API cevabı beklemeden dropdown anında güncellenir
+    const [localTeamId, setLocalTeamId] = useState(() => {
+        const t = conversationData?.teamIds;
+        return t ? (JSON.parse(t)[0] || '') : '';
+    });
+    const [localAgentId, setLocalAgentId] = useState(() => conversationData?.assignedToId || '');
     const [editingActivity, setEditingActivity] = useState(null); // { id, description, title }
     const [editActivityText, setEditActivityText] = useState('');
     const [activityForm, setActivityForm] = useState({
-        type: 'NOTE', // NOTE, REMINDER, MEETING, TASK
+        type: 'NOTE',
         title: '',
         description: '',
         dueDate: '',
-        assignedToId: ''
+        assignedToId: '',
+        teamId: '',
+        funnelStageId: ''
     });
     const [activitySaving, setActivitySaving] = useState(false);
+    const [completingActivity, setCompletingActivity] = useState(null);
+    const [completeResult, setCompleteResult] = useState('');
+    const [activityFunnels, setActivityFunnels] = useState([]); // stage seçici için
 
     // If external profile is provided (e.g., for comments), use it directly
     useEffect(() => {
@@ -209,6 +221,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             fetchProfileByContactId();
         }
     }, [isOpen, contactId, conversationId, externalProfile]);
+
+    // conversationData prop değişince local atama state'ini sync et
+    useEffect(() => {
+        if (conversationData) {
+            const tid = conversationData.teamIds ? (JSON.parse(conversationData.teamIds)[0] || '') : '';
+            setLocalTeamId(tid);
+            setLocalAgentId(conversationData.assignedToId || '');
+        }
+    }, [conversationData?.teamIds, conversationData?.assignedToId]);
 
     // Listen for funnel stage changes (from Pipeline view or other sources)
     useEffect(() => {
@@ -348,17 +369,45 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 setPlannedTimeline([]);
                 setPastTimeline(res);
             }
-        } catch(err) {
+        } catch (err) {
             console.error('Fetch timeline err:', err);
         } finally {
             setTimelineLoading(false);
         }
     };
 
+    // Funnelleri yükle (CALL/MEETING için aşama seçici)
+    const loadActivityFunnels = async () => {
+        if (!currentWorkspace?.id || activityFunnels.length > 0) return;
+        try {
+            const res = await funnelAPI.getAll(currentWorkspace.id);
+            setActivityFunnels(Array.isArray(res.data) ? res.data : (res.data?.funnels || []));
+        } catch { }
+    };
+
+    // Aktivite modalını konuşmanın mevcut atamasıyla aç
+    const openActivityModal = (type) => {
+        const effectiveConv = conversationData || (contactConversations.length > 0 ? contactConversations[0] : null);
+        const defaultAssigneeId = effectiveConv?.assignedToId || '';
+        const defaultTeamId = effectiveConv?.teamIds
+            ? ((() => { try { return JSON.parse(effectiveConv.teamIds)[0] || ''; } catch { return ''; } })())
+            : '';
+        setActivityForm({
+            type,
+            title: '',
+            description: '',
+            dueDate: '',
+            assignedToId: defaultAssigneeId,
+            teamId: defaultTeamId,
+            funnelStageId: ''
+        });
+        setShowActivityModal(true);
+    };
+
     const handleSaveActivity = async () => {
         if (!profile || !profile.id) return;
         if (!activityForm.type) return;
-        
+
         // Validation based on type
         if (activityForm.type === 'NOTE' && !activityForm.description.trim()) {
             return alert('Not içeriği boş olamaz.');
@@ -378,14 +427,43 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 title: activityForm.title || (activityForm.type === 'NOTE' ? 'Not' : activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite'),
                 description: activityForm.description,
                 dueDate: activityForm.dueDate || null,
-                assignedToId: activityForm.assignedToId || null
+                assignedToId: activityForm.assignedToId || null,
+                teamId: activityForm.teamId || null
             };
 
             await activityAPI.createActivity(profile.id, dataToSave);
+
+            // CALL veya MEETING planlandıysa → conversation'ı ilgili aşamaya taşı
+            if ((activityForm.type === 'CALL' || activityForm.type === 'MEETING') && activityForm.dueDate) {
+                let targetStageId = activityForm.funnelStageId;
+
+                // Seçili stage yoksa → workspace'te "Görüşme Planlandı" veya "Arama Planlandı" aşamasını bul
+                if (!targetStageId) {
+                    try {
+                        const fRes = await funnelAPI.getAll(currentWorkspace.id);
+                        const allStages = (Array.isArray(fRes.data) ? fRes.data : (fRes.data?.funnels || [])).flatMap(f => f.stages || []);
+                        const keywords = activityForm.type === 'CALL'
+                            ? ['arama planlandı', 'görüşme planlandı', 'aranacak', 'arama']
+                            : ['görüşme planlandı', 'görüşme', 'toplantı planlandı'];
+                        const match = allStages.find(s => keywords.some(k => s.name.toLowerCase().includes(k)));
+                        if (match) targetStageId = match.id;
+                    } catch { }
+                }
+
+                // ConversationId'yi profile üzerinden al
+                if (targetStageId && conversationId) {
+                    try {
+                        await conversationAPI.updateFunnel(currentWorkspace.id, conversationId, { funnelStageId: targetStageId });
+                    } catch { }
+                }
+            }
+
             setShowActivityModal(false);
-            setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '' });
+            setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '' });
             alert('Aktivite başarıyla kaydedildi.');
-            fetchTimeline(profile.id); // Refresh timeline
+            fetchTimeline(profile.id);
+            // Inbox list'teki badge'leri hemen güncelle
+            if (onActivitySaved) onActivitySaved({ type: activityForm.type, status: 'PLANNED', contactId: profile.id });
         } catch (err) {
             console.error('Save activity err:', err);
             alert('Aktivite kaydedilirken hata oluştu.');
@@ -407,6 +485,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }
     };
 
+    const handleCompleteActivity = async () => {
+        if (!completingActivity) return;
+        try {
+            const rawId = completingActivity.id.replace(/^act_/, '');
+            await activityAPI.completeActivity(rawId, completeResult);
+            // Planned'dan kaldır, past'a ekle
+            const completedItem = { ...completingActivity, isCompleted: true, isPlanned: false, content: completeResult || completingActivity.content };
+            setPlannedTimeline(prev => prev.filter(i => i.id !== completingActivity.id));
+            setPastTimeline(prev => [completedItem, ...prev]);
+            setCompletingActivity(null);
+            setCompleteResult('');
+        } catch (err) {
+            console.error('Complete activity error:', err);
+            alert('Tamamlama başarısız.');
+        }
+    };
+
     const handleUpdateActivity = async () => {
         if (!editingActivity) return;
         try {
@@ -424,14 +519,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     };
 
     const renderTimelineIcon = (type) => {
-        switch(type) {
+        switch (type) {
             case 'WHATSAPP': return <MessageSquare size={14} />;
             case 'EMAIL': return <Mail size={14} />;
             case 'CALL': return <PhoneCall size={14} />;
             case 'NOTE': return <StickyNote size={14} />;
             case 'TASK': return <Check size={14} />;
             case 'MEETING': return <Calendar size={14} />;
-            case 'REMINDER': return <Bell size={14} />;
+            case 'VISIT': return <MapPin size={14} />;
+            case 'VISIT': return <MapPin size={14} />;
+            case 'REMINDER': return <PhoneCall size={14} />;
+            case 'PROPOSAL': return <FileText size={14} />;
+            case 'ORDER': return <TrendingUp size={14} />;
+            case 'INVOICE': return <FileText size={14} />;
+            case 'PAYMENT': return <Banknote size={14} />;
             case 'FACEBOOK': return <MessageSquare size={14} />;
             case 'INSTAGRAM': return <MessageSquare size={14} />;
             case 'WIDGET': return <MessageSquare size={14} />;
@@ -440,14 +541,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     };
 
     const renderTimelineTypeName = (type) => {
-        switch(type) {
+        switch (type) {
             case 'WHATSAPP': return 'WhatsApp';
             case 'EMAIL': return 'E-posta';
             case 'CALL': return 'Arama';
             case 'NOTE': return 'Not';
             case 'TASK': return 'Görev';
             case 'MEETING': return 'Görüşme';
-            case 'REMINDER': return 'Hatırlatıcı';
+            case 'VISIT': return 'Ziyaret';
+            case 'VISIT': return 'Ziyaret';
+            case 'REMINDER': return 'Arama';
+            case 'PROPOSAL': return 'Teklif';
+            case 'ORDER': return 'Sipariş';
+            case 'INVOICE': return 'Fatura';
+            case 'PAYMENT': return 'Tahsilat';
             case 'FACEBOOK': return 'Facebook';
             case 'INSTAGRAM': return 'Instagram';
             case 'WIDGET': return 'Web Widget';
@@ -829,11 +936,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 <button className="unified-close-btn" onClick={() => onClose ? onClose() : navigate('/inbox')} title="Kapat">
                                     <X size={18} />
                                 </button>
-                                
+
                                 <div className="unified-profile-header">
                                     <div className="unified-profile-top">
                                         <div className="unified-avatar-wrapper">
-                                            {profile.name ? profile.name.split(' ').map(n=>n[0]).join('').slice(0, 2).toUpperCase() : '👤'}
+                                            {profile.name ? profile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : '👤'}
                                         </div>
                                         {isEditingName ? (
                                             <input
@@ -848,7 +955,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 onBlur={async () => {
                                                     setIsEditingName(false);
                                                     if (profile.id && profile.name?.trim()) {
-                                                        try { await contactAPI.update(currentWorkspace.id, profile.id, { name: profile.name.trim() }); } catch (err) {}
+                                                        try { await contactAPI.update(currentWorkspace.id, profile.id, { name: profile.name.trim() }); } catch (err) { }
                                                     }
                                                 }}
                                                 autoFocus
@@ -859,283 +966,302 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </h2>
                                         )}
                                     </div>
-                                        <div className="unified-details">
-                                            <div className="unified-contact-box">
-                                                <div className="unified-contact-list">
-                                            <div className="unified-contact-item">
-                                                <Phone size={14} className="unified-contact-icon" />
-                                                <input
-                                                    type="text"
-                                                    className="unified-contact-input"
-                                                    value={profile.phone || ''}
-                                                    onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
-                                                    onBlur={() => {
-                                                        const normalized = normalizePhone(profile.phone);
-                                                        setProfile(prev => ({ ...prev, phone: normalized }));
-                                                        handleUpdateProfile({ phone: normalized });
-                                                    }}
-                                                    placeholder="Telefon Numarası"
-                                                />
-                                                <span
-                                                    className="inline-action-btn inline-action-whatsapp"
-                                                    title="WhatsApp"
-                                                    onClick={() => {
-                                                        if (!profile?.phone) return alert('Telefon numarası bulunamadı');
-                                                        window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, '')}`, '_blank');
-                                                    }}
-                                                >
-                                                    <svg viewBox="0 0 512 512" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
-                                                        <path fill="currentColor" d="M256.064,0h-0.128l0,0C114.784,0,0,114.816,0,256c0,56,18.048,107.904,48.736,150.048l-31.904,95.104l98.4-31.456C155.712,496.512,204,512,256.064,512C397.216,512,512,397.152,512,256S397.216,0,256.064,0z"></path>
-                                                        <path fill="#fff" d="M405.024,361.504c-6.176,17.44-30.688,31.904-50.24,36.128c-13.376,2.848-30.848,5.12-89.664-19.264C189.888,347.2,141.44,270.752,137.664,265.792c-3.616-4.96-30.4-40.48-30.4-77.216s18.656-54.624,26.176-62.304c6.176-6.304,16.384-9.184,26.176-9.184c3.168,0,6.016,0.16,8.576,0.288c7.52,0.32,11.296,0.768,16.256,12.64c6.176,14.88,21.216,51.616,23.008,55.392c1.824,3.776,3.648,8.896,1.088,13.856c-2.4,5.12-4.512,7.392-8.288,11.744c-3.776,4.352-7.36,7.68-11.136,12.352c-3.456,4.064-7.36,8.416-3.008,15.936c4.352,7.36,19.392,31.904,41.536,51.616c28.576,25.44,51.744,33.568,60.032,37.024c6.176,2.56,13.536,1.952,18.048-2.848c5.728-6.176,12.8-16.416,20-26.496c5.12-7.232,11.584-8.128,18.368-5.568c6.912,2.4,43.488,20.48,51.008,24.224c7.52,3.776,12.48,5.568,14.304,8.736C411.2,329.152,411.2,344.032,405.024,361.504z"></path>
-                                                    </svg>
-                                                </span>
-                                                <span
-                                                    className="inline-action-btn inline-action-call"
-                                                    title="AI Call"
-                                                    onClick={() => {
-                                                        if (!profile?.phone) return alert('Telefon numarası bulunamadı');
-                                                        setCallScheduleMode(false);
-                                                        setScheduledDateTime('');
-                                                        setSelectedAgentId('');
-                                                        setShowCallPopup(true);
-                                                        retellAPI.getAgents(currentWorkspace.id).then(res => setRetellAgents(res.data.agents || [])).catch(() => { });
-                                                    }}
-                                                >
-                                                    <PhoneCall size={14} />
-                                                </span>
-                                            </div>
-                                            <div className="unified-contact-item">
-                                                <Mail size={14} className="unified-contact-icon" />
-                                                <input
-                                                    type="email"
-                                                    className="unified-contact-input"
-                                                    value={profile.email || ''}
-                                                    onChange={(e) => setProfile(prev => ({ ...prev, email: e.target.value }))}
-                                                    onBlur={() => handleUpdateProfile({ email: profile.email })}
-                                                    placeholder="E-posta adresi..."
-                                                />
-                                                <span
-                                                    className="inline-action-btn inline-action-mail"
-                                                    title="Mail Gönder"
-                                                    onClick={() => {
-                                                        if (!profile?.email) return alert('E-posta adresi bulunamadı');
-                                                        window.open(`mailto:${profile.email}`, '_blank');
-                                                    }}
-                                                >
-                                                    <Mail size={14} />
-                                                </span>
-                                            </div>
-
-                                        </div>
-
-                                        {/* Extra phones from profile.phones JSON array */}
-                                        {(() => {
-                                            let extraPhones = [];
-                                            try { extraPhones = Array.isArray(profile.phones) ? profile.phones : JSON.parse(profile.phones || '[]'); } catch {}
-                                            return extraPhones.map((ph, idx) => (
-                                                <div className="unified-contact-list" key={`extra-phone-${idx}`} style={{ marginTop: idx === 0 ? '4px' : '0' }}>
-                                                    <div className="unified-contact-item">
-                                                        <Phone size={14} className="unified-contact-icon" />
-                                                        <input
-                                                            type="text"
-                                                            className="unified-contact-input"
-                                                            value={ph}
-                                                            onChange={(e) => {
-                                                                const updated = [...extraPhones];
-                                                                updated[idx] = e.target.value;
-                                                                setProfile(prev => ({ ...prev, phones: JSON.stringify(updated) }));
-                                                            }}
-                                                            onBlur={(e) => {
-                                                                const currentValue = e.target.value;
-                                                                const normalized = normalizePhone(currentValue);
-                                                                setProfile(prev => {
-                                                                    let currentPhones = [];
-                                                                    try { currentPhones = Array.isArray(prev.phones) ? [...prev.phones] : JSON.parse(prev.phones || '[]'); } catch {}
-                                                                    currentPhones[idx] = normalized;
-                                                                    const phonesStr = JSON.stringify(currentPhones);
-                                                                    handleUpdateProfile({ phones: phonesStr });
-                                                                    return { ...prev, phones: phonesStr };
-                                                                });
-                                                            }}
-                                                            placeholder={`Telefon Numarası ${idx + 2}`}
-                                                        />
-                                                        <button
-                                                            className="unified-extra-remove-btn"
-                                                            onClick={() => {
-                                                                const updated = extraPhones.filter((_, i) => i !== idx);
-                                                                setProfile(prev => ({ ...prev, phones: JSON.stringify(updated) }));
-                                                                handleUpdateProfile({ phones: JSON.stringify(updated) });
-                                                            }}
-                                                            title="Kaldır"
-                                                        >×</button>
-                                                    </div>
-                                                </div>
-                                            ));
-                                        })()}
-
-                                        {/* Extra emails from profile.emails JSON array */}
-                                        {(() => {
-                                            let extraEmails = [];
-                                            try { extraEmails = Array.isArray(profile.emails) ? profile.emails : JSON.parse(profile.emails || '[]'); } catch {}
-                                            return extraEmails.map((em, idx) => (
-                                                <div className="unified-contact-list" key={`extra-email-${idx}`} style={{ marginTop: idx === 0 ? '4px' : '0' }}>
-                                                    <div className="unified-contact-item">
-                                                        <Mail size={14} className="unified-contact-icon" />
-                                                        <input
-                                                            type="email"
-                                                            className="unified-contact-input"
-                                                            value={em}
-                                                            onChange={(e) => {
-                                                                const updated = [...extraEmails];
-                                                                updated[idx] = e.target.value;
-                                                                setProfile(prev => ({ ...prev, emails: JSON.stringify(updated) }));
-                                                            }}
-                                                            onBlur={(e) => {
-                                                                const currentValue = e.target.value;
-                                                                setProfile(prev => {
-                                                                    let currentEmails = [];
-                                                                    try { currentEmails = Array.isArray(prev.emails) ? [...prev.emails] : JSON.parse(prev.emails || '[]'); } catch {}
-                                                                    currentEmails[idx] = currentValue;
-                                                                    const emailsStr = JSON.stringify(currentEmails);
-                                                                    handleUpdateProfile({ emails: emailsStr });
-                                                                    return { ...prev, emails: emailsStr };
-                                                                });
-                                                            }}
-                                                            placeholder={`E-posta ${idx + 2}`}
-                                                        />
-                                                        <button
-                                                            className="unified-extra-remove-btn"
-                                                            onClick={() => {
-                                                                const updated = extraEmails.filter((_, i) => i !== idx);
-                                                                setProfile(prev => ({ ...prev, emails: JSON.stringify(updated) }));
-                                                                handleUpdateProfile({ emails: JSON.stringify(updated) });
-                                                            }}
-                                                            title="Kaldır"
-                                                        >×</button>
-                                                    </div>
-                                                </div>
-                                            ));
-                                        })()}
-
-                                        {/* İletişim Ekle dropdown */}
-                                        <div style={{ position: 'relative' }}>
-                                            <button className="unified-add-contact-btn" onClick={() => setShowExtraFields(prev => !prev)}>
-                                                <Plus size={12} style={{ transform: showExtraFields ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} /> İletişim Ekle
-                                            </button>
-                                            {showExtraFields && (
-                                                <div className="unified-add-contact-dropdown">
-                                                    <button onClick={() => {
-                                                        let phones = [];
-                                                        try { phones = Array.isArray(profile.phones) ? [...profile.phones] : JSON.parse(profile.phones || '[]'); } catch {}
-                                                        phones.push('');
-                                                        setProfile(prev => ({ ...prev, phones: JSON.stringify(phones) }));
-                                                        setShowExtraFields(false);
-                                                    }}>
-                                                        <Phone size={13} /> Telefon Ekle
-                                                    </button>
-                                                    <button onClick={() => {
-                                                        let emails = [];
-                                                        try { emails = Array.isArray(profile.emails) ? [...profile.emails] : JSON.parse(profile.emails || '[]'); } catch {}
-                                                        emails.push('');
-                                                        setProfile(prev => ({ ...prev, emails: JSON.stringify(emails) }));
-                                                        setShowExtraFields(false);
-                                                    }}>
-                                                        <Mail size={13} /> E-posta Ekle
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Tags Row */}
-                                        <div className="unified-tags-row">
-                                            {/* Funnel Stage Tag */}
-                                            {funnelStage ? (
-                                                <div
-                                                    className="unified-tag unified-tag-blue"
-                                                    style={{
-                                                        backgroundColor: (funnelStage.color || '#6366f1') + '22',
-                                                        color: funnelStage.color || '#6366f1'
-                                                    }}
-                                                >
-                                                    <Tag size={12} />
-                                                    <span>{funnelStage.name}</span>
-                                                </div>
-                                            ) : (() => {
-                                                const catOption = CATEGORY_OPTIONS.find(o => o.value === (profile.category || 'NEW'));
-                                                return (
-                                                    <div className="unified-tag unified-tag-blue" style={{ backgroundColor: (catOption?.color || '#6b7280') + '20', color: catOption?.color || '#6b7280' }}>
-                                                        <Tag size={12} />
-                                                        <span>{catOption?.label || 'Yeni'}</span>
-                                                    </div>
-                                                );
-                                            })()}
-
-                                            {/* Normal Tags */}
-                                            {profile.tags && profile.tags.map((tag, i) => (
-                                                <div key={i} className="unified-tag unified-tag-purple">
-                                                    <Tag size={12} />
-                                                    <span>{tag}</span>
-                                                    <button onClick={() => handleRemoveTag(tag)} className="remove-tag-btn" title="Sil">
-                                                        <X size={10} />
-                                                    </button>
-                                                </div>
-                                            ))}
-
-                                            {isAddingTag ? (
-                                                <div className="unified-tag-input-wrapper">
+                                    <div className="unified-details">
+                                        <div className="unified-contact-box">
+                                            <div className="unified-contact-list">
+                                                <div className="unified-contact-item">
+                                                    <Phone size={14} className="unified-contact-icon" />
                                                     <input
                                                         type="text"
-                                                        value={newTag}
-                                                        onChange={(e) => setNewTag(e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); }
-                                                            else if (e.key === 'Escape') { setIsAddingTag(false); setNewTag(''); }
+                                                        className="unified-contact-input"
+                                                        value={profile.phone || ''}
+                                                        onChange={(e) => setProfile(prev => ({ ...prev, phone: e.target.value }))}
+                                                        onBlur={() => {
+                                                            const normalized = normalizePhone(profile.phone);
+                                                            setProfile(prev => ({ ...prev, phone: normalized }));
+                                                            handleUpdateProfile({ phone: normalized });
                                                         }}
-                                                        placeholder="Etiket..."
-                                                        autoFocus
-                                                        onBlur={() => { setTimeout(() => { if (!newTag.trim()) setIsAddingTag(false); }, 200); }}
+                                                        placeholder="Telefon Numarası"
                                                     />
+                                                    <span
+                                                        className="inline-action-btn inline-action-whatsapp"
+                                                        title="WhatsApp"
+                                                        onClick={() => {
+                                                            if (!profile?.phone) return alert('Telefon numarası bulunamadı');
+                                                            window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, '')}`, '_blank');
+                                                        }}
+                                                    >
+                                                        <svg viewBox="0 0 512 512" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+                                                            <path fill="currentColor" d="M256.064,0h-0.128l0,0C114.784,0,0,114.816,0,256c0,56,18.048,107.904,48.736,150.048l-31.904,95.104l98.4-31.456C155.712,496.512,204,512,256.064,512C397.216,512,512,397.152,512,256S397.216,0,256.064,0z"></path>
+                                                            <path fill="#fff" d="M405.024,361.504c-6.176,17.44-30.688,31.904-50.24,36.128c-13.376,2.848-30.848,5.12-89.664-19.264C189.888,347.2,141.44,270.752,137.664,265.792c-3.616-4.96-30.4-40.48-30.4-77.216s18.656-54.624,26.176-62.304c6.176-6.304,16.384-9.184,26.176-9.184c3.168,0,6.016,0.16,8.576,0.288c7.52,0.32,11.296,0.768,16.256,12.64c6.176,14.88,21.216,51.616,23.008,55.392c1.824,3.776,3.648,8.896,1.088,13.856c-2.4,5.12-4.512,7.392-8.288,11.744c-3.776,4.352-7.36,7.68-11.136,12.352c-3.456,4.064-7.36,8.416-3.008,15.936c4.352,7.36,19.392,31.904,41.536,51.616c28.576,25.44,51.744,33.568,60.032,37.024c6.176,2.56,13.536,1.952,18.048-2.848c5.728-6.176,12.8-16.416,20-26.496c5.12-7.232,11.584-8.128,18.368-5.568c6.912,2.4,43.488,20.48,51.008,24.224c7.52,3.776,12.48,5.568,14.304,8.736C411.2,329.152,411.2,344.032,405.024,361.504z"></path>
+                                                        </svg>
+                                                    </span>
+                                                    <span
+                                                        className="inline-action-btn inline-action-call"
+                                                        title="AI Call"
+                                                        onClick={() => {
+                                                            if (!profile?.phone) return alert('Telefon numarası bulunamadı');
+                                                            setCallScheduleMode(false);
+                                                            setScheduledDateTime('');
+                                                            setSelectedAgentId('');
+                                                            setShowCallPopup(true);
+                                                            retellAPI.getAgents(currentWorkspace.id).then(res => setRetellAgents(res.data.agents || [])).catch(() => { });
+                                                        }}
+                                                    >
+                                                        <PhoneCall size={14} />
+                                                    </span>
                                                 </div>
-                                            ) : (
-                                                <button className="unified-tag-add-btn" onClick={() => setIsAddingTag(true)} title="Etiket Ekle">
-                                                    <Plus size={12} />
+                                                <div className="unified-contact-item">
+                                                    <Mail size={14} className="unified-contact-icon" />
+                                                    <input
+                                                        type="email"
+                                                        className="unified-contact-input"
+                                                        value={profile.email || ''}
+                                                        onChange={(e) => setProfile(prev => ({ ...prev, email: e.target.value }))}
+                                                        onBlur={() => handleUpdateProfile({ email: profile.email })}
+                                                        placeholder="E-posta adresi..."
+                                                    />
+                                                    <span
+                                                        className="inline-action-btn inline-action-mail"
+                                                        title="Mail Gönder"
+                                                        onClick={() => {
+                                                            if (!profile?.email) return alert('E-posta adresi bulunamadı');
+                                                            window.open(`mailto:${profile.email}`, '_blank');
+                                                        }}
+                                                    >
+                                                        <Mail size={14} />
+                                                    </span>
+                                                </div>
+
+                                            </div>
+
+                                            {/* Extra phones from profile.phones JSON array */}
+                                            {(() => {
+                                                let extraPhones = [];
+                                                try { extraPhones = Array.isArray(profile.phones) ? profile.phones : JSON.parse(profile.phones || '[]'); } catch { }
+                                                return extraPhones.map((ph, idx) => (
+                                                    <div className="unified-contact-list" key={`extra-phone-${idx}`} style={{ marginTop: idx === 0 ? '4px' : '0' }}>
+                                                        <div className="unified-contact-item">
+                                                            <Phone size={14} className="unified-contact-icon" />
+                                                            <input
+                                                                type="text"
+                                                                className="unified-contact-input"
+                                                                value={ph}
+                                                                onChange={(e) => {
+                                                                    const updated = [...extraPhones];
+                                                                    updated[idx] = e.target.value;
+                                                                    setProfile(prev => ({ ...prev, phones: JSON.stringify(updated) }));
+                                                                }}
+                                                                onBlur={(e) => {
+                                                                    const currentValue = e.target.value;
+                                                                    const normalized = normalizePhone(currentValue);
+                                                                    setProfile(prev => {
+                                                                        let currentPhones = [];
+                                                                        try { currentPhones = Array.isArray(prev.phones) ? [...prev.phones] : JSON.parse(prev.phones || '[]'); } catch { }
+                                                                        currentPhones[idx] = normalized;
+                                                                        const phonesStr = JSON.stringify(currentPhones);
+                                                                        handleUpdateProfile({ phones: phonesStr });
+                                                                        return { ...prev, phones: phonesStr };
+                                                                    });
+                                                                }}
+                                                                placeholder={`Telefon Numarası ${idx + 2}`}
+                                                            />
+                                                            <button
+                                                                className="unified-extra-remove-btn"
+                                                                onClick={() => {
+                                                                    const updated = extraPhones.filter((_, i) => i !== idx);
+                                                                    setProfile(prev => ({ ...prev, phones: JSON.stringify(updated) }));
+                                                                    handleUpdateProfile({ phones: JSON.stringify(updated) });
+                                                                }}
+                                                                title="Kaldır"
+                                                            >×</button>
+                                                        </div>
+                                                    </div>
+                                                ));
+                                            })()}
+
+                                            {/* Extra emails from profile.emails JSON array */}
+                                            {(() => {
+                                                let extraEmails = [];
+                                                try { extraEmails = Array.isArray(profile.emails) ? profile.emails : JSON.parse(profile.emails || '[]'); } catch { }
+                                                return extraEmails.map((em, idx) => (
+                                                    <div className="unified-contact-list" key={`extra-email-${idx}`} style={{ marginTop: idx === 0 ? '4px' : '0' }}>
+                                                        <div className="unified-contact-item">
+                                                            <Mail size={14} className="unified-contact-icon" />
+                                                            <input
+                                                                type="email"
+                                                                className="unified-contact-input"
+                                                                value={em}
+                                                                onChange={(e) => {
+                                                                    const updated = [...extraEmails];
+                                                                    updated[idx] = e.target.value;
+                                                                    setProfile(prev => ({ ...prev, emails: JSON.stringify(updated) }));
+                                                                }}
+                                                                onBlur={(e) => {
+                                                                    const currentValue = e.target.value;
+                                                                    setProfile(prev => {
+                                                                        let currentEmails = [];
+                                                                        try { currentEmails = Array.isArray(prev.emails) ? [...prev.emails] : JSON.parse(prev.emails || '[]'); } catch { }
+                                                                        currentEmails[idx] = currentValue;
+                                                                        const emailsStr = JSON.stringify(currentEmails);
+                                                                        handleUpdateProfile({ emails: emailsStr });
+                                                                        return { ...prev, emails: emailsStr };
+                                                                    });
+                                                                }}
+                                                                placeholder={`E-posta ${idx + 2}`}
+                                                            />
+                                                            <button
+                                                                className="unified-extra-remove-btn"
+                                                                onClick={() => {
+                                                                    const updated = extraEmails.filter((_, i) => i !== idx);
+                                                                    setProfile(prev => ({ ...prev, emails: JSON.stringify(updated) }));
+                                                                    handleUpdateProfile({ emails: JSON.stringify(updated) });
+                                                                }}
+                                                                title="Kaldır"
+                                                            >×</button>
+                                                        </div>
+                                                    </div>
+                                                ));
+                                            })()}
+
+                                            {/* İletişim Ekle dropdown */}
+                                            <div style={{ position: 'relative' }}>
+                                                <button className="unified-add-contact-btn" onClick={() => setShowExtraFields(prev => !prev)}>
+                                                    <Plus size={12} style={{ transform: showExtraFields ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} /> İletişim Ekle
                                                 </button>
-                                            )}
+                                                {showExtraFields && (
+                                                    <div className="unified-add-contact-dropdown">
+                                                        <button onClick={() => {
+                                                            let phones = [];
+                                                            try { phones = Array.isArray(profile.phones) ? [...profile.phones] : JSON.parse(profile.phones || '[]'); } catch { }
+                                                            phones.push('');
+                                                            setProfile(prev => ({ ...prev, phones: JSON.stringify(phones) }));
+                                                            setShowExtraFields(false);
+                                                        }}>
+                                                            <Phone size={13} /> Telefon Ekle
+                                                        </button>
+                                                        <button onClick={() => {
+                                                            let emails = [];
+                                                            try { emails = Array.isArray(profile.emails) ? [...profile.emails] : JSON.parse(profile.emails || '[]'); } catch { }
+                                                            emails.push('');
+                                                            setProfile(prev => ({ ...prev, emails: JSON.stringify(emails) }));
+                                                            setShowExtraFields(false);
+                                                        }}>
+                                                            <Mail size={13} /> E-posta Ekle
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Tags Row */}
+                                            <div className="unified-tags-row">
+                                                {/* Funnel Stage Tag */}
+                                                {funnelStage ? (
+                                                    <div
+                                                        className="unified-tag unified-tag-blue"
+                                                        style={{
+                                                            backgroundColor: (funnelStage.color || '#6366f1') + '22',
+                                                            color: funnelStage.color || '#6366f1'
+                                                        }}
+                                                    >
+                                                        <Tag size={12} />
+                                                        <span>{funnelStage.name}</span>
+                                                    </div>
+                                                ) : (() => {
+                                                    const catOption = CATEGORY_OPTIONS.find(o => o.value === (profile.category || 'NEW'));
+                                                    return (
+                                                        <div className="unified-tag unified-tag-blue" style={{ backgroundColor: (catOption?.color || '#6b7280') + '20', color: catOption?.color || '#6b7280' }}>
+                                                            <Tag size={12} />
+                                                            <span>{catOption?.label || 'Yeni'}</span>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {/* Normal Tags */}
+                                                {profile.tags && profile.tags.map((tag, i) => (
+                                                    <div key={i} className="unified-tag unified-tag-purple">
+                                                        <Tag size={12} />
+                                                        <span>{tag}</span>
+                                                        <button onClick={() => handleRemoveTag(tag)} className="remove-tag-btn" title="Sil">
+                                                            <X size={10} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+
+                                                {isAddingTag ? (
+                                                    <div className="unified-tag-input-wrapper">
+                                                        <input
+                                                            type="text"
+                                                            value={newTag}
+                                                            onChange={(e) => setNewTag(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); }
+                                                                else if (e.key === 'Escape') { setIsAddingTag(false); setNewTag(''); }
+                                                            }}
+                                                            placeholder="Etiket..."
+                                                            autoFocus
+                                                            onBlur={() => { setTimeout(() => { if (!newTag.trim()) setIsAddingTag(false); }, 200); }}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <button className="unified-tag-add-btn" onClick={() => setIsAddingTag(true)} title="Etiket Ekle">
+                                                        <Plus size={12} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
+
+                            {/* Atama artık Inbox üst çubuğundan yapılmaktadır */}
 
 
 
-                            {/* ACTION BUTTONS */}
-                            <div style={{ display: 'flex', gap: '4px', padding: '8px 16px', justifyContent: 'center' }}>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => { setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '' }); setShowActivityModal(true); }}>
+
+                            {/* ACTION BUTTONS — Row 1: Aktiviteler */}
+                            <div style={{ display: 'flex', gap: '4px', padding: '4px 16px 0', justifyContent: 'center' }}>
+                                <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
                                     <StickyNote size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Not</span>
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Not</span>
                                 </button>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => { setActivityForm({ type: 'REMINDER', title: '', description: '', dueDate: '', assignedToId: '' }); setShowActivityModal(true); }}>
+                                <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
                                     <PhoneCall size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Ara</span>
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Planla</span>
                                 </button>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => { setActivityForm({ type: 'MEETING', title: '', description: '', dueDate: '', assignedToId: '' }); setShowActivityModal(true); }}>
-                                    <Calendar size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Görüşme</span>
+                                <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('MEETING')}>
+                                    <CalendarDays size={18} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görüşme{' '}Planla</span>
                                 </button>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => { setActivityForm({ type: 'TASK', title: '', description: '', dueDate: '', assignedToId: '' }); setShowActivityModal(true); }}>
-                                    <Check size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Görev</span>
+                                <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('REMINDER')}>
+                                    <Bell size={18} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görev{' '}Hatırlatıcı</span>
+                                </button>
+                            </div>
+                            {/* ACTION BUTTONS — Row 2: Satış */}
+                            <div style={{ display: 'flex', gap: '4px', padding: '0 16px 8px', justifyContent: 'center' }}>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('PROPOSAL')}>
+                                    <FileText size={18} style={{ color: '#10b981' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
+                                </button>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('ORDER')}>
+                                    <TrendingUp size={18} style={{ color: '#3b82f6' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
+                                </button>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('INVOICE')}>
+                                    <FileText size={18} style={{ color: '#8b5cf6' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
+                                </button>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('PAYMENT')}>
+                                    <Banknote size={18} style={{ color: '#f59e0b' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Tahsilat</span>
                                 </button>
                             </div>
 
-
                             {/* TIMELINE SECTION */}
                             <div className="activity-timeline-section">
-                                <div className="timeline-title">
-                                    <History size={16} /> AKTİVİTE GEÇMİŞİ
-                                </div>
-                                
+                                {/* Başlık ve çizgi kaldırıldı — alan kazanmak için */}
+
                                 {timelineLoading ? (
                                     <div className="loading-state"><Loader className="spin" size={24} /></div>
                                 ) : (
@@ -1143,35 +1269,96 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         {/* PLANLANMIŞ AKTİVİTELER */}
                                         {plannedTimeline.length > 0 && (
                                             <>
-                                                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px', borderBottom: '1px dashed #fde68a', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <Clock size={12} /> Planlanan
+                                                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 0 6px', borderBottom: '2px solid #dbeafe', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <CalendarDays size={13} />
+                                                    Yaklaşan Etkinlikler
+                                                    <span style={{ marginLeft: 'auto', background: '#2563eb', color: '#fff', borderRadius: '999px', padding: '0 7px', fontSize: '0.65rem', fontWeight: 800 }}>{plannedTimeline.length}</span>
                                                 </div>
                                                 {plannedTimeline.map((item) => {
-                                                    const iconClass = `timeline-icon type-${item.type.toLowerCase()}`;
+                                                    const typeConfig = {
+                                                        CALL:     { lucide: <PhoneCall size={16}/>,    label: 'Arama Planlandı',    accent: '#3b82f6', accentBg: '#eff6ff', accentLight: '#dbeafe' },
+                                                        MEETING:  { lucide: <CalendarDays size={16}/>, label: 'Görüşme Planlandı', accent: '#10b981', accentBg: '#f0fdf4', accentLight: '#dcfce7' },
+                                                        REMINDER: { lucide: <Bell size={16}/>,         label: 'Hatırlatıcı',        accent: '#f97316', accentBg: '#fff7ed', accentLight: '#ffedd5' },
+                                                        TASK:     { lucide: <Bell size={16}/>,         label: 'Görev',              accent: '#8b5cf6', accentBg: '#faf5ff', accentLight: '#ede9fe' },
+                                                        VISIT:    { lucide: <MapPin size={16}/>,        label: 'Ziyaret',            accent: '#a855f7', accentBg: '#fdf4ff', accentLight: '#f3e8ff' },
+                                                    };
+                                                    const cfg = typeConfig[item.type] || { lucide: <Bell size={16}/>, label: item.type, accent: '#f59e0b', accentBg: '#fffbeb', accentLight: '#fef3c7' };
+                                                    const now = new Date();
+                                                    const due = item.dueDate ? new Date(item.dueDate) : null;
+                                                    const overdue = due && due < now;
+                                                    const diffMs = due ? due - now : null;
+                                                    const diffMins = diffMs ? Math.round(diffMs / 60000) : null;
+                                                    let countdown = '';
+                                                    if (diffMins !== null) {
+                                                        if (overdue) {
+                                                            const overMins = Math.abs(diffMins);
+                                                            countdown = overMins < 60 ? `${overMins} dk gecikti` : overMins < 1440 ? `${Math.round(overMins/60)} saat gecikti` : `${Math.round(overMins/1440)} gün gecikti`;
+                                                        } else {
+                                                            countdown = diffMins < 60 ? `${diffMins} dk sonra` : diffMins < 1440 ? `${Math.round(diffMins/60)} saat sonra` : `${Math.round(diffMins/1440)} gün sonra`;
+                                                        }
+                                                    }
                                                     return (
-                                                        <div key={item.id} className="timeline-item" style={{ borderLeft: '3px solid #f59e0b', paddingLeft: '10px', background: '#fffbeb' }}>
-                                                            <div className="timeline-header">
-                                                                <div className="timeline-header-left">
-                                                                    <div className={iconClass}>{renderTimelineIcon(item.type)}</div>
-                                                                    <span className="timeline-type-name">{renderTimelineTypeName(item.type)}</span>
-                                                                    <span className="timeline-author-badge">{item.labelName}</span>
+                                                        <div
+                                                            key={item.id}
+                                                            style={{ background: '#fff', borderRadius: '12px', marginBottom: '8px', boxShadow: '0 1px 6px rgba(0,0,0,0.08)', overflow: 'hidden', border: `1px solid ${overdue ? '#fecaca' : '#e5e7eb'}`, cursor: 'default', transition: 'box-shadow 0.15s' }}
+                                                            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.12)'}
+                                                            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 6px rgba(0,0,0,0.08)'}
+                                                        >
+                                                            {/* Colored top stripe */}
+                                                            <div style={{ height: '3px', background: overdue ? '#ef4444' : cfg.accent, borderRadius: '12px 12px 0 0' }} />
+                                                            <div style={{ padding: '10px 12px' }}>
+                                                                {/* Header row */}
+                                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                                                    {/* Icon box */}
+                                                                    <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: cfg.accentLight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: cfg.accent, flexShrink: 0, marginTop: '1px' }}>
+                                                                        {cfg.lucide}
+                                                                    </div>
+                                                                    {/* Content */}
+                                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                            <span style={{ fontWeight: 700, fontSize: '0.83rem', color: '#111827' }}>{cfg.label}</span>
+                                                                            <span style={{ fontSize: '0.61rem', fontWeight: 700, padding: '1px 8px', borderRadius: '999px',
+                                                                                background: overdue ? '#fee2e2' : '#fef3c7',
+                                                                                color: overdue ? '#dc2626' : '#92400e',
+                                                                                border: `1px solid ${overdue ? '#fca5a5' : '#fde68a'}`
+                                                                            }}>
+                                                                                {overdue ? `⚠️ ${countdown}` : `⏰ ${countdown || 'Yaklaşan'}`}
+                                                                            </span>
+                                                                        </div>
+                                                                        {item.title && item.title !== cfg.label && (
+                                                                            <div style={{ fontSize: '0.76rem', color: '#374151', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</div>
+                                                                        )}
+                                                                        {/* Date/time row */}
+                                                                        {due && (
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '5px', fontSize: '0.72rem', color: overdue ? '#dc2626' : '#4b5563', fontWeight: 500 }}>
+                                                                                <Clock size={11} />
+                                                                                {due.toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                            </div>
+                                                                        )}
+                                                                        {/* Assignee */}
+                                                                        {item.assignedToName && (
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.7rem', color: '#6366f1' }}>
+                                                                                <User size={10} /> {item.assignedToName}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    {/* Complete button */}
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); setCompletingActivity(item); setCompleteResult(''); }}
+                                                                        title="Tamamlandı — Not gir"
+                                                                        style={{ flexShrink: 0, background: '#10b981', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.68rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', lineHeight: 1.2 }}
+                                                                    >
+                                                                        <Check size={14} />
+                                                                        <span>Tamamla</span>
+                                                                    </button>
                                                                 </div>
-                                                                <span className="timeline-time" style={{ color: '#f59e0b', fontWeight: 600 }}>
-                                                                    {new Date(item.dueDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                </span>
                                                             </div>
-                                                            {item.title && <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#92400e' }}>{item.title}</div>}
-                                                            {item.content && <div className="timeline-content">{item.content}</div>}
-                                                            {item.assignedToName && (
-                                                                <div className="timeline-due-date" style={{ color: '#6366f1' }}>
-                                                                    <User size={12} /> Atanan: {item.assignedToName}
-                                                                </div>
-                                                            )}
                                                         </div>
                                                     );
                                                 })}
                                             </>
                                         )}
+
 
                                         {/* GEÇMİŞ AKTİVİTELER */}
                                         {pastTimeline.length > 0 && (
@@ -1187,8 +1374,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     const iconClass = `timeline-icon type-${item.type.toLowerCase()}`;
                                                     const isEditing = editingActivity?.id === item.id;
                                                     return (
-                                                        <div 
-                                                            key={item.id} 
+                                                        <div
+                                                            key={item.id}
                                                             className={`timeline-item ${isNote ? 'type-note' : ''}`}
                                                             style={{ position: 'relative', ...(isConv ? { cursor: 'pointer' } : {}) }}
                                                             onClick={isConv && item.conversationId ? () => {
@@ -1204,6 +1391,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     <div className={iconClass}>{renderTimelineIcon(item.type)}</div>
                                                                     <span className="timeline-type-name">{item.title || renderTimelineTypeName(item.type)}</span>
                                                                     <span className="timeline-author-badge">{item.labelName}</span>
+                                                                    {/* Durum etiketi */}
+                                                                    {item.sourceType === 'ACTIVITY' && (() => {
+                                                                        const s = item.status;
+                                                                        if (s === 'COMPLETED') return <span style={{ fontSize: '0.6rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '1px 7px', fontWeight: 700, whiteSpace: 'nowrap' }}>✅ Tamamlandı</span>;
+                                                                        if (s === 'CANCELLED') return <span style={{ fontSize: '0.6rem', background: '#f3f4f6', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: '999px', padding: '1px 7px', fontWeight: 700, whiteSpace: 'nowrap' }}>❌ İptal</span>;
+                                                                        if (s === 'PLANNED') return <span style={{ fontSize: '0.6rem', background: '#dbeafe', color: '#1d4ed8', border: '1px solid #93c5fd', borderRadius: '999px', padding: '1px 7px', fontWeight: 700, whiteSpace: 'nowrap' }}>🕜 Planlandı</span>;
+                                                                        return null;
+                                                                    })()}
                                                                 </div>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                     <span className="timeline-time">
@@ -1267,19 +1462,43 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     ) : (
                                                                         <>
                                                                             {item.content && <div className="timeline-content">{item.content}</div>}
+                                                                            {isNote && item.content && (() => {
+                                                                                const { hasIntent, suggestedDueDate, title } = detectCallIntent(item.content);
+                                                                                if (!hasIntent) return null;
+                                                                                return (
+                                                                                    <button
+                                                                                        onClick={e => {
+                                                                                            e.stopPropagation();
+                                                                                            setActivityForm({
+                                                                                                type: 'CALL',
+                                                                                                title,
+                                                                                                description: '',
+                                                                                                dueDate: suggestedDueDate,
+                                                                                                assignedToId: ''
+                                                                                            });
+                                                                                            setShowActivityModal(true);
+                                                                                        }}
+                                                                                        style={{ marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '6px', padding: '3px 9px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
+                                                                                    >
+                                                                                        📞 Arama Planla{suggestedDueDate ? ` (${new Date(suggestedDueDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}
+                                                                                    </button>
+                                                                                );
+                                                                            })()}
                                                                         </>
                                                                     )}
                                                                 </>
                                                             )}
+                                                            {/* Due date — temiz format */}
                                                             {item.dueDate && (
-                                                                <div className="timeline-due-date">
-                                                                    <Clock size={12} /> Bitiş: {new Date(item.dueDate).toLocaleString('tr-TR')}
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.7rem', color: '#6b7280' }}>
+                                                                    <Clock size={10} />
+                                                                    {new Date(item.dueDate).toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                                 </div>
                                                             )}
+                                                            {/* Assignee — temiz pill */}
                                                             {item.assignedToName && (
-
-                                                                <div className="timeline-due-date" style={{ color: '#6366f1' }}>
-                                                                    <User size={12} /> Atanan: {item.assignedToName}
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.68rem', color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '999px', padding: '1px 8px' }}>
+                                                                    <User size={9} /> {item.assignedToName}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1313,14 +1532,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 <div className="reminder-modal-overlay" onClick={() => setShowActivityModal(false)}>
                                     <div className="reminder-modal" onClick={e => e.stopPropagation()}>
                                         <div className="reminder-modal-header">
-                                            {activityForm.type === 'NOTE' ? <StickyNote size={20} style={{ color: '#eab308' }} /> :
-                                             activityForm.type === 'TASK' ? <Check size={20} style={{ color: '#ea580c' }} /> :
-                                             activityForm.type === 'MEETING' ? <Calendar size={20} style={{ color: '#2563eb' }} /> :
-                                             <Bell size={20} style={{ color: '#ef4444' }} />}
+                                            {renderTimelineIcon(activityForm.type)}
                                             <h3>
-                                                {activityForm.type === 'NOTE' ? 'Yeni Not Ekle' :
-                                                 activityForm.type === 'TASK' ? 'Yeni Görev Ekle' :
-                                                 activityForm.type === 'MEETING' ? 'Görüşme Planla' : 'Hatırlatıcı Ekle'}
+                                                {({
+                                                    'NOTE': 'Yeni Not Ekle',
+                                                    'CALL': 'Arama Planla',
+                                                    'MEETING': 'Görüşme Planla',
+                                                    'TASK': 'Yeni Görev Ekle',
+                                                    'PROPOSAL': 'Teklif Kaydı',
+                                                    'ORDER': 'Sipariş Kaydı',
+                                                    'INVOICE': 'Fatura Kaydı',
+                                                    'PAYMENT': 'Ödeme Kaydı',
+                                                })[activityForm.type] || 'Yeni Aktivite'}
                                             </h3>
                                             <button className="reminder-modal-close" onClick={() => setShowActivityModal(false)}>
                                                 <X size={18} />
@@ -1329,7 +1552,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         <div className="reminder-modal-body">
                                             {activityForm.type !== 'NOTE' && (
                                                 <div className="reminder-form-group">
-                                                    <label><Clock size={14} /> Tarih / Zaman {activityForm.type === 'MEETING' ? '*' : ''}</label>
+                                                    <label><FileText size={14} /> Başlık</label>
+                                                    <input
+                                                        type="text"
+                                                        value={activityForm.title}
+                                                        placeholder={({
+                                                            'CALL': 'Müşteri geri aranacak',
+                                                            'MEETING': 'Ofiste görüşme',
+                                                            'TASK': 'Teklif hazırlanacak',
+                                                            'PROPOSAL': '25.000₺ web sitesi teklifi',
+                                                            'ORDER': 'Sipariş #1234',
+                                                            'INVOICE': 'Fatura #5678',
+                                                            'PAYMENT': '10.000₺ ödeme alındı',
+                                                        })[activityForm.type] || 'Başlık girin...'}
+                                                        onChange={e => setActivityForm(prev => ({ ...prev, title: e.target.value }))}
+                                                    />
+                                                </div>
+                                            )}
+                                            {activityForm.type !== 'NOTE' && (
+                                                <div className="reminder-form-group">
+                                                    <label><Clock size={14} /> Tarih / Zaman</label>
                                                     <input
                                                         type="datetime-local"
                                                         value={activityForm.dueDate}
@@ -1337,35 +1579,59 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     />
                                                 </div>
                                             )}
-                                            {(activityForm.type === 'TASK' || activityForm.type === 'MEETING' || activityForm.type === 'REMINDER') && (
+                                            {activityForm.type !== 'NOTE' && (
                                                 <div className="reminder-form-group">
-                                                    <label><User size={14} /> Agent'a Ata (İsteğe Bağlı)</label>
+                                                    <label><Users size={14} /> Takıma Ata (İsteğe Bağlı)</label>
+                                                    <select
+                                                        value={activityForm.teamId}
+                                                        onChange={e => setActivityForm(prev => ({ ...prev, teamId: e.target.value, assignedToId: '' }))}
+                                                    >
+                                                        <option value="">Takım Seç / Tüm Ajanlar</option>
+                                                        {(() => {
+                                                            const renderOpts = (list, depth = 0) => list.flatMap(t => [
+                                                                <option key={t.id} value={t.id}>{'\u00a0\u00a0'.repeat(depth)}{t.name}</option>,
+                                                                ...(t.children ? renderOpts(t.children, depth + 1) : [])
+                                                            ]);
+                                                            return renderOpts(teams || []);
+                                                        })()}
+                                                    </select>
+                                                </div>
+                                            )}
+                                            {activityForm.type !== 'NOTE' && (
+                                                <div className="reminder-form-group">
+                                                    <label><User size={14} /> Kişiye Ata (İsteğe Bağlı)</label>
                                                     <select
                                                         value={activityForm.assignedToId}
                                                         onChange={e => setActivityForm(prev => ({ ...prev, assignedToId: e.target.value }))}
                                                     >
-                                                        <option value="">Kendime / Atanmamış</option>
-                                                        {members.map(member => (
-                                                            <option key={member.user?.id || member.id} value={member.user?.id || member.id}>
-                                                                {(onlineUsers.get(member.user?.id || member.id)?.isOnline || member.user?.isOnline) ? '🟢' : '⚪'} {member.user?.name || member.name}
-                                                            </option>
-                                                        ))}
+                                                        <option value="">Atanmamış</option>
+                                                        {(() => {
+                                                            // Takım seçiliyse o takımın üyelerini filtrele
+                                                            const selectedTeamId = activityForm.teamId;
+                                                            const findTeam = (list, id) => {
+                                                                for (const t of list) {
+                                                                    if (t.id === id) return t;
+                                                                    if (t.children) { const f = findTeam(t.children, id); if (f) return f; }
+                                                                }
+                                                                return null;
+                                                            };
+                                                            let filteredMembers = members;
+                                                            if (selectedTeamId && teams) {
+                                                                const team = findTeam(teams, selectedTeamId);
+                                                                const memberIds = new Set((team?.members || []).map(m => m.userId));
+                                                                filteredMembers = members.filter(m => memberIds.has(m.user?.id || m.id));
+                                                            }
+                                                            return filteredMembers.map(member => (
+                                                                <option key={member.user?.id || member.id} value={member.user?.id || member.id}>
+                                                                    {(onlineUsers.get(member.user?.id || member.id)?.isOnline || member.user?.isOnline) ? '🟢' : '⚪'} {member.user?.name || member.name}
+                                                                </option>
+                                                            ));
+                                                        })()}
                                                     </select>
                                                 </div>
                                             )}
-                                            {activityForm.type === 'TASK' && (
-                                                <div className="reminder-form-group">
-                                                    <label><FileText size={14} /> Görev Başlığı *</label>
-                                                    <input
-                                                        type="text"
-                                                        value={activityForm.title}
-                                                        placeholder="Müşteriye teklif gönderilecek vb."
-                                                        onChange={e => setActivityForm(prev => ({ ...prev, title: e.target.value }))}
-                                                    />
-                                                </div>
-                                            )}
                                             <div className="reminder-form-group">
-                                                <label><FileText size={14} /> Açıklama *</label>
+                                                <label><FileText size={14} /> Açıklama {activityForm.type === 'NOTE' ? '*' : ''}</label>
                                                 <textarea
                                                     value={activityForm.description}
                                                     onChange={e => setActivityForm(prev => ({ ...prev, description: e.target.value }))}
@@ -1379,6 +1645,49 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <button className="reminder-btn-save" onClick={handleSaveActivity} disabled={activitySaving}>
                                                 {activitySaving ? <Loader className="spin" size={16} /> : <Save size={16} />}
                                                 Kaydet
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* TAMAMLAMA MODALI */}
+                            {completingActivity && (
+                                <div className="reminder-modal-overlay" onClick={() => setCompletingActivity(null)}>
+                                    <div className="reminder-modal" onClick={e => e.stopPropagation()}>
+                                        <div className="reminder-modal-header">
+                                            <Check size={20} style={{ color: '#10b981' }} />
+                                            <h3>Aktiviteyi Tamamla</h3>
+                                            <button className="reminder-modal-close" onClick={() => setCompletingActivity(null)}>
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+                                        <div className="reminder-modal-body">
+                                            <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: '8px', marginBottom: '12px', fontSize: '0.82rem' }}>
+                                                <strong>{renderTimelineTypeName(completingActivity.type)}</strong>
+                                                {completingActivity.title && <span> — {completingActivity.title}</span>}
+                                                {completingActivity.dueDate && (
+                                                    <div style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '4px' }}>
+                                                        <Clock size={12} /> {new Date(completingActivity.dueDate).toLocaleString('tr-TR')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="reminder-form-group">
+                                                <label><FileText size={14} /> Sonuç Notu</label>
+                                                <textarea
+                                                    value={completeResult}
+                                                    onChange={e => setCompleteResult(e.target.value)}
+                                                    placeholder="Görüşme sonucunu, notu veya detayları yazın..."
+                                                    rows={4}
+                                                    autoFocus
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="reminder-modal-footer">
+                                            <button className="reminder-btn-cancel" onClick={() => setCompletingActivity(null)}>İptal</button>
+                                            <button className="reminder-btn-save" onClick={handleCompleteActivity} style={{ background: '#10b981' }}>
+                                                <Check size={16} />
+                                                Tamamla
                                             </button>
                                         </div>
                                     </div>
@@ -1562,12 +1871,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             <select
                                 value={selectedAgentId}
                                 onChange={(e) => setSelectedAgentId(e.target.value)}
-                                style={{ 
-                                    width: '100%', 
-                                    padding: '10px 12px', 
-                                    borderRadius: '10px', 
-                                    border: '1px solid #e5e7eb', 
-                                    fontSize: '13px', 
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 12px',
+                                    borderRadius: '10px',
+                                    border: '1px solid #e5e7eb',
+                                    fontSize: '13px',
                                     background: '#f9fafb',
                                     outline: 'none',
                                     cursor: 'pointer'

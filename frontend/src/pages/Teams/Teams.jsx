@@ -25,6 +25,7 @@ const Teams = () => {
     // Modal Form States
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
+    const [teamAssignmentRule, setTeamAssignmentRule] = useState('POOL');
     const [parentIdForCreate, setParentIdForCreate] = useState(null);
 
     // Member Management States
@@ -81,7 +82,8 @@ const Teams = () => {
                 // Update
                 const response = await teamAPI.update(currentWorkspace.id, selectedTeam.id, {
                     name: teamName,
-                    description: teamDescription
+                    description: teamDescription,
+                    assignmentRule: teamAssignmentRule
                 });
                 if (response.data && response.data.team) {
                     loadTeams(); // Reload to get hierarchy
@@ -91,6 +93,7 @@ const Teams = () => {
                 const response = await teamAPI.create(currentWorkspace.id, {
                     name: teamName,
                     description: teamDescription,
+                    assignmentRule: teamAssignmentRule,
                     parentId: parentIdForCreate || null
                 });
                 if (response.data && response.data.team) {
@@ -131,11 +134,13 @@ const Teams = () => {
             setSelectedTeam(team);
             setTeamName(team.name);
             setTeamDescription(team.description || '');
+            setTeamAssignmentRule(team.assignmentRule || 'POOL');
             setParentIdForCreate(null);
         } else {
             setSelectedTeam(null);
             setTeamName('');
             setTeamDescription('');
+            setTeamAssignmentRule('POOL');
             setParentIdForCreate(parentId);
         }
         setIsCreateModalOpen(true);
@@ -146,6 +151,7 @@ const Teams = () => {
         setSelectedTeam(null);
         setTeamName('');
         setTeamDescription('');
+        setTeamAssignmentRule('POOL');
         setParentIdForCreate(null);
     };
 
@@ -415,6 +421,17 @@ const Teams = () => {
                                 {team.children.length} alt takım
                             </span>
                         )}
+                        <span style={{
+                            marginLeft: 'auto',
+                            fontSize: '0.72rem',
+                            padding: '2px 8px',
+                            borderRadius: 20,
+                            background: team.assignmentRule === 'ROUND_ROBIN' ? '#fef3c7' : team.assignmentRule === 'ONLINE_ONLY' ? '#dcfce7' : '#eff6ff',
+                            color: team.assignmentRule === 'ROUND_ROBIN' ? '#92400e' : team.assignmentRule === 'ONLINE_ONLY' ? '#166534' : '#1e40af',
+                            fontWeight: 500,
+                        }}>
+                            {team.assignmentRule === 'ROUND_ROBIN' ? '🔄 Sıralı' : team.assignmentRule === 'ONLINE_ONLY' ? '🟢 Online' : '🏊 Havuz'}
+                        </span>
                     </div>
 
                     <button className="manage-members-btn" onClick={() => openMembersModal(team)}>
@@ -515,6 +532,47 @@ const Teams = () => {
                                     placeholder="Takım hakkında kısa bilgi..."
                                     rows={3}
                                 />
+                            </div>
+                            <div className="form-group">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    Atama Kuralı
+                                </label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                                    {[
+                                        { value: 'POOL', icon: '🏊', label: 'Havuz', desc: 'Herkes görür, kim üstlenirse o alır' },
+                                        { value: 'ROUND_ROBIN', icon: '🔄', label: 'Sıralı Dağıtım', desc: 'Üyelere sırayla otomatik atar' },
+                                        { value: 'ONLINE_ONLY', icon: '🟢', label: 'Online Kişilere', desc: 'Yalnızca online üyelere sırayla atar' },
+                                    ].map(rule => (
+                                        <label
+                                            key={rule.value}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'flex-start',
+                                                gap: 10,
+                                                padding: '10px 12px',
+                                                borderRadius: 8,
+                                                border: `2px solid ${teamAssignmentRule === rule.value ? '#6366f1' : '#e5e7eb'}`,
+                                                background: teamAssignmentRule === rule.value ? '#f0f0ff' : '#fafafa',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s',
+                                            }}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="assignmentRule"
+                                                value={rule.value}
+                                                checked={teamAssignmentRule === rule.value}
+                                                onChange={() => setTeamAssignmentRule(rule.value)}
+                                                style={{ marginTop: 2 }}
+                                            />
+                                            <span style={{ fontSize: 18 }}>{rule.icon}</span>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1f2937' }}>{rule.label}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 2 }}>{rule.desc}</div>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
                             <div className="teams-modal-actions">
                                 <button type="button" className="btn-secondary" onClick={closeCreateModal}>Cancel</button>
