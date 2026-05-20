@@ -120,13 +120,58 @@ export default function RealEstateOffers() {
         }
     };
 
+    const printRef = React.useRef(null);
+
     const handleDownloadPDF = (offer = null) => {
+        const target = offer ? null : printRef.current;
         if (offer) {
             setSelectedOffer(offer);
-            setTimeout(() => { window.print(); }, 100);
+            setTimeout(() => doPrint(), 150);
         } else {
-            window.print();
+            doPrint();
         }
+    };
+
+    const doPrint = () => {
+        const el = printRef.current;
+        if (!el) return;
+        const printWindow = window.open('', '_blank', 'width=900,height=700');
+        if (!printWindow) return;
+        printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Teklif</title><style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #2c3e50; }
+            .re-summary-header { background: linear-gradient(135deg, #1a2f45, #1a5276); padding: 20px 24px; color: white; border-radius: 10px 10px 0 0; display: flex; align-items: center; justify-content: space-between; }
+            .re-summary-header h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 700; }
+            .re-summary-header p { margin: 0; font-size: 0.8125rem; opacity: 0.7; display: flex; align-items: center; gap: 8px; }
+            .re-summary-body { padding: 24px; }
+            .re-summary-price-block { background: linear-gradient(135deg, rgba(26,82,118,0.05), rgba(41,128,185,0.05)); border: 1px solid rgba(26,82,118,0.15); border-radius: 10px; padding: 16px; margin-bottom: 16px; text-align: center; }
+            .re-summary-price-label { font-size: 0.75rem; font-weight: 600; color: #5d6d7e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+            .re-summary-price-value { font-size: 1.75rem; font-weight: 900; color: #1a5276; }
+            .re-summary-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e8ecef; }
+            .re-summary-row:last-of-type { border-bottom: none; }
+            .re-summary-row .label { font-size: 0.8125rem; color: #5d6d7e; }
+            .re-summary-row .value { font-size: 0.9375rem; font-weight: 600; color: #2c3e50; }
+            .re-discount-badge { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; margin-bottom: 16px; }
+            .re-discount-badge.discount { background: #d5f5e3; color: #1e8449; border: 1px solid rgba(30,132,73,0.2); }
+            .re-discount-badge.surcharge { background: #fef9e7; color: #b7950b; border: 1px solid rgba(183,149,11,0.2); }
+            .re-schedule-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; margin-top: 8px; }
+            .re-schedule-table th, .re-schedule-table td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #e8ecef; }
+            .re-schedule-table th { background: #f8f9fa; font-weight: 700; color: #5d6d7e; font-size: 0.75rem; text-transform: uppercase; }
+            .re-schedule-table td:first-child, .re-schedule-table th:first-child { text-align: left; }
+            .re-schedule-table tr.type-down_payment td { color: #1a5276; font-weight: 600; }
+            .re-schedule-table tr.type-interim td { color: #b7950b; font-weight: 600; }
+            .no-print { display: none !important; }
+            .print-logo { display: block !important; margin-bottom: 12px; }
+            .print-logo img { max-height: 60px; max-width: 150px; object-fit: contain; }
+            @media print { @page { margin: 15mm; } }
+        </style></head><body>`);
+        printWindow.document.write(el.innerHTML);
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        printWindow.onload = () => {
+            printWindow.print();
+            printWindow.close();
+        };
     };
 
     const logoUrl = companyInfo?.companyLogo ? `${import.meta.env.VITE_API_URL || ''}${companyInfo.companyLogo}` : null;
@@ -272,7 +317,7 @@ export default function RealEstateOffers() {
                 {/* Detay Paneli (Modal Popup) */}
                 {selectedOffer && (
                     <div className="re-modal-overlay" onClick={() => setSelectedOffer(null)}>
-                        <div className="re-card re-summary-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, margin: '20px auto', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div ref={printRef} className="re-card re-summary-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, margin: '20px auto', maxHeight: '90vh', overflowY: 'auto' }}>
                             <div className="re-summary-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                 {logoUrl && (
