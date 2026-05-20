@@ -1057,36 +1057,30 @@
 
 /* ─── YAZDIRMA (PDF) STİLLERİ ───────────────────────────────────────────────── */
 @media print {
-    /* Tüm sayfayı gizle */
-    body * { visibility: hidden; }
     .no-print { display: none !important; }
 
-    /* Modal overlay ve içindekileri göster */
-    .re-modal-overlay,
-    .re-modal-overlay *,
-    .re-summary-panel,
-    .re-summary-panel * {
-        visibility: visible !important;
-    }
+    /* Uygulamanın kendi elemanlarını gizle */
+    .app-sidebar,
+    .app-header,
+    .re-page > .re-card:first-child,
+    .re-offers-filters,
+    .re-page > .re-card > .re-offers-table { display: none !important; }
 
-    /* Modal overlay — tam sayfa, scroll/yükseklik kısıtlamalarını kaldır */
+    /* Modal overlay — normal akışa al */
     .re-modal-overlay {
-        position: absolute !important;
-        inset: 0 !important;
-        background: white !important;
+        position: static !important;
+        background: none !important;
         padding: 0 !important;
         overflow: visible !important;
         height: auto !important;
-        z-index: 9999;
+        display: block !important;
     }
 
-    /* Modal/panel içeriği — tam genişlik, sayfa kesintisi destekle */
+    /* Modal/panel içeriği — tam genişlik, yükseklik sınırı yok */
     .re-modal-overlay .re-card,
     .re-modal-overlay .re-summary-panel,
     .re-summary-panel {
-        position: relative !important;
-        left: auto !important;
-        top: auto !important;
+        position: static !important;
         width: 100% !important;
         max-width: none !important;
         max-height: none !important;
@@ -1099,7 +1093,7 @@
         border-radius: 0 !important;
     }
 
-    /* Sayfa kesintisi engelleme — tablo satırları ve bloklar bölünmesin */
+    /* Sayfa kesintisi — tablo satırları ve bloklar bölünmesin */
     .re-summary-row,
     .re-schedule-table tr,
     .re-summary-price-block,
@@ -1108,12 +1102,8 @@
         page-break-inside: avoid;
     }
 
-    /* Sidebar ve header gizle */
-    .app-sidebar, .app-header { display: none !important; }
-
     /* Logo PDF'te görünsün */
     .print-logo { display: block !important; margin-bottom: 12px; }
 
-    /* Sayfa kenar boşlukları */
     @page { margin: 15mm; }
 }
