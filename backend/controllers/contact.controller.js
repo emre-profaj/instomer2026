@@ -1028,6 +1028,84 @@ export const getContactAnalytics = async (req, res) => {
             ? ((resolvedConvs / totalConversations) * 100).toFixed(1)
             : 0;
 
+        // ── Call Tracking Stats ──
+        // Telefon numarası olan kişiler (seçili tarih aralığında oluşturulanlar)
+        const contactsWithPhone = await prisma.contact.count({
+            where: {
+                conversations: { some: { workspaceId } },
+                phone: { not: null },
+                NOT: { phone: '' },
+                ...dateFilter
+            }
+        });
+
+        // CALL aktivitesi olan unique kişi sayısı
+        const activityDateFilter = {};
+        if (startDate || endDate) {
+            activityDateFilter.createdAt = {};
+            if (startDate) activityDateFilter.createdAt.gte = new Date(startDate);
+            if (endDate) {
+                const endD = new Date(endDate);
+                endD.setHours(23, 59, 59, 999);
+                activityDateFilter.createdAt.lte = endD;
+            }
+        }
+
+        const callActivities = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId,
+                type: 'CALL',
+                ...activityDateFilter
+            },
+            select: {
+                contactId: true,
+                status: true,
+                dueDate: true,
+                createdAt: true,
+                assignedToId: true,
+                contact: { select: { id: true, name: true, phone: true } },
+                assignee: { select: { id: true, name: true } }
+            }
+        });
+
+        const calledContactIds = new Set(callActivities.map(a => a.contactId));
+        const completedCallContactIds = new Set(callActivities.filter(a => a.status === 'COMPLETED').map(a => a.contactId));
+
+        // Kişi bazlı arama detayları (tablo için)
+        const callDetailMap = {};
+        for (const a of callActivities) {
+            if (!callDetailMap[a.contactId]) {
+                callDetailMap[a.contactId] = {
+                    contactId: a.contactId,
+                    contactName: a.contact?.name || 'Bilinmiyor',
+                    phone: a.contact?.phone || '',
+                    totalCalls: 0,
+                    completedCalls: 0,
+                    plannedCalls: 0,
+                    lastCallDate: null,
+                    assigneeName: null
+                };
+            }
+            const d = callDetailMap[a.contactId];
+            d.totalCalls++;
+            if (a.status === 'COMPLETED') d.completedCalls++;
+            if (a.status === 'PLANNED') d.plannedCalls++;
+            const dateToCheck = a.dueDate || a.createdAt;
+            if (!d.lastCallDate || new Date(dateToCheck) > new Date(d.lastCallDate)) {
+                d.lastCallDate = dateToCheck;
+            }
+            if (a.assignee) d.assigneeName = a.assignee.name;
+        }
+
+        const callTrackingStats = {
+            totalWithPhone: contactsWithPhone,
+            totalCalled: calledContactIds.size,
+            totalCompleted: completedCallContactIds.size,
+            totalNotCalled: contactsWithPhone - calledContactIds.size,
+            callRate: contactsWithPhone > 0 ? ((calledContactIds.size / contactsWithPhone) * 100).toFixed(1) : 0,
+            details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate))
+        };
+
         res.json({
             totalContacts,
             totalMessages,
@@ -1050,7 +1128,8 @@ export const getContactAnalytics = async (req, res) => {
                 scheduled: scheduledAppointments,
                 completed: completedAppointments,
                 cancelled: cancelledAppointments
-            }
+            },
+            callTrackingStats
         });
     } catch (error) {
         console.error('Analytics error:', error);

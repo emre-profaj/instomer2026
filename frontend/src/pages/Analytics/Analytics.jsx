@@ -4,7 +4,8 @@ import {
     TrendingUp, Calendar, Filter, MoreHorizontal,
     Instagram, Facebook, Mail, Globe, MessageCircle,
     UserCheck, Clock, CheckCircle2, ChevronRight, Zap,
-    ClipboardList, Briefcase, Headphones, Truck, Building2, DollarSign, Wallet
+    ClipboardList, Briefcase, Headphones, Truck, Building2, DollarSign, Wallet,
+    Phone, PhoneOff, PhoneCall, PhoneForwarded
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, dealAPI, funnelAPI } from '../../services/api';
@@ -26,6 +27,7 @@ const Analytics = () => {
     const [dateFilter, setDateFilter] = useState('7d');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [callFilter, setCallFilter] = useState('all'); // all | called | notCalled | completed | planned
 
     useEffect(() => {
         if (currentWorkspace?.id) {
@@ -419,6 +421,110 @@ const Analytics = () => {
                                 </div>
                             ))}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Call Tracking Section */}
+            {analytics?.callTrackingStats && (
+                <div style={{ padding: '0 0 24px' }}>
+                    <div className="premium-section-card">
+                        <div className="section-header-modern">
+                            <div className="section-title-modern">
+                                <div className="section-icon-box"><Phone size={20} /></div>
+                                <h2>Numara & Arama Analizi</h2>
+                            </div>
+                            <select
+                                value={callFilter}
+                                onChange={(e) => setCallFilter(e.target.value)}
+                                className="premium-select"
+                                style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                            >
+                                <option value="all">Tümü</option>
+                                <option value="called">Arananlar</option>
+                                <option value="notCalled">Aranmayanlar</option>
+                                <option value="completed">Tamamlanan Aramalar</option>
+                                <option value="planned">Planlanan Aramalar</option>
+                            </select>
+                        </div>
+                        {/* Stat Cards */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, padding: '0 4px 16px' }}>
+                            {[
+                                { label: 'Numaralı Kişi', value: analytics.callTrackingStats.totalWithPhone, color: '#6366f1', icon: <Users size={20} /> },
+                                { label: 'Aranan', value: analytics.callTrackingStats.totalCalled, color: '#10b981', icon: <PhoneCall size={20} /> },
+                                { label: 'Tamamlanan', value: analytics.callTrackingStats.totalCompleted, color: '#0ea5e9', icon: <CheckCircle2 size={20} /> },
+                                { label: 'Aranmayan', value: analytics.callTrackingStats.totalNotCalled, color: '#ef4444', icon: <PhoneOff size={20} /> },
+                                { label: 'Arama Oranı', value: `${analytics.callTrackingStats.callRate}%`, color: '#f59e0b', icon: <TrendingUp size={20} /> },
+                            ].map(item => (
+                                <div key={item.label} style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <div style={{ width: 40, height: 40, borderRadius: '12px', background: item.color + '15', color: item.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        {item.icon}
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div>
+                                        <div style={{ fontSize: '1.4rem', fontWeight: 800, color: item.color }}>{item.value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        {/* Detail Table */}
+                        {analytics.callTrackingStats.details.length > 0 && (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table className="modern-table" style={{ fontSize: '0.82rem' }}>
+                                    <thead>
+                                        <tr>
+                                            <th>Kişi</th>
+                                            <th>Telefon</th>
+                                            <th>Toplam</th>
+                                            <th>Tamamlanan</th>
+                                            <th>Planlanan</th>
+                                            <th>Son Arama</th>
+                                            <th>Atanan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {analytics.callTrackingStats.details
+                                            .filter(d => {
+                                                if (callFilter === 'called') return d.totalCalls > 0;
+                                                if (callFilter === 'completed') return d.completedCalls > 0;
+                                                if (callFilter === 'planned') return d.plannedCalls > 0;
+                                                return true; // 'all' and 'notCalled' handled differently
+                                            })
+                                            .map(d => (
+                                                <tr key={d.contactId}>
+                                                    <td>
+                                                        <div style={{ fontWeight: 600, color: '#0f172a' }}>{d.contactName}</div>
+                                                    </td>
+                                                    <td style={{ color: '#64748b', fontFamily: 'monospace', fontSize: '0.78rem' }}>{d.phone}</td>
+                                                    <td>
+                                                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{d.totalCalls}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ fontWeight: 700, color: d.completedCalls > 0 ? '#10b981' : '#9ca3af' }}>
+                                                            {d.completedCalls}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ fontWeight: 700, color: d.plannedCalls > 0 ? '#f59e0b' : '#9ca3af' }}>
+                                                            {d.plannedCalls}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                                        {d.lastCallDate ? new Date(d.lastCallDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                                    </td>
+                                                    <td>
+                                                        {d.assigneeName ? (
+                                                            <span style={{ fontSize: '0.72rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>
+                                                                {d.assigneeName}
+                                                            </span>
+                                                        ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
