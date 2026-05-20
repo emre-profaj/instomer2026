@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -257,9 +257,9 @@ const Sidebar = () => {
                                             {isInboxOpen && !isCollapsed && (
                                                 <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
                                                     {[
-                                                        { label: 'Hepsi', tab: 'all', icon: '📥' },
-                                                        { label: 'Bana Atananlar', tab: 'mine', icon: '👤' },
-                                                        { label: 'Atanmamışlar', tab: 'unassigned', icon: '⏳' },
+                                                        { label: 'Hepsi', tab: 'all', icon: Inbox },
+                                                        { label: 'Bana Atananlar', tab: 'mine', icon: UserCheck },
+                                                        { label: 'Atanmamışlar', tab: 'unassigned', icon: Clock },
                                                     ].map(sub => (
                                                         <Link
                                                             key={sub.tab}
@@ -270,7 +270,7 @@ const Sidebar = () => {
                                                             }`}
                                                             style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
                                                         >
-                                                            <span style={{ fontSize: '0.9rem', width: 18, flexShrink: 0 }}>{sub.icon}</span>
+                                                            <sub.icon size={14} className="nav-icon" style={{ flexShrink: 0 }} />
                                                             <span>{sub.label}</span>
                                                         </Link>
                                                     ))}
