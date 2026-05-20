@@ -165,12 +165,7 @@ function SummaryPanel({ form, selected, calc, paymentConfigured }) {
                         <span className="value">{fmt(listPrice)}</span>
                     </div>
                 )}
-                {cashPrice > 0 && cashPrice !== listPrice && (
-                    <div className="re-summary-row">
-                        <span className="label">Peşin Fiyat</span>
-                        <span className="value">{fmt(cashPrice)}</span>
-                    </div>
-                )}
+
 
                 {!showFinancials && (
                     <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--re-muted)', fontSize: '0.82rem' }}>
