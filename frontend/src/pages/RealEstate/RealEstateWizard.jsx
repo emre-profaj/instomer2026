@@ -977,7 +977,8 @@ export default function RealEstateWizard() {
 
                                         <hr style={{ border: 'none', borderTop: '1px solid var(--re-border)', margin: '20px 0' }} />
 
-                                        {/* Peşinat slider */}
+                                        {/* Peşinat slider — taksitli seçimlerde göster */}
+                                        {form.installmentCount > 0 ? (
                                         <div className="re-form-group">
                                             <label style={{ fontWeight: 600, marginBottom: 10, display: 'block' }}>Ödeme Yapısı</label>
                                             <label>Peşinat Oranı ve Tutarı</label>
@@ -1015,6 +1016,15 @@ export default function RealEstateWizard() {
                                                 </div>
                                             </div>
                                         </div>
+                                        ) : (
+                                        <div style={{ padding: '16px 20px', background: 'linear-gradient(135deg, rgba(30,132,73,0.08), rgba(30,132,73,0.03))', border: '1px solid rgba(30,132,73,0.2)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                            <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#d5f5e3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1e8449', fontWeight: 800, fontSize: '0.9rem' }}>✓</div>
+                                            <div>
+                                                <div style={{ fontWeight: 700, color: '#1e8449', fontSize: '0.95rem' }}>Peşin Ödeme — %100</div>
+                                                <div style={{ fontSize: '0.82rem', color: '#27ae60', marginTop: 2 }}>Toplam: {fmt(priceBase)}</div>
+                                            </div>
+                                        </div>
+                                        )}
 
                                         {/* Kalan bakiye */}
                                         {calc && form.installmentCount > 0 && (
