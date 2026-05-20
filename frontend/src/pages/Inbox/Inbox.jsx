@@ -3605,6 +3605,28 @@ const Inbox = () => {
                                                         window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
                                                             detail: { conversationId: selectedItem.id, funnelStageId: newStage, stageName: changedStage?.label || changedStage?.name || newStage, stageColor: changedStage?.color || '#6366f1' }
                                                         }));
+
+                                                        // Re-fetch conversation after a short delay to pick up
+                                                        // the async team/user assignment made by the backend
+                                                        setTimeout(async () => {
+                                                            try {
+                                                                const res = await conversationAPI.getById(currentWorkspace.id, selectedItem.id);
+                                                                const conv = res.data.conversation || res.data;
+                                                                if (conv) {
+                                                                    setSelectedItem(prev => prev?.id === conv.id ? {
+                                                                        ...prev,
+                                                                        teamIds: conv.teamIds || prev.teamIds,
+                                                                        teamId: conv.teamId || prev.teamId,
+                                                                        assignedToId: conv.assignedToId || prev.assignedToId,
+                                                                        assignedTo: conv.assignedTo || prev.assignedTo,
+                                                                        botEnabled: conv.botEnabled ?? prev.botEnabled
+                                                                    } : prev);
+                                                                    setInboxItems(prevItems => prevItems.map(item =>
+                                                                        item.id === conv.id ? { ...item, teamIds: conv.teamIds || item.teamIds, assignedToId: conv.assignedToId || item.assignedToId, assignedTo: conv.assignedTo || item.assignedTo } : item
+                                                                    ));
+                                                                }
+                                                            } catch (_) {}
+                                                        }, 800);
                                                     } catch (err) { console.error('Stage update error:', err); }
                                                 };
                                                 return (

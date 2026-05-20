@@ -1925,11 +1925,29 @@ export const updateFunnel = async (req, res) => {
                                 where: { id: conversationId },
                                 data: stageAssign
                             });
+
+                            // Fetch assignedTo user name for the UI
+                            let assignedToName = null;
+                            if (stageAssign.assignedToId) {
+                                try {
+                                    const assignedUser = await prisma.user.findUnique({
+                                        where: { id: stageAssign.assignedToId },
+                                        select: { name: true }
+                                    });
+                                    assignedToName = assignedUser?.name || null;
+                                } catch (_) {}
+                            }
+
                             try {
-                                emitToWorkspace(workspaceId, 'conversation_updated', {
+                                // Use 'conversation_assigned' event — this is what the Inbox listens for
+                                emitToWorkspace(workspaceId, 'conversation_assigned', {
                                     conversationId,
-                                    ...stageAssign
+                                    assignedToId: stageAssign.assignedToId || null,
+                                    assignedToName,
+                                    botEnabled: stageAssign.botEnabled || false,
+                                    teamIds: stageAssign.teamIds || null
                                 });
+                                console.log(`📡 [StageAssign] Emitted conversation_assigned → team: ${stageAssign.teamId}, user: ${stageAssign.assignedToId}`);
                             } catch (_) {}
                         }
                     }
