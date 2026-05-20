@@ -1396,6 +1396,32 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         </div>
                                                                     </div>
                                                                 </div>
+                                                                {/* Description & Inline Edit */}
+                                                                {editingActivity?.id === item.id ? (
+                                                                    <div style={{ marginTop: '8px' }} onClick={e => e.stopPropagation()}>
+                                                                        <textarea
+                                                                            value={editActivityText}
+                                                                            onChange={e => setEditActivityText(e.target.value)}
+                                                                            rows={3}
+                                                                            style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 8px', fontSize: '0.82rem', resize: 'vertical', boxSizing: 'border-box' }}
+                                                                            autoFocus
+                                                                        />
+                                                                        <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                                                            <button onClick={handleUpdateActivity} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
+                                                                                <Save size={12} style={{ marginRight: '3px' }} />Kaydet
+                                                                            </button>
+                                                                            <button onClick={() => { setEditingActivity(null); setEditActivityText(''); }} style={{ background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
+                                                                                İptal
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    (item.content || item.description) && (
+                                                                        <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.4, borderTop: '1px dashed #e5e7eb', paddingTop: '6px' }}>
+                                                                            {item.content || item.description}
+                                                                        </div>
+                                                                    )
+                                                                )}
                                                             </div>
                                                         </div>
                                                     );
