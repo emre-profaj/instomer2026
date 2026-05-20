@@ -1958,6 +1958,15 @@ const Inbox = () => {
                     isFromContact: false
                 };
                 setMessages([...messages, newNote]);
+
+                // If no one is assigned to this conversation, ask if they want to claim it
+                if (!selectedItem.assignedToId) {
+                    setTimeout(() => {
+                        if (window.confirm('Bu konuşma henüz kimseye atanmamış. Bu konuşmayı üstlenmek istiyor musunuz?')) {
+                            handleClaimConversation();
+                        }
+                    }, 300);
+                }
             } else {
                 // For email, include CC/BCC
                 const messageData = { content: newMessage };
