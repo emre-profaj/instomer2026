@@ -1057,16 +1057,18 @@
 
 /* ─── YAZDIRMA (PDF) STİLLERİ ───────────────────────────────────────────────── */
 @media print {
+    /* 1. Her şeyi gizle */
+    body * { visibility: hidden; }
     .no-print { display: none !important; }
+    .app-sidebar, .app-header { display: none !important; }
 
-    /* Uygulamanın kendi elemanlarını gizle */
-    .app-sidebar,
-    .app-header,
-    .re-page > .re-card:first-child,
-    .re-offers-filters,
-    .re-page > .re-card > .re-offers-table { display: none !important; }
+    /* 2. Modal overlay ve içeriğini göster */
+    .re-modal-overlay,
+    .re-modal-overlay * {
+        visibility: visible !important;
+    }
 
-    /* Modal overlay — normal akışa al */
+    /* 3. Modal overlay — position:static ile normal sayfa akışı */
     .re-modal-overlay {
         position: static !important;
         background: none !important;
@@ -1076,10 +1078,9 @@
         display: block !important;
     }
 
-    /* Modal/panel içeriği — tam genişlik, yükseklik sınırı yok */
+    /* 4. Modal içerik — yükseklik/genişlik sınırı yok */
     .re-modal-overlay .re-card,
-    .re-modal-overlay .re-summary-panel,
-    .re-summary-panel {
+    .re-modal-overlay .re-summary-panel {
         position: static !important;
         width: 100% !important;
         max-width: none !important;
@@ -1093,7 +1094,7 @@
         border-radius: 0 !important;
     }
 
-    /* Sayfa kesintisi — tablo satırları ve bloklar bölünmesin */
+    /* 5. Sayfa kesintisi koruması */
     .re-summary-row,
     .re-schedule-table tr,
     .re-summary-price-block,
