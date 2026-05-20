@@ -1799,7 +1799,7 @@ export const updateFunnel = async (req, res) => {
 
                     if (!funnelType || funnelType === '') {
                         // Switching to "Genel Akış" — clear team/user assignments
-                        assignUpdate.teamId = null;
+                        assignUpdate.assignedTeamId = null;
                         assignUpdate.teamIds = '[]';
                         assignUpdate.assignedToId = null;
                         assignUpdate.assignedBotId = null;
@@ -1814,7 +1814,7 @@ export const updateFunnel = async (req, res) => {
                             });
                             if (targetFunnel) {
                                 if (targetFunnel.assignedTeamId) {
-                                    assignUpdate.teamId = targetFunnel.assignedTeamId;
+                                    assignUpdate.assignedTeamId = targetFunnel.assignedTeamId;
                                     assignUpdate.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
                                     console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId}`);
 
@@ -1826,7 +1826,7 @@ export const updateFunnel = async (req, res) => {
                                     });
                                     if (teamMembers.length > 0) {
                                         const lastConv = await prisma.conversation.findFirst({
-                                            where: { teamId: targetFunnel.assignedTeamId, assignedToId: { not: null } },
+                                            where: { assignedTeamId: targetFunnel.assignedTeamId, assignedToId: { not: null } },
                                             orderBy: { updatedAt: 'desc' },
                                             select: { assignedToId: true }
                                         });
@@ -1868,7 +1868,7 @@ export const updateFunnel = async (req, res) => {
                                 teamIds: assignUpdate.teamIds || '[]'
                             });
                         } catch (_) {}
-                        console.log(`📡 [FunnelSwitch] assignment updated — team: ${assignUpdate.teamId || 'cleared'}`);
+                        console.log(`📡 [FunnelSwitch] assignment updated — team: ${assignUpdate.assignedTeamId || 'cleared'}`);
                     }
                 } catch (e) {
                     console.error('❌ [FunnelSwitch] error:', e.message);
@@ -1978,7 +1978,7 @@ export const updateFunnel = async (req, res) => {
 
                         // Takım atama + Round-Robin
                         if (effectiveTeamId) {
-                            stageAssign.teamId = effectiveTeamId;
+                            stageAssign.assignedTeamId = effectiveTeamId;
                             stageAssign.teamIds = JSON.stringify([effectiveTeamId]);
 
                             // Round-robin ile kullanıcı seç
@@ -1990,7 +1990,7 @@ export const updateFunnel = async (req, res) => {
                                 });
                                 if (teamMembers.length > 0) {
                                     const lastConv = await prisma.conversation.findFirst({
-                                        where: { teamId: effectiveTeamId, assignedToId: { not: null } },
+                                        where: { assignedTeamId: effectiveTeamId, assignedToId: { not: null } },
                                         orderBy: { updatedAt: 'desc' },
                                         select: { assignedToId: true }
                                     });
@@ -2038,7 +2038,7 @@ export const updateFunnel = async (req, res) => {
                                     botEnabled: stageAssign.botEnabled || false,
                                     teamIds: stageAssign.teamIds || null
                                 });
-                                console.log(`📡 [StageAssign] Emitted conversation_assigned → team: ${stageAssign.teamId}, user: ${stageAssign.assignedToId}`);
+                                console.log(`📡 [StageAssign] Emitted conversation_assigned → team: ${stageAssign.assignedTeamId}, user: ${stageAssign.assignedToId}`);
                             } catch (_) {}
                         }
                     }
