@@ -522,7 +522,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             const rawId = completingActivity.id.replace(/^act_/, '');
             await activityAPI.completeActivity(rawId, completeResult);
             // Planned'dan kaldır, past'a ekle
-            const completedItem = { ...completingActivity, isCompleted: true, isPlanned: false, content: completeResult || completingActivity.content };
+            const completedItem = { ...completingActivity, isCompleted: true, isPlanned: false, status: 'COMPLETED', content: completeResult || completingActivity.content };
             setPlannedTimeline(prev => prev.filter(i => i.id !== completingActivity.id));
             setPastTimeline(prev => [completedItem, ...prev]);
             setCompletingActivity(null);
