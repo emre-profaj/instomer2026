@@ -121,44 +121,11 @@ export default function RealEstateOffers() {
     };
 
     const handleDownloadPDF = (offer = null) => {
-        const doPrint = () => {
-            const el = document.getElementById('print-offer');
-            if (!el) return;
-            const printWindow = window.open('', '_blank', 'width=900,height=700');
-            printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-                <title>Teklif</title>
-                <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #2c3e50; padding: 30px; }
-                    .header { background: linear-gradient(135deg, #1a2f45, #1a5276); color: white; padding: 20px 24px; border-radius: 10px 10px 0 0; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; }
-                    .header h3 { font-size: 1.1rem; margin: 0 0 2px; }
-                    .header p { font-size: 0.8rem; opacity: 0.8; margin: 0; }
-                    .body { padding: 24px; }
-                    .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e8ecef; font-size: 0.9rem; }
-                    .row .label { color: #5d6d7e; }
-                    .row .value { font-weight: 600; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 0.85rem; }
-                    th { background: #f4f6f8; padding: 8px 12px; text-align: left; font-size: 0.75rem; text-transform: uppercase; color: #5d6d7e; border-bottom: 1px solid #ddd; }
-                    td { padding: 8px 12px; border-bottom: 1px solid #eee; }
-                    th:last-child, td:last-child { text-align: right; }
-                    .badge { padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 0.85rem; margin-top: 16px; text-align: center; }
-                    .badge.discount { background: #d5f5e3; color: #1e8449; }
-                    .badge.surcharge { background: #fef9e7; color: #b7950b; }
-                    .price-block { background: rgba(26,82,118,0.05); border: 1px solid rgba(26,82,118,0.15); border-radius: 10px; padding: 16px; text-align: center; margin: 16px 0; }
-                    .price-label { font-size: 0.75rem; text-transform: uppercase; color: #5d6d7e; letter-spacing: 0.5px; }
-                    .price-value { font-size: 1.75rem; font-weight: 900; color: #1a5276; }
-                    .no-print { display: none !important; }
-                    img { max-height: 50px; }
-                    @media print { body { padding: 15px; } }
-                </style></head><body>${el.innerHTML}</body></html>`);
-            printWindow.document.close();
-            printWindow.onload = () => { printWindow.print(); };
-        };
         if (offer) {
             setSelectedOffer(offer);
-            setTimeout(doPrint, 150);
+            setTimeout(() => { window.print(); }, 100);
         } else {
-            doPrint();
+            window.print();
         }
     };
 
@@ -305,7 +272,7 @@ export default function RealEstateOffers() {
                 {/* Detay Paneli (Modal Popup) */}
                 {selectedOffer && (
                     <div className="re-modal-overlay" onClick={() => setSelectedOffer(null)}>
-                        <div id="print-offer" className="re-card re-summary-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, margin: '20px auto', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div className="re-card re-summary-panel" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 800, margin: '20px auto', maxHeight: '90vh', overflowY: 'auto' }}>
                             <div className="re-summary-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                 {logoUrl && (

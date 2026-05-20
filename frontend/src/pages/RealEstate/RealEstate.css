@@ -1055,4 +1055,65 @@
     to { transform: rotate(360deg); }
 }
 
+/* ─── YAZDIRMA (PDF) STİLLERİ ───────────────────────────────────────────────── */
+@media print {
+    /* Tüm sayfayı gizle */
+    body * { visibility: hidden; }
+    .no-print { display: none !important; }
 
+    /* Modal overlay ve içindekileri göster */
+    .re-modal-overlay,
+    .re-modal-overlay *,
+    .re-summary-panel,
+    .re-summary-panel * {
+        visibility: visible !important;
+    }
+
+    /* Modal overlay — tam sayfa, scroll/yükseklik kısıtlamalarını kaldır */
+    .re-modal-overlay {
+        position: absolute !important;
+        inset: 0 !important;
+        background: white !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        height: auto !important;
+        z-index: 9999;
+    }
+
+    /* Modal/panel içeriği — tam genişlik, sayfa kesintisi destekle */
+    .re-modal-overlay .re-card,
+    .re-modal-overlay .re-summary-panel,
+    .re-summary-panel {
+        position: relative !important;
+        left: auto !important;
+        top: auto !important;
+        width: 100% !important;
+        max-width: none !important;
+        max-height: none !important;
+        overflow: visible !important;
+        height: auto !important;
+        margin: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: white !important;
+        border-radius: 0 !important;
+    }
+
+    /* Sayfa kesintisi engelleme — tablo satırları ve bloklar bölünmesin */
+    .re-summary-row,
+    .re-schedule-table tr,
+    .re-summary-price-block,
+    .re-discount-badge {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    /* Sidebar ve header gizle */
+    .app-sidebar, .app-header { display: none !important; }
+
+    /* Logo PDF'te görünsün */
+    .print-logo { display: block !important; margin-bottom: 12px; }
+
+    /* Sayfa kenar boşlukları */
+    @page { margin: 15mm; }
+}
