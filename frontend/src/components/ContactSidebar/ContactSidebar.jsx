@@ -2195,14 +2195,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             {showOrderForm && (
                 <div className="chat-popup-overlay" onClick={() => setShowOrderForm(false)} style={{ zIndex: 10000 }}>
                     <div className="chat-popup-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '94vw', maxHeight: '88vh' }}>
-                        <div className="chat-popup-header" style={{ borderBottom: '2px solid #eff6ff' }}>
+                        <div className="chat-popup-header" style={{ borderBottom: '2px solid #fef2f2' }}>
                             <div className="chat-popup-header-left">
-                                <div className="chat-popup-avatar" style={{ background: '#eff6ff', width: 48, height: 48 }}>
-                                    <TrendingUp size={22} style={{ color: '#3b82f6' }} />
+                                <div className="chat-popup-avatar" style={{ background: '#fef2f2', width: 48, height: 48 }}>
+                                    <TrendingUp size={22} style={{ color: '#ef4444' }} />
                                 </div>
                                 <div className="chat-popup-header-info">
                                     <h3 className="chat-popup-contact-name" style={{ fontSize: '17px' }}>Yeni Sipariş Oluştur</h3>
-                                    <span className="chat-popup-channel-badge" style={{ color: '#3b82f6' }}>{profile?.name || 'Müşteri'} için</span>
+                                    <span className="chat-popup-channel-badge" style={{ color: '#ef4444' }}>{profile?.name || 'Müşteri'} için</span>
                                 </div>
                             </div>
                             <div className="chat-popup-header-actions">
@@ -2243,7 +2243,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Sipariş Başlığı *</label>
                                     <input type="text" required value={orderFormData.title} onChange={e => setOrderFormData(p => ({ ...p, title: e.target.value }))}
                                         placeholder="Örn: Aylık Hizmet Paketi" style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-                                        onFocus={e => e.target.style.borderColor = '#93c5fd'}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
                                         onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
                                 </div>
                                 <div style={{ marginBottom: 16 }}>
@@ -2269,20 +2269,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <input type="number" placeholder="Birim Fiyat" min="0" value={product.unitPrice}
                                                 onChange={e => { const p = [...orderFormData.products]; p[idx].unitPrice = parseFloat(e.target.value) || 0; setOrderFormData(prev => ({ ...prev, products: p })); }}
                                                 style={{ width: 110, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'right' }} />
-                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#3b82f6', minWidth: 70, textAlign: 'right' }}>
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ef4444', minWidth: 70, textAlign: 'right' }}>
                                                 {(orderFormData.currency === 'TRY' ? '₺' : orderFormData.currency === 'USD' ? '$' : orderFormData.currency === 'EUR' ? '€' : '£')}{(product.quantity * product.unitPrice).toLocaleString('tr-TR')}
                                             </span>
                                             {orderFormData.products.length > 1 && (
                                                 <button type="button" onClick={() => { const p = orderFormData.products.filter((_, i) => i !== idx); setOrderFormData(prev => ({ ...prev, products: p })); }}
-                                                    style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
                                             )}
                                         </div>
                                     ))}
                                     <button type="button" onClick={() => setOrderFormData(prev => ({ ...prev, products: [...prev.products, { name: '', quantity: 1, unitPrice: 0 }] }))}
-                                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#eff6ff', border: '1px dashed #93c5fd', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#3b82f6', cursor: 'pointer', marginTop: 6, fontWeight: 500 }}>
+                                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fef2f2', border: '1px dashed #fca5a5', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#ef4444', cursor: 'pointer', marginTop: 6, fontWeight: 500 }}>
                                         <Plus size={13} /> Ürün Ekle
                                     </button>
-                                    <div style={{ textAlign: 'right', fontSize: '0.92rem', fontWeight: 700, color: '#1d4ed8', marginTop: 10, padding: '8px 0', borderTop: '1px solid #eff6ff' }}>
+                                    <div style={{ textAlign: 'right', fontSize: '0.92rem', fontWeight: 700, color: '#dc2626', marginTop: 10, padding: '8px 0', borderTop: '1px solid #fef2f2' }}>
                                         Toplam: {(orderFormData.currency === 'TRY' ? '₺' : orderFormData.currency === 'USD' ? '$' : orderFormData.currency === 'EUR' ? '€' : '£')}
                                         {orderFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0).toLocaleString('tr-TR')}
                                     </div>
@@ -2291,14 +2291,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Notlar</label>
                                     <textarea value={orderFormData.notes} onChange={e => setOrderFormData(p => ({ ...p, notes: e.target.value }))}
                                         placeholder="Ek notlar..." rows={3} style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-                                        onFocus={e => e.target.style.borderColor = '#93c5fd'}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
                                         onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
                                     <button type="button" onClick={() => setShowOrderForm(false)}
                                         style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>İptal</button>
                                     <button type="submit" disabled={orderSubmitting}
-                                        style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: orderSubmitting ? '#93c5fd' : '#3b82f6', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: orderSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}>
+                                        style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: orderSubmitting ? '#fca5a5' : '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: orderSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)' }}>
                                         {orderSubmitting ? 'Oluşturuluyor...' : 'Sipariş Oluştur'}
                                     </button>
                                 </div>
