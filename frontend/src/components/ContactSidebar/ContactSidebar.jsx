@@ -1369,7 +1369,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 {/* Header row */}
                                                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
                                                                     {/* Icon box */}
-                                                                    <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: cfg.accentLight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: cfg.accent, flexShrink: 0, marginTop: '1px' }}>
+                                                                    <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: overdue ? '#fff7ed' : cfg.accentLight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: overdue ? '#f97316' : cfg.accent, flexShrink: 0, marginTop: '1px' }}>
                                                                         {cfg.lucide}
                                                                     </div>
                                                                     {/* Content */}
