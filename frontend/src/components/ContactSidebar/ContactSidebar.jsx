@@ -221,6 +221,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     });
     const [orderSubmitting, setOrderSubmitting] = useState(false);
 
+    // Inline Invoice Form State
+    const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+    const [invoiceFormData, setInvoiceFormData] = useState({
+        title: '',
+        currency: 'TRY',
+        taxRate: 20,
+        dueDate: '',
+        products: [{ name: '', quantity: 1, unitPrice: 0 }],
+        notes: ''
+    });
+    const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
+
     // If external profile is provided (e.g., for comments), use it directly
     useEffect(() => {
         if (externalProfile) {
@@ -1294,7 +1306,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <TrendingUp size={18} style={{ color: '#3b82f6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
                                 </button>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('INVOICE')}>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => setShowInvoiceForm(true)}>
                                     <FileText size={18} style={{ color: '#8b5cf6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
                                 </button>
@@ -2307,6 +2319,146 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                     </div>
                 </div>
             )}
+            {/* Inline Invoice Form Modal */}
+            {showInvoiceForm && (() => {
+                const invSubtotal = invoiceFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0);
+                const invTax = invSubtotal * (invoiceFormData.taxRate / 100);
+                const invTotal = invSubtotal + invTax;
+                const cs = invoiceFormData.currency === 'TRY' ? '₺' : invoiceFormData.currency === 'USD' ? '$' : invoiceFormData.currency === 'EUR' ? '€' : '£';
+                return (
+                <div className="chat-popup-overlay" onClick={() => setShowInvoiceForm(false)} style={{ zIndex: 10000 }}>
+                    <div className="chat-popup-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '94vw', maxHeight: '88vh' }}>
+                        <div className="chat-popup-header" style={{ borderBottom: '2px solid #fef2f2' }}>
+                            <div className="chat-popup-header-left">
+                                <div className="chat-popup-avatar" style={{ background: '#fef2f2', width: 48, height: 48 }}>
+                                    <FileText size={22} style={{ color: '#ef4444' }} />
+                                </div>
+                                <div className="chat-popup-header-info">
+                                    <h3 className="chat-popup-contact-name" style={{ fontSize: '17px' }}>Yeni Fatura Oluştur</h3>
+                                    <span className="chat-popup-channel-badge" style={{ color: '#ef4444' }}>{profile?.name || 'Müşteri'} için</span>
+                                </div>
+                            </div>
+                            <div className="chat-popup-header-actions">
+                                <button className="chat-popup-icon-btn chat-popup-close-btn" onClick={() => setShowInvoiceForm(false)}><X size={18} /></button>
+                            </div>
+                        </div>
+                        <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (invoiceSubmitting) return;
+                                setInvoiceSubmitting(true);
+                                try {
+                                    await dealAPI.create(currentWorkspace.id, {
+                                        contactId: profile?.id,
+                                        title: invoiceFormData.title,
+                                        currency: invoiceFormData.currency,
+                                        amount: invTotal,
+                                        products: invoiceFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
+                                        notes: invoiceFormData.notes,
+                                        stage: 'INVOICE',
+                                        metadata: { taxRate: invoiceFormData.taxRate, subtotal: invSubtotal, tax: invTax, dueDate: invoiceFormData.dueDate }
+                                    });
+                                    setShowInvoiceForm(false);
+                                    setInvoiceFormData({ title: '', currency: 'TRY', taxRate: 20, dueDate: '', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
+                                    if (profile?.id && currentWorkspace?.id) {
+                                        const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
+                                        setDeals(r.data.deals || []);
+                                    }
+                                } catch (err) {
+                                    console.error('Invoice create error:', err);
+                                    alert('Fatura oluşturulamadı: ' + (err?.response?.data?.error || err?.message));
+                                } finally {
+                                    setInvoiceSubmitting(false);
+                                }
+                            }}>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Fatura Başlığı *</label>
+                                    <input type="text" required value={invoiceFormData.title} onChange={e => setInvoiceFormData(p => ({ ...p, title: e.target.value }))}
+                                        placeholder="Örn: Mart 2026 Hizmet Bedeli" style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Para Birimi</label>
+                                        <select value={invoiceFormData.currency} onChange={e => setInvoiceFormData(p => ({ ...p, currency: e.target.value }))}
+                                            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none' }}>
+                                            <option value="TRY">₺ TRY</option>
+                                            <option value="USD">$ USD</option>
+                                            <option value="EUR">€ EUR</option>
+                                            <option value="GBP">£ GBP</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>KDV Oranı</label>
+                                        <select value={invoiceFormData.taxRate} onChange={e => setInvoiceFormData(p => ({ ...p, taxRate: parseInt(e.target.value) }))}
+                                            style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none' }}>
+                                            <option value={0}>%0</option>
+                                            <option value={1}>%1</option>
+                                            <option value={10}>%10</option>
+                                            <option value={20}>%20</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Son Ödeme Tarihi</label>
+                                    <input type="date" value={invoiceFormData.dueDate} onChange={e => setInvoiceFormData(p => ({ ...p, dueDate: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }} />
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>Ürünler / Hizmetler</label>
+                                    {invoiceFormData.products.map((product, idx) => (
+                                        <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                                            <input type="text" placeholder="Ürün / Hizmet adı" value={product.name}
+                                                onChange={e => { const p = [...invoiceFormData.products]; p[idx].name = e.target.value; setInvoiceFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ flex: 2, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
+                                            <input type="number" placeholder="Adet" min="1" value={product.quantity}
+                                                onChange={e => { const p = [...invoiceFormData.products]; p[idx].quantity = parseInt(e.target.value) || 1; setInvoiceFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ width: 70, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'center' }} />
+                                            <input type="number" placeholder="Birim Fiyat" min="0" step="0.01" value={product.unitPrice}
+                                                onChange={e => { const p = [...invoiceFormData.products]; p[idx].unitPrice = parseFloat(e.target.value) || 0; setInvoiceFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ width: 110, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'right' }} />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#ef4444', minWidth: 80, textAlign: 'right' }}>
+                                                {cs}{(product.quantity * product.unitPrice).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                            {invoiceFormData.products.length > 1 && (
+                                                <button type="button" onClick={() => { const p = invoiceFormData.products.filter((_, i) => i !== idx); setInvoiceFormData(prev => ({ ...prev, products: p })); }}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => setInvoiceFormData(prev => ({ ...prev, products: [...prev.products, { name: '', quantity: 1, unitPrice: 0 }] }))}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#fef2f2', border: '1px dashed #fca5a5', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#ef4444', cursor: 'pointer', marginTop: 6, fontWeight: 500 }}>
+                                        <Plus size={13} /> Ürün Ekle
+                                    </button>
+                                    <div style={{ textAlign: 'right', marginTop: 12, padding: '10px 0', borderTop: '1px solid #fef2f2' }}>
+                                        <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: 4 }}>Ara Toplam: {cs}{invSubtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
+                                        <div style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: 4 }}>KDV (%{invoiceFormData.taxRate}): {cs}{invTax.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
+                                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#dc2626' }}>Genel Toplam: {cs}{invTotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
+                                    </div>
+                                </div>
+                                <div style={{ marginBottom: 20 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Notlar</label>
+                                    <textarea value={invoiceFormData.notes} onChange={e => setInvoiceFormData(p => ({ ...p, notes: e.target.value }))}
+                                        placeholder="Ek notlar..." rows={3} style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#fca5a5'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+                                    <button type="button" onClick={() => setShowInvoiceForm(false)}
+                                        style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>İptal</button>
+                                    <button type="submit" disabled={invoiceSubmitting}
+                                        style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: invoiceSubmitting ? '#fca5a5' : '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: invoiceSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <FileText size={15} />
+                                        {invoiceSubmitting ? 'Oluşturuluyor...' : 'Fatura Oluştur'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                );
+            })()}
             {/* Chat Popup Modal */}
             {popupConversationId && (
                 <ChatPopup
