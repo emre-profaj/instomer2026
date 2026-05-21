@@ -4,6 +4,71 @@ import { createNotification } from './notification.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { emitToWorkspace } from '../socket.js';
 
+// Helper to find the team that a Retell agent belongs to
+async function resolveAgentTeamId(workspaceId, agentId) {
+    if (!agentId) return null;
+    try {
+        const member = await prisma.teamMember.findFirst({
+            where: {
+                retellAgentId: agentId,
+                team: {
+                    workspaceId: workspaceId
+                }
+            },
+            select: { teamId: true }
+        });
+        return member?.teamId || null;
+    } catch (e) {
+        console.error('❌ [Retell] Error resolving agent team ID:', e.message);
+        return null;
+    }
+}
+
+// Helper to find the team-specific Retell agent ID for a contact or conversation
+async function getTeamAgentIdForContactOrConversation(workspaceId, contactId, conversationId) {
+    let teamId = null;
+
+    if (conversationId) {
+        const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { assignedTeamId: true }
+        });
+        if (conv?.assignedTeamId) {
+            teamId = conv.assignedTeamId;
+        }
+    }
+
+    if (!teamId && contactId) {
+        // Fallback: get the most recent conversation for this contact
+        const conv = await prisma.conversation.findFirst({
+            where: { contactId, workspaceId },
+            orderBy: { lastMessageAt: 'desc' },
+            select: { assignedTeamId: true }
+        });
+        if (conv?.assignedTeamId) {
+            teamId = conv.assignedTeamId;
+        }
+    }
+
+    if (teamId) {
+        // Find if this team has a Retell Agent member
+        const member = await prisma.teamMember.findFirst({
+            where: {
+                teamId,
+                retellAgentId: { not: null }
+            },
+            select: { retellAgentId: true }
+        });
+        if (member?.retellAgentId) {
+            console.log(`🎯 [Retell Agent Resolution] Resolved agent ${member.retellAgentId} for team ${teamId}`);
+            return member.retellAgentId;
+        }
+    }
+
+    return null;
+}
+
+
 
 // In-memory lock to prevent duplicate concurrent calls for the same number
 // Key: "workspaceId:normalizedPhone" — held for 30s then auto-released
@@ -449,7 +514,11 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 
         // Extract rule-specific config
         const ruleDelay = triggerConfig.delay !== undefined ? triggerConfig.delay : workspace.retellAutoCallDelay;
-        const ruleAgentId = triggerConfig.agentId || workspace.retellAgentId;
+        
+        let ruleAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, null);
+        if (!ruleAgentId) {
+            ruleAgentId = triggerConfig.agentId || workspace.retellAgentId;
+        }
 
         if (!ruleAgentId) {
             console.log(`⏭️ [AutoCall] Skipping: no agent ID configured for trigger ${triggerSource}`);
@@ -596,15 +665,19 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 };
 
 // Execute a phone call via Retell API (used by both immediate & scheduled calls)
-async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO') {
+async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '') {
     const workspace = await prisma.workspace.findUnique({
         where: { id: workspaceId },
         select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true }
     });
     if (!workspace?.retellApiKey) throw new Error('No Retell API key');
     
-    // Use provided agentId, otherwise fall back to workspace default
-    const effectiveAgentId = agentId || workspace.retellAgentId;
+    // Check if there is a team-specific agent first if agentId is not passed
+    let effectiveAgentId = agentId;
+    if (!effectiveAgentId) {
+        const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, null);
+        effectiveAgentId = teamAgentId || workspace.retellAgentId;
+    }
     
     if (!effectiveAgentId) throw new Error('No Retell Agent ID configured/provided');
 
@@ -615,7 +688,13 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
         from_number: formattedFrom,
         to_number: toNumber,
         override_agent_id: effectiveAgentId,
-        metadata: { workspaceId, contactId: contactId || null, contactName: contactName || null, autoCallTrigger: triggerSource }
+        metadata: { 
+            workspaceId, 
+            contactId: contactId || null, 
+            contactName: contactName || null, 
+            autoCallTrigger: triggerSource,
+            createdById: createdById || null
+        }
     };
 
     // Only add dynamic variables if we have a contact name
@@ -636,16 +715,109 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
             toNumber,
             direction: 'outbound',
             status: callResponse.call_status || 'registered',
-            createdById: ''
+            createdById: createdById || ''
         }
     });
     emitToWorkspace(workspaceId, 'auto_call_started', { callId: callResponse.call_id, toNumber, contactName, trigger: triggerSource });
     console.log(`✅ [AutoCall] Call started: ${callResponse.call_id} → ${toNumber} (trigger: ${triggerSource})`);
+    return callResponse;
+}
+
+// Helper to automatically scan for overdue agent planned call activities and queue them for Retell calling
+async function checkOverdueAgentCalls() {
+    try {
+        const now = new Date();
+
+        // 1. Find workspaces with active Retell auto-call settings
+        const workspaces = await prisma.workspace.findMany({
+            where: {
+                retellAutoCallEnabled: true,
+                retellApiKey: { not: null },
+                retellAgentId: { not: null },
+                retellFromNumber: { not: null }
+            },
+            select: { id: true, retellAgentId: true }
+        });
+
+        if (workspaces.length === 0) return;
+
+        const workspaceIds = workspaces.map(w => w.id);
+
+        // 2. Find planned CALL activities that are overdue (dueDate <= now) AND unclaimed (assignedToId: null)
+        const overdueActivities = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId: { in: workspaceIds },
+                type: 'CALL',
+                status: 'PLANNED',
+                dueDate: { lte: now },
+                assignedToId: null, // Only calls not claimed/assigned to any human agent
+                contact: {
+                    phone: { not: null }
+                }
+            },
+            include: {
+                contact: true
+            }
+        });
+
+        if (overdueActivities.length === 0) return;
+
+        console.log(`📅 [AutoCall] Found ${overdueActivities.length} overdue agent planned call activities`);
+
+        // 3. Find existing scheduled calls for these activities to avoid duplicate scheduling
+        const existingScheduledCalls = await prisma.scheduledCall.findMany({
+            where: {
+                createdById: { startsWith: 'activity_' }
+            },
+            select: { createdById: true }
+        });
+
+        const scheduledActivityIds = new Set(
+            existingScheduledCalls.map(sc => sc.createdById.replace('activity_', ''))
+        );
+
+        for (const activity of overdueActivities) {
+            const phone = activity.contact?.phone?.trim();
+            if (!phone || scheduledActivityIds.has(activity.id)) {
+                continue;
+            }
+
+            const workspaceConfig = workspaces.find(w => w.id === activity.workspaceId);
+            let agentId = await getTeamAgentIdForContactOrConversation(activity.workspaceId, activity.contactId, null);
+            if (!agentId) {
+                agentId = workspaceConfig?.retellAgentId || null;
+            }
+
+            try {
+                // Create ScheduledCall immediately (scheduledAt = now)
+                await prisma.scheduledCall.create({
+                    data: {
+                        workspaceId: activity.workspaceId,
+                        contactId: activity.contactId,
+                        contactName: activity.contact.name || activity.contact.fullName || "Müşteri",
+                        toNumber: phone,
+                        agentId: agentId,
+                        scheduledAt: now,
+                        status: 'PENDING',
+                        createdById: `activity_${activity.id}`
+                    }
+                });
+                console.log(`📅 [AutoCall] Created ScheduledCall for overdue activity: ${activity.id} (Contact: ${phone})`);
+            } catch (err) {
+                console.error(`❌ [AutoCall] Failed to create ScheduledCall for activity ${activity.id}:`, err.message);
+            }
+        }
+    } catch (e) {
+        console.error('❌ [AutoCall] checkOverdueAgentCalls error:', e.message);
+    }
 }
 
 // Cron: process due ScheduledCalls every 60 seconds (persistent across restarts)
 export const processScheduledCalls = async () => {
     try {
+        // Automatically check and queue overdue agent calls first
+        await checkOverdueAgentCalls();
+
         const dueCalls = await prisma.scheduledCall.findMany({
             where: { status: 'PENDING', scheduledAt: { lte: new Date() } },
             take: 20
@@ -670,6 +842,26 @@ export const processScheduledCalls = async () => {
                     console.log(`📅 [ScheduledCall] Cancelled (dedup) for ${sc.toNumber} — already called`);
                     continue;
                 }
+                // If it is an activity-bound call, check if the activity is still valid for calling
+                if (sc.createdById && sc.createdById.startsWith('activity_')) {
+                    const activityId = sc.createdById.replace('activity_', '');
+                    const activity = await prisma.contactActivity.findUnique({
+                        where: { id: activityId }
+                    });
+                    // If activity is claimed (assignedToId is not null), completed, cancelled, or deleted, do NOT dial
+                    if (!activity || activity.status === 'COMPLETED' || activity.status === 'CANCELLED' || activity.assignedToId) {
+                        await prisma.scheduledCall.update({
+                            where: { id: sc.id },
+                            data: {
+                                status: 'CANCELLED',
+                                errorMessage: !activity ? 'Activity deleted' : (activity.assignedToId ? 'Claimed by agent' : `Activity status: ${activity.status}`)
+                            }
+                        });
+                        console.log(`📅 [ScheduledCall] Cancelled scheduled call ${sc.id} — activity is claimed/completed/cancelled`);
+                        continue;
+                    }
+                }
+
                 // 🔒 ATOMIC LOCK: Mark COMPLETED first using updateMany (returns count).
                 // If count=0, another runner already picked this up — skip to avoid duplicate calls.
                 const locked = await prisma.scheduledCall.updateMany({
@@ -681,7 +873,14 @@ export const processScheduledCalls = async () => {
                     continue;
                 }
                 const ws = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true } });
-                await executeScheduledCall(sc.workspaceId, sc.toNumber, sc.agentId || ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED');
+                const callResponse = await executeScheduledCall(sc.workspaceId, sc.toNumber, sc.agentId || ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED', sc.createdById);
+                
+                if (callResponse?.call_id) {
+                    await prisma.scheduledCall.update({
+                        where: { id: sc.id },
+                        data: { retellCallId: callResponse.call_id }
+                    });
+                }
             } catch (err) {
                 console.error(`❌ [ScheduledCall] Failed for ${sc.toNumber}:`, err.message);
                 await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'FAILED', errorMessage: err.message } }).catch(() => {});
@@ -772,7 +971,8 @@ export const makeCall = async (req, res) => {
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const formattedTo = normalizePhone(toNumber);
-        const effectiveAgentId = agentId || workspace.retellAgentId;
+        const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, sourceConversationId);
+        const effectiveAgentId = agentId || teamAgentId || workspace.retellAgentId;
 
         const formattedFrom = normalizePhone(workspace.retellFromNumber);
 
@@ -1190,13 +1390,15 @@ async function handleCallStarted(call) {
 
             // Create a NEW conversation for this call ONLY if not linked to an existing one
             if (contactId && !outboundWithExistingConv) {
+                const assignedTeamId = await resolveAgentTeamId(workspaceId, call.agent_id);
                 const conversation = await prisma.conversation.create({
                     data: {
                         workspaceId,
                         contactId,
                         channel: 'PHONE',
                         status: 'OPEN',
-                        lastMessageAt: new Date()
+                        lastMessageAt: new Date(),
+                        assignedTeamId
                     }
                 });
 
@@ -1479,6 +1681,13 @@ async function handleCallEnded(call) {
                                 });
                             }
                         }
+                        const assignedTeamId = await resolveAgentTeamId(callRecord.workspaceId, callRecord.agentId || call.agent_id);
+                        if (conversation && assignedTeamId && !conversation.assignedTeamId) {
+                            conversation = await prisma.conversation.update({
+                                where: { id: conversation.id },
+                                data: { assignedTeamId }
+                            });
+                        }
                         if (!conversation) {
                             conversation = await prisma.conversation.create({
                                 data: {
@@ -1486,7 +1695,8 @@ async function handleCallEnded(call) {
                                     contactId: callRecord.contactId,
                                     channel: 'PHONE',
                                     status: 'OPEN',
-                                    lastMessageAt: new Date()
+                                    lastMessageAt: new Date(),
+                                    assignedTeamId
                                 }
                             });
                             await prisma.retellCall.update({
@@ -1549,6 +1759,27 @@ async function handleCallEnded(call) {
                     message: { type: 'call_ended', callId: call.call_id }
                 });
             }
+
+            // If this call was initiated from an agent's overdue call activity, auto-complete it
+            if (callRecord.createdById && callRecord.createdById.startsWith('activity_')) {
+                const activityId = callRecord.createdById.replace('activity_', '');
+                try {
+                    const durationText = duration ? `${duration} saniye` : 'Bilinmiyor';
+                    await prisma.contactActivity.update({
+                        where: { id: activityId },
+                        data: {
+                            status: 'COMPLETED',
+                            isCompleted: true,
+                            completedAt: new Date(),
+                            result: `Retell araması tamamlandı. Süre: ${durationText}.`,
+                            source: 'RETELL'
+                        }
+                    });
+                    console.log(`✅ [Retell Webhook] Completed activity ${activityId} via call_ended`);
+                } catch (actErr) {
+                    console.error(`❌ [Retell Webhook] Failed to update activity ${activityId} in call_ended:`, actErr.message);
+                }
+            }
         }
 
         console.log(`📞 [Retell] Call ended: ${call.call_id}, duration: ${duration}s, hasTranscript: ${!!call.transcript}`);
@@ -1591,6 +1822,13 @@ async function injectTranscriptToChat(callRecord, call, duration) {
         }
     }
 
+    const assignedTeamId = await resolveAgentTeamId(workspaceId, callRecord.agentId || call.agent_id);
+    if (conversation && assignedTeamId && !conversation.assignedTeamId) {
+        conversation = await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { assignedTeamId }
+        });
+    }
     if (!conversation) {
         conversation = await prisma.conversation.create({
             data: {
@@ -1598,7 +1836,8 @@ async function injectTranscriptToChat(callRecord, call, duration) {
                 contactId,
                 channel: 'PHONE',
                 status: 'OPEN',
-                lastMessageAt: new Date()
+                lastMessageAt: new Date(),
+                assignedTeamId
             }
         });
         console.log(`📞 [Retell] Created new PHONE conversation ${conversation.id} for ${direction || 'outbound'} call (no prior conversation found)`);
@@ -1725,6 +1964,28 @@ async function handleCallAnalyzed(call) {
 
         console.log(`📞 [Retell] Call analyzed: ${call.call_id}, sentiment: ${analysis.user_sentiment}, success: ${analysis.call_successful}`);
 
+        // If this call was initiated from an agent's overdue call activity, update the result with the call summary
+        if (callRecord && callRecord.createdById && callRecord.createdById.startsWith('activity_')) {
+            const activityId = callRecord.createdById.replace('activity_', '');
+            try {
+                const durationText = callRecord.duration ? `${callRecord.duration} saniye` : 'Bilinmiyor';
+                const summaryText = analysis.call_summary || '';
+                await prisma.contactActivity.update({
+                    where: { id: activityId },
+                    data: {
+                        status: 'COMPLETED',
+                        isCompleted: true,
+                        completedAt: new Date(),
+                        result: `Retell araması tamamlandı. Süre: ${durationText}.${summaryText ? '\nÖzet: ' + summaryText : ''}`,
+                        source: 'RETELL'
+                    }
+                });
+                console.log(`✅ [Retell Webhook] Updated activity ${activityId} with summary via call_analyzed`);
+            } catch (actErr) {
+                console.error(`❌ [Retell Webhook] Failed to update activity ${activityId} in call_analyzed:`, actErr.message);
+            }
+        }
+
         // === TRIGGER AUTOMATION ===
         if (callRecord) {
             try {
@@ -1758,13 +2019,16 @@ export const scheduleCall = async (req, res) => {
             return res.status(400).json({ error: 'Planlanan saat gelecekte olmalı' });
         }
 
+        const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, null);
+        const effectiveAgentId = agentId || teamAgentId || null;
+
         const scheduled = await prisma.scheduledCall.create({
             data: {
                 workspaceId,
                 contactId: contactId || null,
                 contactName: contactName || null,
                 toNumber: normalizePhone(toNumber),
-                agentId: agentId || null,
+                agentId: effectiveAgentId,
                 scheduledAt: scheduledDate,
                 createdById: userId
             }
@@ -1787,8 +2051,7 @@ export const getScheduledCalls = async (req, res) => {
         const calls = await prisma.scheduledCall.findMany({
             where: {
                 workspaceId,
-                status: 'PENDING',
-                scheduledAt: { gte: now } // only show future pending calls
+                status: 'PENDING'
             },
             orderBy: { scheduledAt: 'asc' }
         });

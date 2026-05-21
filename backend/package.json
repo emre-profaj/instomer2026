@@ -20,7 +20,7 @@
   "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@prisma/client": "^5.7.1",
+    "@prisma/client": "^6.19.3",
     "axios": "^1.15.2",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.2.0",
@@ -49,6 +49,6 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
-    "prisma": "^5.7.1"
+    "prisma": "^6.19.3"
   }
 }

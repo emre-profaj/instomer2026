@@ -573,3 +573,23 @@
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
     box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35) !important;
 }
+
+/* ── Retell Member Item ── */
+.retell-member-item {
+    background: linear-gradient(135deg, #f0fdfa 0%, #fff 100%);
+    border-left: 3px solid #0d9488;
+}
+
+.retell-badge {
+    color: #0d9488 !important;
+    font-weight: 500 !important;
+}
+
+.teams-page-container .retell-avatar {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%) !important;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.35) !important;
+}
+
+.retell-add-btn:hover {
+    background-color: #0f766e !important;
+}

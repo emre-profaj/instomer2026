@@ -710,9 +710,28 @@ const Conversations = () => {
             {selectedConversation && (
                 <ContactSidebar
                     conversationId={selectedConversation.id}
+                    conversationData={selectedConversation}
                     isOpen={true}
                     members={members}
+                    teams={teams}
                     onAssign={userId => handleAssignUser(selectedConversation.id, userId)}
+                    onAssignTeam={handleAssignTeam}
+                    onAssignUser={handleAssignUser}
+                    onTakeOver={async (convId) => {
+                        try {
+                            await conversationAPI.takeOver(currentWorkspace.id, convId);
+                            setConversations(prev => prev.map(conv =>
+                                conv.id === convId ? { ...conv, assignedToId: user.id, assignedTo: { id: user.id, name: user.name } } : conv
+                            ));
+                            if (selectedConversation?.id === convId) {
+                                setSelectedConversation(prev => ({ ...prev, assignedToId: user.id, assignedTo: { id: user.id, name: user.name } }));
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            alert('Konuşma üstlenilemedi.');
+                        }
+                    }}
+                    currentUserId={user?.id}
                     isOwner={isOwner}
                 />
             )}

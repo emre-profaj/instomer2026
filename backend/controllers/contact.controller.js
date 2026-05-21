@@ -1058,10 +1058,15 @@ export const getContactAnalytics = async (req, res) => {
                 ...activityDateFilter
             },
             select: {
+                id: true,
                 contactId: true,
                 status: true,
+                title: true,
+                description: true,
+                result: true,
                 dueDate: true,
                 createdAt: true,
+                completedAt: true,
                 assignedToId: true,
                 contact: { select: { id: true, name: true, phone: true } },
                 assignee: { select: { id: true, name: true } }
@@ -1138,7 +1143,8 @@ export const getContactAnalytics = async (req, res) => {
             totalNotCalled: contactsWithPhone - calledContactIds.size,
             callRate: contactsWithPhone > 0 ? ((calledContactIds.size / contactsWithPhone) * 100).toFixed(1) : 0,
             details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate)),
-            phoneContactsList
+            phoneContactsList,
+            activities: callActivities
         };
 
         res.json({

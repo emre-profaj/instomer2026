@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { teamAPI, workspaceAPI, aiAPI } from '../../services/api';
-import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical, Bot } from 'lucide-react';
+import { teamAPI, workspaceAPI, aiAPI, retellAPI } from '../../services/api';
+import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical, Bot, Phone } from 'lucide-react';
 import './Teams.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
@@ -37,11 +37,16 @@ const Teams = () => {
     const [bots, setBots] = useState([]);
     const [selectedBotToAdd, setSelectedBotToAdd] = useState('');
 
+    // Retell voice assistant states
+    const [retellAgents, setRetellAgents] = useState([]);
+    const [selectedRetellAgentToAdd, setSelectedRetellAgentToAdd] = useState('');
+
     useEffect(() => {
         if (currentWorkspace) {
             loadTeams();
             loadWorkspaceMembers();
             loadBots();
+            loadRetellAgents();
         }
     }, [currentWorkspace]);
 
@@ -72,6 +77,16 @@ const Teams = () => {
             setBots(response.data.bots || []);
         } catch (error) {
             console.error('Error loading bots:', error);
+        }
+    };
+
+    const loadRetellAgents = async () => {
+        try {
+            const response = await retellAPI.getAgents(currentWorkspace.id);
+            setRetellAgents(response.data.agents || []);
+        } catch (error) {
+            console.error('Error loading Retell agents:', error);
+            setRetellAgents([]);
         }
     };
 
@@ -238,6 +253,37 @@ const Teams = () => {
             loadTeams();
         } catch (error) {
             console.error('Error removing bot:', error);
+        }
+    };
+
+    const getAvailableRetellAgents = () => {
+        const teamRetellAgentIds = teamMembers.filter(m => m.retellAgentId).map(m => m.retellAgentId);
+        return retellAgents.filter(a => !teamRetellAgentIds.includes(a.agent_id));
+    };
+
+    const handleAddRetellAgent = async () => {
+        if (!selectedRetellAgentToAdd || !selectedTeam) return;
+        try {
+            await teamAPI.addMember(currentWorkspace.id, selectedTeam.id, { retellAgentId: selectedRetellAgentToAdd });
+            const response = await teamAPI.getMembers(currentWorkspace.id, selectedTeam.id);
+            setTeamMembers(response.data.members);
+            setSelectedRetellAgentToAdd('');
+            loadTeams();
+        } catch (error) {
+            console.error('Error adding Retell agent:', error);
+            alert('Retell arama asistanı eklenemedi.');
+        }
+    };
+
+    const handleRemoveRetellAgent = async (agentId) => {
+        if (!selectedTeam) return;
+        try {
+            await teamAPI.removeMember(currentWorkspace.id, selectedTeam.id, agentId, 'retellAgent');
+            const response = await teamAPI.getMembers(currentWorkspace.id, selectedTeam.id);
+            setTeamMembers(response.data.members);
+            loadTeams();
+        } catch (error) {
+            console.error('Error removing Retell agent:', error);
         }
     };
 
@@ -412,9 +458,23 @@ const Teams = () => {
                         </div>
                     </div>
 
-                    <div className="team-stats">
-                        <Users size={16} />
-                        <span>{team.members?.filter(m => m.userId).length || 0} {t('teams.userLabel')}</span>
+                    <div className="team-stats" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Users size={15} />
+                            <span>{team.members?.filter(m => m.userId).length || 0} {t('teams.userLabel')}</span>
+                        </div>
+                        {team.members?.filter(m => m.botId).length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ef4444' }}>
+                                <Bot size={15} />
+                                <span>{team.members.filter(m => m.botId).length} {t('teams.aiAssistant')}</span>
+                            </div>
+                        )}
+                        {team.members?.filter(m => m.retellAgentId).length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#0d9488' }}>
+                                <Phone size={15} />
+                                <span>{team.members.filter(m => m.retellAgentId).length} Arama Asistanı</span>
+                            </div>
+                        )}
                         {hasChildren && (
                             <span className="sub-team-count">
                                 <GitBranch size={13} />
@@ -642,6 +702,31 @@ const Teams = () => {
                             </div>
                         </div>
 
+                        {/* Arama Asistanı Ekle */}
+                        <div className="add-member-section add-retell-section" style={{ marginTop: '4px', paddingTop: '12px', borderTop: '1px solid #f3f4f6' }}>
+                            <div className="members-section-label retell-label" style={{ color: '#0d9488' }}><Phone size={13} /> Arama Asistanı Ekle</div>
+                            <div className="member-select-row">
+                                <select
+                                    className="member-select"
+                                    value={selectedRetellAgentToAdd}
+                                    onChange={(e) => setSelectedRetellAgentToAdd(e.target.value)}
+                                >
+                                    <option value="">Arama Asistanı Seçin</option>
+                                    {getAvailableRetellAgents().map(a => (
+                                        <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    className="btn-primary retell-add-btn"
+                                    onClick={handleAddRetellAgent}
+                                    disabled={!selectedRetellAgentToAdd}
+                                    style={{ backgroundColor: '#0d9488' }}
+                                >
+                                    Ekle
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="members-list">
                             {/* Kullanıcı üyeleri */}
                             {teamMembers.filter(m => m.userId).map(member => (
@@ -679,7 +764,29 @@ const Teams = () => {
                                 </div>
                             ))}
 
-                            {teamMembers.filter(m => m.userId || m.botId).length === 0 && (
+                            {/* Retell Agent üyeleri */}
+                            {teamMembers.filter(m => m.retellAgentId).map(member => {
+                                const agent = retellAgents.find(a => a.agent_id === member.retellAgentId);
+                                const agentName = agent ? agent.agent_name : member.retellAgentId;
+                                return (
+                                    <div key={member.id} className="member-item retell-member-item">
+                                        <div className="member-info">
+                                            <div className="member-avatar retell-avatar">
+                                                <Phone size={16} color="#fff" />
+                                            </div>
+                                            <div className="member-details">
+                                                <span className="member-name">{agentName}</span>
+                                                <span className="member-type-badge retell-badge">Arama Asistanı</span>
+                                            </div>
+                                        </div>
+                                        <button className="icon-btn danger" onClick={() => handleRemoveRetellAgent(member.retellAgentId)} title={t('common.remove') || 'Remove'}>
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+
+                            {teamMembers.filter(m => m.userId || m.botId || m.retellAgentId).length === 0 && (
                                 <div style={{ textAlign: 'center', color: '#9ca3af', padding: '20px' }}>
                                     Bu takımda henüz üye yok.
                                 </div>

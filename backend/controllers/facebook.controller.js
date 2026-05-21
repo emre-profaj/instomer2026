@@ -4,6 +4,8 @@ import axios from 'axios';
 import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
+import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
+import { hasProfanity, censorProfanity } from '../utils/profanityFilter.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -788,6 +790,19 @@ async function processWebhookAsync(body) {
                         if (commenterId && !isFromPage && commentText) {
                             console.log(`💬 New comment from ${commenterId}: "${commentText}"`);
 
+                            // Check for profanity in incoming comment
+                            let hasProfanityDetected = false;
+                            let processedCommentText = commentText;
+                            try {
+                                hasProfanityDetected = hasProfanity(commentText);
+                                if (hasProfanityDetected) {
+                                    console.log(`⚠️ Profanity detected in incoming comment: "${commentText}"`);
+                                    processedCommentText = censorProfanity(commentText);
+                                }
+                            } catch (profError) {
+                                console.error('Error processing profanity in comment:', profError);
+                            }
+
                             // Save comment to database
                             try {
                                 // Find or create contact
@@ -860,7 +875,7 @@ async function processWebhookAsync(body) {
                                             workspaceId: facebookPage.workspaceId,
                                             channel: isInstagram ? 'INSTAGRAM_COMMENT' : 'FACEBOOK_COMMENT',
                                             status: 'OPEN',
-                                            // postId field removed
+                                            botEnabled: !hasProfanityDetected,
                                             lastMessageAt: new Date()
                                         }
                                     });
@@ -868,10 +883,10 @@ async function processWebhookAsync(body) {
                                 }
 
                                 // Save message
-                                await prisma.message.create({
+                                const newMessage = await prisma.message.create({
                                     data: {
                                         conversationId: conversation.id,
-                                        content: commentText,
+                                        content: processedCommentText,
                                         isFromContact: true,
                                         messageType: 'TEXT',
                                         facebookMessageId: commentId,
@@ -884,11 +899,26 @@ async function processWebhookAsync(body) {
                                     where: { id: conversation.id },
                                     data: {
                                         lastMessageAt: new Date(),
-                                        unreadCount: { increment: 1 }
+                                        unreadCount: { increment: 1 },
+                                        ...(hasProfanityDetected ? { botEnabled: false } : {})
                                     }
                                 });
 
                                 console.log(`✅ Comment saved to database: ${commentId}`);
+
+                                // Emit WebSocket event for inbox real-time update and notification
+                                try {
+                                    emitToWorkspace(facebookPage.workspaceId, 'new_message', {
+                                        workspaceId: facebookPage.workspaceId,
+                                        conversationId: conversation.id,
+                                        message: newMessage,
+                                        contact: contact,
+                                        channel: isInstagram ? 'INSTAGRAM_COMMENT' : 'FACEBOOK_COMMENT'
+                                    });
+                                    console.log(`✅ WebSocket new_message event emitted for comment message`);
+                                } catch (socketError) {
+                                    console.error('❌ Socket emit new_message error:', socketError);
+                                }
                             } catch (dbError) {
                                 console.error('❌ Failed to save comment to database:', dbError);
                             }
@@ -901,7 +931,7 @@ async function processWebhookAsync(body) {
                                     postId: postId,
                                     commentId: commentId,
                                     from: changeValue.from,
-                                    message: commentText,
+                                    message: processedCommentText,
                                     createdTime: new Date().toISOString()
                                 });
                             } catch (socketError) {
@@ -913,57 +943,40 @@ async function processWebhookAsync(body) {
 
                             if (!commentBotId) {
                                 console.log(`ℹ️ [COMMENTS] No ${isInstagram ? 'Instagram' : 'Facebook'} comment bot assigned - skipping auto-reply`);
+                            } else if (hasProfanityDetected) {
+                                console.log(`ℹ️ [COMMENTS] Skipping — profanity detected in: "${commentText.substring(0, 60)}"`);
+                            } else if (isEmojiOrIconOnly(commentText)) {
+                                console.log(`ℹ️ [COMMENTS] Skipping — comment consists only of emojis/icons/symbols: "${commentText.substring(0, 60)}"`);
                             } else {
-                                // 🔍 Soru tespiti — sadece soru içeren yorumlara yanıt ver
-                                const cleanText = commentText.replace(/[\p{Emoji}\s]/gu, '').trim();
-                                const questionMarks = ['?', '؟'];
-                                const questionKeywords = [
-                                    'nasıl', 'neden', 'nerede', 'nereden', 'nereye', 'ne zaman', 'nezaman',
-                                    'ne kadar', 'nekadar', 'kim', 'kime', 'kimden', 'hangi', 'hangisi',
-                                    'kaç', 'kaçta', 'var mı', 'var mi', 'varmı', 'varmi',
-                                    'ister miyim', 'mümkün mü', 'mumkun mu', 'yapılır mı', 'edilir mi',
-                                    'alabilir', 'öğrenebilir', 'söyler misiniz', 'bilgi verir',
-                                    'fiyat', 'ücret', 'ne oldu', 'ne oluyor', 'ne yapacak',
-                                    'how', 'what', 'where', 'when', 'why', 'who', 'which', 'is there', 'do you'
-                                ];
-                                const lowerComment = commentText.toLowerCase();
-                                const hasQuestion =
-                                    questionMarks.some(q => commentText.includes(q)) ||
-                                    questionKeywords.some(k => lowerComment.includes(k));
+                                try {
+                                    const { getAutoReply } = await import('./ai.controller.js');
+                                    console.log(`🤖 [COMMENTS] Calling getAutoReply for workspace: ${facebookPage.workspaceId}, pageId: ${facebookPage.pageId}`);
 
-                                if (!hasQuestion || cleanText.length === 0) {
-                                    console.log(`ℹ️ [COMMENTS] Skipping — no question detected in: "${commentText.substring(0, 60)}"`);
-                                } else {
-                                    try {
-                                        const { getAutoReply } = await import('./ai.controller.js');
-                                        console.log(`🤖 [COMMENTS] Calling getAutoReply for workspace: ${facebookPage.workspaceId}, pageId: ${facebookPage.pageId}`);
+                                    // Pass pageId so AI controller can find the assigned comment bot
+                                    const aiResponse = await getAutoReply(
+                                        facebookPage.workspaceId,
+                                        null,
+                                        commentText,
+                                        isInstagram ? 'instagram' : 'facebook',
+                                        'COMMENTS',
+                                        isInstagram ? facebookPage.instagramBusinessId : facebookPage.pageId
+                                    );
 
-                                        // Pass pageId so AI controller can find the assigned comment bot
-                                        const aiResponse = await getAutoReply(
-                                            facebookPage.workspaceId,
-                                            null,
-                                            commentText,
-                                            isInstagram ? 'instagram' : 'facebook',
-                                            'COMMENTS',
-                                            isInstagram ? facebookPage.instagramBusinessId : facebookPage.pageId
+                                    console.log(`🤖 [COMMENTS] AI Response: ${aiResponse ? aiResponse.substring(0, 100) : 'NULL'}`);
+
+                                    if (aiResponse) {
+                                        await axios.post(
+                                            `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`,
+                                            { message: aiResponse },
+                                            { params: { access_token: facebookPage.pageAccessToken } }
                                         );
-
-                                        console.log(`🤖 [COMMENTS] AI Response: ${aiResponse ? aiResponse.substring(0, 100) : 'NULL'}`);
-
-                                        if (aiResponse) {
-                                            await axios.post(
-                                                `https://graph.facebook.com/${GRAPH_API_VERSION}/${commentId}/comments`,
-                                                { message: aiResponse },
-                                                { params: { access_token: facebookPage.pageAccessToken } }
-                                            );
-                                            console.log('✅ AI Comment Reply posted successfully!');
-                                        } else {
-                                            console.log('⚠️ [COMMENTS] No AI response generated');
-                                        }
-                                    } catch (aiError) {
-                                        console.error('❌ AI Comment Reply failed:', aiError.message);
-                                        console.error('❌ AI Comment Reply stack:', aiError.stack);
+                                        console.log('✅ AI Comment Reply posted successfully!');
+                                    } else {
+                                        console.log('⚠️ [COMMENTS] No AI response generated');
                                     }
+                                } catch (aiError) {
+                                    console.error('❌ AI Comment Reply failed:', aiError.message);
+                                    console.error('❌ AI Comment Reply stack:', aiError.stack);
                                 }
                             }
                         } else {
@@ -1617,6 +1630,22 @@ async function processWebhookAsync(body) {
                     }
                 }
 
+                // Check for profanity in incoming messages
+                let hasProfanityDetected = false;
+                if (!isOutgoingMessage && message?.text) {
+                    hasProfanityDetected = hasProfanity(message.text);
+                    if (hasProfanityDetected) {
+                        console.log(`⚠️ Profanity detected in incoming FB/IG message from contact ${contact.id}`);
+                        // Censor the message text before saving to DB
+                        message.text = censorProfanity(message.text);
+                        // Disable bot for this conversation
+                        conversation = await prisma.conversation.update({
+                            where: { id: conversation.id },
+                            data: { botEnabled: false }
+                        });
+                    }
+                }
+
                 // Create message
                 // Skip saving echo messages if they're already in the database (bot or manual send already saved them)
                 if (message?.text) {
@@ -1699,6 +1728,53 @@ async function processWebhookAsync(body) {
                         console.log(`✅ WebSocket event emitted for new ${messageChannel} message to workspace ${facebookPage.workspaceId}`);
                     } catch (error) {
                         console.error('❌ Error emitting WebSocket event:', error);
+                    }
+
+                    // If profanity was detected, send warning, save warning to DB, and skip AI auto-reply/rules
+                    if (hasProfanityDetected) {
+                        try {
+                            const warningText = "Lütfen saygılı bir dil kullanın, size bu şekilde yardımcı olamayız.";
+                            console.log(`Sending profanity warning to sender: ${senderId}`);
+                            const sendResponse = await axios.post(
+                                `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
+                                {
+                                    recipient: { id: String(senderId) },
+                                    message: { text: warningText }
+                                },
+                                {
+                                    params: { access_token: facebookPage.pageAccessToken }
+                                }
+                            );
+
+                            const sentMessageId = sendResponse.data?.message_id;
+
+                            // Save warning message to DB (as outgoing message)
+                            const botMessage = await prisma.message.create({
+                                data: {
+                                    content: warningText,
+                                    conversationId: conversation.id,
+                                    isFromContact: false, // Outgoing
+                                    messageType: isInstagram ? 'INSTAGRAM' : 'TEXT',
+                                    senderId: null, // System/Bot
+                                    facebookMessageId: sentMessageId || null,
+                                    status: 'SENT'
+                                }
+                            });
+
+                            // Emit Socket for the warning message
+                            emitToWorkspace(facebookPage.workspaceId, 'new_message', {
+                                workspaceId: facebookPage.workspaceId,
+                                conversationId: conversation.id,
+                                message: botMessage,
+                                contact: contact,
+                                channel: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
+                            });
+                        } catch (warningError) {
+                            console.error('❌ Error sending profanity warning message:', warningError.response?.data || warningError.message);
+                        }
+
+                        releaseMessageLock(lockKey);
+                        continue;
                     }
 
                     // --- AUTOMATION RULES + AUTO-CALL (run before AI reply to avoid being skipped by continue) ---
@@ -1784,6 +1860,8 @@ async function processWebhookAsync(body) {
                             } else if (conversation.botEnabled === false) {
                                 // Check if bot is disabled for this specific conversation
                                 console.log(`🚫 [${isInstagram ? 'Instagram' : 'Facebook'}] Bot disabled for this conversation - skipping AI reply`);
+                            } else if (isEmojiOrIconOnly(message.text)) {
+                                console.log(`ℹ️ [${isInstagram ? 'Instagram' : 'Facebook'}] Message consists only of emojis/icons/symbols ("${message.text}") - skipping AI reply`);
                             } else {
                                 const { getAutoReply } = await import('./ai.controller.js');
                                 const { scheduleAutoReplyCheck } = await import('../services/autoReplyDelay.service.js');

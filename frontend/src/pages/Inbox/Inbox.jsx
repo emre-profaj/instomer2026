@@ -1322,6 +1322,12 @@ const Inbox = () => {
         if (!contactId) return;
         setPlannedActivityMap(prev => {
             const existing = prev[contactId] || [];
+            if (status === 'DELETED') {
+                return {
+                    ...prev,
+                    [contactId]: existing.filter(e => e.type !== type)
+                };
+            }
             const alreadyExists = existing.find(e => e.type === type);
             if (alreadyExists) {
                 return {
@@ -2904,13 +2910,15 @@ const Inbox = () => {
                                     className={`agent-filter-select${agentFilter ? ' active' : ''}`}
                                     onClick={() => setAgentFilterOpen(prev => !prev)}
                                 >
-                                    {agentFilter
-                                        ? agentFilter === '__unassigned__'
-                                            ? 'Atanmamış'
-                                            : (members.find(m => m.user?.id === agentFilter)?.user?.name || 'Tüm Temsilciler')
-                                        : 'Tüm Temsilciler'
-                                    }
-                                    <ChevronDown size={14} style={{ marginLeft: 4, transform: agentFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                    <span>
+                                        {agentFilter
+                                            ? agentFilter === '__unassigned__'
+                                                ? 'Atanmamış'
+                                                : (members.find(m => m.user?.id === agentFilter)?.user?.name || 'Tüm Temsilciler')
+                                            : 'Tüm Temsilciler'
+                                        }
+                                    </span>
+                                    <ChevronDown size={14} style={{ marginLeft: 'auto', transform: agentFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                                 </button>
                                 {agentFilterOpen && (
                                     <div className="agent-filter-dropdown">

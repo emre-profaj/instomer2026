@@ -1,0 +1,611 @@
+import React, { useState, useEffect } from 'react';
+import { 
+    Users, PhoneCall, CheckCircle2, PhoneOff, Phone, 
+    TrendingUp, Calendar, Clock, RefreshCw, Trash2, 
+    Search, FileText, AlertCircle, X, ChevronRight, MessageSquare 
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../components/Toast/Toast';
+import { contactAPI, retellAPI } from '../../services/api';
+import './AramaAnalizi.css';
+
+const AramaAnalizi = () => {
+    const { currentWorkspace } = useAuth();
+    const { showSuccess, showError } = useToast();
+    
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [analytics, setAnalytics] = useState(null);
+    const [scheduledCalls, setScheduledCalls] = useState([]);
+    
+    // Date filter states
+    const [dateFilter, setDateFilter] = useState('7d'); // 24h | 7d | 30d | custom
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+
+    // Table filter & search states
+    const [searchTerm, setSearchTerm] = useState('');
+    const [tableFilter, setTableFilter] = useState('all'); // all | called | notCalled | completed | planned
+
+    // Modal states
+    const [showPhoneModal, setShowPhoneModal] = useState(false);
+    const [modalSearch, setModalSearch] = useState('');
+    const [modalFilter, setModalFilter] = useState('all'); // all | called | notCalled
+
+    useEffect(() => {
+        if (currentWorkspace?.id) {
+            loadAllData();
+        }
+    }, [currentWorkspace?.id, dateFilter]);
+
+    const getDateRange = () => {
+        const now = new Date();
+        const start = new Date();
+        if (dateFilter === '24h') {
+            start.setHours(now.getHours() - 24);
+        } else if (dateFilter === '7d') {
+            start.setDate(now.getDate() - 7);
+        } else if (dateFilter === '30d') {
+            start.setDate(now.getDate() - 30);
+        } else if (dateFilter === 'custom' && startDate) {
+            const customStart = new Date(startDate);
+            const customEnd = endDate ? new Date(endDate) : new Date();
+            return { 
+                startDate: customStart.toISOString(), 
+                endDate: customEnd.toISOString() 
+            };
+        } else {
+            // Default to 7 days
+            start.setDate(now.getDate() - 7);
+        }
+        return { startDate: start.toISOString(), endDate: now.toISOString() };
+    };
+
+    const loadAllData = async (isRefresh = false) => {
+        try {
+            if (isRefresh) setRefreshing(true);
+            else setLoading(true);
+
+            const dateParams = getDateRange();
+            
+            const [analyticsRes, scheduledRes] = await Promise.all([
+                contactAPI.getAnalytics(currentWorkspace.id, dateParams),
+                retellAPI.getScheduledCalls(currentWorkspace.id)
+            ]);
+
+            setAnalytics(analyticsRes.data);
+            setScheduledCalls(scheduledRes.data.scheduledCalls || []);
+        } catch (error) {
+            console.error('Failed to load call analytics data:', error);
+            showError('Arama analizi verileri yüklenirken bir hata oluştu.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    };
+
+    const handleApplyCustomDates = () => {
+        if (!startDate || !endDate) {
+            showError('Lütfen başlangıç ve bitiş tarihlerini seçin.');
+            return;
+        }
+        loadAllData();
+    };
+
+    const handleCancelScheduledCall = async (callId) => {
+        if (!window.confirm('Bu gecikmiş/planlanmış aramayı iptal etmek istediğinize emin misiniz?')) {
+            return;
+        }
+        try {
+            await retellAPI.cancelScheduledCall(currentWorkspace.id, callId);
+            showSuccess('Planlanmış arama başarıyla iptal edildi.');
+            // Reload scheduled calls
+            const scheduledRes = await retellAPI.getScheduledCalls(currentWorkspace.id);
+            setScheduledCalls(scheduledRes.data.scheduledCalls || []);
+        } catch (error) {
+            console.error('Failed to cancel scheduled call:', error);
+            showError('Arama iptal edilirken bir hata oluştu.');
+        }
+    };
+
+    const formatDateTime = (dateStr) => {
+        if (!dateStr) return '—';
+        return new Date(dateStr).toLocaleString('tr-TR', {
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    // Filter calls in the past (overdue/delayed calls)
+    const delayedCalls = scheduledCalls.filter(call => {
+        return new Date(call.scheduledAt) < new Date();
+    });
+
+    // Get call tracking stats
+    const stats = analytics?.callTrackingStats || {
+        totalWithPhone: 0,
+        totalCalled: 0,
+        totalCompleted: 0,
+        totalNotCalled: 0,
+        callRate: 0,
+        details: [],
+        phoneContactsList: [],
+        activities: []
+    };
+
+    // Filter closure notes (activities with result text where type === 'CALL' and status === 'COMPLETED')
+    const closureNotes = (stats.activities || [])
+        .filter(act => act.status === 'COMPLETED' && act.result && act.result.trim() !== '')
+        .sort((a, b) => new Date(b.completedAt || b.createdAt) - new Date(a.completedAt || a.createdAt));
+
+    // Filter customer details table
+    const filteredDetails = (stats.details || [])
+        .filter(d => {
+            if (tableFilter === 'called') return d.totalCalls > 0;
+            if (tableFilter === 'notCalled') return d.totalCalls === 0;
+            if (tableFilter === 'completed') return d.completedCalls > 0;
+            if (tableFilter === 'planned') return d.plannedCalls > 0;
+            return true;
+        })
+        .filter(d => {
+            if (!searchTerm) return true;
+            const term = searchTerm.toLowerCase();
+            return (
+                d.contactName.toLowerCase().includes(term) ||
+                d.phone.includes(term) ||
+                (d.assigneeName && d.assigneeName.toLowerCase().includes(term))
+            );
+        });
+
+    if (loading && !analytics) {
+        return (
+            <div className="arama-analizi-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ textAlign: 'center', color: '#6366f1' }}>
+                    <RefreshCw className="spin" size={40} style={{ marginBottom: 12 }} />
+                    <p style={{ fontWeight: 600 }}>Arama Analizleri Yükleniyor...</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="arama-analizi-container">
+            {/* Header */}
+            <div className="arama-analizi-header">
+                <div className="arama-analizi-title">
+                    <h1>Arama Analizi</h1>
+                    <p>Telefon aramaları, gecikmiş aramalar ve müşteri görüşme notları</p>
+                </div>
+                
+                <div className="arama-analizi-actions">
+                    {/* Presets */}
+                    <div className="date-presets">
+                        <button 
+                            className={`preset-btn ${dateFilter === '24h' ? 'active' : ''}`}
+                            onClick={() => setDateFilter('24h')}
+                        >
+                            Son 24 Saat
+                        </button>
+                        <button 
+                            className={`preset-btn ${dateFilter === '7d' ? 'active' : ''}`}
+                            onClick={() => setDateFilter('7d')}
+                        >
+                            Son 7 Gün
+                        </button>
+                        <button 
+                            className={`preset-btn ${dateFilter === '30d' ? 'active' : ''}`}
+                            onClick={() => setDateFilter('30d')}
+                        >
+                            Son 30 Gün
+                        </button>
+                        <button 
+                            className={`preset-btn ${dateFilter === 'custom' ? 'active' : ''}`}
+                            onClick={() => setDateFilter('custom')}
+                        >
+                            Özel Aralık
+                        </button>
+                    </div>
+
+                    {/* Custom Date Inputs */}
+                    {dateFilter === 'custom' && (
+                        <div className="custom-date-inputs">
+                            <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                            />
+                            <span className="date-separator">—</span>
+                            <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                            />
+                            <button className="btn-apply-dates" onClick={handleApplyCustomDates}>
+                                Uygula
+                            </button>
+                        </div>
+                    )}
+
+                    <button 
+                        className="btn-refresh" 
+                        onClick={() => loadAllData(true)}
+                        disabled={refreshing}
+                    >
+                        <RefreshCw className={refreshing ? 'spin' : ''} size={15} />
+                        Güncelle
+                    </button>
+                </div>
+            </div>
+
+            {/* Metrics cards */}
+            <div className="stats-grid">
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#eef2ff', color: '#6366f1' }}>
+                        <Users size={22} />
+                    </div>
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Numaralı Kişiler</span>
+                        <span className="stat-card-value">{stats.totalWithPhone}</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#f0fdf4', color: '#16a34a' }}>
+                        <PhoneCall size={22} />
+                    </div>
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Aranan</span>
+                        <span className="stat-card-value">{stats.totalCalled}</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}>
+                        <CheckCircle2 size={22} />
+                    </div>
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Tamamlanan</span>
+                        <span className="stat-card-value">{stats.totalCompleted}</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                        <PhoneOff size={22} />
+                    </div>
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Aranmayan</span>
+                        <span className="stat-card-value">{stats.totalNotCalled}</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#fffbeb', color: '#d97706' }}>
+                        <TrendingUp size={22} />
+                    </div>
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Arama Oranı</span>
+                        <span className="stat-card-value">%{stats.callRate}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Split panels: Delayed Calls & Closed Call Notes */}
+            <div className="sections-grid">
+                {/* Delayed Calls Column */}
+                <div className="section-card">
+                    <div className="section-card-header">
+                        <div className="section-card-title">
+                            <div className="section-card-title-icon" style={{ color: '#ef4444' }}>
+                                <AlertCircle size={20} />
+                            </div>
+                            <h2>Gecikmiş Aramalar</h2>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, background: '#fef2f2', padding: '2px 8px', borderRadius: '12px' }}>
+                            {delayedCalls.length} Bekleyen
+                        </span>
+                    </div>
+                    
+                    <div className="delayed-calls-list">
+                        {delayedCalls.length > 0 ? (
+                            delayedCalls.map(call => (
+                                <div key={call.id} className="delayed-call-item">
+                                    <div className="delayed-call-left">
+                                        <span className="delayed-call-contact-name">
+                                            {call.contactName || 'İsimsiz Müşteri'}
+                                        </span>
+                                        <span className="delayed-call-phone-num">
+                                            {call.toNumber}
+                                        </span>
+                                        <div className="delayed-call-time-badge">
+                                            <Clock size={12} />
+                                            {formatDateTime(call.scheduledAt)}
+                                        </div>
+                                    </div>
+                                    <div className="delayed-call-right">
+                                        <button 
+                                            className="btn-action-cancel"
+                                            onClick={() => handleCancelScheduledCall(call.id)}
+                                            title="Aramayı İptal Et"
+                                        >
+                                            <Trash2 size={13} style={{ marginRight: 4 }} />
+                                            İptal Et
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="empty-state">
+                                <div className="empty-state-icon" style={{ color: '#10b981' }}>✓</div>
+                                <p>Gecikmiş arama bulunmamaktadır.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Closed Call Notes Column */}
+                <div className="section-card">
+                    <div className="section-card-header">
+                        <div className="section-card-title">
+                            <div className="section-card-title-icon" style={{ color: '#6366f1' }}>
+                                <FileText size={20} />
+                            </div>
+                            <h2>Arama Kapatma Notları</h2>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 700, background: '#eef2ff', padding: '2px 8px', borderRadius: '12px' }}>
+                            {closureNotes.length} Kayıt
+                        </span>
+                    </div>
+
+                    <div className="closure-notes-list">
+                        {closureNotes.length > 0 ? (
+                            closureNotes.map(act => (
+                                <div key={act.id} className="closure-note-item">
+                                    <div className="closure-note-meta">
+                                        <span className="closure-note-contact-link">
+                                            {act.contact?.name || 'Bilinmeyen Kişi'}
+                                        </span>
+                                        <span className="closure-note-agent">
+                                            👤 {act.assignee?.name || 'Atanmamış'}
+                                        </span>
+                                    </div>
+                                    <p className="closure-note-text">
+                                        "{act.result}"
+                                    </p>
+                                    <span className="closure-note-date">
+                                        {formatDateTime(act.completedAt || act.createdAt)}
+                                    </span>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="empty-state">
+                                <div className="empty-state-icon" style={{ color: '#94a3b8' }}>
+                                    <MessageSquare size={32} />
+                                </div>
+                                <p>Bu aralıkta kapatma notu bulunmamaktadır.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Bottom Table Section */}
+            <div className="bottom-section">
+                <div className="bottom-section-header">
+                    <div className="section-card-title">
+                        <div className="section-card-title-icon" style={{ color: '#6366f1' }}>
+                            <Phone size={20} />
+                        </div>
+                        <h2>Müşteri Arama Detayları</h2>
+                    </div>
+
+                    <div className="bottom-section-actions">
+                        <div className="bottom-section-filters">
+                            <input 
+                                type="text"
+                                className="input-search-contacts"
+                                placeholder="İsim veya numara ara..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+
+                            <select
+                                className="premium-select"
+                                value={tableFilter}
+                                onChange={(e) => setTableFilter(e.target.value)}
+                                style={{ padding: '8px 12px', fontSize: '0.8125rem' }}
+                            >
+                                <option value="all">Tüm Aramalar</option>
+                                <option value="called">Arananlar</option>
+                                <option value="notCalled">Aranmayanlar</option>
+                                <option value="completed">Tamamlananlar</option>
+                                <option value="planned">Planlananlar</option>
+                            </select>
+                        </div>
+
+                        <button 
+                            className="btn-open-list"
+                            onClick={() => setShowPhoneModal(true)}
+                        >
+                            <Users size={14} />
+                            Numaralı Kişiler Listesi
+                        </button>
+                    </div>
+                </div>
+
+                <div className="table-responsive">
+                    <table className="modern-table" style={{ fontSize: '0.82rem' }}>
+                        <thead>
+                            <tr>
+                                <th>Müşteri</th>
+                                <th>Telefon Numarası</th>
+                                <th style={{ textAlign: 'center' }}>Toplam Arama</th>
+                                <th style={{ textAlign: 'center' }}>Tamamlanan</th>
+                                <th style={{ textAlign: 'center' }}>Planlanan</th>
+                                <th>Son Arama Zamanı</th>
+                                <th>Temsilci</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredDetails.length > 0 ? (
+                                filteredDetails.map(d => (
+                                    <tr key={d.contactId}>
+                                        <td>
+                                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{d.contactName}</div>
+                                        </td>
+                                        <td style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.78rem' }}>
+                                            {d.phone}
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <span style={{ fontWeight: 700, color: '#6366f1' }}>{d.totalCalls}</span>
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <span style={{ fontWeight: 700, color: d.completedCalls > 0 ? '#10b981' : '#94a3b8' }}>
+                                                {d.completedCalls}
+                                            </span>
+                                        </td>
+                                        <td style={{ textAlign: 'center' }}>
+                                            <span style={{ fontWeight: 700, color: d.plannedCalls > 0 ? '#f59e0b' : '#94a3b8' }}>
+                                                {d.plannedCalls}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                                {formatDateTime(d.lastCallDate)}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {d.assigneeName ? (
+                                                <span style={{ fontSize: '0.7rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                                                    {d.assigneeName}
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: '#cbd5e1' }}>—</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="7" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
+                                        Eşleşen sonuç bulunamadı.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Modal - Numaralı Kişiler Listesi */}
+            {showPhoneModal && (
+                <div className="modal-overlay">
+                    <div className="modal-backdrop" onClick={() => setShowPhoneModal(false)} />
+                    <div className="modal-container">
+                        <div className="modal-header">
+                            <div className="modal-header-info">
+                                <h3>Numaralı Kişiler</h3>
+                                <p>Rehberinizde telefon numarası kayıtlı olan {stats.phoneContactsList?.length || 0} kişi</p>
+                            </div>
+                            <button className="modal-close-btn" onClick={() => setShowPhoneModal(false)}>
+                                <X size={16} />
+                            </button>
+                        </div>
+                        
+                        <div className="modal-filters">
+                            <input 
+                                type="text"
+                                className="modal-search"
+                                placeholder="İsim veya numara ara..."
+                                value={modalSearch}
+                                onChange={(e) => setModalSearch(e.target.value)}
+                            />
+                            
+                            <div style={{ display: 'flex', gap: 6 }}>
+                                <button 
+                                    className={`modal-filter-btn ${modalFilter === 'all' ? 'active' : ''}`}
+                                    onClick={() => setModalFilter('all')}
+                                >
+                                    Tümü
+                                </button>
+                                <button 
+                                    className={`modal-filter-btn ${modalFilter === 'called' ? 'active' : ''}`}
+                                    onClick={() => setModalFilter('called')}
+                                >
+                                    Arandı
+                                </button>
+                                <button 
+                                    className={`modal-filter-btn ${modalFilter === 'notCalled' ? 'active' : ''}`}
+                                    onClick={() => setModalFilter('notCalled')}
+                                >
+                                    Aranmadı
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="modal-body">
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
+                                        <th style={{ textAlign: 'left', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Kişi</th>
+                                        <th style={{ textAlign: 'left', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Telefon</th>
+                                        <th style={{ textAlign: 'center', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Durum</th>
+                                        <th style={{ textAlign: 'center', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Arama</th>
+                                        <th style={{ textAlign: 'left', padding: '8px 6px', fontWeight: 700, color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase' }}>Son Arama</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {stats.phoneContactsList
+                                        ?.filter(c => {
+                                            if (modalFilter === 'called') return c.wasCalled;
+                                            if (modalFilter === 'notCalled') return !c.wasCalled;
+                                            return true;
+                                        })
+                                        ?.filter(c => {
+                                            if (!modalSearch) return true;
+                                            const query = modalSearch.toLowerCase();
+                                            return c.name.toLowerCase().includes(query) || (c.phone || '').includes(query);
+                                        })
+                                        ?.map(c => (
+                                            <tr key={c.contactId} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                <td style={{ padding: '10px 6px', fontWeight: 600, color: '#0f172a' }}>{c.name}</td>
+                                                <td style={{ padding: '10px 6px', color: '#64748b', fontFamily: 'monospace', fontSize: '0.78rem' }}>{c.phone}</td>
+                                                <td style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                                    {c.wasCalled ? (
+                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ✓ Arandı
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ✗ Aranmadı
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                                    {c.wasCalled ? (
+                                                        <span style={{ fontWeight: 700, color: '#6366f1' }}>{c.totalCalls}</span>
+                                                    ) : (
+                                                        <span style={{ color: '#d1d5db' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '10px 6px', color: '#64748b', fontSize: '0.76rem' }}>
+                                                    {formatDateTime(c.lastCallDate)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                </tbody>
+                            </table>
+                            
+                            {stats.phoneContactsList
+                                ?.filter(c => modalFilter === 'called' ? c.wasCalled : modalFilter === 'notCalled' ? !c.wasCalled : true)
+                                ?.filter(c => !modalSearch || c.name.toLowerCase().includes(modalSearch.toLowerCase()) || (c.phone || '').includes(modalSearch))
+                                ?.length === 0 && (
+                                    <div style={{ textAlign: 'center', color: '#9ca3af', padding: '32px 0', fontSize: '0.85rem' }}>Eşleşen sonuç bulunamadı.</div>
+                                )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default AramaAnalizi;

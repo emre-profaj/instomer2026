@@ -119,11 +119,11 @@ export const getTeams = async (req, res) => {
     }
 };
 
-// Add member to team (user or bot)
+// Add member to team (user, bot, or retellAgent)
 export const addTeamMember = async (req, res) => {
     try {
         const { workspaceId, teamId } = req.params;
-        const { userId, botId, role } = req.body;
+        const { userId, botId, retellAgentId, role } = req.body;
 
         // Verify team belongs to this workspace
         const team = await prisma.team.findFirst({ where: { id: teamId, workspaceId } });
@@ -131,13 +131,10 @@ export const addTeamMember = async (req, res) => {
             return res.status(404).json({ error: 'Team not found' });
         }
 
-        // Either userId or botId should be provided, not both
-        if (!userId && !botId) {
-            return res.status(400).json({ error: 'userId or botId is required' });
-        }
-
-        if (userId && botId) {
-            return res.status(400).json({ error: 'Provide either userId or botId, not both' });
+        // Count how many of userId, botId, retellAgentId are provided
+        const providedCount = [userId, botId, retellAgentId].filter(Boolean).length;
+        if (providedCount !== 1) {
+            return res.status(400).json({ error: 'Provide exactly one of userId, botId, or retellAgentId' });
         }
 
         const memberData = {
@@ -147,13 +144,15 @@ export const addTeamMember = async (req, res) => {
 
         if (userId) {
             memberData.userId = userId;
-        } else {
+        } else if (botId) {
             // Verify bot belongs to this workspace
             const bot = await prisma.aIBot.findFirst({ where: { id: botId, workspaceId } });
             if (!bot) {
                 return res.status(404).json({ error: 'Bot not found in this workspace' });
             }
             memberData.botId = botId;
+        } else if (retellAgentId) {
+            memberData.retellAgentId = retellAgentId;
         }
 
         const teamMember = await prisma.teamMember.create({
@@ -174,11 +173,11 @@ export const addTeamMember = async (req, res) => {
     }
 };
 
-// Remove member from team (user or bot)
+// Remove member from team (user, bot, or retellAgent)
 export const removeTeamMember = async (req, res) => {
     try {
         const { workspaceId, teamId, memberId } = req.params;
-        const { type } = req.query; // 'user' or 'bot'
+        const { type } = req.query; // 'user', 'bot', or 'retellAgent'
 
         // Verify team belongs to this workspace
         const team = await prisma.team.findFirst({ where: { id: teamId, workspaceId } });
@@ -191,6 +190,8 @@ export const removeTeamMember = async (req, res) => {
 
         if (type === 'bot') {
             findWhere.botId = memberId;
+        } else if (type === 'retellAgent') {
+            findWhere.retellAgentId = memberId;
         } else {
             findWhere.userId = memberId;
         }

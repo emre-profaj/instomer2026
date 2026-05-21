@@ -287,6 +287,19 @@
     color: #059669;
 }
 
+.agent-filter-select svg {
+    flex-shrink: 0;
+}
+
+.agent-filter-select span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+
 .agent-filter-dropdown {
     position: absolute;
     top: calc(100% + 4px);
@@ -345,19 +358,32 @@
 .filter-multiselect-trigger {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
+    gap: 6px;
+    padding: 8px 12px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    min-width: 120px;
+    min-width: 0;
     white-space: nowrap;
     flex-shrink: 0;
+}
+
+.filter-multiselect-trigger svg {
+    flex-shrink: 0;
+}
+
+.filter-multiselect-trigger span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
 }
 
 .filter-multiselect-trigger:hover {

@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { applyChannelRouting, canBotRespond } from '../services/conversationRouting.service.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
+import { hasProfanity, censorProfanity } from '../utils/profanityFilter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1124,6 +1126,22 @@ export const webhookHandler = async (req, res) => {
                         }
                     }
 
+                    // Check for profanity in incoming messages
+                    let hasProfanityDetected = false;
+                    if (msg_body) {
+                        hasProfanityDetected = hasProfanity(msg_body);
+                        if (hasProfanityDetected) {
+                            console.log(`⚠️ Profanity detected in incoming WhatsApp message from contact ${contact.id}`);
+                            // Censor the message body before saving to DB
+                            msg_body = censorProfanity(msg_body);
+                            // Disable bot for this conversation
+                            conversation = await prisma.conversation.update({
+                                where: { id: conversation.id },
+                                data: { botEnabled: false }
+                            });
+                        }
+                    }
+
                     // Create Message
                     const newMessage = await prisma.message.create({
                         data: {
@@ -1160,6 +1178,54 @@ export const webhookHandler = async (req, res) => {
                         contact: contact,
                         channel: 'WHATSAPP'
                     });
+
+                    // If profanity was detected, send warning, save warning to DB, and skip AI auto-reply/rules
+                    if (hasProfanityDetected) {
+                        try {
+                            const warningText = "Lütfen saygılı bir dil kullanın, size bu şekilde yardımcı olamayız.";
+                            console.log(`Sending profanity warning to WhatsApp user: ${from}`);
+                            const waReply = await axios.post(
+                                `https://graph.facebook.com/${GRAPH_API_VERSION}/${waNumber.phoneNumberId}/messages`,
+                                {
+                                    messaging_product: 'whatsapp',
+                                    to: from,
+                                    text: { body: warningText }
+                                },
+                                {
+                                    headers: { Authorization: `Bearer ${waNumber.accessToken}` }
+                                }
+                            );
+
+                            const waMsgId = waReply.data?.messages?.[0]?.id;
+
+                            // Save warning message to DB (as outgoing message)
+                            const botMessage = await prisma.message.create({
+                                data: {
+                                    content: warningText,
+                                    conversationId: conversation.id,
+                                    isFromContact: false,
+                                    messageType: 'WHATSAPP',
+                                    senderId: null,
+                                    whatsappMessageId: waMsgId || null,
+                                    status: 'SENT'
+                                }
+                            });
+
+                            // Emit Socket for the warning message
+                            emitToWorkspace(waNumber.workspaceId, 'new_message', {
+                                workspaceId: waNumber.workspaceId,
+                                conversationId: conversation.id,
+                                message: botMessage,
+                                contact: contact,
+                                channel: 'WHATSAPP'
+                            });
+                        } catch (warningError) {
+                            console.error('❌ Error sending WhatsApp profanity warning message:', warningError.response?.data || warningError.message);
+                        }
+
+                        releaseMessageLock(wamid);
+                        return res.sendStatus(200);
+                    }
 
                     // --- CHAT CALL DETECTION (beni ara / saat X'de ara) ---
                     if (msg_body && message.type === 'text') {
@@ -1203,6 +1269,8 @@ export const webhookHandler = async (req, res) => {
                         } else if (conversation.botEnabled === false) {
                             // Check if bot is disabled for this specific conversation
                             console.log(`🚫 [WhatsApp] Bot disabled for this conversation - skipping AI reply`);
+                        } else if (isEmojiOrIconOnly(msg_body)) {
+                            console.log(`ℹ️ [WhatsApp] Message consists only of emojis/icons/symbols ("${msg_body}") - skipping AI reply`);
                         } else {
                             // 🚀 Kanal yönlendirmesi kontrolü - Bot gecikme süresi ve agent atama kontrolü
                             const botCanRespond = await canBotRespond(conversation.id);

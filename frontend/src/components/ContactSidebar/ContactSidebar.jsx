@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
@@ -123,7 +124,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
 };
 
 const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null }) => {
-    const { currentWorkspace, onlineUsers } = useAuth();
+    const { currentWorkspace, onlineUsers, user } = useAuth();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -180,6 +181,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         return t ? (JSON.parse(t)[0] || '') : '';
     });
     const [localAgentId, setLocalAgentId] = useState(() => conversationData?.assignedToId || '');
+
+    // Assignment dropdown menu states
+    const [assignMegaMenuOpen, setAssignMegaMenuOpen] = useState(false);
+    const [assignMegaMenuPos, setAssignMegaMenuPos] = useState({ top: 0, left: 0 });
+    const [assignSelectedTeam, setAssignSelectedTeam] = useState(null);
+    const [takingOver, setTakingOver] = useState(false);
+    const assignMegaMenuRef = useRef(null);
+    const assignMenuDivRef = useRef(null);
     const [editingActivity, setEditingActivity] = useState(null); // { id, description, title }
     const [editActivityText, setEditActivityText] = useState('');
     const [editingActivityId, setEditingActivityId] = useState(null); // For modal edit mode
@@ -271,6 +280,40 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setLocalAgentId(conversationData.assignedToId || '');
         }
     }, [conversationData?.teamIds, conversationData?.assignedToId]);
+
+    // Sync assignment mega menu position on window resize and scroll
+    useEffect(() => {
+        if (!assignMegaMenuOpen) return;
+
+        const updatePosition = () => {
+            if (assignMegaMenuRef.current) {
+                const trigger = assignMegaMenuRef.current.querySelector('.stage-mega-trigger');
+                if (trigger) {
+                    const rect = trigger.getBoundingClientRect();
+                    const menuWidth = assignMenuDivRef.current ? assignMenuDivRef.current.getBoundingClientRect().width : 342;
+                    setAssignMegaMenuPos({
+                        top: rect.bottom + 6,
+                        left: Math.max(10, rect.right - menuWidth)
+                    });
+                }
+            }
+        };
+
+        window.addEventListener('resize', updatePosition);
+        window.addEventListener('scroll', updatePosition, true);
+
+        // Initial update
+        updatePosition();
+
+        // Refine position in the next cycle to capture measured DOM width
+        const timer = setTimeout(updatePosition, 0);
+
+        return () => {
+            window.removeEventListener('resize', updatePosition);
+            window.removeEventListener('scroll', updatePosition, true);
+            clearTimeout(timer);
+        };
+    }, [assignMegaMenuOpen]);
 
     // Listen for funnel stage changes (from Pipeline view or other sources)
     useEffect(() => {
@@ -428,7 +471,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
     // Aktivite modalını konuşmanın mevcut atamasıyla aç
     const openActivityModal = (type) => {
-        const effectiveConv = conversationData || (contactConversations.length > 0 ? contactConversations[0] : null);
+        const effectiveConv = activeConv;
         const defaultAssigneeId = effectiveConv?.assignedToId || '';
         const defaultTeamId = effectiveConv?.teamIds
             ? ((() => { try { return JSON.parse(effectiveConv.teamIds)[0] || ''; } catch { return ''; } })())
@@ -527,18 +570,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }
     };
 
-    const handleDeleteActivity = async (activityId) => {
-        if (!confirm('Bu aktiviteyi silmek istediğinize emin misiniz?')) return;
-        try {
-            const rawId = activityId.replace(/^act_/, '');
-            await activityAPI.deleteActivity(rawId);
-            setPlannedTimeline(prev => prev.filter(i => i.id !== activityId));
-            setPastTimeline(prev => prev.filter(i => i.id !== activityId));
-        } catch (err) {
-            console.error('Delete activity error:', err);
-            alert('Silme işlemi başarısız.');
-        }
-    };
+
 
     const handleCompleteActivity = async () => {
         if (!completingActivity) return;
@@ -560,6 +592,38 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         } catch (err) {
             console.error('Complete activity error:', err);
             alert('Tamamlama başarısız.');
+        }
+    };
+
+    const handleClaimActivity = async (activityId) => {
+        try {
+            const rawId = activityId.replace(/^act_/, '');
+            const response = await activityAPI.claimActivity(rawId);
+            
+            const userName = user?.name || 'Ben';
+            const userId = currentUserId || user?.id;
+
+            setPlannedTimeline(prev => 
+                prev.map(item => {
+                    if (item.id === activityId) {
+                        return {
+                            ...item,
+                            assignedToId: userId,
+                            assignedToName: response?.assignee?.name || userName
+                        };
+                    }
+                    return item;
+                })
+            );
+
+            if (onActivitySaved && profile?.id) {
+                const activity = plannedTimeline.find(i => i.id === activityId);
+                const actType = activity?.type || 'CALL';
+                onActivitySaved({ type: actType, status: 'CLAIMED', contactId: profile.id });
+            }
+        } catch (err) {
+            console.error('Claim activity error:', err);
+            alert(err.response?.data?.error || 'Aktivite üstlenilemedi.');
         }
     };
 
@@ -641,6 +705,65 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setContactConversations(response.data.conversations || []);
         } catch (err) {
             console.error('Error fetching contact conversations:', err);
+        }
+    };
+
+    const activeConv = conversationData || (contactConversations.length > 0 ? contactConversations[0] : null);
+
+    const handleAssign = async (teamId, userId) => {
+        if (!activeConv) return;
+        setAssignMegaMenuOpen(false);
+        try {
+            if (userId !== undefined) {
+                if (onAssignUser) {
+                    await onAssignUser(activeConv.id, userId);
+                } else {
+                    await conversationAPI.assign(currentWorkspace.id, activeConv.id, { userId: userId || null });
+                }
+                // Update local state in contactConversations
+                setContactConversations(prev => prev.map(c =>
+                    c.id === activeConv.id
+                        ? { ...c, assignedToId: userId || null, assignedTo: userId ? members.find(m => m.id === userId) : null }
+                        : c
+                ));
+            } else {
+                if (onAssignTeam) {
+                    await onAssignTeam(activeConv.id, teamId);
+                } else {
+                    await conversationAPI.assign(currentWorkspace.id, activeConv.id, { teamId: teamId || null });
+                }
+                const newTeamIds = teamId ? JSON.stringify([teamId]) : '[]';
+                setContactConversations(prev => prev.map(c =>
+                    c.id === activeConv.id ? { ...c, teamIds: newTeamIds } : c
+                ));
+            }
+        } catch (err) {
+            console.error('Assign error:', err);
+            alert('Atama işlemi gerçekleştirilemedi: ' + (err?.response?.data?.error || err.message));
+        }
+    };
+
+    const handleClaim = async () => {
+        if (!activeConv || takingOver) return;
+        setTakingOver(true);
+        try {
+            if (onTakeOver) {
+                await onTakeOver(activeConv.id);
+            } else {
+                await conversationAPI.claim(currentWorkspace.id, activeConv.id);
+            }
+            const myId = currentUserId || user?.id;
+            const myName = user?.name || 'Ben';
+            setContactConversations(prev => prev.map(c =>
+                c.id === activeConv.id
+                    ? { ...c, assignedToId: myId, assignedTo: { id: myId, name: myName } }
+                    : c
+            ));
+        } catch (err) {
+            console.error('Claim error:', err);
+            alert('Konuşma üstlenilemedi: ' + (err?.response?.data?.error || err.message));
+        } finally {
+            setTakingOver(false);
         }
     };
 
@@ -827,6 +950,41 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             alert('Not silinirken hata oluştu.');
         } finally {
             setSavingNote(false);
+        }
+    };
+
+    const handleDeleteActivity = async (activityId) => {
+        if (!confirm('Bu aktiviteyi silmek istediğinize emin misiniz?')) return;
+        try {
+            const activity = plannedTimeline.find(i => i.id === activityId) || pastTimeline.find(i => i.id === activityId);
+            
+            if (activityId.startsWith('cnote_')) {
+                const parts = activityId.split('_');
+                const idx = parseInt(parts[parts.length - 1], 10);
+                await handleDeleteNote(idx);
+            } else if (activityId.startsWith('inote_')) {
+                const noteId = activityId.replace(/^inote_/, '');
+                const noteConversationId = activity?.raw?.conversationId || conversationId;
+                if (!noteConversationId) {
+                    alert('Konuşma kimliği bulunamadı.');
+                    return;
+                }
+                await conversationAPI.deleteNote(currentWorkspace.id, noteConversationId, noteId);
+            } else {
+                const rawId = activityId.replace(/^act_/, '');
+                await activityAPI.deleteActivity(rawId);
+            }
+
+            setPlannedTimeline(prev => prev.filter(i => i.id !== activityId));
+            setPastTimeline(prev => prev.filter(i => i.id !== activityId));
+
+            if (activity && onActivitySaved && profile?.id) {
+                const actType = activity.type || activity.activityType || 'NOTE';
+                onActivitySaved({ type: actType, status: 'DELETED', contactId: profile.id });
+            }
+        } catch (err) {
+            console.error('Delete activity error:', err);
+            alert('Silme işlemi başarısız.');
         }
     };
 
@@ -1273,7 +1431,179 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </div>
                             </div>
 
-                            {/* Atama artık Inbox üst çubuğundan yapılmaktadır */}
+                            {/* Atama / Üstlen Widget */}
+                            {!readOnly && activeConv && (
+                                <div style={{ display: 'flex', gap: '8px', padding: '8px 16px 4px', alignItems: 'center' }}>
+                                    {/* ── Atama Pill Widget ── */}
+                                    {(() => {
+                                        let convTeamIds = [];
+                                        try { convTeamIds = JSON.parse(activeConv.teamIds || '[]'); } catch {}
+                                        const assignedTeam = convTeamIds.length > 0 ? teams.find(t => t.id === convTeamIds[0]) : null;
+                                        const assignedAgent = activeConv.assignedTo || (activeConv.assignedToId ? members.find(m => m.id === activeConv.assignedToId) : null);
+
+                                        let pillLabel = 'Atanmadı';
+                                        if (assignedTeam && assignedAgent) pillLabel = `${assignedTeam.name} / ${assignedAgent.name}`;
+                                        else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
+                                        else if (assignedAgent) pillLabel = assignedAgent.name;
+
+                                        const canClaim = !activeConv.assignedToId || activeConv.assignedToId !== (currentUserId || user?.id);
+
+                                        return (
+                                            <>
+                                                <div ref={assignMegaMenuRef} style={{ position: 'relative', flex: 1 }}>
+                                                    <button
+                                                        className="stage-mega-trigger"
+                                                        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                                        onClick={e => {
+                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                            setAssignMegaMenuPos({ top: rect.bottom + 6, left: Math.max(10, rect.right - 342) });
+                                                            setAssignSelectedTeam(assignedTeam?.id || null);
+                                                            setAssignMegaMenuOpen(o => !o);
+                                                        }}
+                                                        title="Atama"
+                                                    >
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            <Users size={12} style={{ flexShrink: 0 }} />
+                                                            {pillLabel}
+                                                        </span>
+                                                        <ChevronDown size={10} style={{ flexShrink: 0 }} />
+                                                    </button>
+
+                                                    {assignMegaMenuOpen && (() => {
+                                                        const menuTeam = assignSelectedTeam ? teams.find(t => t.id === assignSelectedTeam) : null;
+                                                        const teamMembers = menuTeam?.members || [];
+                                                        const ruleLabel = { POOL: 'Havuza At', ROUND_ROBIN: 'Sırayla At', LEAST_BUSY: 'En Az Yüklüye', ONLINE_ROUND_ROBIN: "Online'a Sırayla" };
+
+                                                        return ReactDOM.createPortal(
+                                                            <>
+                                                                <div
+                                                                    style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+                                                                    onClick={() => setAssignMegaMenuOpen(false)}
+                                                                />
+                                                                <div ref={assignMenuDivRef}
+                                                                    style={{
+                                                                        position: 'fixed',
+                                                                        top: assignMegaMenuPos.top,
+                                                                        left: assignMegaMenuPos.left,
+                                                                        zIndex: 99999,
+                                                                        background: '#fff',
+                                                                        border: '1px solid #e2e8f0',
+                                                                        borderRadius: 12,
+                                                                        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                                                                        padding: 8,
+                                                                        display: 'flex',
+                                                                        flexDirection: 'row',
+                                                                        gap: 4,
+                                                                        minWidth: 340,
+                                                                    }}
+                                                                >
+                                                                    {/* Sol panel: Takımlar */}
+                                                                    <div style={{ minWidth: 160, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
+                                                                        <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Takım</div>
+                                                                        <button
+                                                                            onClick={() => handleAssign(null, null)}
+                                                                            style={{
+                                                                                display: 'block', width: '100%', textAlign: 'left',
+                                                                                padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                fontSize: '0.72rem', fontWeight: 500,
+                                                                                background: !assignSelectedTeam ? '#f0fdf4' : 'transparent',
+                                                                                color: !assignSelectedTeam ? '#166534' : '#374151'
+                                                                            }}
+                                                                        >
+                                                                            🚫 Atamasız
+                                                                        </button>
+                                                                        {teams.map(t => (
+                                                                            <button
+                                                                                key={t.id}
+                                                                                onClick={() => setAssignSelectedTeam(t.id)}
+                                                                                style={{
+                                                                                    display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                                    padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                    fontSize: '0.72rem', fontWeight: 500,
+                                                                                    background: assignSelectedTeam === t.id ? '#eff6ff' : 'transparent',
+                                                                                    color: assignSelectedTeam === t.id ? '#1d4ed8' : '#374151'
+                                                                                }}
+                                                                            >
+                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color || '#3b82f6', flexShrink: 0 }} />
+                                                                                {t.name}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    {/* Sağ panel: Üyeler */}
+                                                                    {assignSelectedTeam && (
+                                                                        <div style={{ minWidth: 180 }}>
+                                                                            <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Atama</div>
+                                                                            <button
+                                                                                onClick={() => handleAssign(assignSelectedTeam, null)}
+                                                                                style={{
+                                                                                    display: 'block', width: '100%', textAlign: 'left',
+                                                                                    padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                    fontSize: '0.72rem', fontWeight: 600,
+                                                                                    background: '#fef3c7', color: '#92400e', marginBottom: 4
+                                                                                }}
+                                                                            >
+                                                                                {ruleLabel[menuTeam?.assignmentRule] || 'Takıma At'} →
+                                                                            </button>
+                                                                            <div style={{ fontSize: '0.6rem', color: '#94a3b8', padding: '2px 6px 4px' }}>veya kişiye ata:</div>
+                                                                            {teamMembers.length === 0 && (
+                                                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '4px 8px' }}>Üye yok</div>
+                                                                            )}
+                                                                            {teamMembers.map(m => {
+                                                                                const uid = m.user?.id || m.id;
+                                                                                const uname = m.user?.name || m.name || '?';
+                                                                                const uOnline = m.user?.isOnline || false;
+                                                                                return (
+                                                                                    <button
+                                                                                        key={uid}
+                                                                                        onClick={() => handleAssign(assignSelectedTeam, uid)}
+                                                                                        style={{
+                                                                                            display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                                            padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                            fontSize: '0.72rem',
+                                                                                            background: activeConv.assignedToId === uid ? '#eff6ff' : 'transparent',
+                                                                                            color: activeConv.assignedToId === uid ? '#1d4ed8' : '#374151'
+                                                                                        }}
+                                                                                    >
+                                                                                        <span style={{
+                                                                                            width: 20, height: 20, borderRadius: '50%', background: '#3b82f6',
+                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                            fontSize: '0.6rem', color: '#fff', fontWeight: 700, flexShrink: 0
+                                                                                        }}>
+                                                                                            {uname[0].toUpperCase()}
+                                                                                        </span>
+                                                                                        {uname}
+                                                                                        {uOnline && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', marginLeft: 'auto' }} />}
+                                                                                        {activeConv.assignedToId === uid && <span style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>✓</span>}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </>,
+                                                            document.body
+                                                        );
+                                                    })()}
+                                                </div>
+
+                                                {/* Üstlen butonu */}
+                                                {canClaim && (
+                                                    <button
+                                                        className="assign-claim-btn"
+                                                        onClick={handleClaim}
+                                                        disabled={takingOver}
+                                                        title="Bu konuşmayı üstlen"
+                                                    >
+                                                        <UserCheck size={12} />
+                                                        Üstlen
+                                                    </button>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            )}
 
 
 
@@ -1403,6 +1733,16 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     </div>
                                                                     {/* Action buttons */}
                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                                                                        {item.assignedToId !== (currentUserId || user?.id) && (
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); handleClaimActivity(item.id); }}
+                                                                                title="Bu etkinliği üstlen"
+                                                                                style={{ background: '#6366f1', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
+                                                                            >
+                                                                                <UserPlus size={12} />
+                                                                                <span>Üstlen</span>
+                                                                            </button>
+                                                                        )}
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setCompletingActivity(item); setCompleteResult(''); }}
                                                                             title="Tamamlandı — Not gir"
@@ -1466,6 +1806,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 )}
                                                 {pastTimeline.map((item) => {
                                                     const isNote = item.type === 'NOTE' && item.sourceType === 'ACTIVITY';
+                                                    const isCompletedCall = item.type === 'CALL' && item.sourceType === 'ACTIVITY';
                                                     const isActivity = item.sourceType === 'ACTIVITY';
                                                     const isConv = item.sourceType === 'CONVERSATION';
                                                     const isEditing = editingActivity?.id === item.id;
@@ -1506,21 +1847,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     <span className="timeline-time" style={{ whiteSpace: 'nowrap' }}>
                                                                         {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                                     </span>
-                                                                    {isNote && (
-                                                                        <div style={{ display: 'inline-flex', gap: '2px' }}>
+                                                                    {(isNote || isCompletedCall) && (
+                                                                        <div style={{ display: 'inline-flex', gap: '4px' }}>
                                                                             <button
                                                                                 title="Düzenle"
                                                                                 onClick={(e) => { e.stopPropagation(); setEditingActivity(item); setEditActivityText(item.content || ''); }}
-                                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#6b7280', display: 'flex', alignItems: 'center' }}
+                                                                                style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                                             >
-                                                                                <Pencil size={12} />
+                                                                                <Pencil size={11} />
                                                                             </button>
                                                                             <button
                                                                                 title="Sil"
                                                                                 onClick={(e) => { e.stopPropagation(); handleDeleteActivity(item.id); }}
-                                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#ef4444', display: 'flex', alignItems: 'center' }}
+                                                                                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                                             >
-                                                                                <Trash2 size={12} />
+                                                                                <Trash2 size={11} />
                                                                             </button>
                                                                         </div>
                                                                     )}

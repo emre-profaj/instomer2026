@@ -1,0 +1,646 @@
+.arama-analizi-container {
+    padding: 24px;
+    background: #f8fafc;
+    min-height: calc(100vh - 64px);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Page Header */
+.arama-analizi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.arama-analizi-title h1 {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.025em;
+    margin: 0;
+}
+
+.arama-analizi-title p {
+    color: #64748b;
+    font-size: 0.875rem;
+    margin-top: 4px;
+}
+
+.arama-analizi-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Date Preset Buttons */
+.date-presets {
+    display: flex;
+    gap: 6px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 12px;
+}
+
+.preset-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.preset-btn:hover {
+    color: #0f172a;
+}
+
+.preset-btn.active {
+    background: white;
+    color: #6366f1;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+/* Custom Date Inputs */
+.custom-date-inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.custom-date-inputs input[type="date"] {
+    border: none;
+    outline: none;
+    font-size: 0.8125rem;
+    color: #334155;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.date-separator {
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.8125rem;
+}
+
+.btn-apply-dates {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: #6366f1;
+    color: white;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-apply-dates:hover {
+    background: #4f46e5;
+}
+
+.btn-refresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: white;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-refresh:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+/* Stats Overview */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin-bottom: 32px;
+}
+
+.stat-card {
+    background: white;
+    padding: 20px;
+    border-radius: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 10px 20px -5px rgba(0,0,0,0.03);
+    border: 1px solid rgba(241, 245, 249, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 20px 25px -5px rgba(0,0,0,0.05);
+}
+
+.stat-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-card-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-card-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+
+.stat-card-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+}
+
+/* Split Columns Grid */
+.sections-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+@media (max-width: 1024px) {
+    .sections-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.section-card {
+    background: white;
+    border-radius: 24px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 10px 20px -5px rgba(0,0,0,0.03);
+    border: 1px solid rgba(241, 245, 249, 0.8);
+    display: flex;
+    flex-direction: column;
+    height: 480px; /* Locked height with scrollable list inside */
+}
+
+.section-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-shrink: 0;
+}
+
+.section-card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.section-card-title h2 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.section-card-title-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Delayed Calls List */
+.delayed-calls-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 6px;
+}
+
+.delayed-call-item {
+    background: #fef2f2;
+    border: 1px solid #fee2e2;
+    padding: 14px 16px;
+    border-radius: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+}
+
+.delayed-call-item:hover {
+    border-color: #fca5a5;
+    transform: translateY(-1px);
+}
+
+.delayed-call-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.delayed-call-contact-name {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #991b1b;
+}
+
+.delayed-call-phone-num {
+    font-size: 0.78rem;
+    color: #b91c1c;
+    font-family: monospace;
+}
+
+.delayed-call-time-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #e11d48;
+    background: rgba(225, 29, 72, 0.08);
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-top: 4px;
+    align-self: flex-start;
+}
+
+.delayed-call-right {
+    display: flex;
+    align-items: center;
+}
+
+.btn-action-cancel {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-action-cancel:hover {
+    background: #dc2626;
+}
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #94a3b8;
+    text-align: center;
+    gap: 12px;
+}
+
+.empty-state-icon {
+    font-size: 2.25rem;
+    opacity: 0.5;
+}
+
+.empty-state p {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Call Closure Notes List */
+.closure-notes-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 6px;
+}
+
+.closure-note-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.closure-note-item:hover {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+}
+
+.closure-note-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.closure-note-contact-link {
+    color: #6366f1;
+    font-weight: 700;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.closure-note-contact-link:hover {
+    color: #4f46e5;
+    text-decoration: underline;
+}
+
+.closure-note-agent {
+    background: #e2e8f0;
+    color: #475569;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+
+.closure-note-text {
+    font-size: 0.8125rem;
+    color: #334155;
+    line-height: 1.4;
+    background: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border-left: 3px solid #6366f1;
+    font-style: italic;
+    word-break: break-word;
+}
+
+.closure-note-date {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    text-align: right;
+    margin-top: 2px;
+}
+
+/* Bottom Table Section */
+.bottom-section {
+    background: white;
+    border-radius: 24px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 10px 20px -5px rgba(0,0,0,0.03);
+    border: 1px solid rgba(241, 245, 249, 0.8);
+    margin-bottom: 24px;
+}
+
+.bottom-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.bottom-section-filters {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.bottom-section-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.input-search-contacts {
+    padding: 8px 14px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.8125rem;
+    outline: none;
+    transition: all 0.2s;
+    width: 220px;
+}
+
+.input-search-contacts:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+}
+
+.btn-open-list {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.btn-open-list:hover {
+    background: #4f46e5;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+/* Modal Overlay & Box */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(4px);
+}
+
+.modal-container {
+    position: relative;
+    background: white;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 720px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    animation: modalAppear 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalAppear {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.modal-header-info h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.modal-header-info p {
+    margin: 4px 0 0;
+    font-size: 0.78rem;
+    color: #64748b;
+}
+
+.modal-close-btn {
+    background: #f1f5f9;
+    border: none;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.modal-filters {
+    padding: 12px 24px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    background: #f8fafc;
+}
+
+.modal-search {
+    flex: 1;
+    min-width: 180px;
+    padding: 8px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.modal-search:focus {
+    border-color: #6366f1;
+    background: white;
+}
+
+.modal-filter-btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    background: #e2e8f0;
+    color: #475569;
+    transition: all 0.2s;
+}
+
+.modal-filter-btn:hover {
+    background: #cbd5e1;
+}
+
+.modal-filter-btn.active {
+    background: #6366f1;
+    color: white;
+}
+
+.modal-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 12px 24px 24px;
+}
+
+/* Scrollbar styles for list cards */
+.delayed-calls-list::-webkit-scrollbar,
+.closure-notes-list::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.delayed-calls-list::-webkit-scrollbar-track,
+.closure-notes-list::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.delayed-calls-list::-webkit-scrollbar-thumb,
+.closure-notes-list::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 3px;
+}
+
+.delayed-calls-list::-webkit-scrollbar-thumb:hover,
+.closure-notes-list::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover {
+    background: #cbd5e1;
+}

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
-import { aiAPI, workspaceAPI, automationAPI } from '../../services/api';
-import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope } from 'lucide-react';
+import { aiAPI, workspaceAPI, automationAPI, retellAPI } from '../../services/api';
+import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 import AppointmentBotConfig from '../../components/Settings/AppointmentBotConfig';
@@ -692,6 +692,165 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
     );
 };
 
+const RetellAgentItem = ({ agent, workspaceId }) => {
+    const { t } = useTranslation();
+    const [isExpanded, setIsExpanded] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [agentDetail, setAgentDetail] = useState(null);
+    const [llmDetail, setLlmDetail] = useState(null);
+
+    // Edit fields
+    const [agentName, setAgentName] = useState(agent.agent_name || '');
+    const [generalPrompt, setGeneralPrompt] = useState('');
+    const [beginMessage, setBeginMessage] = useState('');
+
+    const handleToggleExpand = async () => {
+        if (!isExpanded) {
+            setIsExpanded(true);
+            if (!agentDetail) {
+                try {
+                    setLoading(true);
+                    const res = await retellAPI.getAgent(workspaceId, agent.agent_id);
+                    setAgentDetail(res.data.agent);
+                    setLlmDetail(res.data.llm);
+                    setAgentName(res.data.agent?.agent_name || agent.agent_name || '');
+                    setGeneralPrompt(res.data.llm?.general_prompt || '');
+                    setBeginMessage(res.data.llm?.begin_message || '');
+                } catch (error) {
+                    console.error('Error fetching Retell agent details:', error);
+                    alert('Asistan detayları yüklenemedi.');
+                    setIsExpanded(false);
+                } finally {
+                    setLoading(false);
+                }
+            }
+        } else {
+            setIsExpanded(false);
+        }
+    };
+
+    const handleSave = async () => {
+        try {
+            setSaving(true);
+            await retellAPI.updateAgentPrompt(workspaceId, agent.agent_id, {
+                agentName,
+                generalPrompt,
+                beginMessage
+            });
+            alert('Arama asistanı başarıyla güncellendi!');
+            setIsExpanded(false);
+            agent.agent_name = agentName;
+        } catch (error) {
+            console.error('Error updating Retell agent:', error);
+            alert(error.response?.data?.error || 'Asistan güncellenemedi.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="bot-card" style={{ borderLeft: '3px solid #0d9488' }}>
+            <div className="bot-card-header">
+                <div className="bot-info">
+                    <div className="bot-avatar" style={{ background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)' }}>
+                        <Phone size={18} />
+                    </div>
+                    <div className="bot-title-group">
+                        <h4>{agentName || agent.agent_name}</h4>
+                        <span className="bot-role-badge">📞 Arama Asistanı (Voice)</span>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span className={`status-badge ${agent.is_published ? 'active' : ''}`} style={{
+                        backgroundColor: agent.is_published ? '#ccfbf1' : '#f1f5f9',
+                        color: agent.is_published ? '#0f766e' : '#64748b',
+                        border: agent.is_published ? '1px solid #99f6e4' : '1px solid #cbd5e1',
+                        marginLeft: '6px'
+                    }}>
+                        {agent.is_published ? 'Aktif (Published)' : 'Draft'}
+                    </span>
+                    <button
+                        className="btn-modern btn-outline-primary"
+                        onClick={handleToggleExpand}
+                        style={{ padding: '6px 12px', fontSize: '12px' }}
+                    >
+                        {isExpanded ? 'Kapat' : 'Düzenle'}
+                    </button>
+                </div>
+            </div>
+            
+            <div className="bot-assignments-section" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', wordBreak: 'break-all' }}>
+                    <strong>Agent ID:</strong> {agent.agent_id}
+                </span>
+            </div>
+
+            {isExpanded && (
+                <div className="retell-agent-details-body" style={{ padding: '16px 18px 20px 18px' }}>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>Detaylar yükleniyor...</div>
+                    ) : (
+                        <>
+                            <div className="form-group" style={{ marginBottom: '14px', paddingTop: 0, paddingLeft: 0, paddingRight: 0 }}>
+                                <label className="form-label">Asistan Adı</label>
+                                <input
+                                    type="text"
+                                    className="input-modern"
+                                    value={agentName}
+                                    onChange={(e) => setAgentName(e.target.value)}
+                                    placeholder="Arama Asistanı Adı"
+                                />
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: '14px', paddingTop: 0, paddingLeft: 0, paddingRight: 0 }}>
+                                <label className="form-label">Sistem Talimatı (Prompt)</label>
+                                <textarea
+                                    className="input-modern"
+                                    rows="6"
+                                    value={generalPrompt}
+                                    onChange={(e) => setGeneralPrompt(e.target.value)}
+                                    placeholder="Sen bir telefon asistanısın. Müşterilere hitap ederken..."
+                                />
+                            </div>
+
+                            <div className="form-group" style={{ marginBottom: '20px', paddingTop: 0, paddingLeft: 0, paddingRight: 0 }}>
+                                <label className="form-label">Başlangıç Mesajı (Greeting/Begin Message)</label>
+                                <input
+                                    type="text"
+                                    className="input-modern"
+                                    value={beginMessage}
+                                    onChange={(e) => setBeginMessage(e.target.value)}
+                                    placeholder="Merhaba, ben Instomer asistanı. Nasıl yardımcı olabilirim?"
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                <button 
+                                    className="btn-modern btn-outline-danger" 
+                                    style={{ border: '1px solid #d1d5db', color: '#374151', padding: '8px 16px', fontSize: '13px' }} 
+                                    onClick={() => setIsExpanded(false)}
+                                >
+                                    İptal
+                                </button>
+                                <button 
+                                    className="btn-modern btn-primary" 
+                                    style={{ background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', boxShadow: '0 2px 8px rgba(13, 148, 136, 0.25)', padding: '8px 16px', fontSize: '13px' }}
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                >
+                                    <Save size={14} />
+                                    {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 const Assistants = () => {
     const { t } = useTranslation();
@@ -717,13 +876,32 @@ const Assistants = () => {
     const [aiUsage, setAiUsage] = useState(null);
     const [aiUsageLoading, setAiUsageLoading] = useState(false);
 
+    // Retell Agents State
+    const [retellAgents, setRetellAgents] = useState([]);
+    const [retellLoading, setRetellLoading] = useState(false);
+
     useEffect(() => {
         if (workspaceId) {
             loadBots();
             loadAiUsage();
             loadAutomations();
+            loadRetellAgents();
         }
     }, [workspaceId]);
+
+    const loadRetellAgents = async () => {
+        if (!workspaceId) return;
+        try {
+            setRetellLoading(true);
+            const res = await retellAPI.getAgents(workspaceId);
+            setRetellAgents(res.data.agents || []);
+        } catch (error) {
+            console.error('Error loading Retell agents:', error);
+            setRetellAgents([]);
+        } finally {
+            setRetellLoading(false);
+        }
+    };
 
     const loadAutomations = async () => {
         if (!workspaceId) return;
@@ -993,6 +1171,47 @@ const Assistants = () => {
                                 ))}
                             </div>
                         )}
+
+                        {/* Arama Asistanları (Retell) Section */}
+                        <div className="retell-agents-section" style={{ marginTop: '48px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                                <div style={{ 
+                                    width: '32px', 
+                                    height: '32px', 
+                                    borderRadius: '8px', 
+                                    background: '#ccfbf1', 
+                                    color: '#0f766e', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center' 
+                                }}>
+                                    <Phone size={18} />
+                                </div>
+                                <div>
+                                    <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: 0 }}>Arama Asistanları (Retell)</h2>
+                                    <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Telefon aramalarını gerçekleştiren sesli yapay zeka asistanları.</p>
+                                </div>
+                            </div>
+
+                            {retellLoading ? (
+                                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>
+                            ) : retellAgents.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
+                                    <Phone size={36} color="#9ca3af" style={{ marginBottom: '12px' }} />
+                                    <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Yapılandırılmış arama asistanı bulunamadı. Lütfen Retell API entegrasyonunu kontrol edin veya ayarlardan yapılandırın.</p>
+                                </div>
+                            ) : (
+                                <div className="bots-grid">
+                                    {retellAgents.map(agent => (
+                                        <RetellAgentItem
+                                            key={agent.agent_id}
+                                            agent={agent}
+                                            workspaceId={workspaceId}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
 

@@ -3163,3 +3163,57 @@
 .sidebar-takeover-btn:hover {
     background: #4f46e5;
 }
+
+/* Aşama & Atama Pill Tetikleyicisi */
+.stage-mega-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #374151;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    height: 28px;
+    line-height: 1;
+}
+.stage-mega-trigger:hover {
+    border-color: #6366f1;
+    color: #4f46e5;
+    background: #f0f0ff;
+    box-shadow: 0 1px 4px rgba(99,102,241,0.12);
+}
+.stage-mega-trigger:active {
+    transform: scale(0.97);
+}
+
+/* Üstlen butonu */
+.assign-claim-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    height: 28px;
+    line-height: 1;
+}
+.assign-claim-btn:hover {
+    background: #dcfce7;
+    border-color: #86efac;
+}
+.assign-claim-btn:active {
+    transform: scale(0.97);
+}

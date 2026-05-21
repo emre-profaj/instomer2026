@@ -600,6 +600,8 @@ export const retellAPI = {
     getSettings: (workspaceId) => api.get(`/retell/${workspaceId}/settings`),
     saveSettings: (workspaceId, data) => api.put(`/retell/${workspaceId}/settings`, data),
     getAgents: (workspaceId) => api.get(`/retell/${workspaceId}/agents`),
+    getAgent: (workspaceId, agentId) => api.get(`/retell/${workspaceId}/agents/${agentId}`),
+    updateAgentPrompt: (workspaceId, agentId, data) => api.patch(`/retell/${workspaceId}/agents/${agentId}/prompt`, data),
     makeCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/call`, data),
     getCallHistory: (workspaceId, params = {}) => {
         const query = new URLSearchParams(params).toString();

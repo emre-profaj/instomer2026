@@ -20,6 +20,7 @@ import Leads from './pages/Leads/Leads';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import Emails from './pages/Emails/Emails';
 import Analytics from './pages/Analytics/Analytics';
+import AramaAnalizi from './pages/Analytics/AramaAnalizi';
 import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
 import Calendar from './pages/Calendar/Calendar';
@@ -92,6 +93,7 @@ function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="analytics" element={<Analytics />} />
+              <Route path="call-analytics" element={<AramaAnalizi />} />
               <Route path="agent-performance" element={<AgentPerformance />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
               <Route path="calendar" element={<Calendar />} />

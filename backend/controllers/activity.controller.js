@@ -161,7 +161,7 @@ export const getContactTimeline = async (req, res) => {
                 sourceType: 'ACTIVITY',
                 type: act.type,
                 title: act.title,
-                content: act.description,
+                content: act.result || act.description,
                 date: act.createdAt,
                 dueDate: act.dueDate,
                 status: act.status,
@@ -169,6 +169,7 @@ export const getContactTimeline = async (req, res) => {
                 result: act.result,
                 labelName,
                 assignedToName: act.assignee?.name,
+                assignedToId: act.assignedToId,
                 raw: act
             });
         });
@@ -264,6 +265,7 @@ export const getContactTimeline = async (req, res) => {
                 isCompleted: apt.status === 'COMPLETED',
                 labelName,
                 assignedToName: apt.assignedTo?.name,
+                assignedToId: apt.assignedToId,
                 raw: apt
             });
         });
@@ -331,6 +333,7 @@ export const updateActivity = async (req, res) => {
             data: {
                 title: title !== undefined ? title : existing.title,
                 description: description !== undefined ? description : existing.description,
+                result: (existing.status === 'COMPLETED' && description !== undefined) ? description : existing.result,
                 dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
             },
             include: {
@@ -409,15 +412,14 @@ export const claimActivity = async (req, res) => {
         const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
         if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
 
-        if (existing.assignedToId && existing.assignedToId !== userId) {
-            return res.status(400).json({ error: 'Bu aktivite zaten başka birine atanmış.' });
+        if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
+            return res.status(400).json({ error: 'Tamamlanmış veya iptal edilmiş bir aktivite üstlenilemez.' });
         }
 
         const updated = await prisma.contactActivity.update({
             where: { id: activityId },
             data: {
-                assignedToId: userId,
-                status: 'IN_PROGRESS'
+                assignedToId: userId
             },
             include: {
                 creator: { select: { name: true, role: true } },

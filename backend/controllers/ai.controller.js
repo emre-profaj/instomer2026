@@ -7,6 +7,8 @@ const pdf = require('pdf-parse');
 import mammoth from 'mammoth';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { checkAiUsageLimit, incrementAiUsage } from '../services/aiUsage.service.js';
+import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
+import { hasProfanity } from '../utils/profanityFilter.js';
 
 
 // Lock to prevent duplicate AI replies for same conversation
@@ -1149,6 +1151,18 @@ const assignConversationToTarget = async (conversationId, teamId, userId, worksp
 export const getAutoReply = async (workspaceId, conversationId, userMessage, channel = null, type = 'CHATS', pageId = null) => {
     try {
         console.log(`🤖 Auto-reply check for workspace ${workspaceId}, channel: ${channel}, type: ${type}`);
+
+        // Check if message consists purely of emojis/symbols/icons
+        if (isEmojiOrIconOnly(userMessage)) {
+            console.log(`ℹ️ [AI] Message contains only emojis/symbols/icons ("${userMessage}"). Skipping auto-reply.`);
+            return null;
+        }
+
+        // Check if message contains profanity as a fallback check
+        if (hasProfanity(userMessage)) {
+            console.log(`ℹ️ [AI] Message contains profanity. Skipping auto-reply.`);
+            return null;
+        }
 
         // 🔒 AI Kullanım Limiti Kontrolü
         const usageCheck = await checkAiUsageLimit(workspaceId);

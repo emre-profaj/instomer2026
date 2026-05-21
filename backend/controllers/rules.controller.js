@@ -451,7 +451,8 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         if (salesTeamId) {
             updateData.teamIds = JSON.stringify([salesTeamId]);
         }
-        if (assignedUserId) {
+        // Only assign directly if config.assignDirectly is true, otherwise keep it in the team pool
+        if (assignedUserId && config.assignDirectly === true) {
             updateData.assignedToId = assignedUserId;
         }
         await prisma.conversation.update({ where: { id: conversationId }, data: updateData });
@@ -478,8 +479,9 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             const localNow = new Date(localMs);
             const hour = localNow.getHours();
             if (hour >= 9 && hour < 18) {
-                // Within business hours → 15 min from now
-                dueDate = new Date(now.getTime() + 15 * 60 * 1000);
+                // Within business hours → 15 min from now (or dynamically from config if defined)
+                const delayMin = config.callDelayMinutes || 15;
+                dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
             } else {
                 // Outside business hours → next day 09:15
                 dueDate = new Date(now);
@@ -488,9 +490,9 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             }
         }
 
-        // 11. Create CALL activity
+        // 11. Create CALL activity (in ContactActivity)
         const contact = conversation.contact;
-        await prisma.activity.create({
+        await prisma.contactActivity.create({
             data: {
                 workspaceId,
                 contactId: contact.id,
@@ -499,7 +501,9 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 description: `Müşteri telefon numarası paylaştı. Otomatik arama planlandı.\nNumara: ${contact.phone || messageContent.match(phoneRegex)?.[0] || '-'}`,
                 dueDate,
                 status: 'PLANNED',
-                assignedToId: assignedUserId || null,
+                teamId: salesTeamId || null,
+                assignedToId: (config.assignDirectly === true && assignedUserId) ? assignedUserId : null,
+                source: 'AUTOMATION'
             }
         });
         console.log(`📞 [RULE:SALES_PHONE_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contact.id}`);
