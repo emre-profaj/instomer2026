@@ -511,7 +511,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '' });
             fetchTimeline(profile.id);
             // Inbox list'teki badge'leri hemen güncelle
-            if (onActivitySaved) onActivitySaved({ type: activityForm.type, status: 'PLANNED', contactId: profile.id });
+            if (onActivitySaved) onActivitySaved({ type: activityForm.type, status: 'PLANNED', contactId: profile.id, dueDate: activityForm.dueDate });
 
             // Not kaydedildi — konuşma kimseye atanmamışsa üstlenme sorusu sor
             if (activityForm.type === 'NOTE' && conversationData && !conversationData.assignedToId && onTakeOver) {

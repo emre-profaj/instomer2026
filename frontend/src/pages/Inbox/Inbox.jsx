@@ -1293,8 +1293,21 @@ const Inbox = () => {
                         const cid = act.contact.id;
                         if (!map[cid]) map[cid] = [];
                         const exists = map[cid].find(e => e.type === act.type);
-                        if (!exists) map[cid].push({ type: act.type, status: act.status });
-                        else if (act.status === 'PLANNED') exists.status = 'PLANNED';
+                        if (!exists) {
+                            map[cid].push({ type: act.type, status: act.status, dueDate: act.dueDate });
+                        } else if (act.status === 'PLANNED') {
+                            if (exists.status !== 'PLANNED') {
+                                exists.status = 'PLANNED';
+                                exists.dueDate = act.dueDate;
+                            } else {
+                                // prioritize older/earlier dueDate to find overdue status
+                                const actDue = act.dueDate ? new Date(act.dueDate) : null;
+                                const existsDue = exists.dueDate ? new Date(exists.dueDate) : null;
+                                if (actDue && (!existsDue || actDue < existsDue)) {
+                                    exists.dueDate = act.dueDate;
+                                }
+                            }
+                        }
                     });
                     setPlannedActivityMap(map);
                 })
@@ -1305,7 +1318,7 @@ const Inbox = () => {
     };
 
     // Aktivite kaydedilince inbox badge'lerini anında güncelle (sayfa yenileme gerekmez)
-    const handleActivitySaved = ({ type, status = 'PLANNED', contactId }) => {
+    const handleActivitySaved = ({ type, status = 'PLANNED', contactId, dueDate }) => {
         if (!contactId) return;
         setPlannedActivityMap(prev => {
             const existing = prev[contactId] || [];
@@ -1314,13 +1327,13 @@ const Inbox = () => {
                 return {
                     ...prev,
                     [contactId]: existing.map(e =>
-                        e.type === type ? { ...e, status } : e
+                        e.type === type ? { ...e, status, dueDate: dueDate || e.dueDate } : e
                     )
                 };
             }
             return {
                 ...prev,
-                [contactId]: [...existing, { type, status }]
+                [contactId]: [...existing, { type, status, dueDate }]
             };
         });
     };
@@ -3354,9 +3367,9 @@ const Inbox = () => {
                                                 const cid = item.contactId || item.contact?.id;
                                                 const entries = cid ? (plannedActivityMap[cid] || []) : [];
                                                 if (entries.length === 0 && !hasReminder(item)) return null;
-                                                const iconMap = (done) => ({
+                                                const iconMap = (done, isOverdue) => ({
                                                     NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    CALL:     <PhoneCall size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
                                                     MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
                                                     REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
                                                     TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
@@ -3370,6 +3383,10 @@ const Inbox = () => {
                                                     >
                                                         {entries.map((e, idx) => {
                                                             const done = e.status === 'COMPLETED';
+                                                            const isCall = e.type === 'CALL';
+                                                            const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
+                                                            const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
+                                                            const border = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
                                                             return (
                                                                 <span key={idx}
                                                                     className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
@@ -3377,11 +3394,11 @@ const Inbox = () => {
                                                                     style={{
                                                                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                                                         width: 22, height: 22, borderRadius: '50%',
-                                                                        background: done ? '#dcfce7' : '#fee2e2',
-                                                                        border: `1px solid ${done ? '#86efac' : '#fca5a5'}`
+                                                                        background: bg,
+                                                                        border: border
                                                                     }}
                                                                 >
-                                                                    {iconMap(done)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
+                                                                    {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
                                                                 </span>
                                                             );
                                                         })}
