@@ -1388,7 +1388,7 @@ export const webhookHandler = async (req, res) => {
                     // --- AUTOMATION RULES START ---
                     if (msg_body && message.type === 'text') {
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
                             // Run rules async (non-blocking)
                             executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:PHONE_CAPTURE] async error:', e.message)
@@ -1398,6 +1398,10 @@ export const webhookHandler = async (req, res) => {
                             );
                             executeSalesPhoneCallRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:SALES_PHONE_CALL] async error:', e.message)
+                            );
+                            // Also trigger simplified auto call planning (no intent check needed)
+                            executeAutoCallPlanning(waNumber.workspaceId, contact.id, 'WHATSAPP').catch(e =>
+                                console.error('❌ [RULE:AUTO_CALL] WA async error:', e.message)
                             );
                         } catch (ruleErr) {
                             console.error('❌ [RULES] Import error:', ruleErr.message);

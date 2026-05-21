@@ -521,3 +521,130 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         console.error('❌ [RULE:SALES_PHONE_CALL] Error:', error.message);
     }
 };
+
+/**
+ * Rule 4b — AUTO CALL PLANNING (simplified)
+ * Creates a CALL activity for a contact that has a phone number.
+ * Used for: Widget messages, pre-chat forms, and manually created contacts.
+ * Unlike executeSalesPhoneCallRule, this does NOT require call intent in messages.
+ */
+export const executeAutoCallPlanning = async (workspaceId, contactId, source = 'AUTOMATION') => {
+    try {
+        // 1. Check if SALES_PHONE_CALL rule exists and is not explicitly disabled
+        const rule = await prisma.workspaceRule.findUnique({
+            where: { workspaceId_ruleType: { workspaceId, ruleType: 'SALES_PHONE_CALL' } }
+        });
+        // If rule exists but is explicitly disabled → skip
+        if (rule && !rule.isActive) return;
+        // If rule doesn't exist → proceed with defaults (auto call planning always on by default)
+
+        const config = rule ? safeParseJSON(rule.config, {}) : {};
+
+        // 2. Get contact
+        const contact = await prisma.contact.findUnique({
+            where: { id: contactId }
+        });
+        if (!contact || !contact.phone || !contact.phone.trim()) return;
+
+        // 3. Check if there's already a PLANNED call activity for this contact (avoid duplicates)
+        const existingCall = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId,
+                type: 'CALL',
+                status: 'PLANNED'
+            }
+        });
+        if (existingCall) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Contact ${contactId} already has a planned call, skipping`);
+            return;
+        }
+
+        // 4. Find sales team
+        const salesFunnelName = config.funnelName || 'Satış Akışı';
+        let salesTeamId = config.teamId;
+        if (!salesTeamId) {
+            const salesFunnel = await prisma.funnel.findFirst({
+                where: { workspaceId, name: { contains: salesFunnelName.split(' ')[0], mode: 'insensitive' } }
+            });
+            salesTeamId = salesFunnel?.assignedTeamId;
+        }
+        if (!salesTeamId) {
+            const namedTeam = await prisma.team.findFirst({
+                where: { workspaceId, name: { contains: 'satış', mode: 'insensitive' } }
+            });
+            salesTeamId = namedTeam?.id;
+        }
+
+        // 5. Round-robin agent selection
+        let assignedUserId = null;
+        if (salesTeamId) {
+            const teamMembers = await prisma.teamMember.findMany({
+                where: { teamId: salesTeamId, userId: { not: null } },
+                include: { user: { select: { id: true, name: true } } },
+                orderBy: { createdAt: 'asc' }
+            });
+            const userMembers = teamMembers.filter(m => m.userId);
+            if (userMembers.length > 0) {
+                const lastConv = await prisma.conversation.findFirst({
+                    where: {
+                        workspaceId,
+                        teamIds: { contains: salesTeamId },
+                        assignedToId: { not: null }
+                    },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { assignedToId: true }
+                });
+                const lastIdx = lastConv
+                    ? userMembers.findIndex(m => m.userId === lastConv.assignedToId)
+                    : -1;
+                const nextIdx = lastIdx >= 0 && lastIdx < userMembers.length - 1 ? lastIdx + 1 : 0;
+                assignedUserId = userMembers[nextIdx].userId;
+                console.log(`👤 [RULE:AUTO_CALL] Round-robin → ${userMembers[nextIdx].user?.name}`);
+            }
+        }
+
+        // 6. Calculate due date (business hours aware)
+        let dueDate;
+        const now = new Date();
+        const turkeyOffset = 3 * 60;
+        const localMs = now.getTime() + (turkeyOffset - now.getTimezoneOffset()) * 60000;
+        const localNow = new Date(localMs);
+        const hour = localNow.getHours();
+        if (hour >= 9 && hour < 18) {
+            const delayMin = config.callDelayMinutes || 15;
+            dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
+        } else {
+            dueDate = new Date(now);
+            dueDate.setDate(dueDate.getDate() + (hour >= 18 ? 1 : 0));
+            dueDate.setHours(9, 15, 0, 0);
+        }
+
+        // 7. Create CALL activity
+        await prisma.contactActivity.create({
+            data: {
+                workspaceId,
+                contactId,
+                type: 'CALL',
+                title: 'Arama Planlandı (Otomatik)',
+                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nNumara: ${contact.phone}\nKaynak: ${source}`,
+                dueDate,
+                status: 'PLANNED',
+                teamId: salesTeamId || null,
+                assignedToId: (config.assignDirectly === true && assignedUserId) ? assignedUserId : null,
+                source: 'AUTOMATION'
+            }
+        });
+        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source})`);
+
+        // 8. Emit socket events
+        emitToWorkspace(workspaceId, 'activity_created', {
+            contactId,
+            type: 'CALL',
+            status: 'PLANNED',
+        });
+
+    } catch (error) {
+        console.error('❌ [RULE:AUTO_CALL] Error:', error.message);
+    }
+};

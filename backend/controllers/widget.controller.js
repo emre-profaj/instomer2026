@@ -345,6 +345,20 @@ export const handleWidgetChat = async (req, res) => {
         }
         // --- AUTO EXTRACT END ---
 
+        // --- AUTO CALL PLANNING (Widget) ---
+        try {
+            const { executeAutoCallPlanning, executeSalesPhoneCallRule } = await import('./rules.controller.js');
+            executeSalesPhoneCallRule(workspaceId, conversation.id, message).catch(e =>
+                console.error('❌ [RULE:SALES_PHONE_CALL] Widget async error:', e.message)
+            );
+            executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
+                console.error('❌ [RULE:AUTO_CALL] Widget async error:', e.message)
+            );
+        } catch (ruleErr) {
+            console.error('❌ [RULES] Widget error:', ruleErr.message);
+        }
+        // --- AUTO CALL PLANNING END ---
+
         // 4. Get AI response
         const aiResponse = await getAutoReply(workspaceId, conversation.id, message, 'widget', 'WIDGET');
 
@@ -574,6 +588,17 @@ export const handlePrechat = async (req, res) => {
                 console.error('⚠️ [Widget Prechat] AutoCall trigger error:', autoCallErr.message);
             }
         }
+
+        // --- AUTO CALL PLANNING (Prechat Form) ---
+        try {
+            const { executeAutoCallPlanning } = await import('./rules.controller.js');
+            executeAutoCallPlanning(workspaceId, contact.id, 'FORM').catch(e =>
+                console.error('❌ [RULE:AUTO_CALL] Prechat async error:', e.message)
+            );
+        } catch (ruleErr) {
+            console.error('❌ [RULES] Prechat error:', ruleErr.message);
+        }
+        // --- AUTO CALL PLANNING END ---
 
         res.json({
             success: true,

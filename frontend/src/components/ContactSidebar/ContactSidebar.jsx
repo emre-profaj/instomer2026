@@ -2161,13 +2161,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         <TrendingUp size={14} style={{ color: '#10b981' }} />
                                         <h3>AKTİF SATIŞ</h3>
                                     </div>
-                                    <button
-                                        className="reminder-add-btn"
-                                        onClick={() => setShowQuoteForm(true)}
-                                        title="Yeni teklif oluştur"
-                                    >
-                                        <Plus size={16} />
-                                    </button>
                                 </div>
 
                                 {(dealsLoading || deals.length > 0) && (

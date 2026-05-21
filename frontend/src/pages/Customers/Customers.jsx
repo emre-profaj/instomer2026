@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI } from '../../services/api';
 import * as XLSX from 'xlsx';
@@ -120,6 +120,7 @@ const Customers = () => {
 
     // Selected contact for sidebar
     const [selectedContact, setSelectedContact] = useState(null);
+    const selectedContactRef = useRef(null);
 
     // Teams & members for assignment
     const [teams, setTeams] = useState([]);
@@ -282,6 +283,49 @@ const Customers = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Keep selectedContactRef in sync
+    useEffect(() => {
+        selectedContactRef.current = selectedContact;
+    }, [selectedContact]);
+
+    // Silent reload: updates the contact list without changing the selected contact
+    const silentReloadContacts = useCallback(async () => {
+        if (!currentWorkspace) return;
+        try {
+            const response = await contactAPI.getAll(currentWorkspace.id, {
+                search,
+                status: statusFilter,
+                source: sourceFilter,
+                category: categoryFilter,
+                tag: tagFilter,
+                contactInfo: contactInfoFilter,
+                callStatus: callStatusFilter,
+                importGroup: importGroupFilter,
+                funnelType: funnelFilter,
+                funnelTypes: mergedFunnelIds ? mergedFunnelIds.join(',') : undefined,
+                funnelStageId: funnelStageFilter,
+                showArchived: showArchived.toString(),
+                limit,
+                offset: (page - 1) * limit,
+                dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
+                dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
+                dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
+            });
+            setContacts(response.data.contacts);
+            setTotal(response.data.total);
+
+            if (response.data.allTags) {
+                setAvailableTags(response.data.allTags);
+            }
+            if (response.data.allImportGroups) {
+                setAvailableImportGroups(response.data.allImportGroups);
+            }
+            // NOTE: We intentionally do NOT change selectedContact here
+        } catch (error) {
+            console.error('Error silently reloading contacts:', error);
+        }
+    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, funnelStageFilter, showArchived, limit, page, dateFilter, dateFrom, dateTo]);
+
     useEffect(() => {
         const handleContactUpdate = (event) => {
             const data = event.detail;
@@ -298,12 +342,13 @@ const Customers = () => {
                         c.id === data.contactId ? { ...c, notes: fields.notes } : c
                     ));
                 } else {
-                    console.log('🔄 [Customers] Real-time contact update received, reloading...');
-                    loadContacts();
+                    console.log('🔄 [Customers] Real-time contact update received, silent reload...');
+                    silentReloadContacts();
                 }
 
-                // Also update selectedContact if it matches
-                if (selectedContact && data.contactId === selectedContact.id && data.updatedFields) {
+                // Also update selectedContact if it matches (use ref for latest value)
+                const current = selectedContactRef.current;
+                if (current && data.contactId === current.id && data.updatedFields) {
                     setSelectedContact(prev => ({
                         ...prev,
                         ...data.updatedFields
@@ -315,8 +360,8 @@ const Customers = () => {
         const handleNewConversation = (event) => {
             const data = event.detail;
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
-                console.log('🔄 [Customers] New conversation received, reloading contacts...');
-                loadContacts();
+                console.log('🔄 [Customers] New conversation received, silent reload (preserving selection)...');
+                silentReloadContacts();
             }
         };
 
@@ -324,8 +369,8 @@ const Customers = () => {
             const data = event.detail;
             // Only reload for WIDGET channel (new web visitors)
             if (currentWorkspace && data.workspaceId === currentWorkspace.id && data.channel === 'WIDGET') {
-                console.log('🔄 [Customers] New widget message received, reloading contacts...');
-                loadContacts();
+                console.log('🔄 [Customers] New widget message received, silent reload (preserving selection)...');
+                silentReloadContacts();
             }
         };
 
@@ -338,7 +383,7 @@ const Customers = () => {
             window.removeEventListener('websocket:new_conversation', handleNewConversation);
             window.removeEventListener('websocket:new_message', handleNewMessage);
         };
-    }, [currentWorkspace]);
+    }, [currentWorkspace, silentReloadContacts]);
 
     const loadContacts = async () => {
         try {
