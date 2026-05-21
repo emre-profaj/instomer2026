@@ -210,6 +210,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     });
     const [quoteSubmitting, setQuoteSubmitting] = useState(false);
 
+    // Inline Order Form State
+    const [showOrderForm, setShowOrderForm] = useState(false);
+    const [orderFormData, setOrderFormData] = useState({
+        title: '',
+        description: '',
+        currency: 'TRY',
+        products: [{ name: '', quantity: 1, unitPrice: 0 }],
+        notes: ''
+    });
+    const [orderSubmitting, setOrderSubmitting] = useState(false);
+
     // If external profile is provided (e.g., for comments), use it directly
     useEffect(() => {
         if (externalProfile) {
@@ -1279,7 +1290,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <FileText size={18} style={{ color: '#10b981' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
                                 </button>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('ORDER')}>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => setShowOrderForm(true)}>
                                     <TrendingUp size={18} style={{ color: '#3b82f6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
                                 </button>
@@ -2173,6 +2184,122 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <button type="submit" disabled={quoteSubmitting}
                                         style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: quoteSubmitting ? '#fca5a5' : '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: quoteSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)' }}>
                                         {quoteSubmitting ? 'Oluşturuluyor...' : 'Teklif Oluştur'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Inline Order Form Modal */}
+            {showOrderForm && (
+                <div className="chat-popup-overlay" onClick={() => setShowOrderForm(false)} style={{ zIndex: 10000 }}>
+                    <div className="chat-popup-modal" onClick={e => e.stopPropagation()} style={{ width: 680, maxWidth: '94vw', maxHeight: '88vh' }}>
+                        <div className="chat-popup-header" style={{ borderBottom: '2px solid #eff6ff' }}>
+                            <div className="chat-popup-header-left">
+                                <div className="chat-popup-avatar" style={{ background: '#eff6ff', width: 48, height: 48 }}>
+                                    <TrendingUp size={22} style={{ color: '#3b82f6' }} />
+                                </div>
+                                <div className="chat-popup-header-info">
+                                    <h3 className="chat-popup-contact-name" style={{ fontSize: '17px' }}>Yeni Sipariş Oluştur</h3>
+                                    <span className="chat-popup-channel-badge" style={{ color: '#3b82f6' }}>{profile?.name || 'Müşteri'} için</span>
+                                </div>
+                            </div>
+                            <div className="chat-popup-header-actions">
+                                <button className="chat-popup-icon-btn chat-popup-close-btn" onClick={() => setShowOrderForm(false)}><X size={18} /></button>
+                            </div>
+                        </div>
+                        <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (orderSubmitting) return;
+                                setOrderSubmitting(true);
+                                try {
+                                    const totalAmount = orderFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0);
+                                    await dealAPI.create(currentWorkspace.id, {
+                                        contactId: profile?.id,
+                                        title: orderFormData.title,
+                                        description: orderFormData.description,
+                                        currency: orderFormData.currency,
+                                        amount: totalAmount,
+                                        products: orderFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
+                                        notes: orderFormData.notes,
+                                        stage: 'ORDER'
+                                    });
+                                    setShowOrderForm(false);
+                                    setOrderFormData({ title: '', description: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
+                                    if (profile?.id && currentWorkspace?.id) {
+                                        const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
+                                        setDeals(r.data.deals || []);
+                                    }
+                                } catch (err) {
+                                    console.error('Order create error:', err);
+                                    alert('Sipariş oluşturulamadı: ' + (err?.response?.data?.error || err?.message));
+                                } finally {
+                                    setOrderSubmitting(false);
+                                }
+                            }}>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Sipariş Başlığı *</label>
+                                    <input type="text" required value={orderFormData.title} onChange={e => setOrderFormData(p => ({ ...p, title: e.target.value }))}
+                                        placeholder="Örn: Aylık Hizmet Paketi" style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#93c5fd'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Para Birimi</label>
+                                    <select value={orderFormData.currency} onChange={e => setOrderFormData(p => ({ ...p, currency: e.target.value }))}
+                                        style={{ padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none' }}>
+                                        <option value="TRY">₺ TRY</option>
+                                        <option value="USD">$ USD</option>
+                                        <option value="EUR">€ EUR</option>
+                                        <option value="GBP">£ GBP</option>
+                                    </select>
+                                </div>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>Ürünler / Hizmetler</label>
+                                    {orderFormData.products.map((product, idx) => (
+                                        <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                                            <input type="text" placeholder="Ürün adı" value={product.name}
+                                                onChange={e => { const p = [...orderFormData.products]; p[idx].name = e.target.value; setOrderFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ flex: 2, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} />
+                                            <input type="number" placeholder="Adet" min="1" value={product.quantity}
+                                                onChange={e => { const p = [...orderFormData.products]; p[idx].quantity = parseInt(e.target.value) || 1; setOrderFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ width: 70, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'center' }} />
+                                            <input type="number" placeholder="Birim Fiyat" min="0" value={product.unitPrice}
+                                                onChange={e => { const p = [...orderFormData.products]; p[idx].unitPrice = parseFloat(e.target.value) || 0; setOrderFormData(prev => ({ ...prev, products: p })); }}
+                                                style={{ width: 110, padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: '0.85rem', outline: 'none', textAlign: 'right' }} />
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#3b82f6', minWidth: 70, textAlign: 'right' }}>
+                                                {(orderFormData.currency === 'TRY' ? '₺' : orderFormData.currency === 'USD' ? '$' : orderFormData.currency === 'EUR' ? '€' : '£')}{(product.quantity * product.unitPrice).toLocaleString('tr-TR')}
+                                            </span>
+                                            {orderFormData.products.length > 1 && (
+                                                <button type="button" onClick={() => { const p = orderFormData.products.filter((_, i) => i !== idx); setOrderFormData(prev => ({ ...prev, products: p })); }}
+                                                    style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 4 }}><X size={15} /></button>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => setOrderFormData(prev => ({ ...prev, products: [...prev.products, { name: '', quantity: 1, unitPrice: 0 }] }))}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 5, background: '#eff6ff', border: '1px dashed #93c5fd', borderRadius: 8, padding: '6px 12px', fontSize: '0.8rem', color: '#3b82f6', cursor: 'pointer', marginTop: 6, fontWeight: 500 }}>
+                                        <Plus size={13} /> Ürün Ekle
+                                    </button>
+                                    <div style={{ textAlign: 'right', fontSize: '0.92rem', fontWeight: 700, color: '#1d4ed8', marginTop: 10, padding: '8px 0', borderTop: '1px solid #eff6ff' }}>
+                                        Toplam: {(orderFormData.currency === 'TRY' ? '₺' : orderFormData.currency === 'USD' ? '$' : orderFormData.currency === 'EUR' ? '€' : '£')}
+                                        {orderFormData.products.reduce((s, p) => s + (p.quantity * p.unitPrice), 0).toLocaleString('tr-TR')}
+                                    </div>
+                                </div>
+                                <div style={{ marginBottom: 20 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Notlar</label>
+                                    <textarea value={orderFormData.notes} onChange={e => setOrderFormData(p => ({ ...p, notes: e.target.value }))}
+                                        placeholder="Ek notlar..." rows={3} style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 10, fontSize: '0.9rem', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s' }}
+                                        onFocus={e => e.target.style.borderColor = '#93c5fd'}
+                                        onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+                                    <button type="button" onClick={() => setShowOrderForm(false)}
+                                        style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>İptal</button>
+                                    <button type="submit" disabled={orderSubmitting}
+                                        style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: orderSubmitting ? '#93c5fd' : '#3b82f6', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', opacity: orderSubmitting ? 0.7 : 1, transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}>
+                                        {orderSubmitting ? 'Oluşturuluyor...' : 'Sipariş Oluştur'}
                                     </button>
                                 </div>
                             </form>
