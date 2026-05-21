@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
 
 // Default keyword list for HOT_KEYWORD rule
 const DEFAULT_HOT_KEYWORDS = [
@@ -131,11 +132,11 @@ export const upsertRule = async (req, res) => {
  */
 export const executePhoneCaptureRule = async (workspaceId, conversationId, messageContent) => {
     try {
-        // Check if rule is active
+        // Check if rule exists — if explicitly disabled, skip. If not in DB, proceed by default.
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'PHONE_CAPTURE' } }
         });
-        if (!rule || !rule.isActive) return;
+        if (rule && !rule.isActive) return;
 
         // Detect Turkish / international phone numbers in message
         const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
@@ -151,14 +152,8 @@ export const executePhoneCaptureRule = async (workspaceId, conversationId, messa
 
         const contact = conversation.contact;
 
-        // Clean detected phone number
-        const rawPhone = matches[0].replace(/[\s\-\.]/g, '');
-        let cleanPhone = rawPhone.replace(/^\+/, '');
-        if (cleanPhone.startsWith('0') && cleanPhone.length === 11) {
-            cleanPhone = '90' + cleanPhone.substring(1);
-        } else if (cleanPhone.length === 10 && !cleanPhone.startsWith('90')) {
-            cleanPhone = '90' + cleanPhone;
-        }
+        // Clean and normalize detected phone number (adds +90 prefix)
+        const cleanPhone = normalizePhone(matches[0]);
 
         // Parse existing tags
         let tags = [];

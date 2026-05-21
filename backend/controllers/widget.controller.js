@@ -345,19 +345,28 @@ export const handleWidgetChat = async (req, res) => {
         }
         // --- AUTO EXTRACT END ---
 
-        // --- AUTO CALL PLANNING (Widget) ---
+        // --- AUTOMATION RULES (Widget) ---
         try {
-            const { executeAutoCallPlanning, executeSalesPhoneCallRule } = await import('./rules.controller.js');
+            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+            // Await phone capture so contact.phone is updated before auto call planning
+            await executePhoneCaptureRule(workspaceId, conversation.id, message);
+            executeHotKeywordRule(workspaceId, conversation.id, message).catch(e =>
+                console.error('❌ [RULE:HOT_KEYWORD] Widget async error:', e.message)
+            );
             executeSalesPhoneCallRule(workspaceId, conversation.id, message).catch(e =>
                 console.error('❌ [RULE:SALES_PHONE_CALL] Widget async error:', e.message)
             );
-            executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
-                console.error('❌ [RULE:AUTO_CALL] Widget async error:', e.message)
-            );
+            // Reload contact to get updated phone after capture
+            const updatedContact = await prisma.contact.findUnique({ where: { id: contact.id } });
+            if (updatedContact?.phone) {
+                executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
+                    console.error('❌ [RULE:AUTO_CALL] Widget async error:', e.message)
+                );
+            }
         } catch (ruleErr) {
             console.error('❌ [RULES] Widget error:', ruleErr.message);
         }
-        // --- AUTO CALL PLANNING END ---
+        // --- AUTOMATION RULES END ---
 
         // 4. Get AI response
         const aiResponse = await getAutoReply(workspaceId, conversation.id, message, 'widget', 'WIDGET');
