@@ -1275,7 +1275,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             </div>
                             {/* ACTION BUTTONS — Row 2: Satış */}
                             <div style={{ display: 'flex', gap: '4px', padding: '0 16px 8px', justifyContent: 'center' }}>
-                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('PROPOSAL')}>
+                                <button className="activity-btn" style={{ flex: 1, padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => setShowQuoteForm(true)}>
                                     <FileText size={18} style={{ color: '#10b981' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
                                 </button>
