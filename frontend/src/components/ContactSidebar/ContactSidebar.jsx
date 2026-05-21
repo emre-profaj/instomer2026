@@ -233,6 +233,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     });
     const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
 
+    // Takeover confirmation popup
+    const [showTakeoverModal, setShowTakeoverModal] = useState(false);
+
     // If external profile is provided (e.g., for comments), use it directly
     useEffect(() => {
         if (externalProfile) {
@@ -513,9 +516,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             // Not kaydedildi — konuşma kimseye atanmamışsa üstlenme sorusu sor
             if (activityForm.type === 'NOTE' && conversationData && !conversationData.assignedToId && onTakeOver) {
                 setTimeout(() => {
-                    if (window.confirm('Bu konuşma henüz kimseye atanmamış. Bu konuşmayı üstlenmek istiyor musunuz?')) {
-                        onTakeOver();
-                    }
+                    setShowTakeoverModal(true);
                 }, 300);
             }
         } catch (err) {
@@ -2459,6 +2460,29 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 </div>
                 );
             })()}
+            {/* Takeover Confirmation Popup */}
+            {showTakeoverModal && (
+                <div className="chat-popup-overlay" onClick={() => setShowTakeoverModal(false)} style={{ zIndex: 10001 }}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: '#fff', borderRadius: 16, padding: '28px 32px', maxWidth: 420, width: '90vw',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center', position: 'relative'
+                    }}>
+                        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                            <UserPlus size={26} style={{ color: '#ef4444' }} />
+                        </div>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Konuşmayı Üstlen</h3>
+                        <p style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: 1.6, marginBottom: 24 }}>
+                            Bu konuşma henüz kimseye atanmamış.<br />Bu konuşmayı üstlenmek istiyor musunuz?
+                        </p>
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                            <button onClick={() => setShowTakeoverModal(false)}
+                                style={{ padding: '10px 24px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>Hayır</button>
+                            <button onClick={() => { setShowTakeoverModal(false); onTakeOver && onTakeOver(); }}
+                                style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)' }}>Evet, Üstlen</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Chat Popup Modal */}
             {popupConversationId && (
                 <ChatPopup
