@@ -39,7 +39,12 @@ import {
     PhoneCall,
     Loader,
     Upload,
-    Tag
+    Tag,
+    BarChart3,
+    TrendingUp,
+    PhoneOff,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -117,6 +122,12 @@ const Customers = () => {
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [limit, setLimit] = useState(20);
+
+    // Analytics panel
+    const [showAnalytics, setShowAnalytics] = useState(false);
+    const [analyticsData, setAnalyticsData] = useState(null);
+    const [analyticsDays, setAnalyticsDays] = useState(30);
+    const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
     // Selected contact for sidebar
     const [selectedContact, setSelectedContact] = useState(null);
@@ -1346,10 +1357,232 @@ const Customers = () => {
                                 })()}
                             </div>
 
+                            {/* Analytics Toggle - inline */}
+                            <div className="filter-dropdown-item" style={{ flexShrink: 0 }}>
+                                <label><BarChart3 size={12} /> Analiz</label>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button
+                                        onClick={async () => {
+                                            const next = !showAnalytics;
+                                            setShowAnalytics(next);
+                                            if (next && !analyticsData) {
+                                                setAnalyticsLoading(true);
+                                                try {
+                                                    const res = await contactAPI.getDailyStats(currentWorkspace.id, { days: analyticsDays });
+                                                    setAnalyticsData(res.data);
+                                                } catch (e) { console.error(e); }
+                                                setAnalyticsLoading(false);
+                                            }
+                                        }}
+                                        className={`filter-select${showAnalytics ? ' active' : ''}`}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '5px',
+                                            cursor: 'pointer', background: showAnalytics ? '#eef2ff' : 'none',
+                                            border: showAnalytics ? '1px solid #6366f1' : '1px solid #e5e7eb',
+                                            borderRadius: '6px', padding: '6px 10px',
+                                            fontSize: '0.8rem', color: showAnalytics ? '#6366f1' : '#374151',
+                                            fontWeight: showAnalytics ? 600 : 400, whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        {showAnalytics ? 'Gizle' : 'Göster'}
+                                        <ChevronDown size={12} style={{ transform: showAnalytics ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                                    </button>
+                                    {showAnalytics && (
+                                        <select
+                                            value={analyticsDays}
+                                            onChange={async (e) => {
+                                                const d = parseInt(e.target.value);
+                                                setAnalyticsDays(d);
+                                                setAnalyticsLoading(true);
+                                                try {
+                                                    const res = await contactAPI.getDailyStats(currentWorkspace.id, { days: d });
+                                                    setAnalyticsData(res.data);
+                                                } catch (err) { console.error(err); }
+                                                setAnalyticsLoading(false);
+                                            }}
+                                            className="filter-select"
+                                            style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                                        >
+                                            <option value={7}>7 Gün</option>
+                                            <option value={14}>14 Gün</option>
+                                            <option value={30}>30 Gün</option>
+                                            <option value={60}>60 Gün</option>
+                                            <option value={90}>90 Gün</option>
+                                        </select>
+                                    )}
+                                </div>
+                            </div>
+
                         </div>
                     </div>
 
 
+
+
+
+                    {/* Analytics Panel */}
+                    {showAnalytics && (
+                        <div style={{
+                            background: '#fff', borderRadius: '14px', padding: '20px',
+                            border: '1px solid #e5e7eb', marginBottom: '12px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                        }}>
+                            {analyticsLoading ? (
+                                <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>
+                                    <Loader className="spin" size={24} />
+                                    <p style={{ marginTop: '8px', fontSize: '0.85rem' }}>Yükleniyor...</p>
+                                </div>
+                            ) : analyticsData ? (
+                                <>
+                                    {/* Summary Cards */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '20px' }}>
+                                        <div style={{
+                                            background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', borderRadius: '12px',
+                                            padding: '16px', display: 'flex', alignItems: 'center', gap: '12px'
+                                        }}>
+                                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Users size={20} color="#fff" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toplam Kişi</div>
+                                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#312e81' }}>{analyticsData.totals?.total || 0}</div>
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', borderRadius: '12px',
+                                            padding: '16px', display: 'flex', alignItems: 'center', gap: '12px'
+                                        }}>
+                                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Phone size={20} color="#fff" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Telefonlu</div>
+                                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#064e3b' }}>{analyticsData.totals?.withPhone || 0}</div>
+                                            </div>
+                                        </div>
+                                        <div style={{
+                                            background: 'linear-gradient(135deg, #fef2f2, #fecaca)', borderRadius: '12px',
+                                            padding: '16px', display: 'flex', alignItems: 'center', gap: '12px'
+                                        }}>
+                                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <PhoneOff size={20} color="#fff" />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Telefonsuz</div>
+                                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#991b1b' }}>{analyticsData.totals?.withoutPhone || 0}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Chart */}
+                                    <div style={{ position: 'relative' }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                            <span>Günlük Gelen Kişi Sayısı</span>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span style={{ width: 10, height: 3, background: '#6366f1', borderRadius: 2, display: 'inline-block' }}></span>
+                                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Toplam</span>
+                                            </span>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span style={{ width: 10, height: 3, background: '#10b981', borderRadius: 2, display: 'inline-block' }}></span>
+                                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Telefonlu</span>
+                                            </span>
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                <span style={{ width: 10, height: 3, background: '#ef4444', borderRadius: 2, display: 'inline-block' }}></span>
+                                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Telefonsuz</span>
+                                            </span>
+                                        </div>
+                                        {(() => {
+                                            const stats = analyticsData.dailyStats || [];
+                                            if (!stats.length) return <p style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Veri yok</p>;
+                                            const maxVal = Math.max(...stats.map(s => s.total), 1);
+                                            const w = 900;
+                                            const h = 180;
+                                            const padL = 40;
+                                            const padR = 10;
+                                            const padT = 10;
+                                            const padB = 30;
+                                            const chartW = w - padL - padR;
+                                            const chartH = h - padT - padB;
+                                            const stepX = chartW / Math.max(stats.length - 1, 1);
+
+                                            const makeLine = (key, color) => {
+                                                return stats.map((s, i) => {
+                                                    const x = padL + i * stepX;
+                                                    const y = padT + chartH - (s[key] / maxVal) * chartH;
+                                                    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+                                                }).join(' ');
+                                            };
+
+                                            const makeArea = (key, color) => {
+                                                const line = stats.map((s, i) => {
+                                                    const x = padL + i * stepX;
+                                                    const y = padT + chartH - (s[key] / maxVal) * chartH;
+                                                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                                                });
+                                                const first = `${padL},${padT + chartH}`;
+                                                const last = `${padL + (stats.length - 1) * stepX},${padT + chartH}`;
+                                                return `M${first} L${line.join(' L')} L${last} Z`;
+                                            };
+
+                                            // Y axis labels
+                                            const ySteps = 4;
+                                            const yLabels = Array.from({ length: ySteps + 1 }, (_, i) => Math.round(maxVal * i / ySteps));
+
+                                            // X axis labels - show every Nth
+                                            const showEvery = stats.length > 30 ? 7 : stats.length > 14 ? 3 : 2;
+
+                                            return (
+                                                <div style={{ overflowX: 'auto' }}>
+                                                    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', maxHeight: '220px' }}>
+                                                        {/* Grid lines */}
+                                                        {yLabels.map((val, i) => {
+                                                            const y = padT + chartH - (val / maxVal) * chartH;
+                                                            return (
+                                                                <g key={i}>
+                                                                    <line x1={padL} y1={y} x2={w - padR} y2={y} stroke="#f1f5f9" strokeWidth="0.5" />
+                                                                    <text x={padL - 5} y={y + 3} textAnchor="end" fill="#94a3b8" fontSize="8">{val}</text>
+                                                                </g>
+                                                            );
+                                                        })}
+
+                                                        {/* Area fills */}
+                                                        <path d={makeArea('total', '#6366f1')} fill="#6366f120" />
+                                                        <path d={makeArea('withPhone', '#10b981')} fill="#10b98115" />
+
+                                                        {/* Lines */}
+                                                        <path d={makeLine('total', '#6366f1')} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                                        <path d={makeLine('withPhone', '#10b981')} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4,2" />
+                                                        <path d={makeLine('withoutPhone', '#ef4444')} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="2,2" />
+
+                                                        {/* Data dots & X labels */}
+                                                        {stats.map((s, i) => {
+                                                            const x = padL + i * stepX;
+                                                            const yTotal = padT + chartH - (s.total / maxVal) * chartH;
+                                                            return (
+                                                                <g key={i}>
+                                                                    <circle cx={x} cy={yTotal} r="2.5" fill="#6366f1" />
+                                                                    {/* Tooltip hover area */}
+                                                                    <title>{`${s.date}
+Toplam: ${s.total}
+Telefonlu: ${s.withPhone}
+Telefonsuz: ${s.withoutPhone}`}</title>
+                                                                    {i % showEvery === 0 && (
+                                                                        <text x={x} y={h - 5} textAnchor="middle" fill="#94a3b8" fontSize="7">
+                                                                            {s.date.slice(5)}
+                                                                        </text>
+                                                                    )}
+                                                                </g>
+                                                            );
+                                                        })}
+                                                    </svg>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </>
+                            ) : null}
+                        </div>
+                    )}
 
                     {/* Table */}
                     <div className="contacts-table-container">
@@ -1383,6 +1616,7 @@ const Customers = () => {
                                         <th>FİRMA</th>
                                         <th>ETİKETLER</th>
                                         <th>DURUM</th>
+                                        <th>KONU</th>
                                         <th>SOHBETLER</th>
                                         <th>İLK YAZMA</th>
                                         <th>SON YAZMA</th>
@@ -1505,6 +1739,25 @@ const Customers = () => {
                                                             </span>
                                                         );
                                                     })()}
+                                                </td>
+                                                <td className="contact-topic" title={contact.aiTopic || ''}>
+                                                    {contact.aiTopic ? (
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 8px',
+                                                            backgroundColor: '#f0f9ff',
+                                                            color: '#0369a1',
+                                                            borderRadius: '4px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 500,
+                                                            maxWidth: '140px',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {contact.aiTopic}
+                                                        </span>
+                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
                                                 </td>
                                                 <td className="contact-conversations">
                                                     {contact._count?.conversations || 0}
@@ -1648,10 +1901,12 @@ const Customers = () => {
                                         <PhoneCall size={16} />
                                         Ara
                                     </button>
+                                    {user?.role === 'SUPER_ADMIN' && (
                                     <button className="customers-bulk-delete-btn" onClick={handleDeleteSelected} disabled={deleting}>
                                         <Trash2 size={16} />
                                         {deleting ? 'Siliniyor...' : 'Sil'}
                                     </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

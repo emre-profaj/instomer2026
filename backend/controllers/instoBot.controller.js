@@ -773,6 +773,98 @@ const dataFunctions = {
             hourly[hour]++;
         });
         return hourly.map((count, hour) => ({ hour: `${hour.toString().padStart(2, '0')}:00`, count }));
+    },
+
+    // ───────── SOHBET KONUSUNA GÖRE KİŞİ ARAMA ─────────
+
+    searchByConversationTopic: async (workspaceId, { query, limit = 50 }) => {
+        // 1) aiTopic'te arama
+        const byTopic = await prisma.conversation.findMany({
+            where: {
+                workspaceId,
+                aiTopic: { contains: query, mode: 'insensitive' }
+            },
+            include: {
+                contact: {
+                    select: { id: true, name: true, fullName: true, phone: true, email: true, company: true, source: true, category: true, tags: true }
+                },
+                assignedTo: { select: { name: true } }
+            },
+            orderBy: { lastMessageAt: 'desc' },
+            take: limit
+        });
+
+        // 2) Mesaj içeriğinde arama (aiTopic'te bulamazsa)
+        let byMessage = [];
+        if (byTopic.length < limit) {
+            const topicContactIds = byTopic.map(c => c.contactId).filter(Boolean);
+            byMessage = await prisma.conversation.findMany({
+                where: {
+                    workspaceId,
+                    contactId: { notIn: topicContactIds },
+                    messages: { some: { content: { contains: query, mode: 'insensitive' } } }
+                },
+                include: {
+                    contact: {
+                        select: { id: true, name: true, fullName: true, phone: true, email: true, company: true, source: true, category: true, tags: true }
+                    },
+                    assignedTo: { select: { name: true } }
+                },
+                orderBy: { lastMessageAt: 'desc' },
+                take: limit - byTopic.length
+            });
+        }
+
+        const allConversations = [...byTopic, ...byMessage];
+
+        // Kişi bazında birleştir (aynı kişinin birden fazla sohbeti olabilir)
+        const contactMap = new Map();
+        for (const conv of allConversations) {
+            if (!conv.contact) continue;
+            const key = conv.contact.id;
+            if (!contactMap.has(key)) {
+                contactMap.set(key, {
+                    name: conv.contact.fullName || conv.contact.name || 'Bilinmeyen',
+                    phone: conv.contact.phone || null,
+                    email: conv.contact.email || null,
+                    company: conv.contact.company || null,
+                    source: conv.contact.source || 'UNKNOWN',
+                    category: conv.contact.category || 'NEW',
+                    tags: conv.contact.tags || '[]',
+                    conversationCount: 0,
+                    topics: [],
+                    assignedTo: conv.assignedTo?.name || null
+                });
+            }
+            const entry = contactMap.get(key);
+            entry.conversationCount++;
+            if (conv.aiTopic && !entry.topics.includes(conv.aiTopic)) {
+                entry.topics.push(conv.aiTopic);
+            }
+        }
+
+        const contacts = Array.from(contactMap.values());
+        const withPhone = contacts.filter(c => c.phone && c.phone.trim() !== '');
+        const withoutPhone = contacts.filter(c => !c.phone || c.phone.trim() === '');
+
+        return {
+            query,
+            totalContacts: contacts.length,
+            withPhone: withPhone.length,
+            withoutPhone: withoutPhone.length,
+            contacts: contacts.map(c => ({
+                name: c.name,
+                phone: c.phone || 'Yok',
+                email: c.email || 'Yok',
+                company: c.company || '-',
+                source: c.source,
+                category: c.category,
+                tags: c.tags,
+                topics: c.topics.join(', ') || '-',
+                assignedTo: c.assignedTo || 'Atanmamış',
+                conversationCount: c.conversationCount
+            }))
+        };
     }
 };
 
@@ -1133,6 +1225,18 @@ const functionDeclarations = [
                 endDate: { type: 'STRING', description: 'Bitiş tarihi' }
             }
         }
+    },
+    {
+        name: 'searchByConversationTopic',
+        description: 'Sohbet konusuna (aiTopic) veya mesaj içeriğine göre kişileri arar. "obezite ile ilgili müşteriler", "inşaat hakkında yazanlar" gibi konusal sorgulamalar için kullanılır. Kişilerin isim, telefon, email bilgilerini ve kaçının telefonlu/telefonsuz olduğunu döner.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                query: { type: 'STRING', description: 'Aranacak konu/anahtar kelime (örn: obezite, inşaat, fiyat, randevu)' },
+                limit: { type: 'NUMBER', description: 'Maksimum sonuç sayısı (varsayılan: 50)' }
+            },
+            required: ['query']
+        }
     }
 ];
 
@@ -1180,6 +1284,9 @@ KURALLAR:
 - Kişi arama, telefon sorgu, istatistik, takım bilgisi, bot durumu, otomasyon, randevu, kanal bilgisi — HER ŞEYİ fonksiyonlar aracılığıyla yanıtla.
 - Bir soruyu yanıtlamak için birden fazla fonksiyon gerekiyorsa, hepsini çağır.
 - Tarih filtresi gerektiğinde ISO format kullan (ör: 2026-02-26).
+- Kullanıcı bir KONU hakkında kişi sorduğunda (örn: "obezite ile ilgili müşteriler", "inşaat müşterileri", "fiyat soranlar") ÖNCELİKLE searchByConversationTopic fonksiyonunu kullan. Bu fonksiyon sohbet konularını ve mesaj içeriklerini tarar, kişilerin isim/telefon/email bilgilerini ve kaçının telefonlu/telefonsuz olduğunu döner.
+- Kişi listesi döndürürken her kişinin ismini, telefonunu, emailini ve varsa konusunu açıkça listele.
+- "Kaçının telefonu var?" gibi sorularda withPhone ve withoutPhone sayılarını ver.
 - Bugünün tarihi: ${new Date().toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' })}
 - Bugünün ISO tarihi: ${new Date().toISOString().split('T')[0]}`;
 

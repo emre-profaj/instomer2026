@@ -418,7 +418,8 @@ export const contactAPI = {
     archive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/archive`),
     unarchive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/unarchive`),
     addNote: (workspaceId, id, note) => api.post(`/contacts/${workspaceId}/${id}/note`, { note }),
-    bulkImport: (workspaceId, data) => api.post(`/contacts/${workspaceId}/import`, data)
+    bulkImport: (workspaceId, data) => api.post(`/contacts/${workspaceId}/import`, data),
+    getDailyStats: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/daily-stats`, { params })
 };
 
 export const leadsAPI = {

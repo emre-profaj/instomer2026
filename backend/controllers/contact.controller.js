@@ -214,9 +214,9 @@ export const getContacts = async (req, res) => {
                     where,
                     {
                         OR: [
-                            { name: { contains: search } },
+                            { name: { contains: search, mode: 'insensitive' } },
                             { phone: { contains: search } },
-                            { email: { contains: search } }
+                            { email: { contains: search, mode: 'insensitive' } }
                         ]
                     }
                 ]
@@ -232,6 +232,14 @@ export const getContacts = async (req, res) => {
                 ]
             };
         }
+
+        // Always hide soft-deleted contacts
+        where = {
+            AND: [
+                where,
+                { isDeleted: false }
+            ]
+        };
 
         // Filter by AI call status (join with retellCall table)
         if (callStatus && callStatus !== 'ALL') {
@@ -318,12 +326,19 @@ export const getContacts = async (req, res) => {
                     .sort((a, b) => b[1] - a[1])[0][0];
             }
 
+            // Get aiTopic from the most recent conversation that has one
+            const aiTopic = contact.conversations
+                ?.filter(c => c.aiTopic)
+                ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt))
+                ?.[0]?.aiTopic || null;
+
             return {
                 ...contact,
                 source: contactSource,
                 channels: [...new Set(channels)],
                 firstMessageAt,
-                lastMessageAt
+                lastMessageAt,
+                aiTopic
             };
         };
 
@@ -348,6 +363,7 @@ export const getContacts = async (req, res) => {
                             channel: true,
                             createdAt: true,
                             lastMessageAt: true,
+                            aiTopic: true,
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -400,6 +416,7 @@ export const getContacts = async (req, res) => {
                             channel: true,
                             createdAt: true,
                             lastMessageAt: true,
+                            aiTopic: true,
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -1501,11 +1518,81 @@ export const getAgentPerformance = async (req, res) => {
     }
 };
 
-// Delete contact
+// Daily contact stats - shows how many contacts came per day with phone/no-phone breakdown
+export const getDailyContactStats = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { days = 30 } = req.query;
+
+        const daysCount = Math.min(parseInt(days) || 30, 90);
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - daysCount);
+        startDate.setHours(0, 0, 0, 0);
+
+        // Get all contacts created in the date range for this workspace
+        const contacts = await prisma.contact.findMany({
+            where: {
+                createdAt: { gte: startDate },
+                isDeleted: false,
+                OR: [
+                    { workspaceId },
+                    { conversations: { some: { workspaceId } } }
+                ]
+            },
+            select: {
+                id: true,
+                phone: true,
+                createdAt: true
+            }
+        });
+
+        // Build daily stats map
+        const dailyMap = {};
+        for (let i = 0; i < daysCount; i++) {
+            const d = new Date();
+            d.setDate(d.getDate() - (daysCount - 1 - i));
+            const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
+            dailyMap[key] = { date: key, total: 0, withPhone: 0, withoutPhone: 0 };
+        }
+
+        for (const contact of contacts) {
+            const key = contact.createdAt.toISOString().split('T')[0];
+            if (dailyMap[key]) {
+                dailyMap[key].total++;
+                if (contact.phone && contact.phone.trim() !== '') {
+                    dailyMap[key].withPhone++;
+                } else {
+                    dailyMap[key].withoutPhone++;
+                }
+            }
+        }
+
+        const dailyStats = Object.values(dailyMap);
+        const totals = {
+            total: contacts.length,
+            withPhone: contacts.filter(c => c.phone && c.phone.trim() !== '').length,
+            withoutPhone: contacts.filter(c => !c.phone || c.phone.trim() === '').length
+        };
+
+        res.json({ dailyStats, totals, days: daysCount });
+    } catch (error) {
+        console.error('Daily contact stats error:', error);
+        res.status(500).json({ error: 'Günlük istatistikler alınamadı' });
+    }
+};
+
+// Delete contact (soft delete - marks as deleted but keeps in database)
+// Only SUPER_ADMIN can delete contacts
 export const deleteContact = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        console.log(`🗑️ [Delete Contact] START - ID: ${id}`);
+
+        // Only SUPER_ADMIN can delete contacts
+        if (req.user.role !== 'SUPER_ADMIN') {
+            return res.status(403).json({ error: 'Sadece SuperAdmin kişi silebilir.' });
+        }
+
+        console.log(`🗑️ [Delete Contact] START (soft delete) - ID: ${id}`);
 
         // Verify contact belongs to this workspace (either directly or via conversation)
         const existing = await prisma.contact.findFirst({
@@ -1521,27 +1608,35 @@ export const deleteContact = async (req, res) => {
             return res.status(404).json({ error: 'Contact not found' });
         }
 
-        // 1. Find all conversations for this contact IN THIS WORKSPACE
-        const conversations = await prisma.conversation.findMany({
-            where: { contactId: id, workspaceId: workspaceId },
-            select: { id: true }
+        // 1. Soft delete: mark the contact as deleted
+        await prisma.contact.update({
+            where: { id },
+            data: {
+                isDeleted: true,
+                deletedAt: new Date()
+            }
         });
 
-        console.log(` - Deleting ${conversations.length} associated conversations...`);
+        // 2. Close all open conversations for this contact in this workspace
+        await prisma.conversation.updateMany({
+            where: {
+                contactId: id,
+                workspaceId: workspaceId,
+                status: { not: 'CLOSED' }
+            },
+            data: {
+                status: 'CLOSED'
+            }
+        });
 
-        // 2. Clear each conversation explicitly (to ensure messages/notes/transfers are gone)
-        for (const conv of conversations) {
-            await prisma.message.deleteMany({ where: { conversationId: conv.id } });
-            await prisma.internalNote.deleteMany({ where: { conversationId: conv.id } });
-            await prisma.conversationTransfer.deleteMany({ where: { conversationId: conv.id } });
-            await prisma.conversation.delete({ where: { id: conv.id } });
-        }
+        // Emit socket event so UI updates in real-time
+        emitToWorkspace(workspaceId, 'contact_deleted', {
+            contactId: id,
+            isDeleted: true
+        });
 
-        // 3. Delete the contact
-        await prisma.contact.delete({ where: { id } });
-
-        console.log(`✅ [Delete Contact] SUCCESS - ID: ${id}`);
-        res.json({ message: 'Contact and all associated conversations deleted successfully' });
+        console.log(`✅ [Delete Contact] SUCCESS (soft delete) - ID: ${id}`);
+        res.json({ message: 'Contact deleted successfully (soft delete)' });
     } catch (error) {
         console.error('Delete contact error:', error);
         res.status(500).json({ error: 'Failed to delete contact' });

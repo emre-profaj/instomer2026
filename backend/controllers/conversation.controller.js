@@ -17,6 +17,8 @@ export const getConversations = async (req, res) => {
 
         const where = {
             workspaceId,
+            // Hide conversations from soft-deleted contacts
+            contact: { isDeleted: false },
             ...(channel === 'WHATSAPP' && {
                 OR: [{ channel: 'WHATSAPP' }, { whatsappPhoneNumberId: { not: null } }]
             }),
@@ -2230,21 +2232,37 @@ export const claimConversation = async (req, res) => {
         });
         if (!conversation) return res.status(404).json({ error: 'Konuşma bulunamadı' });
 
-        if (conversation.assignedToId && conversation.assignedToId !== userId) {
-            return res.status(400).json({ error: 'Bu konuşma zaten başka birine atanmış.' });
+        // Get the user's team IDs to add to conversation
+        const userTeams = await prisma.teamMember.findMany({
+            where: { userId },
+            select: { teamId: true }
+        });
+        const myTeamIds = userTeams.map(t => t.teamId);
+
+        // Build update data
+        const updateData = {
+            assignedToId: userId,
+            botEnabled: false,
+            botDelayedUntil: null
+        };
+
+        // If the user has teams, update the conversation's teamIds
+        if (myTeamIds.length > 0) {
+            updateData.teamIds = JSON.stringify(myTeamIds);
         }
 
         const updated = await prisma.conversation.update({
             where: { id: conversationId },
-            data: {
-                assignedToId: userId,
-                botEnabled: false,
-                botDelayedUntil: null
-            },
+            data: updateData,
             include: {
                 assignedTo: { select: { id: true, name: true, avatar: true } }
             }
         });
+
+        // Notify previous assignee if different
+        if (conversation.assignedToId && conversation.assignedToId !== userId) {
+            console.log(`🔄 [Claim] Conv ${conversationId} transferred from agent:${conversation.assignedToId} → agent:${userId}`);
+        }
 
         if (req.app?.locals?.io) {
             req.app.locals.io.to(workspaceId).emit('conversation:assigned', {

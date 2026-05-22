@@ -326,6 +326,8 @@ model Contact {
   blockedReason     String?
   isArchived        Boolean          @default(false)
   archivedAt        DateTime?
+  isDeleted         Boolean          @default(false)
+  deletedAt         DateTime?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   conversations     Conversation[]

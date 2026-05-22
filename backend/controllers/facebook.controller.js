@@ -132,7 +132,7 @@ export const connectPage = async (req, res) => {
                 {},
                 {
                     params: {
-                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,leadgen',
+                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,instagram_manage_messages,feed,comments,leadgen',
                         access_token: pageAccessToken
                     }
                 }
@@ -737,6 +737,7 @@ async function processWebhookAsync(body) {
             // --- HANDLE COMMENTS/FEED CHANGES SEPARATELY ---
             if (changeEvent && (changeEvent.field === 'feed' || changeEvent.field === 'comments')) {
                 console.log('📎 Webhook Event Type: changes (feed/comments)');
+                console.log(`📎 [COMMENTS] body.object: ${body.object}, entry.id: ${entry.id}`);
                 const changeValue = changeEvent.value;
                 console.log(`📝 [COMMENTS WEBHOOK] Field: ${changeEvent.field}, Item: ${changeValue?.item}, Verb: ${changeValue?.verb}`);
                 console.log(`📝 [COMMENTS WEBHOOK] Full value:`, JSON.stringify(changeValue, null, 2));
@@ -769,8 +770,9 @@ async function processWebhookAsync(body) {
                     // Instagram: { id, text, from: { id, username }, media: { id } }
                     // Facebook: { item, verb, comment_id, message, from: { id, name }, post_id }
 
-                    const isCommentEvent = changeValue?.item === 'comment' || changeValue?.id;
-                    const isAddVerb = changeValue?.verb === 'add' || !changeValue?.verb; // Instagram doesn't always send verb
+                    const isCommentEvent = changeValue?.item === 'comment' || changeValue?.item === 'status' || changeValue?.id;
+                    const isAddVerb = changeValue?.verb === 'add' || changeValue?.verb === 'edited' || !changeValue?.verb; // Instagram doesn't always send verb
+                    console.log(`📝 [COMMENTS] isCommentEvent: ${isCommentEvent}, isAddVerb: ${isAddVerb}, item: ${changeValue?.item}, verb: ${changeValue?.verb}, id: ${changeValue?.id}`);
 
                     if (isCommentEvent && isAddVerb) {
                         // Handle both Facebook and Instagram comment formats

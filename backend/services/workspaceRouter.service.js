@@ -100,10 +100,40 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
 
         // Opsiyonel atamalar — doğru kolon adlarıyla
         const effectiveBotId = botId || firstStage?.assignedBotId || null;
-        const effectiveTeamId = teamId || firstStage?.assignedTeamId || null;
+
+        // Takım atama: Rule target > Stage > Funnel fallback
+        let effectiveTeamId = teamId || firstStage?.assignedTeamId || null;
+        let effectiveUserId = firstStage?.assignedUserId || null;
+
+        // Stage'de takım/kişi yoksa, Funnel seviyesine bak
+        if (!effectiveTeamId && funnel.assignedTeamId) {
+            effectiveTeamId = funnel.assignedTeamId;
+            console.log(`📂 [ROUTER:MOVE] Funnel-level takım kullanılıyor: ${effectiveTeamId}`);
+        }
+        if (!effectiveUserId && funnel.assignedUserId) {
+            effectiveUserId = funnel.assignedUserId;
+            console.log(`📂 [ROUTER:MOVE] Funnel-level kişi kullanılıyor: ${effectiveUserId}`);
+        }
+
         if (effectiveBotId) updateData.assignedBotId = effectiveBotId;
-        if (effectiveTeamId) updateData.teamIds = JSON.stringify([effectiveTeamId]); // Conversation şemasında teamIds[]
-        if (firstStage?.assignedUserId) updateData.assignedToId = firstStage.assignedUserId;
+        if (effectiveTeamId) {
+            updateData.assignedTeamId = effectiveTeamId;
+            updateData.teamIds = JSON.stringify([effectiveTeamId]);
+
+            // Round-robin ile takımdan kişi ata (kişi henüz belirlenmediyse)
+            if (!effectiveUserId) {
+                try {
+                    const rrUserId = await assignRoundRobin(effectiveTeamId, conversation.id);
+                    if (rrUserId) {
+                        effectiveUserId = rrUserId;
+                        console.log(`👥 [ROUTER:MOVE] Round-Robin → user: ${rrUserId}`);
+                    }
+                } catch (rrErr) {
+                    console.error(`[ROUTER:MOVE] Round-robin error:`, rrErr.message);
+                }
+            }
+        }
+        if (effectiveUserId) updateData.assignedToId = effectiveUserId;
 
         console.log(`🚦 [ROUTER:MOVE] Güncelleme yapılıyor:`, JSON.stringify(updateData));
 
@@ -118,6 +148,24 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
         try {
             const { emitToWorkspace } = await import('../socket.js');
             emitToWorkspace(workspaceId, 'conversation_updated', { conversationId: conversation.id });
+
+            // Ekip ataması değiştiyse conversation_assigned event'i de gönder
+            if (effectiveTeamId || effectiveUserId) {
+                let assignedToName = null;
+                if (effectiveUserId) {
+                    try {
+                        const u = await prisma.user.findUnique({ where: { id: effectiveUserId }, select: { name: true } });
+                        assignedToName = u?.name || null;
+                    } catch (_) {}
+                }
+                emitToWorkspace(workspaceId, 'conversation_assigned', {
+                    conversationId: conversation.id,
+                    assignedToId: effectiveUserId || null,
+                    assignedToName,
+                    teamIds: effectiveTeamId ? JSON.stringify([effectiveTeamId]) : '[]',
+                    botEnabled: !!effectiveBotId
+                });
+            }
         } catch (_) {}
 
         // FLOW_ENTERED eventi
@@ -227,3 +275,6 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message) {
         return { matched: false };
     }
 }
+
+// Alias for backward compatibility (ai.controller.js imports this name)
+export const routeConversationToFunnel = runWorkspaceRouter;

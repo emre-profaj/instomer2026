@@ -2253,6 +2253,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <Ban size={14} />
                                                 Bu Kişiyi Engelle
                                             </button>
+                                            {user?.role === 'SUPER_ADMIN' && (
                                             <button
                                                 className="block-btn"
                                                 onClick={() => setShowDeleteConfirm(true)}
@@ -2261,6 +2262,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             >
                                                 <Trash2 size={14} />
                                             </button>
+                                            )}
                                         </div>
                                     )}
 
