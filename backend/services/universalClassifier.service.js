@@ -105,15 +105,15 @@ ${chatLog}
 ${customFunnelContext}
 
 ### GÖREV ###
-1. Konuşmayı sınıflandır (ÖNEMLİ: Sadece net niyet varsa FIRSAT veya RANDEVU de):
-   - FIRSAT: Kişi BELİRLİ bir ürün/hizmete ilgi gösteriyor VE iletişim bilgisi paylaşmış veya paylaşmaya hazır. Örnekler: "implant fiyatı ne kadar, numaram 053...", "2+1 daire bakıyorum, beni arayın", "check-up yaptırmak istiyorum"
-   - RANDEVU: Kişi açıkça randevu/görüşme/muayene zamanı istiyor. Örnekler: "randevu almak istiyorum", "doktora ne zaman gelebilirim", "görüşme ayarlayalım"
+1. Konuşmayı sınıflandır:
+   - FIRSAT: Kişi BELİRLİ bir ürün/hizmete ilgi gösteriyor. Telefon paylaşması ŞART DEĞİL — belirli bir hizmet/ürün sorması yeterli. Örnekler: "doğum paketi hakkında bilgi", "implant fiyatı ne kadar", "2+1 daire bakıyorum", "check-up yaptırmak istiyorum", "fiyat ne kadar", bir form doldurmuş, lead gelmiş
+   - RANDEVU: Kişi açıkça randevu/görüşme/muayene zamanı istiyor. Örnekler: "randevu almak istiyorum", "doktora ne zaman gelebilirim"
    - DESTEK: Mevcut müşteri sorunu, arıza, teknik destek talebi
    - IS_BASVURUSU: CV gönderen, iş arayan, pozisyon soran, staj başvurusu
    - SIKAYET: Şikayet, olumsuz geri bildirim, memnuniyetsizlik
-   - GENEL: Genel bilgi sorusu, keşif amaçlı soru, henüz net niyet yok. Örnekler: "sunduğunuz hizmetler neler?", "merhaba", "bilgi alabilir miyim?", "ne yapıyorsunuz?"
+   - GENEL: SADECE çok genel sorular — "merhaba", "sunduğunuz hizmetler neler?", "ne yapıyorsunuz?". Eğer kişi herhangi belirli bir hizmet/ürün soruyorsa FIRSAT yap!
 
-   ⚠️ DİKKAT: "Hizmetleriniz neler?", "Fiyatlar ne kadar?" gibi genel sorular FIRSAT DEĞİLDİR, GENEL'dir. FIRSAT için kişinin BELİRLİ bir hizmete ilgi göstermesi + telefon/isim paylaşması veya paylaşmaya niyetli olması gerekir.
+   ⚠️ DİKKAT: "Hizmetleriniz neler?" gibi ÇOK GENEL sorular GENEL'dir. Ama "doğum paketi bilgisi", "implant fiyatı", "3+1 daire" gibi BELİRLİ hizmet soruları FIRSAT'tır — telefon paylaşması şart değil!
 
 2. Yapılandırılmış veri çıkar:
    - name: Kişinin adı soyadı (konuşmada açıkça söylediyse. Platform adını KULLANMA, null yaz)
@@ -354,12 +354,18 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     });
                     if (stage) {
                         const assignUpdate = {};
-                        if (stage.assignedTeamId) assignUpdate.assignedTeamId = stage.assignedTeamId;
+                        if (stage.assignedTeamId) {
+                            assignUpdate.assignedTeamId = stage.assignedTeamId;
+                            assignUpdate.teamIds = JSON.stringify([stage.assignedTeamId]);
+                        }
                         if (stage.assignedUserId) assignUpdate.assignedToId = stage.assignedUserId;
-                        if (stage.assignedBotId) assignUpdate.assignedBotId = stage.assignedBotId;
+                        if (stage.assignedBotId) {
+                            assignUpdate.assignedBotId = stage.assignedBotId;
+                            assignUpdate.botEnabled = true;
+                        }
                         if (Object.keys(assignUpdate).length > 0) {
                             await prisma.conversation.update({ where: { id: conversationId }, data: assignUpdate });
-                            console.log(`👥 [Classifier] Ekip/kişi atandı:`, assignUpdate);
+                            console.log(`👥 [Classifier] Stage ekip/kişi atandı:`, assignUpdate);
                         }
                         if (stage.assignedTeamId && !stage.assignedUserId) {
                             await assignToTeamMember(stage.assignedTeamId, conversationId);
@@ -367,21 +373,48 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     }
                 }
 
-                // Funnel seviyesinde takım ataması
+                // Funnel seviyesinde takım ataması (stage'de yoksa)
                 if (!targetStageId || !(await prisma.funnelStage.findUnique({ where: { id: targetStageId }, select: { assignedTeamId: true } }))?.assignedTeamId) {
                     const funnel = await prisma.funnel.findUnique({
                         where: { id: targetFunnelId },
                         select: { assignedTeamId: true, assignedUserId: true }
                     });
-                    if (funnel?.assignedTeamId && !funnel?.assignedUserId) {
-                        await assignToTeamMember(funnel.assignedTeamId, conversationId);
+                    if (funnel?.assignedTeamId) {
+                        const funnelAssign = {
+                            assignedTeamId: funnel.assignedTeamId,
+                            teamIds: JSON.stringify([funnel.assignedTeamId])
+                        };
+                        if (funnel.assignedUserId) {
+                            funnelAssign.assignedToId = funnel.assignedUserId;
+                        }
+                        await prisma.conversation.update({ where: { id: conversationId }, data: funnelAssign });
+                        console.log(`📂 [Classifier] Funnel takım atandı: ${funnel.assignedTeamId}`);
+
+                        if (!funnel.assignedUserId) {
+                            await assignToTeamMember(funnel.assignedTeamId, conversationId);
+                        }
                     } else if (funnel?.assignedUserId) {
                         await prisma.conversation.update({
                             where: { id: conversationId },
-                            data: { assignedToId: funnel.assignedUserId, assignedTeamId: funnel.assignedTeamId }
+                            data: { assignedToId: funnel.assignedUserId }
                         });
                     }
                 }
+
+                // Socket ile ekip atamasını bildir
+                try {
+                    const updatedConv = await prisma.conversation.findUnique({
+                        where: { id: conversationId },
+                        select: { assignedToId: true, assignedTeamId: true, teamIds: true, botEnabled: true }
+                    });
+                    const { emitToWorkspace } = await import('../socket.js');
+                    emitToWorkspace(workspaceId, 'conversation_assigned', {
+                        conversationId,
+                        assignedToId: updatedConv?.assignedToId || null,
+                        teamIds: updatedConv?.teamIds || '[]',
+                        botEnabled: updatedConv?.botEnabled || false
+                    });
+                } catch (_) {}
             } else {
                 console.log(`ℹ️ [Classifier] Konuşma zaten "${currentFunnelId}" akışında, taşınmadı`);
             }
