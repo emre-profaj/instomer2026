@@ -4879,9 +4879,11 @@ const Inbox = () => {
                         onTakeOver={async () => {
                             try {
                                 await conversationAPI.takeOver(currentWorkspace.id, selectedItem.id);
-                                setSelectedItem(prev => prev ? { ...prev, assignedToId: user?.id || null } : prev);
+                                const myId = user?.id || null;
+                                const myInfo = { id: myId, name: user?.name || 'Ben' };
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: myId, assignedTo: myInfo } : prev);
                                 setInboxItems(prev => prev.map(item =>
-                                    item.id === selectedItem.id ? { ...item, assignedToId: user?.id || null } : item
+                                    item.id === selectedItem.id ? { ...item, assignedToId: myId, assignedTo: myInfo } : item
                                 ));
                             } catch(e) { console.error(e); }
                         }}

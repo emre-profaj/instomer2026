@@ -2242,7 +2242,7 @@ export const claimConversation = async (req, res) => {
                 botDelayedUntil: null
             },
             include: {
-                assignedTo: { select: { id: true, name: true, avatarUrl: true } }
+                assignedTo: { select: { id: true, name: true, avatar: true } }
             }
         });
 
