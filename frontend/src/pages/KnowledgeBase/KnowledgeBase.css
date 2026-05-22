@@ -540,3 +540,96 @@
 .btn-retell-sync .spinning {
     animation: spin 1s linear infinite;
 }
+
+/* Template Button */
+.kb-template-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7) !important;
+    border-color: #86efac !important;
+    color: #16a34a !important;
+    font-weight: 600 !important;
+    transition: all 0.2s;
+}
+
+.kb-template-btn:hover {
+    background: linear-gradient(135deg, #dcfce7, #bbf7d0) !important;
+    border-color: #4ade80 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.15);
+}
+
+/* Upload Result Card */
+.kb-upload-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-top: 20px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.kb-upload-result.success {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border: 1px solid #86efac;
+}
+
+.kb-upload-result.error {
+    background: linear-gradient(135deg, #fef2f2, #fee2e2);
+    border: 1px solid #fca5a5;
+}
+
+.upload-result-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kb-upload-result.success .upload-result-icon {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.kb-upload-result.error .upload-result-icon {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.upload-result-info {
+    flex: 1;
+}
+
+.upload-result-info h4 {
+    margin: 0 0 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.kb-upload-result.success .upload-result-info h4 { color: #15803d; }
+.kb-upload-result.error .upload-result-info h4 { color: #b91c1c; }
+
+.upload-result-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    font-size: 0.8rem;
+    color: #4b5563;
+}
+
+.upload-result-details span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+

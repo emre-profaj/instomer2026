@@ -2127,7 +2127,8 @@ export const smartAssignConversation = async (req, res) => {
                 });
 
                 if (team) {
-                    const allMembers = team.members.map(m => m.user);
+                    // Bot memberları filtrele (userId null olanlar)
+                    const allMembers = team.members.filter(m => m.user && m.userId).map(m => m.user);
                     const rule = team.assignmentRule || 'POOL';
 
                     if (rule === 'POOL') {
@@ -2179,6 +2180,7 @@ export const smartAssignConversation = async (req, res) => {
             where: { id: conversationId },
             data: {
                 assignedToId: resolvedAgentId,
+                assignedTeamId: teamId || null,
                 teamIds: JSON.stringify(teamIds)
             }
         });
@@ -2234,7 +2236,11 @@ export const claimConversation = async (req, res) => {
 
         const updated = await prisma.conversation.update({
             where: { id: conversationId },
-            data: { assignedToId: userId },
+            data: {
+                assignedToId: userId,
+                botEnabled: false,
+                botDelayedUntil: null
+            },
             include: {
                 assignedTo: { select: { id: true, name: true, avatarUrl: true } }
             }

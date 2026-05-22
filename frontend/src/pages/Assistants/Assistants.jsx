@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { aiAPI, workspaceAPI, automationAPI, retellAPI } from '../../services/api';
-import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic } from 'lucide-react';
+import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic, Wand2, ChevronRight, ChevronLeft, Languages, MessageSquare, Shield, Eye, Sparkles, ClipboardList } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 import AppointmentBotConfig from '../../components/Settings/AppointmentBotConfig';
@@ -852,6 +852,324 @@ const RetellAgentItem = ({ agent, workspaceId }) => {
 };
 
 
+// ==================== BOT WIZARD ====================
+const BotWizard = ({ isOpen, onClose, onComplete, workspaceId }) => {
+    const [step, setStep] = useState(1);
+    const totalSteps = 5;
+
+    // Step 1: Identity
+    const [wizName, setWizName] = useState('');
+    const [wizRole, setWizRole] = useState('Satış');
+    const [wizPurpose, setWizPurpose] = useState('');
+
+    // Step 2: Behavior
+    const [wizTone, setWizTone] = useState('professional');
+    const [wizLanguages, setWizLanguages] = useState(['Türkçe']);
+
+    // Step 3: Data collection
+    const [wizFields, setWizFields] = useState(['İsim', 'Telefon']);
+
+    // Step 4: Boundaries
+    const [wizRestrictions, setWizRestrictions] = useState('');
+
+    // Step 5: Preview (generated prompt)
+    const [wizPrompt, setWizPrompt] = useState('');
+
+    const toneOptions = [
+        { key: 'friendly', label: '😊 Samimi / Sıcak', desc: 'Emoji kullanır, "sen" dili, rahat üslup' },
+        { key: 'professional', label: '👔 Profesyonel / Ciddi', desc: 'Resmi dil, kısa ve net yanıtlar' },
+        { key: 'corporate', label: '🏢 Biz Dili / Kurumsal', desc: '"Biz" zamiri, kurum adına konuşur' }
+    ];
+
+    const languageOptions = ['Türkçe', 'İngilizce', 'Almanca', 'Arapça', 'Rusça', 'Fransızca'];
+    const fieldOptions = ['İsim', 'Telefon', 'E-posta', 'Adres', 'TC/Vergi No', 'Firma Adı', 'İlgilendiği Ürün/Hizmet', 'Bütçe'];
+
+    const roleOptions = [
+        { value: 'Satış', label: '💰 Satış' },
+        { value: 'Destek', label: '🛠️ Destek' },
+        { value: 'Randevu Alma', label: '📅 Randevu' },
+        { value: 'Bilgi', label: '📚 Bilgi' },
+        { value: 'Genel', label: '🤖 Genel' }
+    ];
+
+    const toggleLanguage = (lang) => {
+        setWizLanguages(prev => prev.includes(lang) ? prev.filter(l => l !== lang) : [...prev, lang]);
+    };
+
+    const toggleField = (field) => {
+        setWizFields(prev => prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field]);
+    };
+
+    const generatePrompt = () => {
+        const toneLabel = toneOptions.find(t => t.key === wizTone);
+        let toneInstruction = '';
+        if (wizTone === 'friendly') toneInstruction = 'Samimi ve sıcak bir üslup kullan. Emoji kullanabilirsin. "Sen" dili ile konuş. Rahat ama yardımsever ol.';
+        else if (wizTone === 'professional') toneInstruction = 'Profesyonel ve ciddi bir üslup kullan. Kısa, net ve resmi yanıtlar ver. Gereksiz emoji kullanma.';
+        else if (wizTone === 'corporate') toneInstruction = '"Biz" zamiri kullan ve kurum adına konuş. Kurumsal ve güven veren bir dil kullan. Örnek: "Size yardımcı olmaktan memnuniyet duyarız."';
+
+        const fieldsText = wizFields.length > 0
+            ? `Müşteriden şu bilgileri topla (sırayla, doğal bir sohbet akışında):\n${wizFields.map((f, i) => `  ${i + 1}. ${f}`).join('\n')}`
+            : 'Müşteriden ek bilgi toplaman gerekmiyor.';
+
+        const langText = wizLanguages.join(', ');
+
+        const restrictionsText = wizRestrictions.trim()
+            ? `\nSINIRLAR VE YASAKLAR:\n${wizRestrictions.trim().split('\n').map(r => `- ${r.replace(/^-\s*/, '')}`).join('\n')}`
+            : '';
+
+        const purposeText = wizPurpose.trim() ? `\nGÖREV: ${wizPurpose.trim()}` : '';
+
+        const prompt = `Sen ${wizName || 'bir AI asistanısın'} — ${wizRole} departmanında görev yapıyorsun.${purposeText}
+
+ÜSLUP: ${toneInstruction}
+
+YANIT DİLLERİ: ${langText} dillerinde yanıt verebilirsin. Müşteri hangi dilde yazıyorsa o dilde yanıt ver.
+
+BİLGİ TOPLAMA:
+${fieldsText}${restrictionsText}
+
+GENEL KURALLAR:
+- Bilgi bankasında olmayan konularda spekülasyon yapma, "Bu konuda size yardımcı olamıyorum, sizi ilgili ekibe aktarayım" de.
+- Her zaman yardımsever ve çözüm odaklı ol.
+- Kişisel veri paylaşma, gizlilik kurallarına uy.
+- Konuşmayı doğal ve akıcı tut.`;
+
+        setWizPrompt(prompt);
+    };
+
+    const handleNext = () => {
+        if (step < totalSteps) {
+            if (step === 4) generatePrompt();
+            setStep(step + 1);
+        }
+    };
+
+    const handlePrev = () => {
+        if (step > 1) setStep(step - 1);
+    };
+
+    const handleComplete = () => {
+        onComplete({
+            name: wizName || 'AI Asistan',
+            role: wizRole,
+            prompt: wizPrompt,
+            botType: 'CHATS'
+        });
+        // Reset
+        setStep(1);
+        setWizName('');
+        setWizRole('Satış');
+        setWizPurpose('');
+        setWizTone('professional');
+        setWizLanguages(['Türkçe']);
+        setWizFields(['İsim', 'Telefon']);
+        setWizRestrictions('');
+        setWizPrompt('');
+    };
+
+    if (!isOpen) return null;
+
+    const stepLabels = ['Kimlik', 'Davranış', 'Bilgi Toplama', 'Sınırlar', 'Önizleme'];
+    const stepIcons = [Bot, MessageSquare, ClipboardList, Shield, Eye];
+
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="wizard-modal" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="wizard-header">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div className="wizard-icon"><Wand2 size={20} /></div>
+                        <div>
+                            <h2>AI Agent Sihirbazı</h2>
+                            <p>Adım {step}/{totalSteps} — {stepLabels[step - 1]}</p>
+                        </div>
+                    </div>
+                    <button className="btn-icon" onClick={onClose}><X size={20} /></button>
+                </div>
+
+                {/* Progress */}
+                <div className="wizard-progress">
+                    {stepLabels.map((label, i) => {
+                        const Icon = stepIcons[i];
+                        return (
+                            <div key={i} className={`wizard-step-dot ${i + 1 === step ? 'active' : ''} ${i + 1 < step ? 'done' : ''}`}>
+                                <div className="dot-circle"><Icon size={14} /></div>
+                                <span>{label}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Body */}
+                <div className="wizard-body">
+                    {step === 1 && (
+                        <div className="wizard-step-content">
+                            <div className="form-group">
+                                <label className="form-label">Bot Adı</label>
+                                <input
+                                    type="text"
+                                    className="input-modern"
+                                    value={wizName}
+                                    onChange={e => setWizName(e.target.value)}
+                                    placeholder="Örn: Satış Asistanı, Destek Botu, Ayşe"
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Departman / Rolü</label>
+                                <div className="wizard-role-grid">
+                                    {roleOptions.map(r => (
+                                        <button
+                                            key={r.value}
+                                            type="button"
+                                            className={`wizard-role-btn ${wizRole === r.value ? 'active' : ''}`}
+                                            onClick={() => setWizRole(r.value)}
+                                        >
+                                            {r.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Amacı (Opsiyonel)</label>
+                                <textarea
+                                    className="input-modern"
+                                    rows="2"
+                                    value={wizPurpose}
+                                    onChange={e => setWizPurpose(e.target.value)}
+                                    placeholder="Örn: Gelen müşterilere ürünlerimizi tanıt, fiyat bilgisi ver ve iletişim bilgilerini topla"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 2 && (
+                        <div className="wizard-step-content">
+                            <div className="form-group">
+                                <label className="form-label">Üslup / Konuşma Tarzı</label>
+                                <div className="wizard-tone-grid">
+                                    {toneOptions.map(t => (
+                                        <button
+                                            key={t.key}
+                                            type="button"
+                                            className={`wizard-tone-btn ${wizTone === t.key ? 'active' : ''}`}
+                                            onClick={() => setWizTone(t.key)}
+                                        >
+                                            <strong>{t.label}</strong>
+                                            <span>{t.desc}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label"><Languages size={16} /> Yanıt Dilleri</label>
+                                <div className="wizard-chips">
+                                    {languageOptions.map(lang => (
+                                        <button
+                                            key={lang}
+                                            type="button"
+                                            className={`wizard-chip ${wizLanguages.includes(lang) ? 'active' : ''}`}
+                                            onClick={() => toggleLanguage(lang)}
+                                        >
+                                            {lang}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 3 && (
+                        <div className="wizard-step-content">
+                            <div className="form-group">
+                                <label className="form-label">Müşteriden Toplanacak Bilgiler</label>
+                                <p className="text-muted" style={{ fontSize: '13px', marginBottom: '12px' }}>Bot sohbet sırasında bu bilgileri doğal akışta toplamaya çalışır.</p>
+                                <div className="wizard-chips">
+                                    {fieldOptions.map(field => (
+                                        <button
+                                            key={field}
+                                            type="button"
+                                            className={`wizard-chip ${wizFields.includes(field) ? 'active' : ''}`}
+                                            onClick={() => toggleField(field)}
+                                        >
+                                            {wizFields.includes(field) ? '✓ ' : ''}{field}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 4 && (
+                        <div className="wizard-step-content">
+                            <div className="form-group">
+                                <label className="form-label"><Shield size={16} /> Yanıt Vermemesi Gereken Konular</label>
+                                <p className="text-muted" style={{ fontSize: '13px', marginBottom: '12px' }}>Her satıra bir kural yazın. Bot bu konularda yanıt vermeyecek.</p>
+                                <textarea
+                                    className="input-modern"
+                                    rows="6"
+                                    value={wizRestrictions}
+                                    onChange={e => setWizRestrictions(e.target.value)}
+                                    placeholder={`Fiyat verme, bilgi bankasında yoksa tahmin etme
+Rakip ürünler hakkında yorum yapma
+Tıbbi/hukuki tavsiye verme
+Kişisel görüş bildirme`}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {step === 5 && (
+                        <div className="wizard-step-content">
+                            <div className="form-group">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <label className="form-label" style={{ margin: 0 }}><Sparkles size={16} /> Oluşturulan Prompt</label>
+                                    <button
+                                        className="btn-modern btn-outline-primary"
+                                        style={{ fontSize: '11px', padding: '4px 10px' }}
+                                        onClick={generatePrompt}
+                                    >
+                                        🔄 Yeniden Oluştur
+                                    </button>
+                                </div>
+                                <p className="text-muted" style={{ fontSize: '12px', marginBottom: '8px' }}>İsterseniz düzenleyebilirsiniz — kaydetmeden önce son halini kontrol edin.</p>
+                                <textarea
+                                    className="input-modern wizard-prompt-preview"
+                                    rows="14"
+                                    value={wizPrompt}
+                                    onChange={e => setWizPrompt(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="wizard-footer">
+                    {step > 1 ? (
+                        <button className="btn-modern btn-outline-primary" onClick={handlePrev}>
+                            <ChevronLeft size={16} /> Geri
+                        </button>
+                    ) : <div />}
+
+                    {step < totalSteps ? (
+                        <button
+                            className="btn-modern btn-primary"
+                            onClick={handleNext}
+                            disabled={step === 1 && !wizName.trim()}
+                        >
+                            İleri <ChevronRight size={16} />
+                        </button>
+                    ) : (
+                        <button className="btn-modern btn-primary" onClick={handleComplete} style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                            <Sparkles size={16} /> Asistanı Oluştur
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Assistants = () => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
@@ -863,6 +1181,7 @@ const Assistants = () => {
 
     // Bot form state
     const [showAddBot, setShowAddBot] = useState(false);
+    const [showWizard, setShowWizard] = useState(false);
     const [newBotName, setNewBotName] = useState('');
     const [newBotRole, setNewBotRole] = useState('Teknik Servis');
     const [newBotPrompt, setNewBotPrompt] = useState('Sen yardımsever bir müşteri temsilcisisin.');
@@ -997,10 +1316,18 @@ const Assistants = () => {
                         <div style={{ display: 'flex', gap: '8px' }}>
                             <button
                                 className="btn-modern btn-primary"
+                                onClick={() => setShowWizard(true)}
+                                style={{ background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)' }}
+                            >
+                                <Wand2 size={16} />
+                                🧙 Sihirbaz ile Oluştur
+                            </button>
+                            <button
+                                className="btn-modern btn-outline-primary"
                                 onClick={() => setShowAddBot(true)}
                             >
                                 <Plus size={18} />
-                                Yeni Asistan Ekle
+                                Manuel Oluştur
                             </button>
                         </div>
                     )}
@@ -1226,6 +1553,22 @@ const Assistants = () => {
                 onConfirm={confirmModalAssist.onConfirm}
                 onCancel={() => setConfirmModalAssist(prev => ({ ...prev, isOpen: false }))}
                 type={confirmModalAssist.type}
+            />
+
+            <BotWizard
+                isOpen={showWizard}
+                onClose={() => setShowWizard(false)}
+                workspaceId={workspaceId}
+                onComplete={async (botData) => {
+                    try {
+                        await aiAPI.createBot(workspaceId, botData);
+                        setShowWizard(false);
+                        loadBots();
+                    } catch (error) {
+                        console.error('Wizard bot create error:', error);
+                        alert(error.response?.data?.error || 'Bot oluşturulamadı');
+                    }
+                }}
             />
         </div>
     );

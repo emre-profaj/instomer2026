@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI, knowledgeBaseAPI, retellAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone } from 'lucide-react';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -28,6 +28,9 @@ const KnowledgeBase = () => {
     const [urlSyncInterval, setUrlSyncInterval] = useState('');
     const [scraping, setScraping] = useState(false);
     const [syncingEntry, setSyncingEntry] = useState(null);
+
+    // File upload result
+    const [uploadResult, setUploadResult] = useState(null);
 
     // Retell Sync State
     const [syncingRetell, setSyncingRetell] = useState(false);
@@ -168,6 +171,13 @@ const KnowledgeBase = () => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
 
+        // Pre-check: file size
+        const oversized = files.filter(f => f.size > 5 * 1024 * 1024);
+        if (oversized.length > 0) {
+            setUploadResult({ success: false, message: `${oversized.map(f => f.name).join(', ')} dosyaları 5MB limitini aşıyor.` });
+            return;
+        }
+
         setUploading(true);
         let successCount = 0;
         let errorCount = 0;
@@ -190,9 +200,9 @@ const KnowledgeBase = () => {
         loadKnowledgeBase();
 
         if (errorCount === 0) {
-            alert(`${successCount} dosya başarıyla yüklendi`);
+            setUploadResult({ success: true, count: successCount });
         } else {
-            alert(`${successCount} dosya yüklendi, ${errorCount} dosya yüklenemedi`);
+            setUploadResult({ success: false, message: `${successCount} dosya yüklendi, ${errorCount} dosya yüklenemedi` });
         }
     };
 
@@ -508,17 +518,62 @@ const KnowledgeBase = () => {
             {activeTab === 'text' && (
                 <div className="card kb-add-form">
                     <div className="form-group">
-                        <label>{t('knowledgeBase.content')}</label>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <label style={{ margin: 0 }}>{t('knowledgeBase.content')}</label>
+                            <button
+                                className="btn btn-outline kb-template-btn"
+                                onClick={() => setNewKbContent(`📍 GENEL BİLGİLER
+Firma Adı: [Firma adınızı yazın]
+İletişim: Telefon: [+90 xxx] | E-posta: [info@firma.com] | Web: [www.firma.com]
+Adres: [Şehir, İlçe, tam adres]
+Çalışma Saatleri: [Pzt-Cum 09:00-18:00]
+
+🏢 FİRMA HAKKINDA
+Ne üretiyor/satıyor: [Ürün ve hizmet açıklaması]
+Nereye satıyor: [Türkiye geneli / İzmir / Online vb.]
+Hedef kitle: [Bireysel müşteriler / Kurumsal / B2B vb.]
+
+📦 ÜRÜN VE HİZMET LİSTESİ
+1. [Ürün/Hizmet Adı] — [Açıklama] — [Fiyat: ₺xxx veya "Fiyat bilgisi yok"]
+2. [Ürün/Hizmet Adı] — [Açıklama] — [Fiyat: ₺xxx]
+3. ...
+
+❓ SIK SORULAN SORULAR (SSS)
+S: [Soru 1]
+C: [Cevap 1]
+
+S: [Soru 2]
+C: [Cevap 2]
+
+S: [Soru 3]
+C: [Cevap 3]
+
+🌍 DİLLER VE BÖLGELER
+Hizmet dilleri: [Türkçe, İngilizce vb.]
+Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
+
+⚠️ ÖNEMLİ NOTLAR
+- [Garanti koşulları, iade politikası, özel kurallar vb.]
+- [Hangi konularda bilgi verilmemeli]
+- [Özel kampanya veya indirimler]`)}
+                                style={{ fontSize: '12px', padding: '6px 12px', gap: '4px' }}
+                            >
+                                <ClipboardList size={14} />
+                                📋 Şablondan Başla
+                            </button>
+                        </div>
                         <textarea
                             className="input"
-                            rows="12"
+                            rows="16"
                             placeholder="Bilgi içeriğini buraya yazın. AI bu bilgileri müşterilere yanıt verirken kullanacak...
 
 Örnek:
 - Ürün bilgileri, fiyatlar
 - Sık sorulan sorular ve cevapları
 - Şirket politikaları
-- Destek prosedürleri"
+- Destek prosedürleri
+
+💡 İpucu: Sağ üstteki 'Şablondan Başla' butonuna tıklayarak hazır yapıyı kullanabilirsiniz."
                             value={newKbContent}
                             onChange={(e) => setNewKbContent(e.target.value)}
                         />
@@ -549,16 +604,45 @@ const KnowledgeBase = () => {
                             <input
                                 type="file"
                                 accept=".pdf,.docx,.doc,.txt"
-                                onChange={handleFileUpload}
+                                onChange={(e) => {
+                                    setUploadResult(null);
+                                    handleFileUpload(e);
+                                }}
                                 disabled={uploading}
                                 multiple
                                 style={{ display: 'none' }}
                             />
                         </label>
                         <p style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
-                            Birden fazla dosya seçebilirsiniz
+                            Birden fazla dosya seçebilirsiniz • Maks 5MB
                         </p>
                     </div>
+
+                    {/* Upload sonuç kartı */}
+                    {uploadResult && (
+                        <div className={`kb-upload-result ${uploadResult.success ? 'success' : 'error'}`}>
+                            <div className="upload-result-icon">
+                                {uploadResult.success ? <CheckCircle2 size={24} /> : <AlertTriangle size={24} />}
+                            </div>
+                            <div className="upload-result-info">
+                                <h4>{uploadResult.success ? 'Dosya başarıyla yüklendi!' : 'Yükleme hatası'}</h4>
+                                <div className="upload-result-details">
+                                    {uploadResult.success ? (
+                                        <>
+                                            <span><FileCheck size={14} /> {uploadResult.count} dosya eklendi</span>
+                                            <span>✅ Metin çıkarıldı</span>
+                                            <span>✅ AI bilgi bankasına eklendi</span>
+                                        </>
+                                    ) : (
+                                        <span>{uploadResult.message}</span>
+                                    )}
+                                </div>
+                            </div>
+                            <button className="btn-icon" onClick={() => setUploadResult(null)} style={{ opacity: 0.5 }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+                    )}
 
                     {knowledgeEntries.filter(e => e.sourceType === 'FILE').length > 0 && (
                         <div className="kb-file-list">

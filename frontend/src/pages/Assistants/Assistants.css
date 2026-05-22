@@ -1014,3 +1014,298 @@ textarea.input-modern {
 .btn-icon-sm:hover {
     background: #fee2e2;
 }
+
+/* ==================== BOT WIZARD ==================== */
+.wizard-modal {
+    background: #ffffff;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    animation: wizardSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes wizardSlideIn {
+    from { opacity: 0; transform: scale(0.95) translateY(20px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.wizard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #f1f5f9;
+    background: linear-gradient(135deg, #faf5ff, #f0f9ff);
+}
+
+.wizard-header h2 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.wizard-header p {
+    margin: 2px 0 0;
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.wizard-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    flex-shrink: 0;
+}
+
+/* Progress Steps */
+.wizard-progress {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    padding: 16px 24px;
+    background: #fafbfc;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.wizard-step-dot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+}
+
+.wizard-step-dot .dot-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e2e8f0;
+    color: #94a3b8;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.wizard-step-dot span {
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    transition: color 0.3s;
+}
+
+.wizard-step-dot.active .dot-circle {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    color: white;
+    border-color: #c4b5fd;
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.15);
+}
+
+.wizard-step-dot.active span {
+    color: #7c3aed;
+}
+
+.wizard-step-dot.done .dot-circle {
+    background: #10b981;
+    color: white;
+}
+
+.wizard-step-dot.done span {
+    color: #10b981;
+}
+
+/* Body */
+.wizard-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 280px;
+}
+
+.wizard-step-content {
+    animation: wizardFadeIn 0.25s ease-out;
+}
+
+@keyframes wizardFadeIn {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+/* Role Grid */
+.wizard-role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+}
+
+.wizard-role-btn {
+    padding: 12px 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.wizard-role-btn:hover {
+    border-color: #c4b5fd;
+    background: #faf5ff;
+}
+
+.wizard-role-btn.active {
+    border-color: #8b5cf6;
+    background: linear-gradient(135deg, #faf5ff, #ede9fe);
+    color: #7c3aed;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
+}
+
+/* Tone Grid */
+.wizard-tone-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.wizard-tone-btn {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 18px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+}
+
+.wizard-tone-btn strong {
+    font-size: 0.875rem;
+    color: #334155;
+}
+
+.wizard-tone-btn span {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.wizard-tone-btn:hover {
+    border-color: #c4b5fd;
+    background: #faf5ff;
+}
+
+.wizard-tone-btn.active {
+    border-color: #8b5cf6;
+    background: linear-gradient(135deg, #faf5ff, #ede9fe);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15);
+}
+
+.wizard-tone-btn.active strong {
+    color: #7c3aed;
+}
+
+/* Chips */
+.wizard-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wizard-chip {
+    padding: 8px 16px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 24px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.wizard-chip:hover {
+    border-color: #c4b5fd;
+    background: #faf5ff;
+}
+
+.wizard-chip.active {
+    border-color: #8b5cf6;
+    background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+    color: #6d28d9;
+    font-weight: 600;
+}
+
+/* Prompt Preview */
+.wizard-prompt-preview {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    font-size: 0.8rem !important;
+    line-height: 1.7 !important;
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    min-height: 280px !important;
+}
+
+/* Footer */
+.wizard-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-top: 1px solid #f1f5f9;
+    background: #fafbfc;
+}
+
+/* Modal overlay for wizard */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+@media (max-width: 640px) {
+    .wizard-modal {
+        max-height: 95vh;
+        border-radius: 16px;
+    }
+
+    .wizard-progress {
+        gap: 4px;
+        padding: 12px 16px;
+    }
+
+    .wizard-step-dot span {
+        display: none;
+    }
+
+    .wizard-role-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}

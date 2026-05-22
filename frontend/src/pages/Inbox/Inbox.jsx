@@ -3804,13 +3804,14 @@ const Inbox = () => {
                                                 let convTeamIds = [];
                                                 try { convTeamIds = JSON.parse(selectedItem.teamIds || '[]'); } catch {}
                                                 const assignedTeam = convTeamIds.length > 0 ? teams.find(t => t.id === convTeamIds[0]) : null;
-                                                const assignedAgent = selectedItem.assignedTo || (selectedItem.assignedToId ? members.find(m => m.id === selectedItem.assignedToId) : null);
+                                                const assignedAgent = selectedItem.assignedTo || (selectedItem.assignedToId ? members.find(m => m.userId === selectedItem.assignedToId || m.user?.id === selectedItem.assignedToId) : null);
 
                                                 // Pill label
                                                 let pillLabel = 'Atanmadı';
-                                                if (assignedTeam && assignedAgent) pillLabel = `${assignedTeam.name} / ${assignedAgent.name}`;
+                                                const agentName = assignedAgent?.name || assignedAgent?.user?.name;
+                                                if (assignedTeam && agentName) pillLabel = `${assignedTeam.name} / ${agentName}`;
                                                 else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
-                                                else if (assignedAgent) pillLabel = assignedAgent.name;
+                                                else if (agentName) pillLabel = agentName;
 
                                                 // Üstlen butonu: konuşma bana atanmamışsa göster
                                                 const canClaim = !selectedItem.assignedToId || selectedItem.assignedToId !== user?.id;
@@ -3919,7 +3920,7 @@ const Inbox = () => {
                                                                                 {teamMembers.length === 0 && (
                                                                                     <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '4px 8px' }}>Üye yok</div>
                                                                                 )}
-                                                                                {teamMembers.map(m => {
+                                                                                {teamMembers.filter(m => m.user?.id).map(m => {
                                                                                     const uid = m.user?.id || m.id;
                                                                                     const uname = m.user?.name || m.name || '?';
                                                                                     const uOnline = m.user?.isOnline || false;
