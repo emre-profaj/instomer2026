@@ -404,32 +404,31 @@ const Funnels = () => {
                                                                 {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                                             </select>
 
-                                                            {/* Kapanış toggle */}
+                                                            {/* Kapanış toggle — anında kaydeder */}
                                                             <button
                                                                 className="funnels-btn-sm"
                                                                 style={{
-                                                                    background: (isEditingThis ? editingStage.isClosing : stage.isClosing) ? '#dcfce7' : '#f3f4f6',
-                                                                    color: (isEditingThis ? editingStage.isClosing : stage.isClosing) ? '#166534' : '#9ca3af',
-                                                                    border: `1px solid ${(isEditingThis ? editingStage.isClosing : stage.isClosing) ? '#86efac' : '#e5e7eb'}`,
-                                                                    fontSize: '11px',
-                                                                    padding: '3px 8px',
-                                                                    borderRadius: '12px',
-                                                                    cursor: 'pointer',
-                                                                    whiteSpace: 'nowrap'
+                                                                    background: stage.isClosing ? '#dcfce7' : '#f3f4f6',
+                                                                    color: stage.isClosing ? '#166534' : '#9ca3af',
+                                                                    border: `1px solid ${stage.isClosing ? '#86efac' : '#e5e7eb'}`,
+                                                                    fontSize: '11px', padding: '3px 8px',
+                                                                    borderRadius: '12px', cursor: 'pointer', whiteSpace: 'nowrap'
                                                                 }}
-                                                                onClick={() => {
-                                                                    const currentVal = isEditingThis ? editingStage.isClosing : stage.isClosing;
-                                                                    setEditingStage({
-                                                                        id: stage.id,
-                                                                        teamId: isEditingThis ? editingStage.teamId : (stage.assignedTeamId || ''),
-                                                                        userId: isEditingThis ? editingStage.userId : (stage.assignedUserId || ''),
-                                                                        botId: isEditingThis ? editingStage.botId : (stage.assignedBotId || ''),
-                                                                        isClosing: !currentVal
-                                                                    });
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        const newVal = !stage.isClosing;
+                                                                        const res = await funnelAPI.updateStage(
+                                                                            currentWorkspace.id, funnel.id, stage.id, { isClosing: newVal }
+                                                                        );
+                                                                        setFunnels(prev => prev.map(f => {
+                                                                            if (f.id !== funnel.id) return f;
+                                                                            return { ...f, stages: f.stages.map(s => s.id === stage.id ? res.data.stage : s) };
+                                                                        }));
+                                                                    } catch (err) { console.error('isClosing error:', err); }
                                                                 }}
-                                                                title={stage.isClosing ? 'Kapanış aşaması' : 'Kapanış olarak işaretle'}
+                                                                title={stage.isClosing ? 'Kapanış — tıkla kaldır' : 'Kapanış olarak işaretle'}
                                                             >
-                                                                {(isEditingThis ? editingStage.isClosing : stage.isClosing) ? '✅ Kapanış' : '⬜ Kapanış'}
+                                                                {stage.isClosing ? '✅ Kapanış' : '⬜ Kapanış'}
                                                             </button>
 
                                                             {/* Kaydet (sadece değişiklik yapıldıysa) */}

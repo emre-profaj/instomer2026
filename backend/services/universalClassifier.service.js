@@ -46,23 +46,27 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
         // Workspace akışlarını ve giriş kriterlerini yükle
         const funnels = await prisma.funnel.findMany({
             where: { workspaceId },
-            select: { id: true, name: true, classificationCriteria: true }
+            select: { id: true, name: true, icon: true, classificationCriteria: true }
         });
 
         // Özel akış kriterlerini hazırla
         let customFunnelContext = '';
-        const funnelsWithCriteria = funnels.filter(f => f.classificationCriteria);
-        if (funnelsWithCriteria.length > 0) {
-            customFunnelContext = '\n\n### ÖZEL AKIŞ KRİTERLERİ ###\nAşağıdaki özel akışlar tanımlanmış. Konuşma bu kriterlere uyuyorsa ilgili akışın ID\'sini matchedFunnelId olarak döndür.\n';
-            for (const f of funnelsWithCriteria) {
-                try {
-                    const criteria = JSON.parse(f.classificationCriteria);
-                    customFunnelContext += `\nAkış: "${f.name}" (ID: ${f.id})\n`;
-                    if (criteria.keywords) customFunnelContext += `  Anahtar kelimeler: ${criteria.keywords}\n`;
-                    if (criteria.sourcePages) customFunnelContext += `  Kaynak sayfalar: ${criteria.sourcePages}\n`;
-                    if (criteria.formFields) customFunnelContext += `  Form alanları: ${criteria.formFields}\n`;
-                    if (criteria.aiDescription) customFunnelContext += `  Açıklama: ${criteria.aiDescription}\n`;
-                } catch (e) { /* parse hatası, atla */ }
+        if (funnels.length > 0) {
+            customFunnelContext = '\n\n### MEVCUT AKIŞLAR ###\nAşağıdaki akışlar tanımlı. Konuşma en uygun akışın ID\'sini matchedFunnelId olarak döndür.\n';
+            for (const f of funnels) {
+                customFunnelContext += `\nAkış: "${f.name}" (ID: ${f.id}, İkon: ${f.icon || '📁'})`;
+                if (f.classificationCriteria) {
+                    // Hem düz metin hem JSON destekle
+                    try {
+                        const criteria = JSON.parse(f.classificationCriteria);
+                        if (criteria.keywords) customFunnelContext += `\n  Anahtar kelimeler: ${criteria.keywords}`;
+                        if (criteria.aiDescription) customFunnelContext += `\n  Açıklama: ${criteria.aiDescription}`;
+                    } catch (e) {
+                        // Düz metin olarak kullan
+                        customFunnelContext += `\n  Giriş kriterleri: ${f.classificationCriteria}`;
+                    }
+                }
+                customFunnelContext += '\n';
             }
         }
 
@@ -268,10 +272,10 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         let targetFunnelId = matchedFunnelId;
         let targetStageId = null;
 
-        if (!targetFunnelId) {
-            // Varsayılan akış eşleşmesi
+        if (!targetFunnelId && classification !== 'GENEL') {
+            // Varsayılan akış eşleşmesi (fallback)
             const funnelMap = {
-                'FIRSAT': 'Satış Akışı',
+                'FIRSAT': 'Satış',
                 'RANDEVU': 'Randevu',
                 'DESTEK': 'Destek',
                 'IS_BASVURUSU': 'İş ve Taşeron',
@@ -288,8 +292,9 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     targetStageId = funnel.stages[0]?.id;
                 }
             }
-        } else {
-            // Özel akışın ilk aşamasını bul
+        }
+
+        if (targetFunnelId && !targetStageId) {
             const funnel = await prisma.funnel.findUnique({
                 where: { id: targetFunnelId },
                 include: { stages: { orderBy: { order: 'asc' }, take: 1 } }
@@ -301,29 +306,47 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         if (targetFunnelId) {
             const conversation = await prisma.conversation.findUnique({
                 where: { id: conversationId },
-                select: { funnelType: true }
+                select: { funnelType: true, funnelStageId: true }
             });
 
-            // Sadece henüz akışa atanmamışsa ata
-            if (!conversation?.funnelType) {
+            const currentFunnelId = conversation?.funnelType;
+            let shouldAssign = !currentFunnelId; // Henüz akışı yoksa ata
+
+            // "Genel" akışındaysa → yeni akışa taşı
+            if (currentFunnelId && currentFunnelId !== targetFunnelId) {
+                try {
+                    const currentFunnel = await prisma.funnel.findUnique({
+                        where: { id: currentFunnelId },
+                        select: { name: true }
+                    });
+                    if (currentFunnel && currentFunnel.name.toLowerCase().includes('genel')) {
+                        shouldAssign = true;
+                    }
+                } catch (_) {}
+            }
+
+            if (shouldAssign) {
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: {
-                        funnelType: targetFunnelId,
-                        funnelStageId: targetStageId
-                    }
+                    data: { funnelType: targetFunnelId, funnelStageId: targetStageId }
                 });
-                // Contact'ı da güncelle
                 await prisma.contact.update({
                     where: { id: contactId },
-                    data: {
-                        funnelType: targetFunnelId,
-                        funnelStageId: targetStageId
-                    }
+                    data: { funnelType: targetFunnelId, funnelStageId: targetStageId }
                 });
                 console.log(`📊 [Classifier] Akış atandı: ${targetFunnelId} / Stage: ${targetStageId}`);
 
-                // Stage'in atanmış takımı/kişisi varsa, conversation'a ata
+                // Socket ile UI güncelle
+                try {
+                    const { emitToWorkspace } = await import('../socket.js');
+                    emitToWorkspace(workspaceId, 'funnel_stage_updated', {
+                        conversationId,
+                        funnelType: targetFunnelId,
+                        funnelStageId: targetStageId
+                    });
+                } catch (_) {}
+
+                // Stage atamalarını uygula
                 if (targetStageId) {
                     const stage = await prisma.funnelStage.findUnique({
                         where: { id: targetStageId },
@@ -338,15 +361,13 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             await prisma.conversation.update({ where: { id: conversationId }, data: assignUpdate });
                             console.log(`👥 [Classifier] Ekip/kişi atandı:`, assignUpdate);
                         }
-
-                        // Takım atama kuralını uygula (POOL / ROUND_ROBIN / LEAST_BUSY)
                         if (stage.assignedTeamId && !stage.assignedUserId) {
                             await assignToTeamMember(stage.assignedTeamId, conversationId);
                         }
                     }
                 }
 
-                // Funnel seviyesinde takım ataması (stage'de yoksa)
+                // Funnel seviyesinde takım ataması
                 if (!targetStageId || !(await prisma.funnelStage.findUnique({ where: { id: targetStageId }, select: { assignedTeamId: true } }))?.assignedTeamId) {
                     const funnel = await prisma.funnel.findUnique({
                         where: { id: targetFunnelId },
@@ -361,6 +382,8 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                         });
                     }
                 }
+            } else {
+                console.log(`ℹ️ [Classifier] Konuşma zaten "${currentFunnelId}" akışında, taşınmadı`);
             }
         }
 
