@@ -1184,7 +1184,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         let conversation = null;
 
         // 🎯 WORKSPACE ROUTER — Funnel yönlendirmesi (CHATS tipinde, yeni/eşleşmemiş sohbetler için)
-        if (type === 'CHATS' && conversationId) {
+        if ((type === 'CHATS' || type === 'WIDGET') && conversationId) {
             try {
                 const { routeConversationToFunnel } = await import('../services/workspaceRouter.service.js');
                 await routeConversationToFunnel(workspaceId, conversationId, userMessage, channel);
@@ -1192,6 +1192,60 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 // Bot seçimi aşağıda DB'den taze okunacak
             } catch (routerErr) {
                 console.error('⚠️ [Router] Non-fatal router error:', routerErr.message);
+            }
+
+            // 🎯 EVRENSEL SINIFLANDIRICI — Konuşmayı sınıflandır + yapılandırılmış veri çıkar
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { classifiedAt: true, isQualifiedLead: true, contactId: true }
+                });
+
+                // Son 30 dk içinde sınıflandırılmışsa tekrar yapma
+                const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+                const shouldClassify = !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
+
+                if (shouldClassify) {
+                    const { classifyAndExtract, executeClassificationActions } = await import('../services/universalClassifier.service.js');
+
+                    const recentMsgs = await prisma.message.findMany({
+                        where: { conversationId },
+                        orderBy: { createdAt: 'desc' },
+                        take: 10,
+                        select: { content: true, isFromContact: true }
+                    });
+
+                    const contact = await prisma.contact.findUnique({
+                        where: { id: conv.contactId },
+                        select: { name: true, phone: true, email: true }
+                    });
+
+                    const classResult = await classifyAndExtract(
+                        conversationId, recentMsgs.reverse(), contact, channel, workspaceId
+                    );
+
+                    // Sonucu kaydet
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: {
+                            classificationData: JSON.stringify(classResult),
+                            classifiedAt: new Date(),
+                            isQualifiedLead: classResult.isQualifiedLead
+                        }
+                    });
+
+                    // İlk kez kalifiye lead olduysa aksiyonları çalıştır
+                    if (classResult.isQualifiedLead && !conv?.isQualifiedLead) {
+                        await executeClassificationActions(
+                            workspaceId, conversationId, conv.contactId, classResult
+                        );
+                    }
+
+                    console.log(`🎯 [Classifier] Sınıflandırma tamamlandı: ${classResult.classification} | Lead: ${classResult.isQualifiedLead}`);
+                }
+            } catch (classifyErr) {
+                // Sınıflandırma hatası bot yanıtını ENGELLEMEMELİ
+                console.error('⚠️ [Classifier] Non-fatal classification error:', classifyErr.message);
             }
         }
 

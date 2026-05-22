@@ -22,6 +22,7 @@ const Funnels = () => {
     const [saving, setSaving] = useState(false);
     const [newName, setNewName] = useState('');
     const [editingFunnel, setEditingFunnel] = useState(null);
+    const [newClassificationCriteria, setNewClassificationCriteria] = useState('');
 
     const [newTeamId, setNewTeamId] = useState('');
     const [newUserId, setNewUserId] = useState('');
@@ -80,12 +81,14 @@ const Funnels = () => {
                 name: newName.trim(), 
                 color: nextColor(),
                 assignedTeamId: newTeamId || null,
-                assignedUserId: newUserId || null
+                assignedUserId: newUserId || null,
+                classificationCriteria: newClassificationCriteria.trim() || null
             });
             setFunnels(prev => [...prev, res.data.funnel]);
             setNewName('');
             setNewTeamId('');
             setNewUserId('');
+            setNewClassificationCriteria('');
         } catch (err) { console.error(err); }
         finally { setSaving(false); }
     };
@@ -98,7 +101,8 @@ const Funnels = () => {
                 name: editingFunnel.name, 
                 color: editingFunnel.color,
                 assignedTeamId: editingFunnel.assignedTeamId || null,
-                assignedUserId: editingFunnel.assignedUserId || null
+                assignedUserId: editingFunnel.assignedUserId || null,
+                classificationCriteria: editingFunnel.classificationCriteria || null
             });
             setFunnels(prev => prev.map(f => f.id === editingFunnel.id ? res.data.funnel : f));
             setEditingFunnel(null);
@@ -165,7 +169,8 @@ const Funnels = () => {
                 {
                     assignedTeamId: editingStage.teamId || null,
                     assignedUserId: editingStage.userId || null,
-                    assignedBotId:  editingStage.botId  || null
+                    assignedBotId:  editingStage.botId  || null,
+                    ...(editingStage.isClosing !== undefined && { isClosing: editingStage.isClosing })
                 }
             );
             setFunnels(prev => prev.map(f => {
@@ -226,6 +231,16 @@ const Funnels = () => {
                         {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                 </div>
+                <div style={{ marginTop: '10px' }}>
+                    <textarea
+                        className="funnels-input"
+                        placeholder="🤖 AI Giriş Kriterleri — Bu akışa hangi konuşmalar atanmalı? Örn: 'Estetik cerrahi, check-up, doğum paketi, poliklinik soruları bu akışa girer'"
+                        value={newClassificationCriteria}
+                        onChange={e => setNewClassificationCriteria(e.target.value)}
+                        rows={2}
+                        style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
+                    />
+                </div>
             </div>
 
             {/* List */}
@@ -282,6 +297,16 @@ const Funnels = () => {
                                                 <option value="">Kişi Ata</option>
                                                 {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                             </select>
+                                            <div style={{ width: '100%', marginTop: '8px' }}>
+                                                <textarea
+                                                    className="funnels-input"
+                                                    placeholder="🤖 AI Giriş Kriterleri — Bu akışa hangi konuşmalar girmeli?"
+                                                    value={editingFunnel.classificationCriteria || ''}
+                                                    onChange={e => setEditingFunnel(p => ({ ...p, classificationCriteria: e.target.value }))}
+                                                    rows={2}
+                                                    style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
+                                                />
+                                            </div>
                                             <button className="funnels-btn-sm funnels-btn-save" onClick={handleUpdate} disabled={saving}>
                                                 <Check size={13} /> Kaydet
                                             </button>
@@ -307,7 +332,8 @@ const Funnels = () => {
                                                 name: funnel.name, 
                                                 color: funnel.color,
                                                 assignedTeamId: funnel.assignedTeamId || '',
-                                                assignedUserId: funnel.assignedUserId || ''
+                                                assignedUserId: funnel.assignedUserId || '',
+                                                classificationCriteria: funnel.classificationCriteria || ''
                                             })} title={t('common.edit')}>
                                                 <Edit2 size={15} />
                                             </button>
@@ -377,6 +403,34 @@ const Funnels = () => {
                                                                 <option value="">🤖 Robot Ata</option>
                                                                 {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                                             </select>
+
+                                                            {/* Kapanış toggle */}
+                                                            <button
+                                                                className="funnels-btn-sm"
+                                                                style={{
+                                                                    background: (isEditingThis ? editingStage.isClosing : stage.isClosing) ? '#dcfce7' : '#f3f4f6',
+                                                                    color: (isEditingThis ? editingStage.isClosing : stage.isClosing) ? '#166534' : '#9ca3af',
+                                                                    border: `1px solid ${(isEditingThis ? editingStage.isClosing : stage.isClosing) ? '#86efac' : '#e5e7eb'}`,
+                                                                    fontSize: '11px',
+                                                                    padding: '3px 8px',
+                                                                    borderRadius: '12px',
+                                                                    cursor: 'pointer',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}
+                                                                onClick={() => {
+                                                                    const currentVal = isEditingThis ? editingStage.isClosing : stage.isClosing;
+                                                                    setEditingStage({
+                                                                        id: stage.id,
+                                                                        teamId: isEditingThis ? editingStage.teamId : (stage.assignedTeamId || ''),
+                                                                        userId: isEditingThis ? editingStage.userId : (stage.assignedUserId || ''),
+                                                                        botId: isEditingThis ? editingStage.botId : (stage.assignedBotId || ''),
+                                                                        isClosing: !currentVal
+                                                                    });
+                                                                }}
+                                                                title={stage.isClosing ? 'Kapanış aşaması' : 'Kapanış olarak işaretle'}
+                                                            >
+                                                                {(isEditingThis ? editingStage.isClosing : stage.isClosing) ? '✅ Kapanış' : '⬜ Kapanış'}
+                                                            </button>
 
                                                             {/* Kaydet (sadece değişiklik yapıldıysa) */}
                                                             {isEditingThis && (

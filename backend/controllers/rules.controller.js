@@ -150,6 +150,17 @@ export const executePhoneCaptureRule = async (workspaceId, conversationId, messa
         });
         if (!conversation || !conversation.contact) return;
 
+        // 🛡️ İş başvurusu olarak sınıflandırılmışsa Fırsat yapma
+        if (conversation.classificationData) {
+            try {
+                const cls = JSON.parse(conversation.classificationData);
+                if (cls.classification === 'IS_BASVURUSU') {
+                    console.log(`ℹ️ [RULE:PHONE_CAPTURE] Skipping — conversation classified as IS_BASVURUSU`);
+                    return;
+                }
+            } catch (_) { /* parse hatası, devam et */ }
+        }
+
         const contact = conversation.contact;
 
         // Clean and normalize detected phone number (adds +90 prefix)

@@ -3325,9 +3325,20 @@ const Inbox = () => {
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
                                             )}
-
-
-
+                                            {/* Sınıflandırma Badge'leri */}
+                                            {item.isQualifiedLead && (
+                                                <span className="classification-badge lead-badge" title="Kalifiye Lead">🎯</span>
+                                            )}
+                                            {item.classificationData && (() => {
+                                                try {
+                                                    const cls = JSON.parse(item.classificationData);
+                                                    const map = { FIRSAT: {icon: '🎯', label: 'Fırsat'}, RANDEVU: {icon: '📅', label: 'Randevu'}, DESTEK: {icon: '🛠️', label: 'Destek'}, IS_BASVURUSU: {icon: '📋', label: 'İş Başvurusu'}, SIKAYET: {icon: '⚠️', label: 'Şikayet'}, GENEL: {icon: '💬', label: 'Genel'} };
+                                                    const info = map[cls.classification];
+                                                    return info && !item.isQualifiedLead ? (
+                                                        <span className={`classification-badge cls-${cls.classification.toLowerCase()}`} title={info.label}>{info.icon}</span>
+                                                    ) : null;
+                                                } catch { return null; }
+                                            })()}
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
@@ -3679,7 +3690,11 @@ const Inbox = () => {
                                                                 }}
                                                             >
                                                                 <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />
-                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130 }}>{activeStageLabel || 'Aşama Seç'}</span>
+                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180 }}>
+                                                                    {activeFunnel ? (
+                                                                        <><span style={{ color: '#94a3b8', fontWeight: 500 }}>{activeFunnel.label}</span><span style={{ color: '#94a3b8', margin: '0 3px' }}>/</span><span>{activeStageLabel || 'Aşama Seç'}</span></>
+                                                                    ) : (activeStageLabel || 'Aşama Seç')}
+                                                                </span>
                                                                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 2, flexShrink: 0 }}><path d="M2 3.5L5 6.5L8 3.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                                             </button>
 

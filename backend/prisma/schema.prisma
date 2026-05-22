@@ -373,6 +373,10 @@ model Conversation {
 
   routingState          String? // JSON: { currentQuestionIndex, answers: { fieldName: value }, completed }
   appointmentState      String? // JSON: { step, data: { patientName, phone, branch, procedure, doctor, preferredDate, preferredTime } }
+  // Evrensel Sınıflandırma
+  classificationData    String?  @db.Text // JSON: {classification, extractedData, isQualifiedLead, reasoning}
+  classifiedAt          DateTime? // Son sınıflandırma zamanı
+  isQualifiedLead       Boolean  @default(false) // Hızlı filtreleme: İsim+Telefon+Konu tamam mı
   // Follow-up tracking
   lastBotMessageAt      DateTime? // When bot last sent a message
   inactivityWarningSent Boolean                @default(false) // 40s inactivity warning sent?
@@ -547,7 +551,7 @@ model Team {
   parentId        String?
   parent          Team?                  @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children        Team[]                 @relation("TeamHierarchy")
-  assignmentRule  String                 @default("POOL") // POOL | ROUND_ROBIN | ONLINE_ONLY
+  assignmentRule  String                 @default("POOL") // POOL | ROUND_ROBIN | LEAST_BUSY
   roundRobinIndex Int                    @default(0)
   createdAt       DateTime               @default(now())
   transfers       ConversationTransfer[]
@@ -1096,6 +1100,7 @@ model Funnel {
   order          Int           @default(0)
   assignedUserId String?
   assignedTeamId String?
+  classificationCriteria String? @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
   createdAt      DateTime      @default(now())
   workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages         FunnelStage[]
@@ -1115,6 +1120,7 @@ model FunnelStage {
   assignedTeamId String?
   assignedBotId  String?
   assignedBot    AIBot?   @relation("FunnelStageBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
+  isClosing      Boolean  @default(false) // true = kapanış aşaması (Satış, Kayıp, Kapandı vb.)
   createdAt      DateTime @default(now())
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 

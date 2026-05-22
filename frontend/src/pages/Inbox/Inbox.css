@@ -1003,6 +1003,23 @@
     letter-spacing: 0.5px;
 }
 
+/* Sınıflandırma Badge'leri */
+.classification-badge {
+    font-size: 11px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.classification-badge.lead-badge {
+    animation: pulse-lead 2s infinite;
+}
+@keyframes pulse-lead {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+.classification-badge.cls-destek { opacity: 0.85; }
+.classification-badge.cls-is_basvurusu { opacity: 0.85; }
+.classification-badge.cls-sikayet { opacity: 0.85; }
+
 .branch-tag-badge {
     font-size: 8px;
     font-weight: 600;

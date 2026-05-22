@@ -1888,6 +1888,25 @@ export const updateFunnel = async (req, res) => {
 
                     // 🔥 Update Contact Status based on the new stage name
                     if (newStageRec && existing.contactId) {
+                        // 🔒 Kapanış aşamasına taşındıysa → otomatik RESOLVED yap
+                        if (newStageRec.isClosing && existing.status !== 'RESOLVED') {
+                            await prisma.conversation.update({
+                                where: { id: conversationId },
+                                data: {
+                                    status: 'RESOLVED',
+                                    resolvedAt: new Date(),
+                                    botEnabled: false
+                                }
+                            });
+                            console.log(`🔒 [Closing] Stage "${newStageRec.name}" kapanış aşaması — konuşma RESOLVED yapıldı`);
+                            try {
+                                emitToWorkspace(workspaceId, 'conversation_updated', {
+                                    conversationId,
+                                    status: 'RESOLVED',
+                                    resolvedAt: new Date()
+                                });
+                            } catch (_) {}
+                        }
                         const stageName = newStageRec.name;
                         let newStatus = 'OPPORTUNITY'; // Default
 

@@ -486,11 +486,11 @@ const Teams = () => {
                             fontSize: '0.72rem',
                             padding: '2px 8px',
                             borderRadius: 20,
-                            background: team.assignmentRule === 'ROUND_ROBIN' ? '#fef3c7' : team.assignmentRule === 'ONLINE_ONLY' ? '#dcfce7' : '#eff6ff',
-                            color: team.assignmentRule === 'ROUND_ROBIN' ? '#92400e' : team.assignmentRule === 'ONLINE_ONLY' ? '#166534' : '#1e40af',
+                            background: team.assignmentRule === 'ROUND_ROBIN' ? '#fef3c7' : team.assignmentRule === 'LEAST_BUSY' ? '#dcfce7' : '#eff6ff',
+                            color: team.assignmentRule === 'ROUND_ROBIN' ? '#92400e' : team.assignmentRule === 'LEAST_BUSY' ? '#166534' : '#1e40af',
                             fontWeight: 500,
                         }}>
-                            {team.assignmentRule === 'ROUND_ROBIN' ? '🔄 Sıralı' : team.assignmentRule === 'ONLINE_ONLY' ? '🟢 Online' : '🏊 Havuz'}
+                            {team.assignmentRule === 'ROUND_ROBIN' ? '🔄 Sıralı' : team.assignmentRule === 'LEAST_BUSY' ? '📊 En Az Yoğun' : '🏊 Havuz'}
                         </span>
                     </div>
 
@@ -601,7 +601,7 @@ const Teams = () => {
                                     {[
                                         { value: 'POOL', icon: '🏊', label: 'Havuz', desc: 'Herkes görür, kim üstlenirse o alır' },
                                         { value: 'ROUND_ROBIN', icon: '🔄', label: 'Sıralı Dağıtım', desc: 'Üyelere sırayla otomatik atar' },
-                                        { value: 'ONLINE_ONLY', icon: '🟢', label: 'Online Kişilere', desc: 'Yalnızca online üyelere sırayla atar' },
+                                        { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Yoğun Olana', desc: 'En az açık görüşmesi olan üyeye atar' },
                                     ].map(rule => (
                                         <label
                                             key={rule.value}

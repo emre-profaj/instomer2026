@@ -2046,13 +2046,10 @@ async function processWebhookAsync(body) {
 
                         // --- AUTO EXTRACT START ---
                         try {
-                            const { autoExtractFromConversation, autoGenerateTopic, autoClassifyAndAssignFunnel } = await import('./ai.controller.js');
+                            const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
                             autoExtractFromConversation(facebookPage.workspaceId, conversation.id);
                             autoGenerateTopic(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [AutoTopic] FB/IG error:', e.message)
-                            );
-                            autoClassifyAndAssignFunnel(facebookPage.workspaceId, conversation.id, message.text || '').catch(e =>
-                                console.error('❌ [AutoFunnel] FB/IG error:', e.message)
                             );
                         } catch (extractError) {
                             console.error('❌ AI Auto-Extract call failed:', extractError);
@@ -3426,16 +3423,60 @@ async function handleLeadgenEvent(leadValue, entryId) {
         }
 
         // --- AUTO FUNNEL / CLASSIFY ASSIGNMENT ---
-        if (conversation?.id) {
+        // (Eski autoClassifyAndAssignFunnel kaldırıldı — artık EVRENSEL SINIFLANDIRICI kullanılıyor)
+
+        // --- 🎯 EVRENSEL SINIFLANDIRICI (Meta Lead Form) ---
+        if (conversation?.id && contact?.id) {
             try {
-                // Form içeriğini ve lead verilerini birleştirip AI ile sınıflandır
-                const { autoClassifyAndAssignFunnel } = await import('./ai.controller.js');
-                const leadContext = messageContent; // Tüm lead form içeriğini gönder
-                autoClassifyAndAssignFunnel(facebookPage.workspaceId, conversation.id, leadContext).catch(e =>
-                    console.error('❌ [AutoFunnel] LEADGEN error:', e.message)
-                );
-            } catch (funnelErr) {
-                console.error('⚠️ [LEADGEN] AutoFunnel error:', funnelErr.message);
+                const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
+
+                // Lead form'dan gelen veri zaten yapılandırılmış — direkt kullan
+                // Konu alanını form fieldlarından çıkar
+                let leadTopic = null;
+                for (const [key, value] of Object.entries(fieldData)) {
+                    const lk = key.toLowerCase();
+                    if ((lk.includes('konu') || lk.includes('mesaj') || lk.includes('hizmet') ||
+                         lk.includes('service') || lk.includes('subject') || lk.includes('ilgi') ||
+                         lk.includes('bolum') || lk.includes('bölüm')) && value) {
+                        leadTopic = value;
+                        break;
+                    }
+                }
+
+                const classResult = {
+                    classification: 'FIRSAT',
+                    confidence: 0.95,
+                    extractedData: {
+                        name: leadName,
+                        phone: leadPhone,
+                        topic: leadTopic || formName || 'Facebook Lead Form',
+                        preferredCallTime: null,
+                        requestedAction: 'CALL',
+                        requestedDate: null,
+                        branchInfo: null
+                    },
+                    isQualifiedLead: !!(leadPhone && (leadName || leadEmail)),
+                    matchedFunnelId: null,
+                    reasoning: 'Facebook Lead Form — yapılandırılmış veri'
+                };
+
+                // Conversation'a sınıflandırma verisi kaydet
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: {
+                        classificationData: JSON.stringify(classResult),
+                        classifiedAt: new Date(),
+                        isQualifiedLead: classResult.isQualifiedLead
+                    }
+                });
+
+                if (classResult.isQualifiedLead) {
+                    await executeClassificationActions(
+                        facebookPage.workspaceId, conversation.id, contact.id, classResult
+                    );
+                }
+            } catch (classifyErr) {
+                console.error('⚠️ [LEADGEN Classifier] Non-fatal error:', classifyErr.message);
             }
         }
 

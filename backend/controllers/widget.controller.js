@@ -609,6 +609,46 @@ export const handlePrechat = async (req, res) => {
         }
         // --- AUTO CALL PLANNING END ---
 
+        // --- 🎯 EVRENSEL SINIFLANDIRICI (Widget Prechat Form) ---
+        try {
+            const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
+
+            const classResult = {
+                classification: 'FIRSAT',
+                confidence: 0.95,
+                extractedData: {
+                    name: name,
+                    phone: normalizedPhone,
+                    topic: subject || 'Web Widget İletişim',
+                    preferredCallTime: null,
+                    requestedAction: 'CALL',
+                    requestedDate: null,
+                    branchInfo: null
+                },
+                isQualifiedLead: !!(name && normalizedPhone),
+                matchedFunnelId: null,
+                reasoning: 'Widget Prechat Form — yapılandırılmış veri'
+            };
+
+            await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: {
+                    classificationData: JSON.stringify(classResult),
+                    classifiedAt: new Date(),
+                    isQualifiedLead: classResult.isQualifiedLead
+                }
+            });
+
+            if (classResult.isQualifiedLead) {
+                await executeClassificationActions(
+                    workspaceId, conversation.id, contact.id, classResult
+                );
+            }
+        } catch (classifyErr) {
+            console.error('⚠️ [Widget Prechat Classifier] Non-fatal error:', classifyErr.message);
+        }
+        // --- SINIFLANDIRICI END ---
+
         res.json({
             success: true,
             contactId: contact.id,

@@ -1994,6 +1994,67 @@ async function handleCallAnalyzed(call) {
             } catch (autoErr) {
                 console.error('❌ [Retell] Automation trigger error:', autoErr.message);
             }
+
+            // 🎯 TRANSKRİPT ANALİZİ — Arama/ziyaret talepleri çıkar
+            try {
+                if (callRecord.transcript && callRecord.contactId) {
+                    const { analyzeTranscript } = await import('../services/universalClassifier.service.js');
+                    const transcriptResult = await analyzeTranscript(
+                        callRecord.transcript,
+                        analysis.call_summary || callRecord.summary,
+                        callRecord.workspaceId
+                    );
+
+                    if (transcriptResult.requestedAction && transcriptResult.requestedAction !== 'null') {
+                        console.log(`🎯 [Retell Transcript] Action: ${transcriptResult.requestedAction}, Date: ${transcriptResult.requestedDate}`);
+
+                        const contact = await prisma.contact.findUnique({
+                            where: { id: callRecord.contactId },
+                            select: { name: true }
+                        });
+
+                        const actType = transcriptResult.requestedAction === 'VISIT' ? 'VISIT'
+                            : transcriptResult.requestedAction === 'MEETING' ? 'MEETING'
+                            : 'CALL';
+
+                        const dueDate = transcriptResult.requestedDate
+                            ? new Date(transcriptResult.requestedDate)
+                            : new Date(Date.now() + 24 * 60 * 60 * 1000); // Yarın
+
+                        // Duplicate check
+                        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+                        const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+                        const existing = await prisma.contactActivity.findFirst({
+                            where: {
+                                contactId: callRecord.contactId,
+                                type: actType,
+                                status: 'PLANNED',
+                                dueDate: { gte: todayStart }
+                            }
+                        });
+
+                        if (!existing) {
+                            const typeLabels = { CALL: 'Tekrar Arama', VISIT: 'Ziyaret', MEETING: 'Görüşme' };
+                            await prisma.contactActivity.create({
+                                data: {
+                                    type: actType,
+                                    status: 'PLANNED',
+                                    priority: 'NORMAL',
+                                    title: `${typeLabels[actType]}: ${contact?.name || callRecord.toNumber}`,
+                                    description: `Retell görüşmesinden: "${transcriptResult.rawRequest || ''}"`,
+                                    dueDate,
+                                    contactId: callRecord.contactId,
+                                    workspaceId: callRecord.workspaceId,
+                                    source: 'RETELL'
+                                }
+                            });
+                            console.log(`✅ [Retell Transcript] Otomatik ${actType} aktivitesi oluşturuldu`);
+                        }
+                    }
+                }
+            } catch (transcriptErr) {
+                console.error('⚠️ [Retell Transcript] Non-fatal analysis error:', transcriptErr.message);
+            }
         }
     } catch (err) {
         console.error('❌ [Retell] handleCallAnalyzed error:', err.message);
