@@ -1216,14 +1216,14 @@ export const deleteAllConversations = async (req, res) => {
 export const addInternalNote = async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const { content, mentionedUsers } = req.body;
+        const { content, mentionedUsers, isCallNote } = req.body;
         const userId = req.user.id;
 
         const note = await prisma.internalNote.create({
             data: {
                 conversationId,
                 userId,
-                content,
+                content: isCallNote ? `📞 Görüşme Notu: ${content}` : content,
                 mentionedUsers: JSON.stringify(mentionedUsers || [])
             },
             include: {
@@ -1237,9 +1237,42 @@ export const addInternalNote = async (req, res) => {
             }
         });
 
-        // Notify mentioned users (TODO: WebSocket implementation)
-        // const mentions = JSON.parse(note.mentionedUsers);
-        // if (mentions.length > 0) { ... }
+        // Görüşme notu ise otomatik CALL aktivitesi oluştur
+        if (isCallNote) {
+            try {
+                const conversation = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { contactId: true, workspaceId: true, teamIds: true }
+                });
+                if (conversation?.contactId) {
+                    let teamId = null;
+                    try {
+                        const teamIdList = JSON.parse(conversation.teamIds || '[]');
+                        if (teamIdList.length > 0) teamId = teamIdList[0];
+                    } catch (e) {}
+
+                    await prisma.contactActivity.create({
+                        data: {
+                            contactId: conversation.contactId,
+                            workspaceId: conversation.workspaceId,
+                            type: 'CALL',
+                            title: 'Telefon Görüşmesi',
+                            description: content,
+                            status: 'COMPLETED',
+                            dueDate: new Date(),
+                            completedAt: new Date(),
+                            assignedToId: userId,
+                            createdById: userId,
+                            ...(teamId && { teamId })
+                        }
+                    });
+                    console.log(`📞 [CallNote] Otomatik arama aktivitesi oluşturuldu - contact: ${conversation.contactId}`);
+                }
+            } catch (actErr) {
+                console.error('CallNote activity creation error:', actErr);
+                // Not eklendi, aktivite oluşturulamazsa devam et
+            }
+        }
 
         res.status(201).json({ note });
     } catch (error) {

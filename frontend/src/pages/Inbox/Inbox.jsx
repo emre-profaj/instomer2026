@@ -596,6 +596,7 @@ const Inbox = () => {
     const emojiPickerRef = useRef(null);
     const textareaRef = useRef(null);
     const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
+    const [isCallNote, setIsCallNote] = useState(false);
 
     // AI Suggestion states
     const [aiSuggestions, setAiSuggestions] = useState([]);
@@ -1967,8 +1968,10 @@ const Inbox = () => {
                 const response = await conversationAPI.addNote(
                     currentWorkspace.id,
                     selectedItem.id,
-                    { content: newMessage }
+                    { content: newMessage, isCallNote }
                 );
+                // Görüşme notu gönderildiyse resetle
+                if (isCallNote) setIsCallNote(false);
                 const newNote = {
                     ...response.data.note,
                     isInternalNote: true,
@@ -4437,6 +4440,17 @@ const Inbox = () => {
                                                 </div>
                                             </div>
                                             <div className="input-actions">
+                                                {/* Görüşme Notu Toggle */}
+                                                <button
+                                                    type="button"
+                                                    className={`template-btn ${isCallNote ? 'active' : ''}`}
+                                                    onClick={() => { setIsCallNote(!isCallNote); if (!isInternalNoteMode) setIsInternalNoteMode(true); }}
+                                                    title={isCallNote ? 'Görüşme notu modu açık — not + arama kaydı oluşturulacak' : 'Görüşme notu olarak kaydet (arama aktivitesi de oluşturulur)'}
+                                                    style={isCallNote ? { background: '#fff7ed', color: '#ea580c', borderColor: '#f97316' } : {}}
+                                                >
+                                                    <PhoneCall size={14} />
+                                                    {isCallNote ? 'Görüşme Notu ✓' : 'Görüşme Notu'}
+                                                </button>
                                                 {/* Oto Pilot Toggle */}
                                                 <div
                                                     className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
