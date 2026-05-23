@@ -1676,7 +1676,20 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                     </div>
                                                 </td>
                                                 <td className="contact-assigned">
-                                                    {contact.conversations?.[0]?.assignedTo?.name || '---'}
+                                                    {(() => {
+                                                        const conv = contact.conversations?.[0];
+                                                        if (!conv) return '---';
+                                                        // Önce ekip adı göster
+                                                        const teamId = conv.assignedTeamId || (() => {
+                                                            try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
+                                                        })();
+                                                        const team = teamId ? teams.find(t => t.id === teamId) : null;
+                                                        const agentName = conv.assignedTo?.name;
+                                                        if (team && agentName) return `${team.name} / ${agentName}`;
+                                                        if (team) return team.name;
+                                                        if (agentName) return agentName;
+                                                        return '---';
+                                                    })()}
                                                 </td>
                                                 <td className="contact-phone">
                                                     {contact.phone || '---'}

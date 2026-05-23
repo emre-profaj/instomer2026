@@ -364,6 +364,8 @@ export const getContacts = async (req, res) => {
                             createdAt: true,
                             lastMessageAt: true,
                             aiTopic: true,
+                            teamIds: true,
+                            assignedTeamId: true,
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -417,6 +419,8 @@ export const getContacts = async (req, res) => {
                             createdAt: true,
                             lastMessageAt: true,
                             aiTopic: true,
+                            teamIds: true,
+                            assignedTeamId: true,
                             assignedTo: {
                                 select: {
                                     id: true,
