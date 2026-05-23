@@ -4440,16 +4440,16 @@ const Inbox = () => {
                                                 </div>
                                             </div>
                                             <div className="input-actions">
-                                                {/* Görüşme Notu Toggle */}
+                                                {/* Yorum Ekle Toggle — dahili yorum, müşteri göremez */}
                                                 <button
                                                     type="button"
-                                                    className={`template-btn ${isCallNote ? 'active' : ''}`}
-                                                    onClick={() => { setIsCallNote(!isCallNote); if (!isInternalNoteMode) setIsInternalNoteMode(true); }}
-                                                    title={isCallNote ? 'Görüşme notu modu açık — not + arama kaydı oluşturulacak' : 'Görüşme notu olarak kaydet (arama aktivitesi de oluşturulur)'}
-                                                    style={isCallNote ? { background: '#fff7ed', color: '#ea580c', borderColor: '#f97316' } : {}}
+                                                    className={`template-btn ${isInternalNoteMode ? 'active' : ''}`}
+                                                    onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                                                    title={isInternalNoteMode ? 'Yorum modu açık — müşteri göremez' : 'Dahili yorum ekle (sadece ekip görür)'}
+                                                    style={isInternalNoteMode ? { background: '#fefce8', color: '#a16207', borderColor: '#eab308' } : {}}
                                                 >
-                                                    <PhoneCall size={14} />
-                                                    {isCallNote ? 'Görüşme Notu ✓' : 'Görüşme Notu'}
+                                                    <StickyNote size={14} />
+                                                    {isInternalNoteMode ? 'Yorum Modu ✓' : 'Yorum Ekle'}
                                                 </button>
                                                 {/* Oto Pilot Toggle */}
                                                 <div

@@ -494,7 +494,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
         // Validation based on type
         if (activityForm.type === 'NOTE' && !activityForm.description.trim()) {
-            return alert('Not içeriği boş olamaz.');
+            return alert('Görüşme notu boş olamaz.');
         }
         if ((activityForm.type === 'REMINDER' || activityForm.type === 'MEETING') && (!activityForm.dueDate || !activityForm.description.trim())) {
             return alert('Tarih ve açıklama girmelisiniz.');
@@ -505,14 +505,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
         setActivitySaving(true);
         try {
+            // NOTE tipi → Arama Notu: tamamlanmış CALL aktivitesi olarak kaydet
+            const isCallNote = activityForm.type === 'NOTE';
             const dataToSave = {
                 workspaceId: currentWorkspace.id,
-                type: activityForm.type,
-                title: activityForm.title || (activityForm.type === 'NOTE' ? 'Not' : activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite'),
+                type: isCallNote ? 'CALL' : activityForm.type,
+                title: isCallNote ? 'Telefon Görüşmesi' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite')),
                 description: activityForm.description,
-                dueDate: activityForm.dueDate || null,
+                dueDate: isCallNote ? new Date().toISOString() : (activityForm.dueDate || null),
                 assignedToId: activityForm.assignedToId || null,
-                teamId: activityForm.teamId || null
+                teamId: activityForm.teamId || null,
+                ...(isCallNote && { status: 'COMPLETED', completedAt: new Date().toISOString() })
             };
 
             if (editingActivityId) {
@@ -1611,8 +1614,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* ACTION BUTTONS — Row 1: Aktiviteler */}
                             <div style={{ display: 'flex', gap: '4px', padding: '8px 16px 4px', justifyContent: 'center' }}>
                                 <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
-                                    <StickyNote size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Not</span>
+                                    <PhoneCall size={18} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
                                 </button>
                                 <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
                                     <PhoneCall size={18} />
@@ -1988,7 +1991,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <h3>
                                                 {editingActivityId ? 'Düzenle: ' : ''}
                                                 {({
-                                                    'NOTE': editingActivityId ? 'Not' : 'Yeni Not Ekle',
+                                                    'NOTE': editingActivityId ? 'Arama Notu' : 'Arama Notu Ekle',
                                                     'CALL': editingActivityId ? 'Arama' : 'Arama Planla',
                                                     'MEETING': editingActivityId ? 'Görüşme' : 'Görüşme Planla',
                                                     'TASK': editingActivityId ? 'Görev' : 'Yeni Görev Ekle',
@@ -2088,7 +2091,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <textarea
                                                     value={activityForm.description}
                                                     onChange={e => setActivityForm(prev => ({ ...prev, description: e.target.value }))}
-                                                    placeholder="Aktivite detaylarını buraya yazın..."
+                                                    placeholder={activityForm.type === 'NOTE' ? 'Görüşme notunu yazın... (Bu kayıt tamamlanmış arama olarak işlenir)' : 'Aktivite detaylarını buraya yazın...'}
                                                     rows={4}
                                                 />
                                             </div>
