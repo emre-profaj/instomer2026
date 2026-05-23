@@ -3385,11 +3385,11 @@ const Inbox = () => {
                                             )}
                                             {/* Telefon Numarası */}
                                             {item.contact?.phone && (
-                                                <span className="classification-badge" style={{
+                                                <span className="classification-badge" title={item.contact.phone} style={{
                                                     background: '#fff7ed', color: '#ea580c',
                                                     border: '1px solid #fed7aa', fontSize: '10px'
                                                 }}>
-                                                    📱 {item.contact.phone}
+                                                    📱 ...{item.contact.phone.slice(-4)}
                                                 </span>
                                             )}
                                             {/* Activity Icons from plannedActivityMap */}
