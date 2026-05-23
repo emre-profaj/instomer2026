@@ -3304,9 +3304,18 @@ const Inbox = () => {
                                     <div className="inbox-item-avatar">
                                         {item.inboxType === INBOX_TYPES.COMMENT && item.full_picture ? (
                                             <img src={item.full_picture} alt="post" className="post-thumb" />
-                                        ) : (
-                                            <User size={18} />
-                                        )}
+                                        ) : item.contact?.avatar ? (
+                                            <img src={item.contact.avatar} alt={item.contact.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                                        ) : (() => {
+                                            // Akış rengiyle renkli ikon
+                                            const funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
+                                            const borderColor = funnel?.color || '#e2e8f0';
+                                            return (
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', borderRadius: '50%', border: `2px solid ${borderColor}` }}>
+                                                    <User size={16} color={funnel?.color || '#94a3b8'} />
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                     <div className="inbox-item-content">
                                         <div className="inbox-item-header">
@@ -3325,20 +3334,24 @@ const Inbox = () => {
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
                                             )}
-                                            {/* Sınıflandırma Badge'leri */}
-                                            {item.isQualifiedLead && (
-                                                <span className="classification-badge lead-badge" title="Kalifiye Lead">🎯</span>
-                                            )}
-                                            {item.classificationData && (() => {
-                                                try {
-                                                    const cls = JSON.parse(item.classificationData);
-                                                    const map = { FIRSAT: {icon: '🎯', label: 'Fırsat'}, RANDEVU: {icon: '📅', label: 'Randevu'}, DESTEK: {icon: '🛠️', label: 'Destek'}, IS_BASVURUSU: {icon: '📋', label: 'İş Başvurusu'}, SIKAYET: {icon: '⚠️', label: 'Şikayet'}, GENEL: {icon: '💬', label: 'Genel'} };
-                                                    const info = map[cls.classification];
-                                                    return info && !item.isQualifiedLead ? (
-                                                        <span className={`classification-badge cls-${cls.classification.toLowerCase()}`} title={info.label}>{info.icon}</span>
-                                                    ) : null;
-                                                } catch { return null; }
+                                            {/* Akış Badge - Hangi akışta olduğunu göster */}
+                                            {item.funnelType && (() => {
+                                                const funnel = funnelOptions.find(f => f.value === item.funnelType);
+                                                if (!funnel) return null;
+                                                return (
+                                                    <span className="classification-badge" title={funnel.label} style={{
+                                                        background: `${funnel.color}18`,
+                                                        color: funnel.color,
+                                                        border: `1px solid ${funnel.color}30`
+                                                    }}>
+                                                        {funnel.icon || '📂'} {funnel.label.length > 10 ? funnel.label.slice(0, 10) + '…' : funnel.label}
+                                                    </span>
+                                                );
                                             })()}
+                                            {/* Kalifiye Lead Badge - SADECE numara verenler */}
+                                            {item.isQualifiedLead && (
+                                                <span className="classification-badge lead-badge" title="Kalifiye Lead (numara verdi)">🎯</span>
+                                            )}
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
