@@ -3383,18 +3383,13 @@ const Inbox = () => {
                                                     {item.assignedTo.name}
                                                 </div>
                                             )}
-                                            {/* Telefon İkonu - Numara verdi */}
+                                            {/* Telefon Numarası */}
                                             {item.contact?.phone && (
-                                                <span
-                                                    className="activity-badge-icon"
-                                                    title={`Telefon: ${item.contact.phone}`}
-                                                    style={{
-                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                        width: 22, height: 22, borderRadius: '50%',
-                                                        background: '#fff7ed', border: '1.5px solid #f97316'
-                                                    }}
-                                                >
-                                                    <Phone size={12} color="#f97316" />
+                                                <span className="classification-badge" style={{
+                                                    background: '#fff7ed', color: '#ea580c',
+                                                    border: '1px solid #fed7aa', fontSize: '10px'
+                                                }}>
+                                                    📱 {item.contact.phone}
                                                 </span>
                                             )}
                                             {/* Activity Icons from plannedActivityMap */}
