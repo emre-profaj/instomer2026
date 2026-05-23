@@ -3304,18 +3304,9 @@ const Inbox = () => {
                                     <div className="inbox-item-avatar">
                                         {item.inboxType === INBOX_TYPES.COMMENT && item.full_picture ? (
                                             <img src={item.full_picture} alt="post" className="post-thumb" />
-                                        ) : item.contact?.avatar ? (
-                                            <img src={item.contact.avatar} alt={item.contact.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-                                        ) : (() => {
-                                            // Akış rengiyle renkli ikon
-                                            const funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
-                                            const borderColor = funnel?.color || '#e2e8f0';
-                                            return (
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', borderRadius: '50%', border: `2px solid ${borderColor}` }}>
-                                                    <User size={16} color={funnel?.color || '#94a3b8'} />
-                                                </div>
-                                            );
-                                        })()}
+                                        ) : (
+                                            <User size={18} />
+                                        )}
                                     </div>
                                     <div className="inbox-item-content">
                                         <div className="inbox-item-header">
@@ -3331,23 +3322,25 @@ const Inbox = () => {
                                             {getItemPreview(item)}
                                         </div>
                                         <div className="inbox-item-footer">
-                                            {item.channel === 'LEAD' && (
-                                                <span className="lead-channel-badge">Lead</span>
-                                            )}
-                                            {/* Akış Badge - Hangi akışta olduğunu göster */}
-                                            {item.funnelType && (() => {
-                                                const funnel = funnelOptions.find(f => f.value === item.funnelType);
-                                                if (!funnel) return null;
+                                            {/* Akış İkonu — akışla aynı emoji */}
+                                            {(() => {
+                                                const funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
+                                                const icon = funnel?.icon || '💬';
+                                                const color = funnel?.color || '#94a3b8';
                                                 return (
-                                                    <span className="classification-badge" title={funnel.label} style={{
-                                                        background: `${funnel.color}18`,
-                                                        color: funnel.color,
-                                                        border: `1px solid ${funnel.color}30`
+                                                    <span className="classification-badge" title={funnel?.label || 'Genel'} style={{
+                                                        background: `${color}15`,
+                                                        color: color,
+                                                        border: `1px solid ${color}30`,
+                                                        fontSize: '12px'
                                                     }}>
-                                                        {funnel.icon || '📂'} {funnel.label.length > 10 ? funnel.label.slice(0, 10) + '…' : funnel.label}
+                                                        {icon}
                                                     </span>
                                                 );
                                             })()}
+                                            {item.channel === 'LEAD' && (
+                                                <span className="lead-channel-badge">Lead</span>
+                                            )}
                                             {/* Kalifiye Lead Badge - SADECE numara verenler */}
                                             {item.isQualifiedLead && (
                                                 <span className="classification-badge lead-badge" title="Kalifiye Lead (numara verdi)">🎯</span>
