@@ -297,9 +297,24 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         if (targetFunnelId && !targetStageId) {
             const funnel = await prisma.funnel.findUnique({
                 where: { id: targetFunnelId },
-                include: { stages: { orderBy: { order: 'asc' }, take: 1 } }
+                include: { stages: { orderBy: { order: 'asc' } } }
             });
-            targetStageId = funnel?.stages[0]?.id;
+            if (funnel?.stages?.length > 0) {
+                if (isQualifiedLead) {
+                    // Lead ise "Fırsat" veya "Lead" aşamasını bul, yoksa 2. aşamayı kullan
+                    const opportunityStage = funnel.stages.find(s =>
+                        s.name.toLowerCase().includes('fırsat') ||
+                        s.name.toLowerCase().includes('firsat') ||
+                        s.name.toLowerCase().includes('lead') ||
+                        s.name.toLowerCase().includes('opportunity')
+                    );
+                    targetStageId = opportunityStage?.id || funnel.stages[1]?.id || funnel.stages[0]?.id;
+                    console.log(`🎯 [Classifier] Lead → Fırsat aşaması: ${opportunityStage?.name || funnel.stages[1]?.name || funnel.stages[0]?.name}`);
+                } else {
+                    // Lead değilse ilk aşamaya ata (Yeni Başvuru)
+                    targetStageId = funnel.stages[0]?.id;
+                }
+            }
         }
 
         // Conversation'ı akışa ata
@@ -416,7 +431,46 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     });
                 } catch (_) {}
             } else {
-                console.log(`ℹ️ [Classifier] Konuşma zaten "${currentFunnelId}" akışında, taşınmadı`);
+                console.log(`ℹ️ [Classifier] Konuşma zaten "${currentFunnelId}" akışında`);
+                
+                // Lead olduysa → aynı akışta "Fırsat" stage'ine yükselt
+                if (isQualifiedLead && currentFunnelId) {
+                    try {
+                        const currentFunnel = await prisma.funnel.findUnique({
+                            where: { id: currentFunnelId },
+                            include: { stages: { orderBy: { order: 'asc' } } }
+                        });
+                        if (currentFunnel?.stages?.length > 0) {
+                            const opportunityStage = currentFunnel.stages.find(s =>
+                                s.name.toLowerCase().includes('fırsat') ||
+                                s.name.toLowerCase().includes('firsat') ||
+                                s.name.toLowerCase().includes('lead') ||
+                                s.name.toLowerCase().includes('opportunity')
+                            );
+                            if (opportunityStage && opportunityStage.id !== conversation.funnelStageId) {
+                                await prisma.conversation.update({
+                                    where: { id: conversationId },
+                                    data: { funnelStageId: opportunityStage.id }
+                                });
+                                await prisma.contact.update({
+                                    where: { id: contactId },
+                                    data: { funnelStageId: opportunityStage.id }
+                                });
+                                console.log(`🎯 [Classifier] Lead → Stage yükseltildi: ${opportunityStage.name}`);
+                                
+                                try {
+                                    emitToWorkspace(workspaceId, 'funnel_stage_updated', {
+                                        conversationId,
+                                        funnelType: currentFunnelId,
+                                        funnelStageId: opportunityStage.id
+                                    });
+                                } catch (_) {}
+                            }
+                        }
+                    } catch (upgradeErr) {
+                        console.error('⚠️ [Classifier] Stage yükseltme hatası:', upgradeErr.message);
+                    }
+                }
             }
         }
 
