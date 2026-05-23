@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { parseCommentIntent } from '../utils/commentIntentParser.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // CREATE ACTIVITY
@@ -42,7 +43,58 @@ export const createActivity = async (req, res) => {
             }
         });
 
-        res.status(201).json(newActivity);
+        // ── Akıllı intent algılama: açıklama içinde zamanlama anahtar kelimesi varsa otomatik planlama ──
+        let autoActivity = null;
+        if (newActivity.description) {
+            try {
+                const intent = parseCommentIntent(newActivity.description);
+                if (intent.hasIntent) {
+                    // @mention çözümle
+                    let assignToUserId = null;
+                    let assignToTeamId = teamId || null;
+
+                    if (intent.mention) {
+                        const matchedTeam = await prisma.team.findFirst({
+                            where: { workspaceId, name: { contains: intent.mention, mode: 'insensitive' } }
+                        });
+                        if (matchedTeam) {
+                            assignToTeamId = matchedTeam.id;
+                        } else {
+                            const matchedUser = await prisma.user.findFirst({
+                                where: {
+                                    name: { contains: intent.mention, mode: 'insensitive' },
+                                    memberships: { some: { workspaceId } }
+                                }
+                            });
+                            if (matchedUser) assignToUserId = matchedUser.id;
+                        }
+                    }
+
+                    const planned = await prisma.contactActivity.create({
+                        data: {
+                            contactId,
+                            workspaceId,
+                            type: intent.action,
+                            title: intent.action === 'CALL' ? 'Planlanan Arama' : 'Planlanan Görüşme',
+                            description: `Otomatik oluşturuldu: "${newActivity.description.substring(0, 200)}"`,
+                            status: 'PLANNED',
+                            dueDate: intent.dueDate,
+                            assignedToId: assignToUserId || null,
+                            createdBy: userId,
+                            ...(assignToTeamId && { teamId: assignToTeamId }),
+                            source: 'AUTO'
+                        }
+                    });
+
+                    autoActivity = { id: planned.id, type: intent.action, dueDate: intent.dueDate, summary: intent.summary };
+                    console.log(`🤖 [AutoIntent/Activity] ${intent.summary}`);
+                }
+            } catch (intentErr) {
+                console.error('Intent parser error in createActivity (non-blocking):', intentErr);
+            }
+        }
+
+        res.status(201).json({ ...newActivity, autoActivity });
     } catch (error) {
         console.error('Create Activity Error:', error);
         res.status(500).json({ error: 'Etkinlik oluşturulurken bir hata oluştu.' });

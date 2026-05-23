@@ -518,13 +518,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 ...(isCallNote && { status: 'COMPLETED', completedAt: new Date().toISOString() })
             };
 
+            let activityResponse = null;
             if (editingActivityId) {
                 // Update existing activity
                 const rawId = editingActivityId.replace(/^act_/, '');
                 await activityAPI.updateActivity(rawId, dataToSave);
             } else {
                 // Create new activity
-                await activityAPI.createActivity(profile.id, dataToSave);
+                activityResponse = await activityAPI.createActivity(profile.id, dataToSave);
+            }
+
+            // 🤖 Otomatik aktivite planlandıysa bildir
+            const autoAct = activityResponse?.data?.autoActivity;
+            if (autoAct) {
+                setTimeout(() => {
+                    alert(`🤖 Akıllı Planlama\n\n${autoAct.summary}\n\nAktivite otomatik oluşturuldu!`);
+                }, 200);
             }
 
             // CALL veya MEETING planlandıysa → conversation'ı ilgili aşamaya taşı

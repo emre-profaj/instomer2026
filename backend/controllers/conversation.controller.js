@@ -5,6 +5,7 @@ import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
 import { maskSensitiveInfo } from '../utils/masking.js';
 import { processShortcodes } from '../utils/shortcodeExecutor.js';
+import { parseCommentIntent } from '../utils/commentIntentParser.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -1237,44 +1238,108 @@ export const addInternalNote = async (req, res) => {
             }
         });
 
-        // Görüşme notu ise otomatik CALL aktivitesi oluştur
-        if (isCallNote) {
-            try {
-                const conversation = await prisma.conversation.findUnique({
-                    where: { id: conversationId },
-                    select: { contactId: true, workspaceId: true, teamIds: true }
-                });
-                if (conversation?.contactId) {
-                    let teamId = null;
-                    try {
-                        const teamIdList = JSON.parse(conversation.teamIds || '[]');
-                        if (teamIdList.length > 0) teamId = teamIdList[0];
-                    } catch (e) {}
+        // Konuşma bilgisini al (hem callNote hem intent için lazım)
+        let conversation = null;
+        try {
+            conversation = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { contactId: true, workspaceId: true, teamIds: true }
+            });
+        } catch (e) {}
 
-                    await prisma.contactActivity.create({
-                        data: {
-                            contactId: conversation.contactId,
-                            workspaceId: conversation.workspaceId,
-                            type: 'CALL',
-                            title: 'Telefon Görüşmesi',
-                            description: content,
-                            status: 'COMPLETED',
-                            dueDate: new Date(),
-                            completedAt: new Date(),
-                            assignedToId: userId,
-                            createdById: userId,
-                            ...(teamId && { teamId })
-                        }
-                    });
-                    console.log(`📞 [CallNote] Otomatik arama aktivitesi oluşturuldu - contact: ${conversation.contactId}`);
-                }
+        let teamId = null;
+        try {
+            const teamIdList = JSON.parse(conversation?.teamIds || '[]');
+            if (teamIdList.length > 0) teamId = teamIdList[0];
+        } catch (e) {}
+
+        // ── 1. Görüşme notu ise otomatik COMPLETED CALL aktivitesi oluştur ──
+        if (isCallNote && conversation?.contactId) {
+            try {
+                await prisma.contactActivity.create({
+                    data: {
+                        contactId: conversation.contactId,
+                        workspaceId: conversation.workspaceId,
+                        type: 'CALL',
+                        title: 'Telefon Görüşmesi',
+                        description: content,
+                        status: 'COMPLETED',
+                        dueDate: new Date(),
+                        completedAt: new Date(),
+                        assignedToId: userId,
+                        createdById: userId,
+                        ...(teamId && { teamId })
+                    }
+                });
+                console.log(`📞 [CallNote] Otomatik arama aktivitesi oluşturuldu - contact: ${conversation.contactId}`);
             } catch (actErr) {
                 console.error('CallNote activity creation error:', actErr);
-                // Not eklendi, aktivite oluşturulamazsa devam et
             }
         }
 
-        res.status(201).json({ note });
+        // ── 2. Akıllı intent algılama — otomatik aktivite planlama ──
+        let autoActivity = null;
+        try {
+            const intent = parseCommentIntent(content);
+            if (intent.hasIntent && conversation?.contactId) {
+                // @mention varsa → ekip veya kişi çözümle
+                let assignToUserId = null;
+                let assignToTeamId = teamId;
+
+                if (intent.mention) {
+                    // Önce ekip adı olarak ara
+                    const matchedTeam = await prisma.team.findFirst({
+                        where: {
+                            workspaceId: conversation.workspaceId,
+                            name: { contains: intent.mention, mode: 'insensitive' }
+                        }
+                    });
+                    if (matchedTeam) {
+                        assignToTeamId = matchedTeam.id;
+                    } else {
+                        // Kişi adı olarak ara
+                        const matchedUser = await prisma.user.findFirst({
+                            where: {
+                                name: { contains: intent.mention, mode: 'insensitive' },
+                                memberships: { some: { workspaceId: conversation.workspaceId } }
+                            }
+                        });
+                        if (matchedUser) {
+                            assignToUserId = matchedUser.id;
+                        }
+                    }
+                }
+
+                const planned = await prisma.contactActivity.create({
+                    data: {
+                        contactId: conversation.contactId,
+                        workspaceId: conversation.workspaceId,
+                        type: intent.action,
+                        title: intent.action === 'CALL' ? 'Planlanan Arama' : 'Planlanan Görüşme',
+                        description: `Otomatik oluşturuldu: "${content.substring(0, 200)}"`,
+                        status: 'PLANNED',
+                        dueDate: intent.dueDate,
+                        assignedToId: assignToUserId || null,
+                        createdById: userId,
+                        ...(assignToTeamId && { teamId: assignToTeamId }),
+                        source: 'AUTO'
+                    }
+                });
+
+                autoActivity = {
+                    id: planned.id,
+                    type: intent.action,
+                    dueDate: intent.dueDate,
+                    summary: intent.summary
+                };
+
+                console.log(`🤖 [AutoIntent] ${intent.summary} — contact: ${conversation.contactId}`);
+            }
+        } catch (intentErr) {
+            console.error('Intent parser error (non-blocking):', intentErr);
+        }
+
+        res.status(201).json({ note, autoActivity });
     } catch (error) {
         console.error('Add internal note error:', error);
         res.status(500).json({ error: 'Failed to add internal note' });

@@ -1981,6 +1981,14 @@ const Inbox = () => {
                 };
                 setMessages([...messages, newNote]);
 
+                // 🤖 Otomatik aktivite planlandıysa kullanıcıya bildir
+                if (response.data.autoActivity) {
+                    const aa = response.data.autoActivity;
+                    setTimeout(() => {
+                        alert(`🤖 Akıllı Planlama\n\n${aa.summary}\n\nAktivite otomatik oluşturuldu!`);
+                    }, 200);
+                }
+
                 // If no one is assigned to this conversation, ask if they want to claim it
                 if (!selectedItem.assignedToId) {
                     setTimeout(() => {
