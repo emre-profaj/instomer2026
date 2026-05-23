@@ -241,10 +241,32 @@ export const getConversations = async (req, res) => {
         }
 
         // Mask sensitive info in preview messages
+        // + Planlanan aktivite bilgisini ekle
+        const contactIds = conversations.map(c => c.contactId).filter(Boolean);
+        const plannedActivities = contactIds.length > 0 ? await prisma.contactActivity.findMany({
+            where: {
+                contactId: { in: contactIds },
+                status: 'PLANNED',
+                dueDate: { gte: new Date() }
+            },
+            select: { contactId: true, type: true }
+        }) : [];
+
+        // ContactId → aktivite tipleri map
+        const activityMap = {};
+        for (const act of plannedActivities) {
+            if (!activityMap[act.contactId]) activityMap[act.contactId] = [];
+            activityMap[act.contactId].push(act.type);
+        }
+
         const maskedConversations = conversations.map(c => {
             if (c.messages && c.messages.length > 0) {
                 c.messages[0].content = maskSensitiveInfo(c.messages[0].content);
             }
+            // Planlanan aktivite bilgisi
+            const acts = activityMap[c.contactId] || [];
+            c.hasPlannedCall = acts.includes('CALL');
+            c.hasPlannedMeeting = acts.includes('MEETING') || acts.includes('VISIT');
             return c;
         });
 

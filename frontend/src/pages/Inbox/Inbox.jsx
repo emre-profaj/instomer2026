@@ -3341,10 +3341,6 @@ const Inbox = () => {
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
                                             )}
-                                            {/* Kalifiye Lead Badge - SADECE numara verenler */}
-                                            {item.isQualifiedLead && (
-                                                <span className="classification-badge lead-badge" title="Kalifiye Lead (numara verdi)">🎯</span>
-                                            )}
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
@@ -3386,6 +3382,20 @@ const Inbox = () => {
                                                 <div className="assignee-name-badge" title={`Atanan: ${item.assignedTo.name}`}>
                                                     {item.assignedTo.name}
                                                 </div>
+                                            )}
+                                            {/* Telefon İkonu - Numara verdi */}
+                                            {item.contact?.phone && (
+                                                <span
+                                                    className="activity-badge-icon"
+                                                    title={`Telefon: ${item.contact.phone}`}
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                        width: 22, height: 22, borderRadius: '50%',
+                                                        background: '#fff7ed', border: '1.5px solid #f97316'
+                                                    }}
+                                                >
+                                                    <Phone size={12} color="#f97316" />
+                                                </span>
                                             )}
                                             {/* Activity Icons from plannedActivityMap */}
                                             {(() => {
