@@ -90,54 +90,133 @@ const WorkingHoursEditor = ({ workingHours, onChange }) => {
     );
 };
 
-// ─── Edit Member Modal ────────────────────────────────
-const EditMemberModal = ({ member, onSubmit, onClose }) => {
+// ─── Edit Member Modal (includes password change) ────────────────────────────────
+const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
     const [name, setName] = useState(member.user?.name || '');
     const [email, setEmail] = useState(member.user?.email || '');
     const [workingHours, setWorkingHours] = useState(member.user?.workingHours || DEFAULT_WORKING_HOURS);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [successMsg, setSuccessMsg] = useState('');
+
+    // Password fields
+    const [showPasswordSection, setShowPasswordSection] = useState(false);
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [passwordLoading, setPasswordLoading] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setSuccessMsg('');
         if (!name.trim()) { setError('Ad Soyad boş olamaz'); return; }
         if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) { setError('Geçerli bir e-posta girin'); return; }
         setLoading(true);
-        try { await onSubmit({ name: name.trim(), email: email.trim(), workingHours }); onClose(); }
+        try {
+            await onSubmit({ name: name.trim(), email: email.trim(), workingHours });
+            setSuccessMsg('✅ Bilgiler kaydedildi');
+            setTimeout(() => setSuccessMsg(''), 2000);
+        }
         catch (err) { setError(err.response?.data?.error || 'Güncelleme başarısız'); }
         finally { setLoading(false); }
+    };
+
+    const handlePasswordChange = async () => {
+        setError('');
+        setSuccessMsg('');
+        if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
+        if (password !== confirmPassword) { setError('Şifreler eşleşmiyor'); return; }
+        setPasswordLoading(true);
+        try {
+            await onPasswordChange(password);
+            setSuccessMsg('✅ Şifre başarıyla değiştirildi');
+            setPassword('');
+            setConfirmPassword('');
+            setShowPasswordSection(false);
+            setTimeout(() => setSuccessMsg(''), 2000);
+        }
+        catch (err) { setError(err.message || 'Şifre değiştirilemedi'); }
+        finally { setPasswordLoading(false); }
     };
 
     return (
         <div className="ut-modal-overlay" onClick={onClose}>
             <div className="ut-modal ut-modal-wide" onClick={e => e.stopPropagation()}>
                 <div className="ut-modal-header">
-                    <h3><Edit2 size={16} /> Kullanıcı Edit</h3>
+                    <h3><Edit2 size={16} /> {member.user?.name || 'Kullanıcı'}</h3>
                     <button className="ut-modal-close" onClick={onClose}><X size={18} /></button>
                 </div>
-                <form onSubmit={handleSubmit} className="ut-modal-body">
+                <div className="ut-modal-body">
                     {error && <div className="ut-alert-danger">{error}</div>}
-                    <div className="ut-form-group">
-                        <label>Ad Soyad</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)}
-                            placeholder="Ad Soyad" autoFocus required />
-                    </div>
-                    <div className="ut-form-group">
-                        <label>E-posta</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                            placeholder="ornek@mail.com" required />
-                    </div>
+                    {successMsg && <div className="ut-alert-success">{successMsg}</div>}
 
-                    <WorkingHoursEditor workingHours={workingHours} onChange={setWorkingHours} />
+                    {/* ── Profil Bilgileri ── */}
+                    <form onSubmit={handleSubmit}>
+                        <div className="ut-form-row">
+                            <div className="ut-form-group ut-form-half">
+                                <label>Ad Soyad</label>
+                                <input type="text" value={name} onChange={e => setName(e.target.value)}
+                                    placeholder="Ad Soyad" autoFocus required />
+                            </div>
+                            <div className="ut-form-group ut-form-half">
+                                <label>E-posta</label>
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                                    placeholder="ornek@mail.com" required />
+                            </div>
+                        </div>
 
-                    <div className="ut-modal-footer">
-                        <button type="button" className="ut-btn-secondary" onClick={onClose}>Cancel</button>
-                        <button type="submit" className="ut-btn-primary" disabled={loading}>
-                            {loading ? 'Kaydediliyor...' : 'Kaydet'}
+                        <WorkingHoursEditor workingHours={workingHours} onChange={setWorkingHours} />
+
+                        <div className="ut-modal-footer">
+                            <button type="button" className="ut-btn-secondary" onClick={onClose}>Kapat</button>
+                            <button type="submit" className="ut-btn-primary" disabled={loading}>
+                                {loading ? 'Kaydediliyor...' : 'Bilgileri Kaydet'}
+                            </button>
+                        </div>
+                    </form>
+
+                    {/* ── Şifre Değiştir ── */}
+                    <div className="ut-password-section">
+                        <button
+                            type="button"
+                            className="ut-password-toggle-btn"
+                            onClick={() => setShowPasswordSection(!showPasswordSection)}
+                        >
+                            <Key size={14} />
+                            <span>Şifre Değiştir</span>
+                            {showPasswordSection ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>
+
+                        {showPasswordSection && (
+                            <div className="ut-password-fields">
+                                <div className="ut-form-row">
+                                    <div className="ut-form-group ut-form-half">
+                                        <label>Yeni Şifre</label>
+                                        <div className="ut-password-wrap">
+                                            <input type={showPassword ? 'text' : 'password'} value={password}
+                                                onChange={e => setPassword(e.target.value)} placeholder="En az 6 karakter" />
+                                            <button type="button" className="ut-pw-toggle" onClick={() => setShowPassword(!showPassword)}>
+                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="ut-form-group ut-form-half">
+                                        <label>Şifre Tekrar</label>
+                                        <input type={showPassword ? 'text' : 'password'} value={confirmPassword}
+                                            onChange={e => setConfirmPassword(e.target.value)} placeholder="Şifreyi tekrar girin" />
+                                    </div>
+                                </div>
+                                <div className="ut-modal-footer">
+                                    <button type="button" className="ut-btn-primary" disabled={passwordLoading || !password}
+                                        onClick={handlePasswordChange}>
+                                        {passwordLoading ? 'Kaydediliyor...' : 'Şifreyi Değiştir'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
-                </form>
+                </div>
             </div>
         </div>
     );
@@ -739,15 +818,11 @@ const UsersTeams = () => {
                                                             <option value="OWNER">Owner</option>
                                                             <option value="AGENT">Agent</option>
                                                         </select>
-                                                        <button className="ut-icon-btn" title={t('common.edit')}
+                                                        <button className="ut-icon-btn" title="Düzenle"
                                                             onClick={() => setEditModal({ show: true, member })}>
                                                             <Edit2 size={13} />
                                                         </button>
-                                                        <button className="ut-icon-btn" title="Şifre Değiştir"
-                                                            onClick={() => setPasswordModal({ show: true, userId: member.userId, memberName: member.user?.name })}>
-                                                            <Key size={13} />
-                                                        </button>
-                                                        <button className="ut-icon-btn danger" title={t('common.remove') || 'Remove'}
+                                                        <button className="ut-icon-btn danger" title="Kaldır"
                                                             onClick={() => handleRemoveMember(member.userId)}>
                                                             <Trash2 size={13} />
                                                         </button>
@@ -829,15 +904,10 @@ const UsersTeams = () => {
                 <EditMemberModal
                     member={editModal.member}
                     onSubmit={handleUpdateMemberInfo}
+                    onPasswordChange={async (newPassword) => {
+                        await workspaceAPI.changeMemberPassword(currentWorkspace.id, editModal.member.userId, newPassword);
+                    }}
                     onClose={() => setEditModal({ show: false, member: null })}
-                />
-            )}
-
-            {passwordModal.show && (
-                <ChangePasswordModal
-                    memberName={passwordModal.memberName}
-                    onSubmit={handleChangePassword}
-                    onClose={() => setPasswordModal({ show: false, userId: null, memberName: '' })}
                 />
             )}
 

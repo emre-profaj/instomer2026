@@ -109,7 +109,7 @@
 }
 
 .ut-users-panel {
-    width: 380px;
+    width: 440px;
     flex-shrink: 0;
     background: #fff;
     border-right: 1px solid #e5e7eb;
@@ -938,9 +938,70 @@
     opacity: 1;
 }
 
-/* ── Modal Wide Variant (for working hours) ── */
+/* ── Modal Wide Variant (for working hours + password) ── */
 .ut-modal-wide {
-    width: 520px;
+    width: 560px;
+}
+
+/* ── Form Row (side by side fields) ── */
+.ut-form-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.ut-form-half {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ── Success Alert ── */
+.ut-alert-success {
+    background: #ecfdf5;
+    color: #059669;
+    font-size: 12.5px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #a7f3d0;
+    font-weight: 500;
+}
+
+/* ── Password Section in Edit Modal ── */
+.ut-password-section {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 8px;
+    margin-top: 4px;
+}
+
+.ut-password-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    padding: 8px 4px;
+    border-radius: 6px;
+    width: 100%;
+    transition: color 0.15s, background 0.15s;
+}
+
+.ut-password-toggle-btn:hover {
+    color: #ef4444;
+    background: #fef2f2;
+}
+
+.ut-password-fields {
+    padding: 12px 0 4px;
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Working Hours Editor ── */
