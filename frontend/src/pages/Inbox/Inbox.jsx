@@ -1981,12 +1981,24 @@ const Inbox = () => {
                 };
                 setMessages([...messages, newNote]);
 
-                // 🤖 Otomatik aktivite planlandıysa kullanıcıya bildir
-                if (response.data.autoActivity) {
-                    const aa = response.data.autoActivity;
-                    setTimeout(() => {
-                        alert(`🤖 Akıllı Planlama\n\n${aa.summary}\n\nAktivite otomatik oluşturuldu!`);
-                    }, 200);
+                // 🤖 Otomatik aksiyonlar varsa bildir
+                const aa = response.data.autoActivity;
+                const sc = response.data.stageChange;
+                if (aa || sc) {
+                    let msg = '🤖 Akıllı Algılama\n\n';
+                    if (aa) msg += `${aa.summary}\n`;
+                    if (sc) msg += `${sc.summary}\n`;
+                    msg += '\nOtomatik işlem yapıldı!';
+                    setTimeout(() => alert(msg), 200);
+
+                    // Aşama değiştiyse inbox listesini güncelle
+                    if (sc) {
+                        setConversations(prev => prev.map(c =>
+                            c.id === selectedItem.id
+                                ? { ...c, funnelStageId: sc.stageId, funnelStageName: sc.stageName, funnelStageColor: sc.stageColor }
+                                : c
+                        ));
+                    }
                 }
 
                 // If no one is assigned to this conversation, ask if they want to claim it

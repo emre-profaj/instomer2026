@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma.js';
-import { parseCommentIntent } from '../utils/commentIntentParser.js';
+import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // CREATE ACTIVITY
@@ -43,13 +43,12 @@ export const createActivity = async (req, res) => {
             }
         });
 
-        // ── Akıllı intent algılama: açıklama içinde zamanlama anahtar kelimesi varsa otomatik planlama ──
+        // ── Akıllı intent algılama: zamanlama anahtar kelimesi varsa otomatik planlama ──
         let autoActivity = null;
         if (newActivity.description) {
             try {
                 const intent = parseCommentIntent(newActivity.description);
                 if (intent.hasIntent) {
-                    // @mention çözümle
                     let assignToUserId = null;
                     let assignToTeamId = teamId || null;
 
@@ -94,7 +93,91 @@ export const createActivity = async (req, res) => {
             }
         }
 
-        res.status(201).json({ ...newActivity, autoActivity });
+        // ── Aşama değişikliği algılama: ilgisiz, ulaşılamadı, pahalı vb. ──
+        let stageChange = null;
+        if (newActivity.description) {
+            try {
+                const stageIntent = parseStageIntent(newActivity.description);
+                if (stageIntent.hasStageIntent) {
+                    // Contact'ın konuşmasını bul
+                    const conv = await prisma.conversation.findFirst({
+                        where: { contactId, workspaceId },
+                        select: { id: true, funnelStageId: true },
+                        orderBy: { updatedAt: 'desc' }
+                    });
+
+                    if (conv) {
+                        const funnels = await prisma.funnel.findMany({
+                            where: { workspaceId },
+                            include: { stages: true }
+                        });
+
+                        // Mevcut akışı bul
+                        let currentFunnel = null;
+                        if (conv.funnelStageId) {
+                            for (const f of funnels) {
+                                if ((f.stages || []).some(s => s.id === conv.funnelStageId)) {
+                                    currentFunnel = f;
+                                    break;
+                                }
+                            }
+                        }
+
+                        const searchInStages = (stages) => {
+                            for (const term of stageIntent.stageSearch) {
+                                const found = stages.find(s => s.name.toLowerCase().includes(term));
+                                if (found) return found;
+                            }
+                            return null;
+                        };
+
+                        let matchedStage = currentFunnel ? searchInStages(currentFunnel.stages || []) : null;
+                        if (!matchedStage) {
+                            for (const f of funnels) {
+                                matchedStage = searchInStages(f.stages || []);
+                                if (matchedStage) break;
+                            }
+                        }
+
+                        if (matchedStage) {
+                            await prisma.conversation.update({
+                                where: { id: conv.id },
+                                data: { funnelStageId: matchedStage.id }
+                            });
+
+                            stageChange = {
+                                stageId: matchedStage.id,
+                                stageName: matchedStage.name,
+                                stageColor: matchedStage.color,
+                                category: stageIntent.category,
+                                label: stageIntent.label,
+                                summary: `🏷️ Aşama değişti → ${matchedStage.name} (${stageIntent.label})`
+                            };
+
+                            console.log(`🏷️ [AutoStage/Activity] ${stageChange.summary}`);
+
+                            // 📋 Yazışma ekranına otomatik log notu düş
+                            try {
+                                await prisma.internalNote.create({
+                                    data: {
+                                        conversationId: conv.id,
+                                        userId,
+                                        content: `🏷️ ${stageIntent.label} olarak işaretlendi → ${matchedStage.name}\nSebep: "${description.substring(0, 200)}"`,
+                                        mentionedUsers: '[]'
+                                    }
+                                });
+                            } catch (logErr) {
+                                console.error('Auto stage log error:', logErr);
+                            }
+                        }
+                    }
+                }
+            } catch (stageErr) {
+                console.error('Stage intent error in createActivity (non-blocking):', stageErr);
+            }
+        }
+
+        res.status(201).json({ ...newActivity, autoActivity, stageChange });
     } catch (error) {
         console.error('Create Activity Error:', error);
         res.status(500).json({ error: 'Etkinlik oluşturulurken bir hata oluştu.' });

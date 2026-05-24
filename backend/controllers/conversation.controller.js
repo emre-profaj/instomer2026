@@ -5,7 +5,7 @@ import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
 import { maskSensitiveInfo } from '../utils/masking.js';
 import { processShortcodes } from '../utils/shortcodeExecutor.js';
-import { parseCommentIntent } from '../utils/commentIntentParser.js';
+import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -1339,7 +1339,104 @@ export const addInternalNote = async (req, res) => {
             console.error('Intent parser error (non-blocking):', intentErr);
         }
 
-        res.status(201).json({ note, autoActivity });
+        // ── 3. Aşama değişikliği algılama — ilgisiz, ulaşılamadı, pahalı, kazanıldı vb. ──
+        let stageChange = null;
+        try {
+            const stageIntent = parseStageIntent(content);
+            if (stageIntent.hasStageIntent && conversation?.workspaceId) {
+                // Workspace'teki tüm akışların aşamalarını al
+                const funnels = await prisma.funnel.findMany({
+                    where: { workspaceId: conversation.workspaceId },
+                    include: { stages: true }
+                });
+
+                // Konuşmanın mevcut akışını bul
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { funnelStageId: true }
+                });
+
+                // Mevcut aşamanın ait olduğu funnel'ı bul
+                let currentFunnel = null;
+                if (conv?.funnelStageId) {
+                    for (const f of funnels) {
+                        if ((f.stages || []).some(s => s.id === conv.funnelStageId)) {
+                            currentFunnel = f;
+                            break;
+                        }
+                    }
+                }
+
+                // Eşleşen aşamayı bul — önce mevcut akışta, yoksa diğerlerinde ara
+                let matchedStage = null;
+                const searchInStages = (stages) => {
+                    for (const searchTerm of stageIntent.stageSearch) {
+                        const found = stages.find(s => s.name.toLowerCase().includes(searchTerm));
+                        if (found) return found;
+                    }
+                    return null;
+                };
+
+                if (currentFunnel) {
+                    matchedStage = searchInStages(currentFunnel.stages || []);
+                }
+                if (!matchedStage) {
+                    for (const f of funnels) {
+                        matchedStage = searchInStages(f.stages || []);
+                        if (matchedStage) break;
+                    }
+                }
+
+                if (matchedStage) {
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { funnelStageId: matchedStage.id }
+                    });
+
+                    stageChange = {
+                        stageId: matchedStage.id,
+                        stageName: matchedStage.name,
+                        stageColor: matchedStage.color,
+                        category: stageIntent.category,
+                        label: stageIntent.label,
+                        summary: `🏷️ Aşama değişti → ${matchedStage.name} (${stageIntent.label})`
+                    };
+
+                    console.log(`🏷️ [AutoStage] ${stageChange.summary} — conversation: ${conversationId}`);
+
+                    // WebSocket ile aşama değişikliğini bildir
+                    try {
+                        const io = getIO();
+                        emitToWorkspace(io, conversation.workspaceId, 'funnel_stage_updated', {
+                            conversationId,
+                            funnelStageId: matchedStage.id,
+                            stageName: matchedStage.name,
+                            stageColor: matchedStage.color
+                        });
+                    } catch (wsErr) {}
+
+                    // 📋 Yazışma ekranına otomatik log notu düş
+                    try {
+                        await prisma.internalNote.create({
+                            data: {
+                                conversationId,
+                                userId,
+                                content: `🏷️ ${stageIntent.label} olarak işaretlendi → ${matchedStage.name}\nSebep: "${content.substring(0, 200)}"`,
+                                mentionedUsers: '[]'
+                            }
+                        });
+                    } catch (logErr) {
+                        console.error('Auto stage log error:', logErr);
+                    }
+                } else {
+                    console.log(`🏷️ [AutoStage] Intent algılandı (${stageIntent.label}) ama eşleşen aşama bulunamadı`);
+                }
+            }
+        } catch (stageErr) {
+            console.error('Stage intent error (non-blocking):', stageErr);
+        }
+
+        res.status(201).json({ note, autoActivity, stageChange });
     } catch (error) {
         console.error('Add internal note error:', error);
         res.status(500).json({ error: 'Failed to add internal note' });
