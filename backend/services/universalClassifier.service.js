@@ -361,35 +361,50 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     });
                 } catch (_) {}
 
-                // Stage atamalarını uygula
+                // Stage atamalarını uygula — ancak zaten birine atanmışsa kişi atamasını EZME
                 if (targetStageId) {
                     const stage = await prisma.funnelStage.findUnique({
                         where: { id: targetStageId },
                         select: { assignedTeamId: true, assignedUserId: true, assignedBotId: true }
                     });
+
+                    // Konuşma zaten birine atanmış mı kontrol et
+                    const currentConv = await prisma.conversation.findUnique({
+                        where: { id: conversationId },
+                        select: { assignedToId: true, botEnabled: true }
+                    });
+                    const alreadyAssigned = !!currentConv?.assignedToId;
+
                     if (stage) {
                         const assignUpdate = {};
                         if (stage.assignedTeamId) {
                             assignUpdate.assignedTeamId = stage.assignedTeamId;
                             assignUpdate.teamIds = JSON.stringify([stage.assignedTeamId]);
                         }
-                        if (stage.assignedUserId) assignUpdate.assignedToId = stage.assignedUserId;
-                        if (stage.assignedBotId) {
+                        // ⚠️ Kişi ataması: Konuşma zaten birine atanmışsa EZME!
+                        if (stage.assignedUserId && !alreadyAssigned) {
+                            assignUpdate.assignedToId = stage.assignedUserId;
+                        }
+                        if (stage.assignedBotId && !alreadyAssigned) {
                             assignUpdate.assignedBotId = stage.assignedBotId;
                             assignUpdate.botEnabled = true;
                         }
                         if (Object.keys(assignUpdate).length > 0) {
                             await prisma.conversation.update({ where: { id: conversationId }, data: assignUpdate });
-                            console.log(`👥 [Classifier] Stage ekip/kişi atandı:`, assignUpdate);
+                            console.log(`👥 [Classifier] Stage ekip/kişi atandı:`, assignUpdate, alreadyAssigned ? '(kişi atama korundu)' : '');
                         }
-                        if (stage.assignedTeamId && !stage.assignedUserId) {
+                        if (stage.assignedTeamId && !stage.assignedUserId && !alreadyAssigned) {
                             await assignToTeamMember(stage.assignedTeamId, conversationId);
                         }
                     }
                 }
 
-                // Funnel seviyesinde takım ataması (stage'de yoksa)
+                // Funnel seviyesinde takım ataması (stage'de yoksa ve konuşma henüz atanmamışsa)
                 if (!targetStageId || !(await prisma.funnelStage.findUnique({ where: { id: targetStageId }, select: { assignedTeamId: true } }))?.assignedTeamId) {
+                    // alreadyAssigned yukarıda tanımlı — konuşma zaten birine atanmışsa kişi atamasını ezme
+                    const convCheck2 = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { assignedToId: true } });
+                    const stillAssigned = !!convCheck2?.assignedToId;
+
                     const funnel = await prisma.funnel.findUnique({
                         where: { id: targetFunnelId },
                         select: { assignedTeamId: true, assignedUserId: true }
@@ -399,16 +414,17 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             assignedTeamId: funnel.assignedTeamId,
                             teamIds: JSON.stringify([funnel.assignedTeamId])
                         };
-                        if (funnel.assignedUserId) {
+                        // ⚠️ Kişi atamasını EZME
+                        if (funnel.assignedUserId && !stillAssigned) {
                             funnelAssign.assignedToId = funnel.assignedUserId;
                         }
                         await prisma.conversation.update({ where: { id: conversationId }, data: funnelAssign });
-                        console.log(`📂 [Classifier] Funnel takım atandı: ${funnel.assignedTeamId}`);
+                        console.log(`📂 [Classifier] Funnel takım atandı: ${funnel.assignedTeamId}`, stillAssigned ? '(kişi atama korundu)' : '');
 
-                        if (!funnel.assignedUserId) {
+                        if (!funnel.assignedUserId && !stillAssigned) {
                             await assignToTeamMember(funnel.assignedTeamId, conversationId);
                         }
-                    } else if (funnel?.assignedUserId) {
+                    } else if (funnel?.assignedUserId && !stillAssigned) {
                         await prisma.conversation.update({
                             where: { id: conversationId },
                             data: { assignedToId: funnel.assignedUserId }

@@ -141,8 +141,8 @@ export const processDailyReminders = async () => {
         const now = new Date();
 
         // Pre-filter: Only fetch conversations where lastBotMessageAt is old enough
-        // Minimum reminder threshold is typically 12-24 hours
-        const minReminderThreshold = new Date(now.getTime() - 12 * 60 * 60 * 1000); // 12h minimum
+        // Minimum reminder threshold dynamically — support short intervals (e.g., 4 hours)
+        const minReminderThreshold = new Date(now.getTime() - 1 * 60 * 60 * 1000); // 1h minimum (actual check per bot below)
 
         const conversations = await prisma.conversation.findMany({
             where: {
