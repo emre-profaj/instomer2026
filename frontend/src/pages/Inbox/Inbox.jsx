@@ -350,7 +350,7 @@ const Inbox = () => {
     const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
     const [searchTerm, setSearchTerm] = useState('');
-    const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'MINE', 'PENDING', 'ALL'
+    const [assignmentTab, setAssignmentTab] = useState('MINE_OR_UNASSIGNED'); // 'MINE_OR_UNASSIGNED', 'MINE', 'PENDING', 'ALL'
     const [showResolved, setShowResolved] = useState(() => {
         try {
             return localStorage.getItem('inbox_showResolved') === 'true';
@@ -1355,6 +1355,7 @@ const Inbox = () => {
             // Set assignment filter
             if (assignmentTab === 'MINE') params.assignedToId = 'mine';
             else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+            else if (assignmentTab === 'MINE_OR_UNASSIGNED') params.assignedToId = 'mine_or_unassigned';
             else if (assignmentTab.startsWith('TEAM:')) params.teamId = assignmentTab.split(':')[1];
             
             // Admin/Owner Agent Filter overrides assignment tab
@@ -1604,6 +1605,7 @@ const Inbox = () => {
                 // Set assignment filter
                 if (assignmentTab === 'MINE') params.assignedToId = 'mine';
                 else if (assignmentTab === 'PENDING') params.assignedToId = 'unassigned';
+                else if (assignmentTab === 'MINE_OR_UNASSIGNED') params.assignedToId = 'mine_or_unassigned';
                 else if (assignmentTab.startsWith('TEAM:')) params.teamId = assignmentTab.split(':')[1];
                 
                 // Admin/Owner Agent Filter overrides assignment tab
@@ -3081,6 +3083,13 @@ const Inbox = () => {
                     {/* Assignment tabs (only for messages) */}
                     {(activeFilters.length === 0 || activeFilters.includes('messages')) && (
                         <div className="inbox-assignment-tabs">
+                            <button
+                                className={`assignment-tab ${assignmentTab === 'MINE_OR_UNASSIGNED' ? 'active' : ''}`}
+                                onClick={() => setAssignmentTab('MINE_OR_UNASSIGNED')}
+                                title="Bana atananlar + Havuzdakiler"
+                            >
+                                Havuzum
+                            </button>
                             <button
                                 className={`assignment-tab ${assignmentTab === 'MINE' ? 'active' : ''}`}
                                 onClick={() => setAssignmentTab('MINE')}

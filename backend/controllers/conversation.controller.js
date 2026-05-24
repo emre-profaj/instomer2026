@@ -113,6 +113,13 @@ export const getConversations = async (req, res) => {
                 if (assignedToId === 'mine') {
                     where.assignedToId = req.user.id;
                     console.log(`🔍 [MINE Filter - AGENT] User ${req.user.id} looking for their assigned conversations`);
+                } else if (assignedToId === 'mine_or_unassigned') {
+                    // Havuzum: Bana atananlar + Atanmamışlar
+                    where.AND = [accessCondition, { OR: [
+                        { assignedToId: req.user.id },
+                        { assignedToId: null }
+                    ]}];
+                    console.log(`🔍 [MINE_OR_UNASSIGNED - AGENT] User ${req.user.id}`);
                 } else if (assignedToId === 'my_teams') {
                     // Takımındaki tüm konuşmalar (kimseye atanmamış olanlar)
                     // LEAD için bu filtre çalışmaz - sadece atanmış lead'ler
@@ -152,6 +159,13 @@ export const getConversations = async (req, res) => {
                 } else if (assignedToId === 'mine') {
                     where.assignedToId = req.user.id;
                     console.log(`🔍 [MINE Filter - OWNER] User ${req.user.id} looking for their assigned conversations`);
+                } else if (assignedToId === 'mine_or_unassigned') {
+                    // Havuzum: Bana atananlar + Atanmamışlar
+                    where.OR = [
+                        { assignedToId: req.user.id },
+                        { assignedToId: null }
+                    ];
+                    console.log(`🔍 [MINE_OR_UNASSIGNED - OWNER] User ${req.user.id}`);
                 } else if (assignedToId === 'my_teams') {
                     const userTeams = await prisma.teamMember.findMany({
                         where: { userId: req.user.id },
