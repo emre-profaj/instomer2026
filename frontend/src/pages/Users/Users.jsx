@@ -90,7 +90,7 @@ const WorkingHoursEditor = ({ workingHours, onChange }) => {
     );
 };
 
-// ─── Edit Member Modal (includes password change) ────────────────────────────────
+// ─── Edit Member Modal ────────────────────────────────
 const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
     const [name, setName] = useState(member.user?.name || '');
     const [email, setEmail] = useState(member.user?.email || '');
@@ -98,13 +98,9 @@ const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
-
-    // Password fields
-    const [showPasswordSection, setShowPasswordSection] = useState(false);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [passwordLoading, setPasswordLoading] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -112,32 +108,23 @@ const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
         setSuccessMsg('');
         if (!name.trim()) { setError('Ad Soyad boş olamaz'); return; }
         if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) { setError('Geçerli bir e-posta girin'); return; }
+        if (password) {
+            if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
+            if (password !== confirmPassword) { setError('Şifreler eşleşmiyor'); return; }
+        }
         setLoading(true);
         try {
             await onSubmit({ name: name.trim(), email: email.trim(), workingHours });
-            setSuccessMsg('✅ Bilgiler kaydedildi');
+            if (password) {
+                await onPasswordChange(password);
+                setPassword('');
+                setConfirmPassword('');
+            }
+            setSuccessMsg(password ? '✅ Bilgiler ve şifre kaydedildi' : '✅ Bilgiler kaydedildi');
             setTimeout(() => setSuccessMsg(''), 2000);
         }
-        catch (err) { setError(err.response?.data?.error || 'Güncelleme başarısız'); }
+        catch (err) { setError(err.response?.data?.error || err.message || 'Güncelleme başarısız'); }
         finally { setLoading(false); }
-    };
-
-    const handlePasswordChange = async () => {
-        setError('');
-        setSuccessMsg('');
-        if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
-        if (password !== confirmPassword) { setError('Şifreler eşleşmiyor'); return; }
-        setPasswordLoading(true);
-        try {
-            await onPasswordChange(password);
-            setSuccessMsg('✅ Şifre başarıyla değiştirildi');
-            setPassword('');
-            setConfirmPassword('');
-            setShowPasswordSection(false);
-            setTimeout(() => setSuccessMsg(''), 2000);
-        }
-        catch (err) { setError(err.message || 'Şifre değiştirilemedi'); }
-        finally { setPasswordLoading(false); }
     };
 
     return (
@@ -147,128 +134,49 @@ const EditMemberModal = ({ member, onSubmit, onPasswordChange, onClose }) => {
                     <h3><Edit2 size={16} /> {member.user?.name || 'Kullanıcı'}</h3>
                     <button className="ut-modal-close" onClick={onClose}><X size={18} /></button>
                 </div>
-                <div className="ut-modal-body">
+                <form onSubmit={handleSubmit} className="ut-modal-body">
                     {error && <div className="ut-alert-danger">{error}</div>}
                     {successMsg && <div className="ut-alert-success">{successMsg}</div>}
 
-                    {/* ── Profil Bilgileri ── */}
-                    <form onSubmit={handleSubmit}>
-                        <div className="ut-form-row">
-                            <div className="ut-form-group ut-form-half">
-                                <label>Ad Soyad</label>
-                                <input type="text" value={name} onChange={e => setName(e.target.value)}
-                                    placeholder="Ad Soyad" autoFocus required />
-                            </div>
-                            <div className="ut-form-group ut-form-half">
-                                <label>E-posta</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-                                    placeholder="ornek@mail.com" required />
+                    <div className="ut-form-row">
+                        <div className="ut-form-group ut-form-half">
+                            <label>Ad Soyad</label>
+                            <input type="text" value={name} onChange={e => setName(e.target.value)}
+                                placeholder="Ad Soyad" autoFocus required />
+                        </div>
+                        <div className="ut-form-group ut-form-half">
+                            <label>E-posta</label>
+                            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                                placeholder="ornek@mail.com" required />
+                        </div>
+                    </div>
+
+                    <div className="ut-form-row">
+                        <div className="ut-form-group ut-form-half">
+                            <label>Şifre Sıfırla <span className="ut-optional">(opsiyonel)</span></label>
+                            <div className="ut-password-wrap">
+                                <input type={showPassword ? 'text' : 'password'} value={password}
+                                    onChange={e => setPassword(e.target.value)} placeholder="Değiştirmek için girin" />
+                                <button type="button" className="ut-pw-toggle" onClick={() => setShowPassword(!showPassword)}>
+                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
                             </div>
                         </div>
-
-                        <WorkingHoursEditor workingHours={workingHours} onChange={setWorkingHours} />
-
-                        <div className="ut-modal-footer">
-                            <button type="button" className="ut-btn-secondary" onClick={onClose}>Kapat</button>
-                            <button type="submit" className="ut-btn-primary" disabled={loading}>
-                                {loading ? 'Kaydediliyor...' : 'Bilgileri Kaydet'}
-                            </button>
-                        </div>
-                    </form>
-
-                    {/* ── Şifre Değiştir ── */}
-                    <div className="ut-password-section">
-                        <button
-                            type="button"
-                            className="ut-password-toggle-btn"
-                            onClick={() => setShowPasswordSection(!showPasswordSection)}
-                        >
-                            <Key size={14} />
-                            <span>Şifre Değiştir</span>
-                            {showPasswordSection ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                        </button>
-
-                        {showPasswordSection && (
-                            <div className="ut-password-fields">
-                                <div className="ut-form-row">
-                                    <div className="ut-form-group ut-form-half">
-                                        <label>Yeni Şifre</label>
-                                        <div className="ut-password-wrap">
-                                            <input type={showPassword ? 'text' : 'password'} value={password}
-                                                onChange={e => setPassword(e.target.value)} placeholder="En az 6 karakter" />
-                                            <button type="button" className="ut-pw-toggle" onClick={() => setShowPassword(!showPassword)}>
-                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="ut-form-group ut-form-half">
-                                        <label>Şifre Tekrar</label>
-                                        <input type={showPassword ? 'text' : 'password'} value={confirmPassword}
-                                            onChange={e => setConfirmPassword(e.target.value)} placeholder="Şifreyi tekrar girin" />
-                                    </div>
-                                </div>
-                                <div className="ut-modal-footer">
-                                    <button type="button" className="ut-btn-primary" disabled={passwordLoading || !password}
-                                        onClick={handlePasswordChange}>
-                                        {passwordLoading ? 'Kaydediliyor...' : 'Şifreyi Değiştir'}
-                                    </button>
-                                </div>
+                        {password && (
+                            <div className="ut-form-group ut-form-half ut-fade-in">
+                                <label>Şifre Tekrar</label>
+                                <input type={showPassword ? 'text' : 'password'} value={confirmPassword}
+                                    onChange={e => setConfirmPassword(e.target.value)} placeholder="Şifreyi tekrar girin" />
                             </div>
                         )}
                     </div>
-                </div>
-            </div>
-        </div>
-    );
-};
 
-// ─── Change Password Modal ────────────────────────────────────
-const ChangePasswordModal = ({ memberName, onSubmit, onClose }) => {
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+                    <WorkingHoursEditor workingHours={workingHours} onChange={setWorkingHours} />
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        if (password.length < 6) { setError('Şifre en az 6 karakter olmalıdır'); return; }
-        if (password !== confirmPassword) { setError('Şifreler eşleşmiyor'); return; }
-        setLoading(true);
-        try { await onSubmit(password); onClose(); }
-        catch (err) { setError(err.message || 'Şifre değiştirilemedi'); }
-        finally { setLoading(false); }
-    };
-
-    return (
-        <div className="ut-modal-overlay" onClick={onClose}>
-            <div className="ut-modal" onClick={e => e.stopPropagation()}>
-                <div className="ut-modal-header">
-                    <h3><Key size={18} /> Şifre Değiştir — {memberName}</h3>
-                    <button className="ut-modal-close" onClick={onClose}><X size={18} /></button>
-                </div>
-                <form onSubmit={handleSubmit} className="ut-modal-body">
-                    {error && <div className="ut-alert-danger">{error}</div>}
-                    <div className="ut-form-group">
-                        <label>New Password</label>
-                        <div className="ut-password-wrap">
-                            <input type={showPassword ? 'text' : 'password'} value={password}
-                                onChange={e => setPassword(e.target.value)} placeholder="En az 6 karakter" autoFocus required />
-                            <button type="button" className="ut-pw-toggle" onClick={() => setShowPassword(!showPassword)}>
-                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                        </div>
-                    </div>
-                    <div className="ut-form-group">
-                        <label>Confirm Password</label>
-                        <input type={showPassword ? 'text' : 'password'} value={confirmPassword}
-                            onChange={e => setConfirmPassword(e.target.value)} placeholder="Şifreyi tekrar girin" required />
-                    </div>
                     <div className="ut-modal-footer">
-                        <button type="button" className="ut-btn-secondary" onClick={onClose}>Cancel</button>
+                        <button type="button" className="ut-btn-secondary" onClick={onClose}>Kapat</button>
                         <button type="submit" className="ut-btn-primary" disabled={loading}>
-                            {loading ? 'Kaydediliyor...' : 'Şifreyi Değiştir'}
+                            {loading ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
                     </div>
                 </form>
@@ -276,6 +184,8 @@ const ChangePasswordModal = ({ memberName, onSubmit, onClose }) => {
         </div>
     );
 };
+
+
 
 // ─── Create / Edit Team Modal ─────────────────────────────────
 const TeamModal = ({ team, parentName, onSubmit, onClose }) => {

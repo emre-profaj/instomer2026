@@ -966,42 +966,21 @@
     font-weight: 500;
 }
 
-/* ── Password Section in Edit Modal ── */
-.ut-password-section {
-    border-top: 1px solid #e5e7eb;
-    padding-top: 8px;
-    margin-top: 4px;
+/* ── Optional label hint ── */
+.ut-optional {
+    font-weight: 400;
+    color: #9ca3af;
+    font-size: 11px;
 }
 
-.ut-password-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 600;
-    color: #6b7280;
-    padding: 8px 4px;
-    border-radius: 6px;
-    width: 100%;
-    transition: color 0.15s, background 0.15s;
+/* ── Fade-in animation (for conditional fields) ── */
+.ut-fade-in {
+    animation: fadeIn 0.2s ease;
 }
 
-.ut-password-toggle-btn:hover {
-    color: #ef4444;
-    background: #fef2f2;
-}
-
-.ut-password-fields {
-    padding: 12px 0 4px;
-    animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-    from { opacity: 0; transform: translateY(-6px); }
-    to   { opacity: 1; transform: translateY(0); }
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
 }
 
 /* ── Working Hours Editor ── */
