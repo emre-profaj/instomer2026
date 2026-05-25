@@ -3363,12 +3363,17 @@ const Inbox = () => {
                                     } catch (e) {}
                                 }
 
-                                // Contact tags
+                                // Contact tags - robust parsing
                                 let contactTags = [];
                                 try {
                                     const raw = item.contact?.tags;
-                                    if (raw && raw !== '[]') contactTags = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
-                                } catch {}
+                                    if (raw && raw !== '[]' && raw !== '') {
+                                        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                                        contactTags = Array.isArray(parsed) ? parsed : [];
+                                    }
+                                } catch (e) {
+                                    console.warn('[Tags] Parse error for contact:', item.contact?.name, 'raw:', item.contact?.tags, e);
+                                }
 
                                 // Subject line
                                 const subject = item.emailSubject || item.contact?.notes?.substring(0, 50) || '';
@@ -3377,7 +3382,6 @@ const Inbox = () => {
                                 const cid = item.contactId || item.contact?.id;
                                 const activityEntries = cid ? (plannedActivityMap[cid] || []) : [];
                                 const hasApt = hasReminder(item);
-                                const hasScheduledCall = activityEntries.some(e => e.type === 'CALL' && e.status !== 'COMPLETED');
 
                                 return (
                                 <div
@@ -3421,65 +3425,6 @@ const Inbox = () => {
                                             </div>
                                         </div>
 
-                                        {/* ── Row 1.5: Phone + Activity Icons ── */}
-                                        <div className="inbox-item-sub-row">
-                                            <div className="inbox-sub-row-left">
-                                                {item.contact?.phone && (
-                                                    <span className="inbox-item-phone">📱 {item.contact.phone}</span>
-                                                )}
-                                                {item.contact?.email && !item.contact?.phone && (
-                                                    <span className="inbox-item-phone">✉ {item.contact.email}</span>
-                                                )}
-                                            </div>
-                                            {/* Activity Icons - sağ taraf */}
-                                            {(() => {
-                                                if (activityEntries.length === 0 && !hasApt) return null;
-                                                const iconMap = (done, isOverdue) => ({
-                                                    NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
-                                                    MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    VISIT:    <MapPin size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                });
-                                                return (
-                                                    <span className="planned-activity-badges"
-                                                        onClick={e => { e.stopPropagation(); setSelectedItem(item); setShowContactSidebar(true); }}
-                                                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                                                        title="Aktiviteleri gör"
-                                                    >
-                                                        {activityEntries.map((e, idx) => {
-                                                            const done = e.status === 'COMPLETED';
-                                                            const isCall = e.type === 'CALL';
-                                                            const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
-                                                            const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
-                                                            const brd = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
-                                                            return (
-                                                                <span key={idx}
-                                                                    className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
-                                                                    title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}`}
-                                                                    style={{
-                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                        width: 22, height: 22, borderRadius: '50%',
-                                                                        background: bg, border: brd
-                                                                    }}
-                                                                >
-                                                                    {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
-                                                                </span>
-                                                            );
-                                                        })}
-                                                        {hasApt && (
-                                                            <span className="reminder-indicator" title="Hatırlatıcı var"
-                                                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#fee2e2', border: '1px solid #fca5a5' }}
-                                                            >
-                                                                <Bell size={13} color="#ef4444" />
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                );
-                                            })()}
-                                        </div>
-
                                         {/* ── Row 2: Topic + Last message preview ── */}
                                         <div className="inbox-item-preview">
                                             {item.aiTopic ? (
@@ -3512,7 +3457,68 @@ const Inbox = () => {
                                             </div>
                                         </div>
 
-                                        {/* ── Row 4: Tiny Contact Tags ── */}
+                                        {/* ── Row 4: Phone + Activity Icons ── */}
+                                        {(item.contact?.phone || item.contact?.email || activityEntries.length > 0 || hasApt) && (
+                                            <div className="inbox-item-sub-row">
+                                                <div className="inbox-sub-row-left">
+                                                    {item.contact?.phone && (
+                                                        <span className="inbox-item-phone">📱 {item.contact.phone}</span>
+                                                    )}
+                                                    {item.contact?.email && !item.contact?.phone && (
+                                                        <span className="inbox-item-phone">✉ {item.contact.email}</span>
+                                                    )}
+                                                </div>
+                                                {/* Activity Icons - sağ taraf */}
+                                                {(() => {
+                                                    if (activityEntries.length === 0 && !hasApt) return null;
+                                                    const iconMap = (done, isOverdue) => ({
+                                                        NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                        CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
+                                                        MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                        REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                        TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                        VISIT:    <MapPin size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    });
+                                                    return (
+                                                        <span className="planned-activity-badges"
+                                                            onClick={e => { e.stopPropagation(); setSelectedItem(item); setShowContactSidebar(true); }}
+                                                            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                                            title="Aktiviteleri gör"
+                                                        >
+                                                            {activityEntries.map((e, idx) => {
+                                                                const done = e.status === 'COMPLETED';
+                                                                const isCall = e.type === 'CALL';
+                                                                const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
+                                                                const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
+                                                                const brd = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
+                                                                return (
+                                                                    <span key={idx}
+                                                                        className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
+                                                                        title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}`}
+                                                                        style={{
+                                                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                            width: 22, height: 22, borderRadius: '50%',
+                                                                            background: bg, border: brd
+                                                                        }}
+                                                                    >
+                                                                        {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                            {hasApt && (
+                                                                <span className="reminder-indicator" title="Hatırlatıcı var"
+                                                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#fee2e2', border: '1px solid #fca5a5' }}
+                                                                >
+                                                                    <Bell size={13} color="#ef4444" />
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    );
+                                                })()}
+                                            </div>
+                                        )}
+
+                                        {/* ── Row 5: Tiny Contact Tags ── */}
                                         {contactTags.length > 0 && (
                                             <div className="inbox-item-tags">
                                                 {contactTags.slice(0, 4).map((tag, i) => (
