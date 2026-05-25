@@ -10,6 +10,10 @@ export const createActivity = async (req, res) => {
         const { workspaceId, type, title, description, dueDate, assignedToId, teamId } = req.body;
         const userId = req.user.id;
 
+        // Frontend can explicitly set status (e.g. call notes → COMPLETED)
+        const explicitStatus = req.body.status;
+        const explicitCompletedAt = req.body.completedAt;
+
         // Yetki Kontrolü
         const contact = await prisma.contact.findFirst({
             where: { id: contactId, workspaceId }
@@ -18,6 +22,13 @@ export const createActivity = async (req, res) => {
         if (!contact) {
             return res.status(404).json({ error: 'Kişi bulunamadı veya bu workspace\'e ait değil.' });
         }
+
+        // Status belirleme: frontend gönderiyorsa onu kullan, yoksa oto-belirle
+        const resolvedStatus = explicitStatus || (type === 'NOTE' ? 'COMPLETED' : (dueDate ? 'PLANNED' : 'COMPLETED'));
+        const resolvedIsCompleted = resolvedStatus === 'COMPLETED';
+        const resolvedCompletedAt = resolvedIsCompleted
+            ? (explicitCompletedAt ? new Date(explicitCompletedAt) : new Date())
+            : null;
 
         const newActivity = await prisma.contactActivity.create({
             data: {
@@ -30,11 +41,11 @@ export const createActivity = async (req, res) => {
                 assignedToId: assignedToId ? assignedToId : null,
                 teamId: teamId ? teamId : null,
                 createdBy: userId,
-                status: type === 'NOTE' ? 'COMPLETED' : (dueDate ? 'PLANNED' : 'COMPLETED'),
-                completedAt: type === 'NOTE' ? new Date() : null,
+                status: resolvedStatus,
+                completedAt: resolvedCompletedAt,
                 source: req.body.source || 'MANUAL',
                 priority: req.body.priority || 'NORMAL',
-                isCompleted: type === 'NOTE' ? true : false
+                isCompleted: resolvedIsCompleted
             },
             include: {
                 creator: { select: { name: true, role: true } },
