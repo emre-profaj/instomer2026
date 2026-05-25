@@ -4964,9 +4964,11 @@ const Inbox = () => {
                         onAssignUser={async (convId, userId) => {
                             try {
                                 await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { userId: userId || null });
-                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null } : prev);
+                                const assignedMember = userId ? members.find(m => m.id === userId) : null;
+                                const assignedTo = assignedMember ? { id: assignedMember.id, name: assignedMember.name, avatar: assignedMember.avatar } : null;
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null, assignedTo } : prev);
                                 setInboxItems(prev => prev.map(item =>
-                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null } : item
+                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null, assignedTo } : item
                                 ));
                             } catch(e) {
                                 console.error('[Inbox] User assign error:', e?.response?.data || e);
@@ -4975,14 +4977,20 @@ const Inbox = () => {
                         }}
                         onTakeOver={async () => {
                             try {
-                                await conversationAPI.takeOver(currentWorkspace.id, selectedItem.id);
+                                const response = await conversationAPI.claim(currentWorkspace.id, selectedItem.id);
                                 const myId = user?.id || null;
                                 const myInfo = { id: myId, name: user?.name || 'Ben' };
-                                setSelectedItem(prev => prev ? { ...prev, assignedToId: myId, assignedTo: myInfo } : prev);
+                                // Update from server response if available
+                                const updated = response?.data?.conversation;
+                                const newTeamIds = updated?.teamIds || selectedItem.teamIds;
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: myId, assignedTo: myInfo, teamIds: newTeamIds } : prev);
                                 setInboxItems(prev => prev.map(item =>
-                                    item.id === selectedItem.id ? { ...item, assignedToId: myId, assignedTo: myInfo } : item
+                                    item.id === selectedItem.id ? { ...item, assignedToId: myId, assignedTo: myInfo, teamIds: newTeamIds } : item
                                 ));
-                            } catch(e) { console.error(e); }
+                            } catch(e) {
+                                console.error('[TakeOver/Claim] Error:', e);
+                                alert('Üstlenme başarısız: ' + (e?.response?.data?.error || e.message));
+                            }
                         }}
                         isOwner={isOwner}
                         currentUserId={user?.id}
