@@ -660,7 +660,7 @@ export const deleteStage = async (req, res) => {
     }
 };
 
-// ── Helper: auto-assign the Satış Akışı funnel to a new conversation ──
+// ── Helper: auto-assign the default (Genel) funnel to a new conversation ──
 export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
     try {
         const conv = await prisma.conversation.findUnique({
@@ -669,25 +669,34 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
         });
         if (!conv || conv.funnelType) return;
 
-        // Önce "Satış Akışı", yoksa "Genel" akışını bul
+        // Önce "Genel" akışını bul — yeni başvurular buraya düşmeli
         let defaultFunnel = await prisma.funnel.findFirst({
-            where: { workspaceId, name: 'Satış Akışı' }
+            where: { workspaceId, name: { in: ['Genel', 'Genel CRM', 'Genel CRM (Otomatik İşlem)'] } }
         });
+        // Genel yoksa herhangi bir akışı kullan (son çare)
         if (!defaultFunnel) {
             defaultFunnel = await prisma.funnel.findFirst({
-                where: { workspaceId, name: { in: ['Genel', 'Genel CRM (Otomatik İşlem)'] } }
-            });
-        }
-        if (!defaultFunnel) {
-            defaultFunnel = await prisma.funnel.findFirst({
-                where: { workspaceId }
+                where: { workspaceId },
+                orderBy: { order: 'asc' }
             });
         }
         if (!defaultFunnel) return;
 
+        // Akışın ilk aşamasını bul (genellikle "Yeni Başvuru")
+        let firstStage = null;
+        try {
+            firstStage = await prisma.funnelStage.findFirst({
+                where: { funnelId: defaultFunnel.id },
+                orderBy: { order: 'asc' }
+            });
+        } catch {}
+
         await prisma.conversation.update({
             where: { id: conversationId },
-            data: { funnelType: defaultFunnel.id }
+            data: {
+                funnelType: defaultFunnel.id,
+                ...(firstStage && { funnelStageId: firstStage.id })
+            }
         });
         console.log(`✅ [AutoFunnel] Assigned "${defaultFunnel.name}" funnel to conversation ${conversationId}`);
     } catch (err) {

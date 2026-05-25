@@ -2030,7 +2030,20 @@ export const updateFunnel = async (req, res) => {
                 try {
                     const assignUpdate = {};
 
-                    if (!funnelType || funnelType === '') {
+                    // Look up the target funnel to check its name
+                    let targetFunnel = null;
+                    if (funnelType && funnelType !== '') {
+                        try {
+                            targetFunnel = await prisma.funnel.findFirst({
+                                where: { id: funnelType, workspaceId }
+                            });
+                        } catch {}
+                    }
+
+                    const isGenelFunnel = !funnelType || funnelType === '' ||
+                        (targetFunnel && /^genel/i.test(targetFunnel.name));
+
+                    if (isGenelFunnel) {
                         // Switching to "Genel Akış" — clear team/user assignments
                         assignUpdate.assignedTeamId = null;
                         assignUpdate.teamIds = '[]';
@@ -2038,43 +2051,34 @@ export const updateFunnel = async (req, res) => {
                         assignUpdate.assignedBotId = null;
                         assignUpdate.botEnabled = false;
                         console.log('📂 [FunnelSwitch] Genel akışa dönüldü — atamalar temizlendi');
-                    } else {
+                    } else if (targetFunnel) {
                         // Switching to a funnel that uses default stages (no DB FunnelStage records)
                         // Apply funnel-level team/user assignment
-                        try {
-                            const targetFunnel = await prisma.funnel.findFirst({
-                                where: { id: funnelType, workspaceId }
-                            });
-                            if (targetFunnel) {
-                                if (targetFunnel.assignedTeamId) {
-                                    assignUpdate.assignedTeamId = targetFunnel.assignedTeamId;
-                                    assignUpdate.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
-                                    console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId}`);
+                        if (targetFunnel.assignedTeamId) {
+                            assignUpdate.assignedTeamId = targetFunnel.assignedTeamId;
+                            assignUpdate.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
+                            console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId}`);
 
-                                    // Round-robin
-                                    const teamMembers = await prisma.teamMember.findMany({
-                                        where: { teamId: targetFunnel.assignedTeamId, userId: { not: null } },
-                                        orderBy: { createdAt: 'asc' },
-                                        select: { userId: true }
-                                    });
-                                    if (teamMembers.length > 0) {
-                                        const lastConv = await prisma.conversation.findFirst({
-                                            where: { assignedTeamId: targetFunnel.assignedTeamId, assignedToId: { not: null } },
-                                            orderBy: { updatedAt: 'desc' },
-                                            select: { assignedToId: true }
-                                        });
-                                        const lastIdx = lastConv?.assignedToId
-                                            ? teamMembers.findIndex(m => m.userId === lastConv.assignedToId)
-                                            : -1;
-                                        assignUpdate.assignedToId = teamMembers[(lastIdx + 1) % teamMembers.length].userId;
-                                    }
-                                }
-                                if (targetFunnel.assignedUserId && !assignUpdate.assignedToId) {
-                                    assignUpdate.assignedToId = targetFunnel.assignedUserId;
-                                }
+                            // Round-robin
+                            const teamMembers = await prisma.teamMember.findMany({
+                                where: { teamId: targetFunnel.assignedTeamId, userId: { not: null } },
+                                orderBy: { createdAt: 'asc' },
+                                select: { userId: true }
+                            });
+                            if (teamMembers.length > 0) {
+                                const lastConv = await prisma.conversation.findFirst({
+                                    where: { assignedTeamId: targetFunnel.assignedTeamId, assignedToId: { not: null } },
+                                    orderBy: { updatedAt: 'desc' },
+                                    select: { assignedToId: true }
+                                });
+                                const lastIdx = lastConv?.assignedToId
+                                    ? teamMembers.findIndex(m => m.userId === lastConv.assignedToId)
+                                    : -1;
+                                assignUpdate.assignedToId = teamMembers[(lastIdx + 1) % teamMembers.length].userId;
                             }
-                        } catch (fErr) {
-                            console.error('[FunnelSwitch] Funnel lookup error:', fErr.message);
+                        }
+                        if (targetFunnel.assignedUserId && !assignUpdate.assignedToId) {
+                            assignUpdate.assignedToId = targetFunnel.assignedUserId;
                         }
                     }
 
@@ -2202,22 +2206,23 @@ export const updateFunnel = async (req, res) => {
                             console.log(`🤖 [StageAssign] Bot atandı: ${newStageRec.assignedBotId}`);
                         }
 
-                        // Determine effective teamId: Stage → Funnel fallback
+                        // Determine effective teamId: Stage → Funnel fallback (ayrı ayrı)
                         let effectiveTeamId = newStageRec.assignedTeamId || null;
                         let effectiveUserId = newStageRec.assignedUserId || null;
 
-                        // If stage has no team/user, check parent Funnel
-                        if (!effectiveTeamId || !effectiveUserId) {
+                        // If stage has no team, check parent Funnel for team
+                        if (!effectiveTeamId) {
                             try {
                                 const parentFunnel = await prisma.funnel.findUnique({
                                     where: { id: newStageRec.funnelId },
                                     select: { assignedTeamId: true, assignedUserId: true }
                                 });
                                 if (parentFunnel) {
-                                    if (!effectiveTeamId && parentFunnel.assignedTeamId) {
+                                    if (parentFunnel.assignedTeamId) {
                                         effectiveTeamId = parentFunnel.assignedTeamId;
                                         console.log(`📂 [FunnelFallback] Funnel-level takım: ${effectiveTeamId}`);
                                     }
+                                    // Only use funnel-level user if stage also has no user
                                     if (!effectiveUserId && parentFunnel.assignedUserId) {
                                         effectiveUserId = parentFunnel.assignedUserId;
                                         console.log(`📂 [FunnelFallback] Funnel-level kişi: ${effectiveUserId}`);

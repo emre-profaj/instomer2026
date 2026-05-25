@@ -5,8 +5,11 @@ import { appointmentAPI, retellAPI, resourceAPI } from '../../services/api';
 import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
-    Layers, Edit2, Building2
+    Layers, Edit2, Building2, List, Grid3X3, Search
 } from 'lucide-react';
+import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
+import '../../components/ContactSidebar/ContactSidebar.css';
+import { contactAPI, conversationAPI } from '../../services/api';
 import './Calendar.css';
 
 const APPOINTMENT_STATUSES = [
@@ -84,6 +87,11 @@ const Calendar = () => {
 
     // Toggle for completed appointments
     const [showCompleted, setShowCompleted] = useState(true);
+
+    // List view states
+    const [listFilter, setListFilter] = useState('all'); // 'all', 'appointments', 'calls'
+    const [selectedContactId, setSelectedContactId] = useState(null);
+    const [listSearchTerm, setListSearchTerm] = useState('');
 
     useEffect(() => {
         if (currentWorkspace?.id) {
@@ -536,8 +544,9 @@ const Calendar = () => {
     };
 
     return (
-        <div className="calendar-page">
-            {/* Upcoming Appointments Sidebar */}
+        <div className={`calendar-page ${layoutMode === 'list' ? 'calendar-page-list-mode' : ''}`}>
+            {/* Upcoming Appointments Sidebar — only in calendar mode */}
+            {layoutMode === 'grid' && (
             <div className="upcoming-sidebar">
                 <div className="upcoming-header">
                     <Clock size={18} />
@@ -689,13 +698,14 @@ const Calendar = () => {
                 </div>
 
             </div>
+            )}
 
             {/* Main Calendar */}
             <div className="calendar-main">
                 <div className="calendar-header">
                     <div className="calendar-title">
                         <CalendarIcon size={24} />
-                        <h1>{t('calendar.title')}</h1>
+                        <h1>Aktiviteler</h1>
                     </div>
 
                     <div className="calendar-controls">
@@ -872,41 +882,215 @@ const Calendar = () => {
                     </div>
                 </div>
                 ) : (
-                    <div className="calendar-list-view" style={{ padding: '24px', flex: 1, overflowY: 'auto' }}>
-                        {appointments.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Bu ay için planlanmış bir etkinlik bulunmuyor.</div>
-                        ) : (
-                            [...appointments].sort((a,b) => new Date(a.startTime) - new Date(b.startTime)).map((apt, idx) => {
-                                if (!apt) return null;
-                                const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
-                                const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
-                                return (
-                                    <div key={apt.id} className={`upcoming-item ${apt.status === 'COMPLETED' ? 'completed' : ''}`} style={{ marginBottom: '12px', borderLeftColor: aptResource?.color || apt.color }} onClick={() => openEditModal(apt)}>
-                                        <div className="upcoming-date-badge">
-                                            <span className="upcoming-day">{new Date(apt.startTime).getDate()} {monthNames[new Date(apt.startTime).getMonth()].substring(0,3)}</span>
-                                            <span className="upcoming-time">{formatTime(apt.startTime)}</span>
-                                        </div>
-                                        <div className="upcoming-info">
-                                            <h4>{apt.title}</h4>
-                                            <div style={{ display: 'flex', gap: '12px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                                {apt.contactName && (
-                                                    <span className="upcoming-contact"><User size={12} /> {apt.contactName}</span>
-                                                )}
-                                                {apt.assignedTo && (
-                                                    <span className="upcoming-agent">Temsilci: {apt.assignedTo.name}</span>
-                                                )}
-                                                {aptResource && (
-                                                    <span className="upcoming-resource"><Building2 size={12} /> {aptResource.name}</span>
-                                                )}
-                                                <span className="upcoming-status" style={{ background: status?.color + '20', color: status?.color, padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
-                                                    {status?.label}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                    /* ═══════ FULL-PAGE LIST VIEW ═══════ */
+                    <div className="activities-list-page">
+                        {/* Filter Tabs */}
+                        <div className="activities-list-tabs">
+                            <button
+                                className={`activities-tab ${listFilter === 'all' ? 'active' : ''}`}
+                                onClick={() => setListFilter('all')}
+                            >
+                                Tümü
+                            </button>
+                            <button
+                                className={`activities-tab ${listFilter === 'appointments' ? 'active' : ''}`}
+                                onClick={() => setListFilter('appointments')}
+                            >
+                                📅 Randevular
+                            </button>
+                            <button
+                                className={`activities-tab ${listFilter === 'calls' ? 'active' : ''}`}
+                                onClick={() => setListFilter('calls')}
+                            >
+                                📞 Aramalar
+                            </button>
+                        </div>
+
+                        {/* Search Bar */}
+                        <div className="activities-list-search">
+                            <Search size={16} />
+                            <input
+                                type="text"
+                                placeholder="Kişi adı, telefon veya başlık ara..."
+                                value={listSearchTerm}
+                                onChange={(e) => setListSearchTerm(e.target.value)}
+                            />
+                        </div>
+
+                        {/* Table */}
+                        <div className="activities-table-wrapper">
+                            <table className="activities-table">
+                                <thead>
+                                    <tr>
+                                        <th>Tür</th>
+                                        <th>Tarih / Saat</th>
+                                        <th>Başlık</th>
+                                        <th>Kişi</th>
+                                        <th>Telefon</th>
+                                        <th>Temsilci</th>
+                                        <th>Kaynak</th>
+                                        <th>Durum</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        // Combine appointments + scheduled calls based on filter
+                                        let items = [];
+
+                                        if (listFilter === 'all' || listFilter === 'appointments') {
+                                            items.push(...appointments.map(apt => ({ ...apt, _type: 'appointment' })));
+                                        }
+                                        if (listFilter === 'all' || listFilter === 'calls') {
+                                            items.push(...scheduledCalls.map(sc => ({
+                                                id: sc.id,
+                                                _type: 'call',
+                                                title: 'Planlanmış Arama',
+                                                contactName: sc.contactName || '',
+                                                contactPhone: sc.toNumber || '',
+                                                startTime: sc.scheduledAt,
+                                                endTime: sc.scheduledAt,
+                                                status: sc.status || 'PENDING',
+                                                assignedTo: null,
+                                                resourceId: null,
+                                                color: '#f97316'
+                                            })));
+                                        }
+
+                                        // Search filter
+                                        if (listSearchTerm.trim()) {
+                                            const q = listSearchTerm.toLowerCase();
+                                            items = items.filter(item =>
+                                                (item.title || '').toLowerCase().includes(q) ||
+                                                (item.contactName || '').toLowerCase().includes(q) ||
+                                                (item.contactPhone || '').includes(q)
+                                            );
+                                        }
+
+                                        // Sort by date
+                                        items.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+                                        if (items.length === 0) {
+                                            return (
+                                                <tr>
+                                                    <td colSpan="8" style={{ textAlign: 'center', padding: '48px 0', color: '#94a3b8' }}>
+                                                        Bu dönemde aktivite bulunmuyor.
+                                                    </td>
+                                                </tr>
+                                            );
+                                        }
+
+                                        return items.map(item => {
+                                            const status = APPOINTMENT_STATUSES.find(s => s.value === item.status);
+                                            const aptResource = item.resourceId ? resources.find(r => r.id === item.resourceId) : null;
+                                            const isCall = item._type === 'call';
+                                            const isPast = new Date(item.endTime) < new Date();
+
+                                            return (
+                                                <tr
+                                                    key={item.id}
+                                                    className={`activities-row ${isPast && item.status !== 'COMPLETED' ? 'activities-row-overdue' : ''} ${item.status === 'COMPLETED' ? 'activities-row-completed' : ''}`}
+                                                    onClick={() => {
+                                                        if (isCall) {
+                                                            // Open scheduled call modal
+                                                            const sc = scheduledCalls.find(s => s.id === item.id);
+                                                            if (sc) openScheduledCallModal(sc);
+                                                        } else {
+                                                            openEditModal(item);
+                                                        }
+                                                    }}
+                                                >
+                                                    <td>
+                                                        <span className={`activities-type-badge ${isCall ? 'type-call' : 'type-appointment'}`}>
+                                                            {isCall ? '📞' : '📅'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="activities-date-cell">
+                                                        <div className="activities-date-main">
+                                                            {new Date(item.startTime).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                        </div>
+                                                        <div className="activities-date-time">
+                                                            {formatTime(item.startTime)}
+                                                            {!isCall && item.endTime && ` - ${formatTime(item.endTime)}`}
+                                                        </div>
+                                                    </td>
+                                                    <td className="activities-title-cell">
+                                                        <span className="activities-title-text">{item.title}</span>
+                                                        {item.notes && <span className="activities-notes-preview" title={item.notes}>{item.notes}</span>}
+                                                    </td>
+                                                    <td>
+                                                        {item.contactName ? (
+                                                            <button
+                                                                className="activities-contact-link"
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    // Search contact by phone or name
+                                                                    if (item.contactPhone && currentWorkspace?.id) {
+                                                                        try {
+                                                                            const res = await contactAPI.getAll(currentWorkspace.id, { search: item.contactPhone, limit: 1 });
+                                                                            const contacts = res.data.contacts || [];
+                                                                            if (contacts.length > 0) {
+                                                                                setSelectedContactId(contacts[0].id);
+                                                                                return;
+                                                                            }
+                                                                        } catch {}
+                                                                    }
+                                                                    if (item.contactName && currentWorkspace?.id) {
+                                                                        try {
+                                                                            const res = await contactAPI.getAll(currentWorkspace.id, { search: item.contactName, limit: 1 });
+                                                                            const contacts = res.data.contacts || [];
+                                                                            if (contacts.length > 0) {
+                                                                                setSelectedContactId(contacts[0].id);
+                                                                                return;
+                                                                            }
+                                                                        } catch {}
+                                                                    }
+                                                                    alert('Bu kişi rehberde bulunamadı.');
+                                                                }}
+                                                            >
+                                                                <User size={13} />
+                                                                {item.contactName}
+                                                            </button>
+                                                        ) : (
+                                                            <span className="activities-empty">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="activities-phone-cell">
+                                                        {item.contactPhone || <span className="activities-empty">—</span>}
+                                                    </td>
+                                                    <td>
+                                                        {item.assignedTo ? (
+                                                            <span className="activities-agent-badge">{item.assignedTo.name}</span>
+                                                        ) : (
+                                                            <span className="activities-empty">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        {aptResource ? (
+                                                            <span className="activities-resource-badge" style={{ borderLeftColor: aptResource.color }}>
+                                                                {aptResource.name}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="activities-empty">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span
+                                                            className="activities-status-pill"
+                                                            style={{
+                                                                backgroundColor: (status?.color || (isCall ? '#f97316' : '#94a3b8')) + '18',
+                                                                color: status?.color || (isCall ? '#f97316' : '#94a3b8')
+                                                            }}
+                                                        >
+                                                            {isCall ? (item.status === 'PENDING' ? 'Bekliyor' : item.status) : (status?.label || '—')}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </div> {/* End calendar-main */}
@@ -1285,6 +1469,19 @@ const Calendar = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* ContactSidebar — opens from list view */}
+            {selectedContactId && (
+                <ContactSidebar
+                    contactId={selectedContactId}
+                    isOpen={!!selectedContactId}
+                    onClose={() => setSelectedContactId(null)}
+                    members={agents}
+                    teams={[]}
+                    isOwner={true}
+                    currentUserId={null}
+                />
             )}
         </div>
     );

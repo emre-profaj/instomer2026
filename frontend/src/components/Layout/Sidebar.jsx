@@ -31,7 +31,7 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
-        { path: '/calendar', icon: Calendar, label: t('nav.calendar') }
+        { path: '/calendar', icon: Activity, label: 'Aktiviteler' }
     ];
 
     const realEstateSubItems = [
@@ -460,8 +460,8 @@ const Sidebar = () => {
                     to="/calendar"
                     className={`mobile-nav-item ${location.pathname === '/calendar' ? 'active' : ''}`}
                 >
-                    <Calendar size={22} />
-                    <span>Takvim</span>
+                    <Activity size={22} />
+                    <span>Aktiviteler</span>
                 </Link>
                 <Link
                     to="/settings"
