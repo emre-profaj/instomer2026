@@ -196,7 +196,8 @@ export const getConversations = async (req, res) => {
                         facebookId: true,
                         instagramUsername: true,
                         company: true,
-                        status: true
+                        status: true,
+                        tags: true
                     }
                 },
                 assignedTo: {

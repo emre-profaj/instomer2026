@@ -3318,7 +3318,49 @@ const Inbox = () => {
                                 }
 
                                 return true;
-                            }).map((item) => (
+                            }).map((item) => {
+                                // Pre-compute values for the card
+                                const funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
+                                const funnelName = funnel?.label || 'Genel';
+                                const funnelColor = funnel?.color || '#94a3b8';
+                                const funnelIcon = funnel?.icon || '📋';
+
+                                // Team name
+                                let teamName = null;
+                                if (item.teamIds && item.teamIds !== '[]') {
+                                    try {
+                                        const teamIdList = JSON.parse(item.teamIds);
+                                        if (teamIdList.length > 0) {
+                                            const findTeamById = (list, id) => {
+                                                for (const t of list) {
+                                                    if (t.id === id) return t;
+                                                    if (t.children) { const found = findTeamById(t.children, id); if (found) return found; }
+                                                }
+                                                return null;
+                                            };
+                                            const team = findTeamById(teams, teamIdList[0]);
+                                            teamName = team?.name || null;
+                                        }
+                                    } catch (e) {}
+                                }
+
+                                // Contact tags
+                                let contactTags = [];
+                                try {
+                                    const raw = item.contact?.tags;
+                                    if (raw && raw !== '[]') contactTags = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
+                                } catch {}
+
+                                // Subject line
+                                const subject = item.emailSubject || item.contact?.notes?.substring(0, 50) || '';
+
+                                // Activity entries
+                                const cid = item.contactId || item.contact?.id;
+                                const activityEntries = cid ? (plannedActivityMap[cid] || []) : [];
+                                const hasApt = hasReminder(item);
+                                const hasScheduledCall = activityEntries.some(e => e.type === 'CALL' && e.status !== 'COMPLETED');
+
+                                return (
                                 <div
                                     key={`${item.inboxType}-${item.id}`}
                                     className={`inbox-item ${selectedItem?.id === item.id ? 'active' : ''} ${item.unreadCount > 0 ? 'unread' : ''} ${selectedItems.includes(item.id) ? 'bulk-selected' : ''}`}
@@ -3341,6 +3383,7 @@ const Inbox = () => {
                                         )}
                                     </div>
                                     <div className="inbox-item-content">
+                                        {/* ── Row 1: Channel + Name + Time ── */}
                                         <div className="inbox-item-header">
                                             <span className="inbox-item-name">
                                                 {getItemIcon(item)}
@@ -3350,26 +3393,39 @@ const Inbox = () => {
                                                 {formatTime(item.sortDate)}
                                             </span>
                                         </div>
+
+                                        {/* ── Row 1.5: Phone + Email (below name) ── */}
+                                        {(item.contact?.phone || item.contact?.email) && (
+                                            <div className="inbox-item-contact-info">
+                                                {item.contact?.phone && (
+                                                    <span className="inbox-contact-phone">📱 {item.contact.phone}</span>
+                                                )}
+                                                {item.contact?.email && (
+                                                    <span className="inbox-contact-email">✉ {item.contact.email}</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* ── Row 2: Topic + Last message preview ── */}
                                         <div className="inbox-item-preview">
-                                            {getItemPreview(item)}
+                                            {item.aiTopic ? (
+                                                <><span className="inbox-item-subject">{item.aiTopic}</span> — {getItemPreview(item)}</>
+                                            ) : (
+                                                getItemPreview(item)
+                                            )}
                                         </div>
+
+                                        {/* ── Row 3: Funnel + Team + Agent + Lead + Activity Icons ── */}
                                         <div className="inbox-item-footer">
-                                            {/* Akış İkonu — akışla aynı emoji */}
-                                            {(() => {
-                                                const funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
-                                                const icon = funnel?.icon || '💬';
-                                                const color = funnel?.color || '#94a3b8';
-                                                return (
-                                                    <span className="classification-badge" title={funnel?.label || 'Genel'} style={{
-                                                        background: `${color}15`,
-                                                        color: color,
-                                                        border: `1px solid ${color}30`,
-                                                        fontSize: '12px'
-                                                    }}>
-                                                        {icon}
-                                                    </span>
-                                                );
-                                            })()}
+                                            {/* Akış Badge */}
+                                            <span className="classification-badge" title={funnelName} style={{
+                                                background: `${funnelColor}15`,
+                                                color: funnelColor,
+                                                border: `1px solid ${funnelColor}30`,
+                                                fontSize: '12px'
+                                            }}>
+                                                {funnelIcon}
+                                            </span>
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
                                             )}
@@ -3377,58 +3433,20 @@ const Inbox = () => {
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
                                             {/* Takım Badge */}
-                                            {(() => {
-                                                // DEBUG: Team badge rendering
-                                                if (item.teamIds && item.teamIds !== '[]') {
-                                                    console.log('🏷️ [TeamBadge]', item.contact?.name, 'teamIds:', item.teamIds, 'teams:', teams.map(t => ({ id: t.id, name: t.name })));
-                                                }
-                                                if (!item.teamIds || item.teamIds === '[]') return null;
-                                                try {
-                                                    const teamIdList = JSON.parse(item.teamIds);
-                                                    if (teamIdList.length > 0) {
-                                                        const findTeamById = (list, id) => {
-                                                            for (const t of list) {
-                                                                if (t.id === id) return t;
-                                                                if (t.children) {
-                                                                    const found = findTeamById(t.children, id);
-                                                                    if (found) return found;
-                                                                }
-                                                            }
-                                                            return null;
-                                                        };
-                                                        const team = findTeamById(teams, teamIdList[0]);
-                                                        console.log('🏷️ [TeamBadge] Looking for team:', teamIdList[0], 'found:', team?.name || 'NOT FOUND');
-                                                        if (team) {
-                                                            return (
-                                                                <div className="team-badge" title={`Takım: ${team.name}`}>
-                                                                    {team.name.length > 8 ? team.name.slice(0, 8) + '...' : team.name}
-                                                                </div>
-                                                            );
-                                                        }
-                                                    }
-                                                } catch (e) { console.error('TeamBadge parse error:', e); }
-                                                return null;
-                                            })()}
+                                            {teamName && (
+                                                <div className="team-badge" title={`Takım: ${teamName}`}>
+                                                    {teamName.length > 8 ? teamName.slice(0, 8) + '...' : teamName}
+                                                </div>
+                                            )}
                                             {/* Atanan Kişi Badge */}
                                             {item.assignedTo && (
                                                 <div className="assignee-name-badge" title={`Atanan: ${item.assignedTo.name}`}>
                                                     {item.assignedTo.name}
                                                 </div>
                                             )}
-                                            {/* Telefon Numarası */}
-                                            {item.contact?.phone && (
-                                                <span className="classification-badge" title={item.contact.phone} style={{
-                                                    background: '#fff7ed', color: '#ea580c',
-                                                    border: '1px solid #fed7aa', fontSize: '10px'
-                                                }}>
-                                                    📱 ...{item.contact.phone.slice(-4)}
-                                                </span>
-                                            )}
-                                            {/* Activity Icons from plannedActivityMap */}
+                                            {/* Activity Icons */}
                                             {(() => {
-                                                const cid = item.contactId || item.contact?.id;
-                                                const entries = cid ? (plannedActivityMap[cid] || []) : [];
-                                                if (entries.length === 0 && !hasReminder(item)) return null;
+                                                if (activityEntries.length === 0 && !hasApt) return null;
                                                 const iconMap = (done, isOverdue) => ({
                                                     NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
                                                     CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
@@ -3443,7 +3461,7 @@ const Inbox = () => {
                                                         style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
                                                         title="Aktiviteleri gör"
                                                     >
-                                                        {entries.map((e, idx) => {
+                                                        {activityEntries.map((e, idx) => {
                                                             const done = e.status === 'COMPLETED';
                                                             const isCall = e.type === 'CALL';
                                                             const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
@@ -3456,23 +3474,16 @@ const Inbox = () => {
                                                                     style={{
                                                                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                                                                         width: 22, height: 22, borderRadius: '50%',
-                                                                        background: bg,
-                                                                        border: border
+                                                                        background: bg, border: border
                                                                     }}
                                                                 >
                                                                     {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
                                                                 </span>
                                                             );
                                                         })}
-                                                        {hasReminder(item) && (
-                                                            <span
-                                                                className="reminder-indicator"
-                                                                title="Hatırlatıcı var"
-                                                                style={{
-                                                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                    width: 22, height: 22, borderRadius: '50%',
-                                                                    background: '#fee2e2', border: '1px solid #fca5a5'
-                                                                }}
+                                                        {hasApt && (
+                                                            <span className="reminder-indicator" title="Hatırlatıcı var"
+                                                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#fee2e2', border: '1px solid #fca5a5' }}
                                                             >
                                                                 <Bell size={13} color="#ef4444" />
                                                             </span>
@@ -3481,9 +3492,22 @@ const Inbox = () => {
                                                 );
                                             })()}
                                         </div>
+
+                                        {/* ── Row 4: Tiny Contact Tags ── */}
+                                        {contactTags.length > 0 && (
+                                            <div className="inbox-item-tags">
+                                                {contactTags.slice(0, 4).map((tag, i) => (
+                                                    <span key={i} className="inbox-micro-tag">{typeof tag === 'string' ? tag : tag.name || tag.label || ''}</span>
+                                                ))}
+                                                {contactTags.length > 4 && (
+                                                    <span className="inbox-micro-tag more">+{contactTags.length - 4}</span>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
 
                             {/* Load More Button - hide when filters reduce visible items */}
                             {hasMore && activeFilters.length === allFilters.length && !showOnlyAssigned && inboxItems.length >= 50 && (

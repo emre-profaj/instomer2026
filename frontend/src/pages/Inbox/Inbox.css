@@ -985,11 +985,151 @@
     text-overflow: ellipsis;
 }
 
-.inbox-item-footer {
+/* Phone + Email below name */
+.inbox-item-contact-info {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: -1px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.inbox-contact-phone,
+.inbox-contact-email {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 160px;
+}
+
+.inbox-item-footer,
+.inbox-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 1px;
+    font-size: 11px;
+    color: #94a3b8;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.inbox-meta-funnel {
+    font-weight: 600;
+    font-size: 11px;
+    flex-shrink: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.inbox-meta-sep {
+    color: #cbd5e1;
+    flex-shrink: 0;
+}
+
+.inbox-meta-team {
+    font-size: 11px;
+    color: #2563eb;
+    font-weight: 500;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+
+.inbox-meta-agent {
+    font-size: 11px;
+    color: #ef4444;
+    font-weight: 500;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+
+.inbox-meta-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.inbox-icon-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.inbox-icon-indicator.call {
+    background: #fff7ed;
+    color: #f97316;
+    border: 1px solid #fed7aa;
+}
+
+.inbox-icon-indicator.apt {
+    background: #eff6ff;
+    color: #3b82f6;
+    border: 1px solid #bfdbfe;
+}
+
+.inbox-icon-indicator.note {
+    background: #fefce8;
+    color: #eab308;
+    border: 1px solid #fde68a;
+}
+
+/* Phone number inline with name */
+.inbox-item-phone {
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 400;
+    margin-left: 2px;
+    flex-shrink: 0;
+}
+
+/* Subject in preview row */
+.inbox-item-subject {
+    font-weight: 600;
+    color: #334155;
+    margin-right: 4px;
+}
+
+/* Row 4: Micro Tags */
+.inbox-item-tags {
+    display: flex;
+    gap: 4px;
     margin-top: 2px;
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+.inbox-micro-tag {
+    font-size: 9px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    white-space: nowrap;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.inbox-micro-tag.more {
+    background: #e2e8f0;
+    color: #475569;
+    font-weight: 600;
 }
 
 .lead-channel-badge {
