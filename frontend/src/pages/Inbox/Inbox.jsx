@@ -12,7 +12,7 @@ import {
     Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import notificationService from '../../services/notificationService';
@@ -2110,8 +2110,12 @@ const Inbox = () => {
 
         setCreatingConversation(true);
         try {
-            // Format phone number - remove spaces and dashes
-            let phone = newConversationPhone.replace(/[\s-]/g, '');
+            // Format phone number - remove spaces, dashes, parens
+            let phone = newConversationPhone.replace(/[\s\-\(\)]/g, '');
+            // Baştaki 0'ı sil (05xx → 5xx)
+            if (phone.startsWith('0')) {
+                phone = phone.substring(1);
+            }
             // Add country code if not present
             if (!phone.startsWith('90') && !phone.startsWith('+90')) {
                 phone = '90' + phone;
@@ -3402,17 +3406,78 @@ const Inbox = () => {
                                         </span>
                                     </div>
                                     <div className="inbox-item-content">
-                                        {/* ── Row 1: Name + Phone + Time ── */}
+                                        {/* ── Row 1: Name + Time + Unread Count ── */}
                                         <div className="inbox-item-header">
                                             <span className="inbox-item-name">
                                                 {getItemName(item)}
-                                                {item.contact?.phone && (
-                                                    <span className="inbox-item-phone">{item.contact.phone}</span>
+                                            </span>
+                                            <div className="inbox-item-header-right">
+                                                {(item.unreadCount || 0) > 0 && (
+                                                    <span className="unread-badge">{item.unreadCount}</span>
                                                 )}
-                                            </span>
-                                            <span className="inbox-item-time">
-                                                {formatTime(item.sortDate)}
-                                            </span>
+                                                <span className="inbox-item-time">
+                                                    {formatTime(item.sortDate)}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* ── Row 1.5: Phone + Activity Icons ── */}
+                                        <div className="inbox-item-sub-row">
+                                            <div className="inbox-sub-row-left">
+                                                {item.contact?.phone && (
+                                                    <span className="inbox-item-phone">📱 {item.contact.phone}</span>
+                                                )}
+                                                {item.contact?.email && !item.contact?.phone && (
+                                                    <span className="inbox-item-phone">✉ {item.contact.email}</span>
+                                                )}
+                                            </div>
+                                            {/* Activity Icons - sağ taraf */}
+                                            {(() => {
+                                                if (activityEntries.length === 0 && !hasApt) return null;
+                                                const iconMap = (done, isOverdue) => ({
+                                                    NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
+                                                    MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                    VISIT:    <MapPin size={13} color={done ? '#10b981' : '#ef4444'} />,
+                                                });
+                                                return (
+                                                    <span className="planned-activity-badges"
+                                                        onClick={e => { e.stopPropagation(); setSelectedItem(item); setShowContactSidebar(true); }}
+                                                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                                        title="Aktiviteleri gör"
+                                                    >
+                                                        {activityEntries.map((e, idx) => {
+                                                            const done = e.status === 'COMPLETED';
+                                                            const isCall = e.type === 'CALL';
+                                                            const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
+                                                            const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
+                                                            const brd = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
+                                                            return (
+                                                                <span key={idx}
+                                                                    className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
+                                                                    title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}`}
+                                                                    style={{
+                                                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                        width: 22, height: 22, borderRadius: '50%',
+                                                                        background: bg, border: brd
+                                                                    }}
+                                                                >
+                                                                    {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                        {hasApt && (
+                                                            <span className="reminder-indicator" title="Hatırlatıcı var"
+                                                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#fee2e2', border: '1px solid #fca5a5' }}
+                                                            >
+                                                                <Bell size={13} color="#ef4444" />
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
 
                                         {/* ── Row 2: Topic + Last message preview ── */}
@@ -3424,16 +3489,16 @@ const Inbox = () => {
                                             )}
                                         </div>
 
-                                        {/* ── Row 3: Flow/Stage | Team/Person | Activities (right) ── */}
+                                        {/* ── Row 3: Flow/Stage | Team/Person ── */}
                                         <div className="inbox-item-footer">
                                             <div className="inbox-footer-left">
-                                                {/* Akış + Aşama */}
+                                                {/* Akış + Aşama (Target icon) */}
                                                 <span className="classification-badge" title={`${funnelName}${stageName ? ' / ' + stageName : ''}`} style={{
                                                     background: `${funnelColor}15`,
                                                     color: funnelColor,
                                                     border: `1px solid ${funnelColor}30`
                                                 }}>
-                                                    {funnelIcon} {funnelName}{stageName ? ` / ${stageName}` : ''}
+                                                    <Target size={11} style={{ flexShrink: 0 }} /> {funnelName}{stageName ? ` / ${stageName}` : ''}
                                                 </span>
                                                 {item.channel === 'LEAD' && (
                                                     <span className="lead-channel-badge">Lead</span>
@@ -3441,62 +3506,9 @@ const Inbox = () => {
                                                 {/* Takım + Atanan */}
                                                 {(teamName || item.assignedTo) && (
                                                     <span className="team-assign-badge" title={`${teamName || 'Havuz'} / ${item.assignedTo?.name || 'Havuz'}`}>
-                                                        {teamName || 'Havuz'} / {item.assignedTo?.name || 'Havuz'}
+                                                        <Users size={11} style={{ flexShrink: 0 }} /> {teamName || 'Havuz'} / {item.assignedTo?.name || 'Havuz'}
                                                     </span>
                                                 )}
-                                            </div>
-                                            <div className="inbox-footer-right">
-                                                {/* Unread count */}
-                                                {(item.unreadCount || 0) > 0 && (
-                                                    <span className="unread-badge">{item.unreadCount}</span>
-                                                )}
-                                                {/* Activity Icons */}
-                                                {(() => {
-                                                    if (activityEntries.length === 0 && !hasApt) return null;
-                                                    const iconMap = (done, isOverdue) => ({
-                                                        NOTE:     <StickyNote size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        CALL:     <PhoneCall size={13} color={done ? '#10b981' : (isOverdue ? '#f97316' : '#ef4444')} />,
-                                                        MEETING:  <CalendarDays size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        REMINDER: <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        TASK:     <Bell size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                        VISIT:    <MapPin size={13} color={done ? '#10b981' : '#ef4444'} />,
-                                                    });
-                                                    return (
-                                                        <span className="planned-activity-badges"
-                                                            onClick={e => { e.stopPropagation(); setSelectedItem(item); setShowContactSidebar(true); }}
-                                                            style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                                                            title="Aktiviteleri gör"
-                                                        >
-                                                            {activityEntries.map((e, idx) => {
-                                                                const done = e.status === 'COMPLETED';
-                                                                const isCall = e.type === 'CALL';
-                                                                const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
-                                                                const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
-                                                                const border = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
-                                                                return (
-                                                                    <span key={idx}
-                                                                        className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
-                                                                        title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}`}
-                                                                        style={{
-                                                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                            width: 22, height: 22, borderRadius: '50%',
-                                                                            background: bg, border: border
-                                                                        }}
-                                                                    >
-                                                                        {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
-                                                                    </span>
-                                                                );
-                                                            })}
-                                                            {hasApt && (
-                                                                <span className="reminder-indicator" title="Hatırlatıcı var"
-                                                                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', background: '#fee2e2', border: '1px solid #fca5a5' }}
-                                                                >
-                                                                    <Bell size={13} color="#ef4444" />
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                    );
-                                                })()}
                                             </div>
                                         </div>
 
@@ -5113,12 +5125,15 @@ const Inbox = () => {
                                     <Phone size={18} />
                                     Telefon Numarası <span className="required">*</span>
                                 </label>
-                                <input
-                                    type="tel"
-                                    placeholder="905xxxxxxxxx"
-                                    value={newConversationPhone}
-                                    onChange={(e) => setNewConversationPhone(e.target.value)}
-                                />
+                                <div className="phone-input-with-prefix">
+                                    <span className="phone-prefix">+90</span>
+                                    <input
+                                        type="tel"
+                                        placeholder="5xxxxxxxxx"
+                                        value={newConversationPhone}
+                                        onChange={(e) => setNewConversationPhone(e.target.value)}
+                                    />
+                                </div>
                             </div>
                             <div className="form-group">
                                 <label>
