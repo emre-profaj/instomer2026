@@ -2501,13 +2501,14 @@ export const claimConversation = async (req, res) => {
             console.log(`🔄 [Claim] Conv ${conversationId} transferred from agent:${conversation.assignedToId} → agent:${userId}`);
         }
 
-        if (req.app?.locals?.io) {
-            req.app.locals.io.to(workspaceId).emit('conversation:assigned', {
-                conversationId,
-                agentId: userId,
-                agentName: updated.assignedTo?.name
-            });
-        }
+        // Socket: use same event name as assignConversation so frontend picks it up
+        emitToWorkspace(workspaceId, 'conversation_assigned', {
+            conversationId,
+            assignedToId: userId,
+            assignedToName: updated.assignedTo?.name,
+            botEnabled: false,
+            teamIds: updated.teamIds
+        });
 
         console.log(`🤝 [Claim] Conv ${conversationId} → agent:${userId}`);
         res.json({ success: true, conversation: updated });

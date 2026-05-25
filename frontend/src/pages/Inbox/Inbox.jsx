@@ -3457,7 +3457,19 @@ const Inbox = () => {
                                             </div>
                                         </div>
 
-                                        {/* ── Row 4: Phone + Activity Icons ── */}
+                                        {/* ── Row 4: Tiny Contact Tags ── */}
+                                        {contactTags.length > 0 && (
+                                            <div className="inbox-item-tags">
+                                                {contactTags.slice(0, 4).map((tag, i) => (
+                                                    <span key={i} className="inbox-micro-tag">{typeof tag === 'string' ? tag : tag.name || tag.label || ''}</span>
+                                                ))}
+                                                {contactTags.length > 4 && (
+                                                    <span className="inbox-micro-tag more">+{contactTags.length - 4}</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* ── Row 5: Phone + Activity Icons (en alt) ── */}
                                         {(item.contact?.phone || item.contact?.email || activityEntries.length > 0 || hasApt) && (
                                             <div className="inbox-item-sub-row">
                                                 <div className="inbox-sub-row-left">
@@ -3515,18 +3527,6 @@ const Inbox = () => {
                                                         </span>
                                                     );
                                                 })()}
-                                            </div>
-                                        )}
-
-                                        {/* ── Row 5: Tiny Contact Tags ── */}
-                                        {contactTags.length > 0 && (
-                                            <div className="inbox-item-tags">
-                                                {contactTags.slice(0, 4).map((tag, i) => (
-                                                    <span key={i} className="inbox-micro-tag">{typeof tag === 'string' ? tag : tag.name || tag.label || ''}</span>
-                                                ))}
-                                                {contactTags.length > 4 && (
-                                                    <span className="inbox-micro-tag more">+{contactTags.length - 4}</span>
-                                                )}
                                             </div>
                                         )}
                                     </div>
