@@ -3396,6 +3396,17 @@ const Inbox = () => {
                                         ) : (
                                             <User size={18} />
                                         )}
+                                        {/* Takım / Atanan - avatar altında */}
+                                        {(teamName || item.assignedTo) && (
+                                            <div className="inbox-avatar-assign">
+                                                <span className="inbox-avatar-assign-text" title={`${teamName || 'Havuz'} / ${item.assignedTo?.name || 'Havuz'}`}>
+                                                    {(teamName || 'Havuz').substring(0, 6)}
+                                                </span>
+                                                <span className="inbox-avatar-assign-text" title={item.assignedTo?.name || 'Havuz'}>
+                                                    {(item.assignedTo?.name || 'Havuz').substring(0, 6)}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="inbox-item-content">
                                         {/* ── Row 1: Channel + Name + Time ── */}
@@ -3450,12 +3461,6 @@ const Inbox = () => {
                                             )}
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
-                                            )}
-                                            {/* Takım + Atanan Badge */}
-                                            {(teamName || item.assignedTo) && (
-                                                <div className="team-badge" title={`${teamName ? 'Takım: ' + teamName : ''}${teamName && item.assignedTo ? ' / ' : ''}${item.assignedTo ? 'Atanan: ' + item.assignedTo.name : ''}`} style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {teamName || 'Havuz'} / {item.assignedTo?.name || 'Havuz'}
-                                                </div>
                                             )}
                                             {/* Activity Icons */}
                                             {(() => {
