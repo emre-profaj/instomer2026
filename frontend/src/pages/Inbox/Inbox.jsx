@@ -3325,6 +3325,21 @@ const Inbox = () => {
                                 const funnelColor = funnel?.color || '#94a3b8';
                                 const funnelIcon = funnel?.icon || '📋';
 
+                                // Stage name resolution
+                                let stageName = null;
+                                const effectiveStageId = item.funnelStageId || item._effectiveStageId || item.contact?.funnelStageId;
+                                if (effectiveStageId && funnel?.stages) {
+                                    const stage = funnel.stages.find(s => s.value === effectiveStageId || s.id === effectiveStageId);
+                                    stageName = stage?.label || stage?.name || null;
+                                }
+                                if (!stageName && effectiveStageId) {
+                                    for (const f of funnelOptions) {
+                                        if (!f.stages) continue;
+                                        const s = f.stages.find(s => s.value === effectiveStageId || s.id === effectiveStageId);
+                                        if (s) { stageName = s.label || s.name; break; }
+                                    }
+                                }
+
                                 // Team name
                                 let teamName = null;
                                 if (item.teamIds && item.teamIds !== '[]') {
@@ -3415,16 +3430,20 @@ const Inbox = () => {
                                             )}
                                         </div>
 
-                                        {/* ── Row 3: Funnel + Team + Agent + Lead + Activity Icons ── */}
+                                        {/* ── Row 3: Funnel/Stage + Team/Agent + Lead + Activity Icons ── */}
                                         <div className="inbox-item-footer">
-                                            {/* Akış Badge */}
-                                            <span className="classification-badge" title={funnelName} style={{
+                                            {/* Akış + Aşama Badge */}
+                                            <span className="classification-badge" title={`${funnelName}${stageName ? ' / ' + stageName : ''}`} style={{
                                                 background: `${funnelColor}15`,
                                                 color: funnelColor,
                                                 border: `1px solid ${funnelColor}30`,
-                                                fontSize: '12px'
+                                                fontSize: '10px',
+                                                maxWidth: '140px',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
                                             }}>
-                                                {funnelIcon}
+                                                {funnelIcon} {funnelName}{stageName ? ` / ${stageName}` : ''}
                                             </span>
                                             {item.channel === 'LEAD' && (
                                                 <span className="lead-channel-badge">Lead</span>
@@ -3432,16 +3451,10 @@ const Inbox = () => {
                                             {(item.unreadCount || 0) > 0 && (
                                                 <span className="unread-badge">{item.unreadCount}</span>
                                             )}
-                                            {/* Takım Badge */}
-                                            {teamName && (
-                                                <div className="team-badge" title={`Takım: ${teamName}`}>
-                                                    {teamName.length > 8 ? teamName.slice(0, 8) + '...' : teamName}
-                                                </div>
-                                            )}
-                                            {/* Atanan Kişi Badge */}
-                                            {item.assignedTo && (
-                                                <div className="assignee-name-badge" title={`Atanan: ${item.assignedTo.name}`}>
-                                                    {item.assignedTo.name}
+                                            {/* Takım + Atanan Badge */}
+                                            {(teamName || item.assignedTo) && (
+                                                <div className="team-badge" title={`${teamName ? 'Takım: ' + teamName : ''}${teamName && item.assignedTo ? ' / ' : ''}${item.assignedTo ? 'Atanan: ' + item.assignedTo.name : ''}`} style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {teamName || 'Havuz'} / {item.assignedTo?.name || 'Havuz'}
                                                 </div>
                                             )}
                                             {/* Activity Icons */}
