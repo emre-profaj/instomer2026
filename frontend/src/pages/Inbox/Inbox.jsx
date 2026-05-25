@@ -4948,6 +4948,7 @@ const Inbox = () => {
                     boxShadow: '-4px 0 24px rgba(0,0,0,0.12)'
                 }}>
                     <ContactSidebar
+                        key={selectedItem.id}
                         conversationId={selectedItem.id}
                         conversationData={selectedItem}
                         isOpen={true}
@@ -4969,12 +4970,13 @@ const Inbox = () => {
                         }}
                         onAssignUser={async (convId, userId) => {
                             try {
-                                await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { userId: userId || null });
+                                const res = await conversationAPI.assign(currentWorkspace.id, selectedItem.id, { userId: userId || null });
                                 const assignedMember = userId ? members.find(m => m.id === userId) : null;
                                 const assignedTo = assignedMember ? { id: assignedMember.id, name: assignedMember.name, avatar: assignedMember.avatar } : null;
-                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null, assignedTo } : prev);
+                                const newTeamIds = res?.data?.conversation?.teamIds || selectedItem.teamIds;
+                                setSelectedItem(prev => prev ? { ...prev, assignedToId: userId || null, assignedTo, teamIds: newTeamIds } : prev);
                                 setInboxItems(prev => prev.map(item =>
-                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null, assignedTo } : item
+                                    item.id === selectedItem.id ? { ...item, assignedToId: userId || null, assignedTo, teamIds: newTeamIds } : item
                                 ));
                             } catch(e) {
                                 console.error('[Inbox] User assign error:', e?.response?.data || e);

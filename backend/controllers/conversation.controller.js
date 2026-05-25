@@ -797,6 +797,18 @@ export const assignConversation = async (req, res) => {
                 // Agent üstlendiğinde bot'u devre dışı bırak
                 updateData.botEnabled = false;
                 updateData.botDelayedUntil = null;
+
+                // Also update teamIds to match the assigned user's teams (if no explicit teamId in this request)
+                if (teamId === undefined) {
+                    const userTeams = await prisma.teamMember.findMany({
+                        where: { userId },
+                        select: { teamId: true }
+                    });
+                    if (userTeams.length > 0) {
+                        updateData.teamIds = JSON.stringify(userTeams.map(t => t.teamId));
+                    }
+                }
+
                 console.log(`👤 [Assign] Agent ${userId} taking over, disabling bot`);
             }
         }
