@@ -87,7 +87,10 @@ export const getSettings = async (req, res) => {
                 retellAutoCallEnabled: true,
                 retellAutoCallTriggers: true,
                 retellAutoCallDelay: true,
-                retellAutoCallSchedule: true
+                retellAutoCallSchedule: true,
+                aiFallbackEnabled: true,
+                aiFallbackDelayMinutes: true,
+                aiFallbackPoolEnabled: true
             }
         });
 
@@ -99,7 +102,11 @@ export const getSettings = async (req, res) => {
             retellAutoCallEnabled: workspace?.retellAutoCallEnabled || false,
             retellAutoCallTriggers: workspace?.retellAutoCallTriggers || {},
             retellAutoCallDelay: workspace?.retellAutoCallDelay ?? 30,
-            retellAutoCallSchedule: workspace?.retellAutoCallSchedule || { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] }
+            retellAutoCallSchedule: workspace?.retellAutoCallSchedule || { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+            // AI Devralma
+            aiFallbackEnabled: workspace?.aiFallbackEnabled || false,
+            aiFallbackDelayMinutes: workspace?.aiFallbackDelayMinutes ?? 60,
+            aiFallbackPoolEnabled: workspace?.aiFallbackPoolEnabled || false
         });
     } catch (error) {
         console.error('❌ [Retell] Get settings error:', error);
@@ -112,7 +119,8 @@ export const saveSettings = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const { retellApiKey, retellAgentId, retellFromNumber,
-            retellAutoCallEnabled, retellAutoCallTriggers, retellAutoCallDelay, retellAutoCallSchedule } = req.body;
+            retellAutoCallEnabled, retellAutoCallTriggers, retellAutoCallDelay, retellAutoCallSchedule,
+            aiFallbackEnabled, aiFallbackDelayMinutes, aiFallbackPoolEnabled } = req.body;
 
         const updateData = {};
         if (retellApiKey !== undefined) updateData.retellApiKey = retellApiKey;
@@ -122,6 +130,10 @@ export const saveSettings = async (req, res) => {
         if (retellAutoCallTriggers !== undefined) updateData.retellAutoCallTriggers = retellAutoCallTriggers;
         if (retellAutoCallDelay !== undefined) updateData.retellAutoCallDelay = retellAutoCallDelay;
         if (retellAutoCallSchedule !== undefined) updateData.retellAutoCallSchedule = retellAutoCallSchedule;
+        // AI Devralma
+        if (aiFallbackEnabled !== undefined) updateData.aiFallbackEnabled = aiFallbackEnabled;
+        if (aiFallbackDelayMinutes !== undefined) updateData.aiFallbackDelayMinutes = parseInt(aiFallbackDelayMinutes) || 60;
+        if (aiFallbackPoolEnabled !== undefined) updateData.aiFallbackPoolEnabled = aiFallbackPoolEnabled;
 
         await prisma.workspace.update({
             where: { id: workspaceId },
@@ -405,7 +417,7 @@ function calculateScheduledAt(preferredWindow, schedule, baseDate = new Date()) 
  *   parsing entirely. Use this for LEAD/FORM triggers so that customer time preferences are honoured
  *   without risking false positives from date strings inside system-generated message content.
  */
-export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date(), explicitPreferredWindow = null) => {
+export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, contactName, triggerSource, messageContent = null, baseDate = new Date(), explicitPreferredWindow = null, extraDynamicVariables = null) => {
     // ─── CONCURRENCY LOCK ───────────────────────────────────────────────────────
     // Prevent race condition: multiple triggers firing in parallel for the same
     // phone create multiple ScheduledCall rows because they all pass the PENDING
@@ -433,7 +445,9 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                 retellAutoCallEnabled: true,
                 retellAutoCallTriggers: true,
                 retellAutoCallDelay: true,
-                retellAutoCallSchedule: true
+                retellAutoCallSchedule: true,
+                companyName: true,
+                defaultLanguage: true
             }
         });
 
@@ -633,6 +647,110 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             return;
         }
 
+        // ─── BUILD DYNAMIC VARIABLES ────────────────────────────────────────────
+        // Collect contact context to inject into the AI voice agent's prompt
+        const dynamicVars = { ...(extraDynamicVariables || {}) };
+        if (contactName) dynamicVars.customer_name = contactName;
+        dynamicVars.trigger_source = triggerSource || 'AUTO';
+
+        // Enrich from contact record
+        if (contactId) {
+            try {
+                const contactRecord = await prisma.contact.findUnique({
+                    where: { id: contactId },
+                    select: { name: true, email: true, phone: true, status: true, category: true, tags: true, notes: true, source: true }
+                });
+                if (contactRecord) {
+                    if (!dynamicVars.customer_name && contactRecord.name) dynamicVars.customer_name = contactRecord.name;
+                    if (contactRecord.email) dynamicVars.customer_email = contactRecord.email;
+                    if (contactRecord.source) dynamicVars.lead_source = contactRecord.source;
+                    // Parse tags for interest topic
+                    try {
+                        const tags = JSON.parse(contactRecord.tags || '[]');
+                        if (tags.length > 0) dynamicVars.customer_tags = tags.join(', ');
+                    } catch (_) {}
+                    if (contactRecord.notes) dynamicVars.customer_notes = contactRecord.notes.substring(0, 500);
+                }
+            } catch (e) { console.warn('⚠️ [AutoCall] Failed to enrich contact:', e.message); }
+        }
+
+        // Enrich from latest conversation (form data, topic, classification)
+        if (contactId) {
+            try {
+                const latestConv = await prisma.conversation.findFirst({
+                    where: { contactId, workspaceId },
+                    orderBy: { lastMessageAt: 'desc' },
+                    select: {
+                        aiTopic: true,
+                        classificationData: true,
+                        channel: true,
+                        messages: { orderBy: { createdAt: 'desc' }, take: 5, select: { content: true, isFromContact: true } }
+                    }
+                });
+                if (latestConv) {
+                    if (latestConv.aiTopic) dynamicVars.interest_topic = latestConv.aiTopic;
+                    if (latestConv.channel) dynamicVars.contact_channel = latestConv.channel;
+                    // Extract classification data for topic
+                    if (latestConv.classificationData) {
+                        try {
+                            const classData = JSON.parse(latestConv.classificationData);
+                            if (classData.extractedData?.topic && !dynamicVars.interest_topic) {
+                                dynamicVars.interest_topic = classData.extractedData.topic;
+                            }
+                            if (classData.classification) dynamicVars.classification = classData.classification;
+                        } catch (_) {}
+                    }
+                    // Last customer message as context
+                    const lastCustomerMsg = latestConv.messages?.find(m => m.isFromContact);
+                    if (lastCustomerMsg?.content) {
+                        dynamicVars.last_customer_message = lastCustomerMsg.content.substring(0, 300);
+                    }
+                }
+            } catch (e) { console.warn('⚠️ [AutoCall] Failed to enrich conversation:', e.message); }
+        }
+
+        // Enrich from form submission (if trigger is FORM or LEAD)
+        if ((triggerSource === 'FORM' || triggerSource === 'LEAD') && contactId) {
+            try {
+                const formSub = await prisma.formSubmission.findFirst({
+                    where: { contactId },
+                    orderBy: { createdAt: 'desc' },
+                    select: { formData: true }
+                });
+                if (formSub?.formData) {
+                    try {
+                        const formData = typeof formSub.formData === 'string' ? JSON.parse(formSub.formData) : formSub.formData;
+                        // Common form field mappings
+                        const topicFields = ['ilgi_alani', 'konu', 'subject', 'interest', 'hizmet', 'service', 'topic'];
+                        for (const field of topicFields) {
+                            if (formData[field] && !dynamicVars.interest_topic) {
+                                dynamicVars.interest_topic = formData[field];
+                            }
+                        }
+                        // Store raw form data summary
+                        const formSummary = Object.entries(formData)
+                            .filter(([k, v]) => v && !['token', 'csrf', 'captcha'].includes(k.toLowerCase()))
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(', ')
+                            .substring(0, 500);
+                        if (formSummary) dynamicVars.form_data = formSummary;
+                    } catch (_) {}
+                }
+            } catch (e) { console.warn('⚠️ [AutoCall] Failed to enrich form data:', e.message); }
+        }
+
+        // Add workspace company name
+        if (workspace.companyName) dynamicVars.company_name = workspace.companyName;
+
+        // If no interest_topic found, use messageContent as fallback
+        if (!dynamicVars.interest_topic && messageContent) {
+            dynamicVars.interest_topic = messageContent.substring(0, 200);
+        }
+
+        const dynamicVarsJson = Object.keys(dynamicVars).length > 0 ? JSON.stringify(dynamicVars) : null;
+        console.log(`🏷️ [AutoCall] Dynamic variables:`, JSON.stringify(dynamicVars, null, 2));
+        // ────────────────────────────────────────────────────────────────────────────
+
         const delayMs = scheduledAt.getTime() - Date.now();
         if (delayMs > 2 * 60 * 1000) {
             await prisma.scheduledCall.create({
@@ -644,15 +762,17 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                     agentId: ruleAgentId || null,
                     scheduledAt: scheduledAt,
                     status: 'PENDING',
-                    createdById: 'auto'
+                    createdById: 'auto',
+                    dynamicVariables: dynamicVarsJson
                 }
             });
             console.log(`📅 [AutoCall] Saved ScheduledCall to DB for ${scheduledAt.toLocaleString('tr-TR')}`);
 
+
         } else {
             setTimeout(async () => {
                 try {
-                    await executeScheduledCall(workspaceId, formattedPhone, ruleAgentId, contactId, contactName, triggerSource);
+                    await executeScheduledCall(workspaceId, formattedPhone, ruleAgentId, contactId, contactName, triggerSource, '', dynamicVars);
                 } catch (callErr) {
                     console.error(`❌ [AutoCall] Failed to call ${formattedPhone}:`, callErr.message);
                 }
@@ -665,10 +785,10 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 };
 
 // Execute a phone call via Retell API (used by both immediate & scheduled calls)
-async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '') {
+async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '', dynamicVariables = null) {
     const workspace = await prisma.workspace.findUnique({
         where: { id: workspaceId },
-        select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true }
+        select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true, companyName: true, defaultLanguage: true }
     });
     if (!workspace?.retellApiKey) throw new Error('No Retell API key');
     
@@ -684,6 +804,38 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
     const client = new Retell({ apiKey: workspace.retellApiKey });
     const formattedFrom = normalizePhone(workspace.retellFromNumber);
 
+    // Build dynamic variables for the AI agent
+    const dynVars = { ...(dynamicVariables || {}) };
+    if (contactName && !dynVars.customer_name) dynVars.customer_name = contactName;
+    if (workspace.companyName && !dynVars.company_name) dynVars.company_name = workspace.companyName;
+    
+    // If no dynamic vars were passed, try to build from contact record
+    if (!dynamicVariables && contactId) {
+        try {
+            const contact = await prisma.contact.findUnique({
+                where: { id: contactId },
+                select: { name: true, email: true, tags: true, notes: true, source: true }
+            });
+            if (contact) {
+                if (contact.name && !dynVars.customer_name) dynVars.customer_name = contact.name;
+                if (contact.email) dynVars.customer_email = contact.email;
+                if (contact.source) dynVars.lead_source = contact.source;
+                try {
+                    const tags = JSON.parse(contact.tags || '[]');
+                    if (tags.length > 0) dynVars.customer_tags = tags.join(', ');
+                } catch (_) {}
+            }
+            // Get conversation topic
+            const latestConv = await prisma.conversation.findFirst({
+                where: { contactId, workspaceId },
+                orderBy: { lastMessageAt: 'desc' },
+                select: { aiTopic: true, channel: true }
+            });
+            if (latestConv?.aiTopic) dynVars.interest_topic = latestConv.aiTopic;
+            if (latestConv?.channel) dynVars.contact_channel = latestConv.channel;
+        } catch (e) { console.warn('⚠️ [Call] Failed to build dynamic vars:', e.message); }
+    }
+
     const callParams = {
         from_number: formattedFrom,
         to_number: toNumber,
@@ -697,11 +849,10 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
         }
     };
 
-    // Only add dynamic variables if we have a contact name
-    if (contactName) {
-        callParams.retell_llm_dynamic_variables = {
-            customer_name: contactName
-        };
+    // Inject dynamic variables into the AI agent
+    if (Object.keys(dynVars).length > 0) {
+        callParams.retell_llm_dynamic_variables = dynVars;
+        console.log(`🏷️ [Call] Injecting ${Object.keys(dynVars).length} dynamic variables:`, Object.keys(dynVars).join(', '));
     }
 
     const callResponse = await client.call.createPhoneCall(callParams);
@@ -723,7 +874,11 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
     return callResponse;
 }
 
-// Helper to automatically scan for overdue agent planned call activities and queue them for Retell calling
+// Helper to automatically scan call activities and route to AI agent when appropriate
+// Handles 3 scenarios:
+//   1. DIRECT AI: Activity has aiAgentId set (no human assigned) → AI calls immediately when due
+//   2. POOL FALLBACK: No one assigned, team has AI agent → AI picks up from pool when overdue
+//   3. HUMAN TIMEOUT: Human assigned but didn't act within fallbackDelayMinutes → AI takes over
 async function checkOverdueAgentCalls() {
     try {
         const now = new Date();
@@ -736,60 +891,166 @@ async function checkOverdueAgentCalls() {
                 retellAgentId: { not: null },
                 retellFromNumber: { not: null }
             },
-            select: { id: true, retellAgentId: true }
+            select: {
+                id: true,
+                retellAgentId: true,
+                aiFallbackEnabled: true,
+                aiFallbackDelayMinutes: true,
+                aiFallbackPoolEnabled: true
+            }
         });
 
         if (workspaces.length === 0) return;
 
         const workspaceIds = workspaces.map(w => w.id);
 
-        // 2. Find planned CALL activities that are overdue (dueDate <= now) AND unclaimed (assignedToId: null)
-        const overdueActivities = await prisma.contactActivity.findMany({
+        // Load team fallback settings for resolution
+        const teams = await prisma.team.findMany({
+            where: { workspaceId: { in: workspaceIds } },
+            select: { id: true, workspaceId: true, aiFallbackEnabled: true, aiFallbackDelayMinutes: true }
+        });
+        const teamMap = new Map(teams.map(t => [t.id, t]));
+
+        // Helper: resolve effective fallback setting (activity > team > workspace)
+        const resolveSettings = (activity) => {
+            const ws = workspaces.find(w => w.id === activity.workspaceId);
+            const team = activity.teamId ? teamMap.get(activity.teamId) : null;
+
+            // Enabled: activity.fallbackToAi > team.aiFallbackEnabled > workspace.aiFallbackEnabled
+            let enabled;
+            if (activity.fallbackToAi !== undefined && activity.fallbackToAi !== null) {
+                enabled = activity.fallbackToAi;
+            } else if (team?.aiFallbackEnabled !== null && team?.aiFallbackEnabled !== undefined) {
+                enabled = team.aiFallbackEnabled;
+            } else {
+                enabled = ws?.aiFallbackEnabled || false;
+            }
+
+            // Delay: activity.fallbackDelayMinutes > team.aiFallbackDelayMinutes > workspace.aiFallbackDelayMinutes
+            let delayMinutes;
+            if (activity.fallbackDelayMinutes && activity.fallbackDelayMinutes !== 60) {
+                delayMinutes = activity.fallbackDelayMinutes;
+            } else if (team?.aiFallbackDelayMinutes) {
+                delayMinutes = team.aiFallbackDelayMinutes;
+            } else {
+                delayMinutes = ws?.aiFallbackDelayMinutes || 60;
+            }
+
+            return { enabled, delayMinutes, poolEnabled: ws?.aiFallbackPoolEnabled || false };
+        };
+
+        // ─── SCENARIO 1: Direct AI Assignment (YENİ) ──────────────────────
+        // Activity'ye açıkça aiAgentId atanmış → her zaman çalışır (kullanıcı bilerek seçti)
+        const directAiActivities = await prisma.contactActivity.findMany({
             where: {
                 workspaceId: { in: workspaceIds },
                 type: 'CALL',
                 status: 'PLANNED',
                 dueDate: { lte: now },
-                assignedToId: null, // Only calls not claimed/assigned to any human agent
-                contact: {
-                    phone: { not: null }
-                }
+                aiAgentId: { not: null },
+                aiFallbackTriggered: false,
+                contact: { phone: { not: null } }
             },
-            include: {
-                contact: true
-            }
+            include: { contact: true }
         });
 
-        if (overdueActivities.length === 0) return;
-
-        console.log(`📅 [AutoCall] Found ${overdueActivities.length} overdue agent planned call activities`);
-
-        // 3. Find existing scheduled calls for these activities to avoid duplicate scheduling
-        const existingScheduledCalls = await prisma.scheduledCall.findMany({
+        // ─── SCENARIO 2: Pool / Sahipsiz Görevler (ESKİ DAVRANIŞ — AYNEN KORUNUYOR) ──
+        // retellAutoCallEnabled: true olan workspace'lerde sahipsiz (assignedToId=null)
+        // aramaları otomatik yapar. Bu eski davranıştır, bozulmaz.
+        // NOT: aiFallbackPoolEnabled SADECE ek kontrol olarak kullanılabilir, ama
+        // mevcut kurulumlar için geriye dönük uyumluluk korunur.
+        const poolActivities = await prisma.contactActivity.findMany({
             where: {
-                createdById: { startsWith: 'activity_' }
+                workspaceId: { in: workspaceIds }, // retellAutoCallEnabled: true zaten filtre ediliyor
+                type: 'CALL',
+                status: 'PLANNED',
+                dueDate: { lte: now },
+                assignedToId: null,
+                aiAgentId: null,
+                aiFallbackTriggered: false,
+                contact: { phone: { not: null } }
             },
+            include: { contact: true }
+        });
+
+        // ─── SCENARIO 3: Human Timeout Fallback (YENİ — OPT-IN) ───────────
+        // İnsana atanmış ama süresinde yapılmamış → AI devralır
+        // Bu SADECE parametrik ayarlar açıksa çalışır (activity > team > workspace)
+        const humanFallbackCandidates = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId: { in: workspaceIds },
+                type: 'CALL',
+                status: 'PLANNED',
+                aiFallbackTriggered: false,
+                assignedToId: { not: null },
+                dueDate: { not: null },
+                contact: { phone: { not: null } }
+            },
+            include: { contact: true }
+        });
+
+        // Parametrik kontrol: sadece ayarı açık olanları al
+        const humanTimeoutActivities = humanFallbackCandidates.filter(a => {
+            const settings = resolveSettings(a);
+            if (!settings.enabled) return false; // AI devralma kapalı → atla
+            const dueTime = new Date(a.dueDate).getTime();
+            const fallbackMs = settings.delayMinutes * 60 * 1000;
+            return now.getTime() >= dueTime + fallbackMs;
+        });
+
+        const allActivities = [
+            ...directAiActivities.map(a => ({ ...a, _scenario: 'DIRECT_AI' })),
+            ...poolActivities.map(a => ({ ...a, _scenario: 'POOL' })),
+            ...humanTimeoutActivities.map(a => ({ ...a, _scenario: 'HUMAN_TIMEOUT' }))
+        ];
+
+        if (allActivities.length === 0) return;
+
+        console.log(`📅 [CallRouter] Found ${allActivities.length} call activities to route to AI:`);
+        console.log(`   Direct AI: ${directAiActivities.length}, Pool: ${poolActivities.length}, Human timeout: ${humanTimeoutActivities.length}`);
+
+        // Find existing scheduled calls to avoid duplicates
+        const existingScheduledCalls = await prisma.scheduledCall.findMany({
+            where: { createdById: { startsWith: 'activity_' } },
             select: { createdById: true }
         });
-
         const scheduledActivityIds = new Set(
             existingScheduledCalls.map(sc => sc.createdById.replace('activity_', ''))
         );
 
-        for (const activity of overdueActivities) {
+        for (const activity of allActivities) {
             const phone = activity.contact?.phone?.trim();
-            if (!phone || scheduledActivityIds.has(activity.id)) {
+            if (!phone || scheduledActivityIds.has(activity.id)) continue;
+
+            // Determine which AI agent to use
+            let agentId = activity.aiAgentId; // Direct assignment takes priority
+
+            if (!agentId) {
+                // Try team's AI agent
+                agentId = await getTeamAgentIdForContactOrConversation(activity.workspaceId, activity.contactId, null);
+            }
+
+            if (!agentId) {
+                // Workspace default
+                const wsConfig = workspaces.find(w => w.id === activity.workspaceId);
+                agentId = wsConfig?.retellAgentId || null;
+            }
+
+            if (!agentId) {
+                console.log(`⏭️ [CallRouter] No AI agent found for activity ${activity.id}, skipping`);
                 continue;
             }
 
-            const workspaceConfig = workspaces.find(w => w.id === activity.workspaceId);
-            let agentId = await getTeamAgentIdForContactOrConversation(activity.workspaceId, activity.contactId, null);
-            if (!agentId) {
-                agentId = workspaceConfig?.retellAgentId || null;
-            }
+            // Build dynamic variables with call topic
+            const dynVars = {
+                customer_name: activity.contact.name || activity.contact.fullName || 'Müşteri',
+                trigger_source: activity._scenario
+            };
+            if (activity.callTopic) dynVars.interest_topic = activity.callTopic;
+            if (activity.title) dynVars.call_title = activity.title;
+            if (activity.description) dynVars.call_description = activity.description.substring(0, 500);
 
             try {
-                // Create ScheduledCall immediately (scheduledAt = now)
                 await prisma.scheduledCall.create({
                     data: {
                         workspaceId: activity.workspaceId,
@@ -799,16 +1060,35 @@ async function checkOverdueAgentCalls() {
                         agentId: agentId,
                         scheduledAt: now,
                         status: 'PENDING',
-                        createdById: `activity_${activity.id}`
+                        createdById: `activity_${activity.id}`,
+                        dynamicVariables: JSON.stringify(dynVars)
                     }
                 });
-                console.log(`📅 [AutoCall] Created ScheduledCall for overdue activity: ${activity.id} (Contact: ${phone})`);
+
+                // Mark activity as AI-triggered
+                await prisma.contactActivity.update({
+                    where: { id: activity.id },
+                    data: {
+                        aiFallbackTriggered: true,
+                        ...(activity._scenario === 'HUMAN_TIMEOUT' && {
+                            result: `⏰ İnsan agent ${activity.fallbackDelayMinutes} dk içinde aramadı — AI devreye girdi`
+                        })
+                    }
+                });
+
+                const scenarioLabel = {
+                    'DIRECT_AI': '🤖 Doğrudan AI',
+                    'POOL': '🏊 Havuzdan AI',
+                    'HUMAN_TIMEOUT': '⏰ İnsan timeout → AI'
+                }[activity._scenario];
+
+                console.log(`📅 [CallRouter] ${scenarioLabel}: ${phone} (Activity: ${activity.id}, Agent: ${agentId})`);
             } catch (err) {
-                console.error(`❌ [AutoCall] Failed to create ScheduledCall for activity ${activity.id}:`, err.message);
+                console.error(`❌ [CallRouter] Failed for activity ${activity.id}:`, err.message);
             }
         }
     } catch (e) {
-        console.error('❌ [AutoCall] checkOverdueAgentCalls error:', e.message);
+        console.error('❌ [CallRouter] checkOverdueAgentCalls error:', e.message);
     }
 }
 
@@ -873,7 +1153,12 @@ export const processScheduledCalls = async () => {
                     continue;
                 }
                 const ws = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true } });
-                const callResponse = await executeScheduledCall(sc.workspaceId, sc.toNumber, sc.agentId || ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED', sc.createdById);
+                // Parse dynamic variables from DB if available
+                let scDynVars = null;
+                if (sc.dynamicVariables) {
+                    try { scDynVars = JSON.parse(sc.dynamicVariables); } catch (_) {}
+                }
+                const callResponse = await executeScheduledCall(sc.workspaceId, sc.toNumber, sc.agentId || ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED', sc.createdById, scDynVars);
                 
                 if (callResponse?.call_id) {
                     await prisma.scheduledCall.update({
@@ -2688,7 +2973,34 @@ export const getAgent = async (req, res) => {
 export const updateAgentPrompt = async (req, res) => {
     try {
         const { workspaceId, agentId } = req.params;
-        const { generalPrompt, beginMessage, agentName, ambientSound, responsiveness } = req.body;
+        const {
+            // LLM/Prompt
+            generalPrompt, beginMessage,
+            // Agent identity
+            agentName,
+            // Voice
+            voiceId, voiceModel, fallbackVoiceIds,
+            // Language
+            language,
+            // Behavior
+            ambientSound, ambientSoundVolume,
+            responsiveness,
+            interruptionSensitivity,
+            enableBackchannel, backchannelFrequency, backchannelWords,
+            // Reminder
+            reminderTriggerMs, reminderMaxCount,
+            // Keywords
+            boostedKeywords,
+            // Call settings
+            endCallAfterSilenceMs, maxCallDurationMs,
+            beginMessageDelayMs,
+            // Webhook
+            webhookUrl, webhookEvents, webhookTimeoutMs,
+            // Pronunciation
+            pronunciationDictionary,
+            // Post-call analysis
+            postCallAnalysisData
+        } = req.body;
 
         const workspace = await prisma.workspace.findUnique({
             where: { id: workspaceId },
@@ -2698,11 +3010,51 @@ export const updateAgentPrompt = async (req, res) => {
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
 
-        // Agent seviyesindeki güncelleme (isim, ses tipi vb.)
+        // ── Agent seviyesindeki güncelleme ──
         const agentUpdateData = {};
+
+        // Identity
         if (agentName !== undefined) agentUpdateData.agent_name = agentName;
+
+        // Voice
+        if (voiceId !== undefined) agentUpdateData.voice_id = voiceId;
+        if (voiceModel !== undefined) agentUpdateData.voice_model = voiceModel;
+        if (fallbackVoiceIds !== undefined) agentUpdateData.fallback_voice_ids = fallbackVoiceIds;
+
+        // Language
+        if (language !== undefined) agentUpdateData.language = language;
+
+        // Behavior
         if (ambientSound !== undefined) agentUpdateData.ambient_sound = ambientSound;
+        if (ambientSoundVolume !== undefined) agentUpdateData.ambient_sound_volume = ambientSoundVolume;
         if (responsiveness !== undefined) agentUpdateData.responsiveness = responsiveness;
+        if (interruptionSensitivity !== undefined) agentUpdateData.interruption_sensitivity = interruptionSensitivity;
+        if (enableBackchannel !== undefined) agentUpdateData.enable_backchannel = enableBackchannel;
+        if (backchannelFrequency !== undefined) agentUpdateData.backchannel_frequency = backchannelFrequency;
+        if (backchannelWords !== undefined) agentUpdateData.backchannel_words = backchannelWords;
+
+        // Reminder
+        if (reminderTriggerMs !== undefined) agentUpdateData.reminder_trigger_ms = reminderTriggerMs;
+        if (reminderMaxCount !== undefined) agentUpdateData.reminder_max_count = reminderMaxCount;
+
+        // Keywords
+        if (boostedKeywords !== undefined) agentUpdateData.boosted_keywords = boostedKeywords;
+
+        // Call settings
+        if (endCallAfterSilenceMs !== undefined) agentUpdateData.end_call_after_silence_ms = endCallAfterSilenceMs;
+        if (maxCallDurationMs !== undefined) agentUpdateData.max_call_duration_ms = maxCallDurationMs;
+        if (beginMessageDelayMs !== undefined) agentUpdateData.begin_message_delay_ms = beginMessageDelayMs;
+
+        // Webhook
+        if (webhookUrl !== undefined) agentUpdateData.webhook_url = webhookUrl;
+        if (webhookEvents !== undefined) agentUpdateData.webhook_events = webhookEvents;
+        if (webhookTimeoutMs !== undefined) agentUpdateData.webhook_timeout_ms = webhookTimeoutMs;
+
+        // Pronunciation
+        if (pronunciationDictionary !== undefined) agentUpdateData.pronunciation_dictionary = pronunciationDictionary;
+
+        // Post-call analysis
+        if (postCallAnalysisData !== undefined) agentUpdateData.post_call_analysis_data = postCallAnalysisData;
 
         let updatedAgent = null;
         if (Object.keys(agentUpdateData).length > 0) {
@@ -2711,7 +3063,7 @@ export const updateAgentPrompt = async (req, res) => {
             updatedAgent = await client.agent.retrieve(agentId);
         }
 
-        // LLM prompt güncellemesi
+        // ── LLM prompt güncellemesi ──
         let updatedLlm = null;
         if ((generalPrompt !== undefined || beginMessage !== undefined) &&
             updatedAgent.response_engine?.type === 'retell-llm' &&
@@ -2724,6 +3076,8 @@ export const updateAgentPrompt = async (req, res) => {
             updatedLlm = await client.llm.update(updatedAgent.response_engine.llm_id, llmUpdateData);
             console.log(`✅ [RetellAgent] LLM prompt updated for agent ${agentId}`);
         }
+
+        console.log(`✅ [RetellAgent] Agent ${agentId} updated with ${Object.keys(agentUpdateData).length} params`);
 
         res.json({
             success: true,
@@ -2900,5 +3254,194 @@ export const updateAgentKnowledgeBases = async (req, res) => {
     } catch (error) {
         console.error('❌ [RetellKB] updateAgentKnowledgeBases error:', error.message);
         res.status(500).json({ error: error.message || 'KB bağlantısı güncellenemedi' });
+    }
+};
+
+// ─── Voice Management ────────────────────────────────────────────────────────
+
+/**
+ * GET /:workspaceId/voices
+ * Kullanılabilir seslerin tam listesi
+ */
+export const listVoices = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const voices = await client.voice.list();
+
+        // Sesleri kategorize et
+        const categorized = {
+            turkish: [],
+            english: [],
+            other: []
+        };
+
+        for (const voice of voices || []) {
+            const v = {
+                voice_id: voice.voice_id,
+                voice_name: voice.voice_name,
+                gender: voice.gender,
+                provider: voice.provider,
+                accent: voice.accent || null,
+                age: voice.age || null,
+                preview_audio_url: voice.preview_audio_url || null
+            };
+            
+            // Türkçe sesleri öne al
+            if (voice.accent?.toLowerCase().includes('turk') || 
+                voice.voice_name?.toLowerCase().includes('turk') ||
+                voice.voice_id?.toLowerCase().includes('turk')) {
+                categorized.turkish.push(v);
+            } else if (voice.accent?.toLowerCase().includes('english') || 
+                       voice.accent?.toLowerCase().includes('american') ||
+                       voice.accent?.toLowerCase().includes('british')) {
+                categorized.english.push(v);
+            } else {
+                categorized.other.push(v);
+            }
+        }
+
+        res.json({
+            total: (voices || []).length,
+            voices: voices || [],
+            categorized
+        });
+    } catch (error) {
+        console.error('❌ [Voice] listVoices error:', error.message);
+        res.status(500).json({ error: error.message || 'Sesler listelenemedi' });
+    }
+};
+
+/**
+ * GET /:workspaceId/voices/search
+ * Ses sağlayıcılarından topluluk sesleri ara
+ */
+export const searchVoices = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { provider = 'elevenlabs', query } = req.query;
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        const result = await client.voice.search({ voice_provider: provider });
+
+        // Eğer query varsa filtrele
+        let voices = result?.voices || result || [];
+        if (query && Array.isArray(voices)) {
+            const q = query.toLowerCase();
+            voices = voices.filter(v => 
+                v.voice_name?.toLowerCase().includes(q) ||
+                v.accent?.toLowerCase().includes(q) ||
+                v.provider_voice_id?.toLowerCase().includes(q)
+            );
+        }
+
+        res.json({ voices: Array.isArray(voices) ? voices.slice(0, 50) : [] });
+    } catch (error) {
+        console.error('❌ [Voice] searchVoices error:', error.message);
+        res.status(500).json({ error: error.message || 'Ses araması başarısız' });
+    }
+};
+
+// ─── Agent Create / Delete ───────────────────────────────────────────────────
+
+/**
+ * POST /:workspaceId/agents
+ * Yeni agent oluştur
+ */
+export const createAgent = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const {
+            agentName, voiceId, language = 'tr-TR',
+            generalPrompt, beginMessage,
+            ambientSound, responsiveness = 0.5,
+            webhookUrl
+        } = req.body;
+
+        if (!voiceId) return res.status(400).json({ error: 'Ses seçimi (voiceId) gerekli' });
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+
+        // 1. LLM oluştur
+        const llm = await client.llm.create({
+            general_prompt: generalPrompt || 'Sen yardımcı bir asistansın.',
+            begin_message: beginMessage || 'Merhaba, size nasıl yardımcı olabilirim?'
+        });
+
+        // 2. Agent oluştur
+        const agentData = {
+            agent_name: agentName || 'Yeni AI Ses Agent',
+            voice_id: voiceId,
+            language,
+            response_engine: {
+                type: 'retell-llm',
+                llm_id: llm.llm_id
+            },
+            responsiveness
+        };
+        if (ambientSound) agentData.ambient_sound = ambientSound;
+        if (webhookUrl) agentData.webhook_url = webhookUrl;
+
+        const agent = await client.agent.create(agentData);
+
+        console.log(`✅ [Agent] Created new agent: ${agent.agent_id} (${agentName})`);
+
+        res.json({
+            success: true,
+            agent,
+            llm,
+            message: `AI Ses Agent "${agentName}" başarıyla oluşturuldu`
+        });
+    } catch (error) {
+        console.error('❌ [Agent] createAgent error:', error.message);
+        res.status(500).json({ error: error.message || 'Agent oluşturulamadı' });
+    }
+};
+
+/**
+ * DELETE /:workspaceId/agents/:agentId
+ * Agent'ı sil
+ */
+export const deleteAgent = async (req, res) => {
+    try {
+        const { workspaceId, agentId } = req.params;
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true, retellAgentId: true }
+        });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'API key yapılandırılmamış' });
+
+        // Varsayılan agent silinmesin
+        if (workspace.retellAgentId === agentId) {
+            return res.status(400).json({ error: 'Varsayılan agent silinemez. Önce başka bir agent\'ı varsayılan yapın.' });
+        }
+
+        const client = new Retell({ apiKey: workspace.retellApiKey });
+        await client.agent.delete(agentId);
+
+        console.log(`🗑️ [Agent] Deleted agent: ${agentId}`);
+        res.json({ success: true, message: 'Agent silindi' });
+    } catch (error) {
+        console.error('❌ [Agent] deleteAgent error:', error.message);
+        res.status(500).json({ error: error.message || 'Agent silinemedi' });
     }
 };

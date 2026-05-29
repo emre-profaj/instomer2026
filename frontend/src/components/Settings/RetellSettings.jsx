@@ -16,7 +16,11 @@ const RetellSettings = ({ onSave }) => {
         retellAutoCallEnabled: false,
         retellAutoCallTriggers: {},
         retellAutoCallDelay: 30,
-        retellAutoCallSchedule: { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] }
+        retellAutoCallSchedule: { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+        // AI Devralma Ayarları
+        aiFallbackEnabled: false,
+        aiFallbackDelayMinutes: 60,
+        aiFallbackPoolEnabled: false
     });
     const [agents, setAgents] = useState([]);
     const [connectedChannels, setConnectedChannels] = useState([]);
@@ -118,7 +122,11 @@ const RetellSettings = ({ onSave }) => {
                 retellFromNumber: res.data.retellFromNumber || '',
                 retellAutoCallEnabled: res.data.retellAutoCallEnabled || false,
                 retellAutoCallTriggers: triggers,
-                retellAutoCallSchedule: res.data.retellAutoCallSchedule || { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] }
+                retellAutoCallSchedule: res.data.retellAutoCallSchedule || { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+                // AI Devralma
+                aiFallbackEnabled: res.data.aiFallbackEnabled || false,
+                aiFallbackDelayMinutes: res.data.aiFallbackDelayMinutes ?? 60,
+                aiFallbackPoolEnabled: res.data.aiFallbackPoolEnabled || false
             });
             if (res.data.isConfigured) loadAgents();
         } catch (err) {
@@ -196,6 +204,10 @@ const RetellSettings = ({ onSave }) => {
             data.retellAutoCallEnabled = settings.retellAutoCallEnabled;
             data.retellAutoCallTriggers = rulesToTriggers(rules);
             data.retellAutoCallSchedule = settings.retellAutoCallSchedule;
+            // AI Devralma
+            data.aiFallbackEnabled = settings.aiFallbackEnabled;
+            data.aiFallbackDelayMinutes = parseInt(settings.aiFallbackDelayMinutes) || 60;
+            data.aiFallbackPoolEnabled = settings.aiFallbackPoolEnabled;
 
             await retellAPI.saveSettings(workspaceId, data);
             setMessage({ type: 'success', text: 'Ayarlar başarıyla kaydedildi!' });
@@ -207,7 +219,7 @@ const RetellSettings = ({ onSave }) => {
     };
 
     const handleRemoveSetup = async () => {
-        if (!confirm('Retell AI Call kurulumunu kaldırmak istediğinize emin misiniz? API Key, Agent ve Numara bilgileri silinecek.')) return;
+        if (!confirm('AI Sesli Arama kurulumunu kaldırmak istediğinize emin misiniz? API Key, Agent ve Numara bilgileri silinecek.')) return;
         try {
             setSaving(true);
             await retellAPI.saveSettings(workspaceId, {
@@ -615,8 +627,108 @@ const RetellSettings = ({ onSave }) => {
                 </button>
             </div>
 
-            {/* Single Call Sync Panel */}
-            <div className="card" style={{ padding: 20, marginTop: 16, background: '#f8faff', border: '1px solid #e0e7ff' }}>
+            {/* ─── AI Devralma Ayarları Kartı ─────────────────────────────── */}
+            {settings.retellAutoCallEnabled && (
+            <div className="card" style={{ padding: 24, marginTop: 20, border: '1px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <Bot size={18} style={{ color: '#8b5cf6' }} />
+                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e1b4b' }}>AI Arama Devralma</span>
+                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', background: '#f3f4f6', padding: '2px 8px', borderRadius: 20 }}>YENİ</span>
+                </div>
+                <p style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: 0, marginBottom: 16 }}>
+                    AI ses agent'ı hangi arama görevlerini üstlenebilir?
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {/* Checkbox 1: Kendi Görevleri (always on) */}
+                    <label style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'default',
+                        padding: '12px 14px', borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0'
+                    }}>
+                        <input type="checkbox" checked={true} disabled
+                            style={{ marginTop: 2, accentColor: '#10b981', width: 16, height: 16 }} />
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: '0.87rem', color: '#065f46' }}>Sadece Kendi Arama Görevleri</div>
+                            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>
+                                AI agent'a doğrudan atanmış aramalar. Her zaman aktiftir.
+                            </div>
+                        </div>
+                    </label>
+
+                    {/* Checkbox 2: Havuz */}
+                    <label style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                        padding: '12px 14px', borderRadius: 10,
+                        background: settings.aiFallbackPoolEnabled ? '#eff6ff' : '#f9fafb',
+                        border: `1px solid ${settings.aiFallbackPoolEnabled ? '#93c5fd' : '#e5e7eb'}`,
+                        transition: 'all 0.2s'
+                    }}>
+                        <input type="checkbox"
+                            checked={settings.aiFallbackPoolEnabled}
+                            onChange={e => setSettings(prev => ({ ...prev, aiFallbackPoolEnabled: e.target.checked }))}
+                            style={{ marginTop: 2, accentColor: '#3b82f6', width: 16, height: 16 }} />
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: '0.87rem', color: '#1e3a5f' }}>Havuzdaki Sahipsiz Görevler</div>
+                            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>
+                                Kimseye atanmamış arama görevlerini AI üstlensin.
+                            </div>
+                        </div>
+                    </label>
+
+                    {/* Checkbox 3: Aynı Takım — Timeout */}
+                    <label style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                        padding: '12px 14px', borderRadius: 10,
+                        background: settings.aiFallbackEnabled ? '#faf5ff' : '#f9fafb',
+                        border: `1px solid ${settings.aiFallbackEnabled ? '#c4b5fd' : '#e5e7eb'}`,
+                        transition: 'all 0.2s'
+                    }}>
+                        <input type="checkbox"
+                            checked={settings.aiFallbackEnabled}
+                            onChange={e => setSettings(prev => ({ ...prev, aiFallbackEnabled: e.target.checked }))}
+                            style={{ marginTop: 2, accentColor: '#8b5cf6', width: 16, height: 16 }} />
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.87rem', color: '#3b0764' }}>Aynı Takımdaki Yapılmamış Aramalar</div>
+                            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>
+                                İnsan agent süresinde aramazsa AI devreye girsin.
+                            </div>
+                            {settings.aiFallbackEnabled && (
+                                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                    <Clock size={14} color="#8b5cf6" />
+                                    <span style={{ fontSize: '0.82rem', color: '#374151', fontWeight: 500 }}>Bekleme süresi:</span>
+                                    <select
+                                        value={settings.aiFallbackDelayMinutes}
+                                        onChange={e => setSettings(prev => ({ ...prev, aiFallbackDelayMinutes: parseInt(e.target.value) }))}
+                                        style={{
+                                            padding: '6px 12px', borderRadius: 8, border: '1px solid #c4b5fd',
+                                            fontSize: '0.84rem', background: '#faf5ff', cursor: 'pointer',
+                                            fontWeight: 600, color: '#5b21b6'
+                                        }}
+                                    >
+                                        <option value={15}>15 dakika</option>
+                                        <option value={30}>30 dakika</option>
+                                        <option value={60}>1 saat</option>
+                                        <option value={120}>2 saat</option>
+                                        <option value={180}>3 saat</option>
+                                        <option value={240}>4 saat</option>
+                                        <option value={480}>8 saat (iş günü)</option>
+                                        <option value={1440}>24 saat</option>
+                                    </select>
+                                    <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>sonra AI arar</span>
+                                </div>
+                            )}
+                        </div>
+                    </label>
+                </div>
+
+                <div style={{ marginTop: 14, padding: '8px 12px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', fontSize: '0.78rem', color: '#92400e' }}>
+                    💡 <strong>Not:</strong> Mevcut otomatik arama kurallarınız aynen çalışmaya devam eder. Bu ayarlar sadece yeni AI devralma özelliklerini kontrol eder.
+                </div>
+            </div>
+            )}
+
+            {/* Arama Senkronizasyonu */}
+            <div className="card" style={{ padding: 20, marginTop: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                     <PhoneCall size={16} style={{ color: '#6366f1' }} />
                     <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e1b4b' }}>Tek Arama Getir</span>

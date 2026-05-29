@@ -268,6 +268,30 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
+        // --- GUARD: Zaten atanmış konuşmaların akışını/takımını DEĞİŞTİRME ---
+        // Eğer konuşma zaten bir akışta (Genel hariç) VE birine atanmışsa,
+        // sadece contact data güncellendi, akış/takım ataması yapma.
+        const existingConv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { funnelType: true, assignedToId: true, assignedTeamId: true }
+        });
+        if (existingConv?.funnelType && (existingConv?.assignedToId || existingConv?.assignedTeamId)) {
+            // "Genel" akışı mı kontrol et — Genel'deyse yeniden yönlendirilebilir
+            let isGenel = false;
+            try {
+                const currentFunnel = await prisma.funnel.findUnique({
+                    where: { id: existingConv.funnelType },
+                    select: { name: true }
+                });
+                isGenel = currentFunnel && /^genel/i.test(currentFunnel.name);
+            } catch (_) {}
+
+            if (!isGenel) {
+                console.log(`🛡️ [Classifier] Konuşma zaten akışta (${existingConv.funnelType}) ve atanmış (user: ${existingConv.assignedToId}, team: ${existingConv.assignedTeamId}) — akış/takım değişikliği yapılmıyor`);
+                return; // Sadece contact data güncellendi, geri kalan atlanıyor
+            }
+        }
+
         // --- Akış atama ---
         let targetFunnelId = matchedFunnelId;
         let targetStageId = null;
@@ -281,6 +305,20 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 'IS_BASVURUSU': 'İş ve Taşeron',
                 'SIKAYET': 'Destek'
             };
+
+            // ⚠️ FIRSAT sınıflandırması için kalifikasyon kontrolü:
+            // Kişi sadece bilgi alıyorsa (telefon yok, geri aranma isteği yok)
+            // → Satışa düşürmüyoruz, Genel akışta kalıyor
+            if (classification === 'FIRSAT' && !isQualifiedLead) {
+                console.log(`🚫 [Classifier] FIRSAT sınıflandırması ama kalifiye değil (isQualifiedLead: false) — Satış akışına atanmıyor. Genel'de kalacak.`);
+                // Sınıflamayı conversation'a kaydet ama akış ataması yapma
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { classification: classification }
+                }).catch(() => {}); // classification column yoksa sessizce geç
+                return; // Akış/takım ataması yapma
+            }
+
             const targetFunnelName = funnelMap[classification];
             if (targetFunnelName) {
                 const funnel = await prisma.funnel.findFirst({
@@ -293,6 +331,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 }
             }
         }
+
 
         if (targetFunnelId && !targetStageId) {
             const funnel = await prisma.funnel.findUnique({

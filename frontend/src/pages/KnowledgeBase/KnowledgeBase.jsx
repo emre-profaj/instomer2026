@@ -298,10 +298,10 @@ const KnowledgeBase = () => {
         try {
             setSyncingRetell(true);
             const response = await retellAPI.syncKnowledgeBase(currentWorkspace.id);
-            alert(response.data.message || 'Bilgi bankası Retell\'e başarıyla senkronize edildi');
+            alert(response.data.message || 'Bilgi bankası AI Ses Agent\'a başarıyla senkronize edildi');
         } catch (error) {
             console.error('Retell sync error:', error);
-            const msg = error.response?.data?.error || 'Retell sync başarısız';
+            const msg = error.response?.data?.error || 'Senkronizasyon başarısız';
             alert(msg);
         } finally {
             setSyncingRetell(false);
@@ -327,10 +327,10 @@ const KnowledgeBase = () => {
                     className="btn btn-retell-sync"
                     onClick={handleRetellSync}
                     disabled={syncingRetell || knowledgeEntries.length === 0}
-                    title="Bilgi bankasını Retell AI sesli asistana senkronize et"
+                    title="Bilgi bankasını AI sesli asistana senkronize et"
                 >
                     {syncingRetell ? <RefreshCw size={16} className="spinning" /> : <Phone size={16} />}
-                    {syncingRetell ? 'Retell\'e Gönderiliyor...' : 'Retell\'e Sync Et'}
+                    {syncingRetell ? 'Gönderiliyor...' : 'Sesli Asistana Sync Et'}
                 </button>
             </div>
 

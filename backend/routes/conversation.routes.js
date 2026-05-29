@@ -25,7 +25,9 @@ import {
     updateFunnel,
     markUnread,
     claimConversation,
-    smartAssignConversation
+    smartAssignConversation,
+    getUnifiedTimeline,
+    getContactGroupedConversations
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -51,6 +53,12 @@ router.post('/:workspaceId/mark-all-read', requireWorkspaceAccess, markAllAsRead
 
 // Delete ALL conversations for workspace (admin only)
 router.delete('/:workspaceId/delete-all', requireWorkspaceAccess, deleteAllConversations);
+
+// Contact-grouped conversations (Birleşik Inbox)
+router.get('/:workspaceId/contact-grouped', requireWorkspaceAccess, getContactGroupedConversations);
+
+// Unified timeline for a contact
+router.get('/:workspaceId/unified-timeline/:contactId', requireWorkspaceAccess, getUnifiedTimeline);
 
 // Get conversations for workspace
 router.get('/:workspaceId', requireWorkspaceAccess, getConversations);

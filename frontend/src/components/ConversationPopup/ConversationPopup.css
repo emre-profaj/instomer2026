@@ -1,0 +1,111 @@
+.conv-popup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    backdrop-filter: blur(4px);
+}
+
+.conv-popup-modal {
+    background: #fff;
+    border-radius: 16px;
+    width: 480px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.2);
+    overflow: hidden;
+}
+
+.conv-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-bottom: 3px solid;
+    background: #f8fafc;
+}
+
+.conv-popup-channel-icon { font-size: 1.3rem; }
+.conv-popup-channel-label { font-weight: 600; font-size: 0.95rem; color: #1e293b; flex: 1; }
+
+.conv-popup-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+.conv-popup-close:hover { background: #f1f5f9; color: #334155; }
+
+.conv-popup-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 300px;
+    max-height: 60vh;
+}
+
+.conv-popup-msg {
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+
+.conv-popup-msg.incoming { align-self: flex-start; }
+.conv-popup-msg.outgoing { align-self: flex-end; }
+
+.conv-popup-msg-content {
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.conv-popup-msg.incoming .conv-popup-msg-content {
+    background: #f1f5f9;
+    color: #1e293b;
+    border-bottom-left-radius: 4px;
+}
+
+.conv-popup-msg.outgoing .conv-popup-msg-content {
+    background: #ef4444;
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.conv-popup-msg-content p { margin: 0; }
+
+.conv-popup-msg-time {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    margin-top: 2px;
+    padding: 0 4px;
+}
+.conv-popup-msg.outgoing .conv-popup-msg-time { text-align: right; }
+
+.conv-popup-loading, .conv-popup-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: #94a3b8;
+    font-size: 0.9rem;
+}
+
+.conv-popup-media img, .conv-popup-media video {
+    max-width: 100%;
+    border-radius: 8px;
+    margin-bottom: 6px;
+}
+
+.conv-popup-media audio { width: 100%; margin-bottom: 6px; }

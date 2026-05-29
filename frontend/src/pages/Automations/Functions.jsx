@@ -78,7 +78,7 @@ const Functions = () => {
                         <div className="info-banner">
                             <Zap size={20} />
                             <div>
-                                <strong>Retell Sesli Arama — Otomatik WhatsApp Gönderimleri:</strong> Retell agent arama sırasında müşteriye otomatik olarak konum, katalog, video veya randevu bilgisi gönderebilir. Aşağıdan aksiyonlarınızı tanımlayın, ardından Retell Dashboard'da bu URL'i fonksiyon olarak ekleyin.
+                                <strong>AI Sesli Arama — Otomatik WhatsApp Gönderimleri:</strong> AI Ses Agent arama sırasında müşteriye otomatik olarak konum, katalog, video veya randevu bilgisi gönderebilir. Aşağıdan aksiyonlarınızı tanımlayın, ardından Dashboard'da bu URL'i fonksiyon olarak ekleyin.
                             </div>
                         </div>
                         <div className="settings-wrapper">

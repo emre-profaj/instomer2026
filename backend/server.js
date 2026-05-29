@@ -414,6 +414,19 @@ setTimeout(() => {
   initKnowledgeCron();
 }, 65000);
 
+// WhatsApp Appointment Reminder Cron (1 gün önce hatırlatma)
+import { checkAndSendReminders } from './services/appointmentFunctions.service.js';
+setTimeout(() => {
+  console.log('📅 [WhatsApp Reminder] Starting appointment WhatsApp reminder (every 30 minutes)');
+  setInterval(async () => {
+    try {
+      await checkAndSendReminders();
+    } catch (error) {
+      console.error('❌ [WhatsApp Reminder] Error:', error.message);
+    }
+  }, 30 * 60 * 1000); // 30 dakikada bir kontrol
+}, 70000);
+
 // Sentiment Analyzer Cron Kapatıldı
 // import { startSentimentAnalyzer } from './services/sentiment.service.js';
 // setTimeout(() => {

@@ -55,8 +55,10 @@ export const createActivity = async (req, res) => {
         });
 
         // ── Akıllı intent algılama: zamanlama anahtar kelimesi varsa otomatik planlama ──
+        // NOT: Tamamlanmış arama notları (call notes) için intent parser ÇALIŞTIRILMAZ
+        // çünkü bunlar geçmişe dönük kayıtlardır, gelecek planları değil.
         let autoActivity = null;
-        if (newActivity.description) {
+        if (newActivity.description && resolvedStatus !== 'COMPLETED') {
             try {
                 const intent = parseCommentIntent(newActivity.description);
                 if (intent.hasIntent) {

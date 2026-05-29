@@ -155,7 +155,7 @@ export default function RetellActionsSettings({ workspaceId }) {
             <div className="retell-endpoint-card">
                 <div className="retell-endpoint-label">
                     <Zap size={14} />
-                    Retell'de tanımlayacağınız Function URL:
+                    Tanımlayacağınız Function URL:
                 </div>
                 <div className="retell-endpoint-url">
                     <code>{actionEndpoint}</code>
@@ -165,7 +165,7 @@ export default function RetellActionsSettings({ workspaceId }) {
                     </button>
                 </div>
                 <p className="retell-endpoint-hint">
-                    Retell Dashboard → Agent → Tools → "send_to_customer" fonksiyonu ekleyin.
+                    Dashboard → Agent → Tools → "send_to_customer" fonksiyonu ekleyin.
                     <code style={{ marginLeft: 6 }}>action</code> parametresi aşağıdaki "Aksiyon Key" değerlerinden biri olacak.
                 </p>
             </div>
@@ -202,7 +202,7 @@ export default function RetellActionsSettings({ workspaceId }) {
                             <div className="empty-state-small">
                                 <Zap size={28} style={{ color: '#d1d5db', marginBottom: 8 }} />
                                 <p>Henüz aksiyon tanımlanmadı.</p>
-                                <small>Retell agent arama sırasında konum, katalog, video vb. gönderebilsin diye aksiyonlar ekleyin.</small>
+                                <small>AI Ses Agent arama sırasında konum, katalog, video vb. gönderebilsin diye aksiyonlar ekleyin.</small>
                             </div>
                         ) : (
                             <div className="retell-actions-list">
@@ -277,7 +277,7 @@ export default function RetellActionsSettings({ workspaceId }) {
                                     />
                                 </div>
                                 <div>
-                                    <label className="form-label-sm">Aksiyon Key * <small style={{ color: '#9ca3af' }}>(Retell'den gelecek)</small></label>
+                                    <label className="form-label-sm">Aksiyon Key * <small style={{ color: '#9ca3af' }}>(Agent'dan gelecek)</small></label>
                                     <input
                                         className="input-modern"
                                         placeholder="location_hastane"
@@ -289,7 +289,7 @@ export default function RetellActionsSettings({ workspaceId }) {
                             </div>
 
                             <div>
-                                <label className="form-label-sm">Açıklama <small style={{ color: '#9ca3af' }}>(Retell agent ne zaman kullanacağını buradan anlar)</small></label>
+                                <label className="form-label-sm">Açıklama <small style={{ color: '#9ca3af' }}>(AI Ses Agent ne zaman kullanacağını buradan anlar)</small></label>
                                 <textarea
                                     className="input-modern"
                                     rows={2}
@@ -350,7 +350,7 @@ export default function RetellActionsSettings({ workspaceId }) {
                                     <label className="form-label-sm">Metin İçeriği *</label>
                                     <textarea className="input-modern" rows={4} placeholder="İletişim: 0212 xxx xx xx&#10;E-posta: info@firma.com&#10;Adres: ..." value={form.textContent} onChange={e => setField('textContent', e.target.value)} required />
                                     <small style={{ color: '#9ca3af', marginTop: 4, display: 'block' }}>
-                                        Retell agent {'"note"'} parametresiyle ek bilgi gönderirse (ör: randevu saati) metnin altına eklenir.
+                                        AI Ses Agent {'"note"'} parametresiyle ek bilgi gönderirse (ör: randevu saati) metnin altına eklenir.
                                     </small>
                                 </div>
                             )}
@@ -395,7 +395,7 @@ export default function RetellActionsSettings({ workspaceId }) {
                                     onChange={e => setField('isActive', e.target.checked)}
                                     style={{ width: 16, height: 16 }}
                                 />
-                                <label htmlFor="action-active" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Aktif (Retell bu aksiyonu çağırabilir)</label>
+                                <label htmlFor="action-active" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Aktif (AI Ses Agent bu aksiyonu çağırabilir)</label>
                             </div>
 
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>

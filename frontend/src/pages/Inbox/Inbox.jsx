@@ -15,6 +15,7 @@ import {
     UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
+import ConversationPopup from '../../components/ConversationPopup/ConversationPopup';
 import notificationService from '../../services/notificationService';
 import { useToast } from '../../components/Toast/Toast';
 import DatePicker from 'react-datepicker';
@@ -576,6 +577,7 @@ const Inbox = () => {
     const [selectedItem, setSelectedItem] = useState(null);
     const [selectedItemType, setSelectedItemType] = useState(null);
     const [showContactSidebar, setShowContactSidebar] = useState(() => window.innerWidth > 768);
+    const [convPopup, setConvPopup] = useState(null); // { conversationId, channel }
     const [plannedActivityMap, setPlannedActivityMap] = useState({});
     const [loading, setLoading] = useState(true);
     const [markingAllRead, setMarkingAllRead] = useState(false);
@@ -3100,20 +3102,20 @@ const Inbox = () => {
                             >
                                 Bana Atanan
                             </button>
+                            <button
+                                className={`assignment-tab ${assignmentTab === 'PENDING' ? 'active' : ''}`}
+                                onClick={() => setAssignmentTab('PENDING')}
+                            >
+                                Havuz
+                            </button>
                             {isOwner && (
                                 <button
-                                    className={`assignment-tab ${assignmentTab === 'PENDING' ? 'active' : ''}`}
-                                    onClick={() => setAssignmentTab('PENDING')}
+                                    className={`assignment-tab ${assignmentTab === 'ALL' ? 'active' : ''}`}
+                                    onClick={() => setAssignmentTab('ALL')}
                                 >
-                                    Bekleyen
+                                    Tümü
                                 </button>
                             )}
-                            <button
-                                className={`assignment-tab ${assignmentTab === 'ALL' ? 'active' : ''}`}
-                                onClick={() => setAssignmentTab('ALL')}
-                            >
-                                Tümü
-                            </button>
                         </div>
                     )}
                 </div>
@@ -3734,14 +3736,47 @@ const Inbox = () => {
                                                         // and trigger team auto-assignment
                                                         const updatePayload = { funnelStageId: newStage, funnelType: newFunnel };
                                                         await contactAPI.update(currentWorkspace.id, selectedItem.contact.id, { status: newStage });
-                                                        await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, updatePayload);
-                                                        setSelectedItem(prev => ({ ...prev, funnelType: newFunnel, contact: { ...prev.contact, status: newStage }, funnelStageId: newStage, _effectiveStageId: newStage }));
+                                                        
+                                                        let res = await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, updatePayload);
+                                                        
+                                                        if (res.data?.needsConfirmation) {
+                                                            const msg = `Bu konuşma ${res.data.currentAssignee.name} kullanıcısına atanmış. Yeni aşama bu konuşmayı ${res.data.suggestedAssignee.name} kullanıcısına atamayı öneriyor. Atamayı değiştirmek ister misiniz?`;
+                                                            const confirmUpdate = window.confirm(msg);
+                                                            res = await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                ...updatePayload,
+                                                                confirmAssignmentUpdate: confirmUpdate
+                                                            });
+                                                        }
+
+                                                        const responseData = res.data;
+                                                        setSelectedItem(prev => ({ 
+                                                            ...prev, 
+                                                            funnelType: newFunnel, 
+                                                            contact: { ...prev.contact, status: newStage }, 
+                                                            funnelStageId: newStage, 
+                                                            _effectiveStageId: newStage,
+                                                            assignedTeamId: responseData.assignedTeamId || prev.assignedTeamId,
+                                                            assignedToId: responseData.assignedToId || prev.assignedToId,
+                                                            assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : prev.assignedTo,
+                                                            teamIds: responseData.teamIds || prev.teamIds
+                                                        }));
+                                                        setInboxItems(prevItems => prevItems.map(item =>
+                                                            item.id === selectedItem.id ? { 
+                                                                ...item, 
+                                                                funnelType: newFunnel, 
+                                                                funnelStageId: newStage, 
+                                                                _effectiveStageId: newStage,
+                                                                assignedTeamId: responseData.assignedTeamId || item.assignedTeamId,
+                                                                assignedToId: responseData.assignedToId || item.assignedToId,
+                                                                assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : item.assignedTo,
+                                                                teamIds: responseData.teamIds || item.teamIds
+                                                            } : item
+                                                        ));
                                                         window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
                                                             detail: { conversationId: selectedItem.id, funnelStageId: newStage, stageName: changedStage?.label || changedStage?.name || newStage, stageColor: changedStage?.color || '#6366f1' }
                                                         }));
 
-                                                        // Re-fetch conversation after a short delay to pick up
-                                                        // the async team/user assignment made by the backend
+                                                        // Safety fallback re-fetch (delayed) to catch any async updates
                                                         setTimeout(async () => {
                                                             try {
                                                                 const res = await conversationAPI.getById(currentWorkspace.id, selectedItem.id);
@@ -3760,7 +3795,7 @@ const Inbox = () => {
                                                                     ));
                                                                 }
                                                             } catch (_) {}
-                                                        }, 800);
+                                                        }, 2000);
                                                     } catch (err) { console.error('Stage update error:', err); }
                                                 };
                                                 return (
@@ -4517,122 +4552,231 @@ const Inbox = () => {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="input-actions">
-                                                {/* Yorum Ekle Toggle — dahili yorum, müşteri göremez */}
-                                                <button
-                                                    type="button"
-                                                    className={`template-btn ${isInternalNoteMode ? 'active' : ''}`}
-                                                    onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
-                                                    title={isInternalNoteMode ? 'Yorum modu açık — müşteri göremez' : 'Dahili yorum ekle (sadece ekip görür)'}
-                                                    style={isInternalNoteMode ? { background: '#fefce8', color: '#a16207', borderColor: '#eab308' } : {}}
-                                                >
-                                                    <StickyNote size={14} />
-                                                    {isInternalNoteMode ? 'Yorum Modu ✓' : 'Yorum Ekle'}
-                                                </button>
-                                                {/* Oto Pilot Toggle */}
-                                                <div
-                                                    className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
-                                                    onClick={handleBotToggle}
-                                                    title={botEnabled ? 'Oto Pilot Aktif - Kapatmak için tıklayın' : 'Oto Pilot Kapalı - Açmak için tıklayın'}
-                                                >
-                                                    <Bot size={14} />
-                                                    <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
-                                                    {togglingBot && <Loader size={12} className="spin" />}
-                                                </div>
-                                                {/* WhatsApp Template Button - show for Lead or WhatsApp channel */}
-                                                {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP') && templates.length > 0 && (
-                                                    <div className="template-dropdown">
+                                            <div className="input-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', borderTop: '1px solid #f0f0f0' }}>
+                                                {/* LEFT SIDE: Channel Selector + Note + AutoPilot */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    {/* Channel Selector Dropdown */}
+                                                    <div style={{ position: 'relative' }}>
                                                         <button
                                                             type="button"
-                                                            className="template-btn"
-                                                            title="WhatsApp Şablon Gönder"
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                const dropdown = e.currentTarget.nextElementSibling;
-                                                                dropdown.classList.toggle('show');
+                                                            onClick={() => {
+                                                                const menu = document.getElementById('channel-selector-menu');
+                                                                if (menu) menu.classList.toggle('show');
+                                                            }}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 5,
+                                                                padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                background: isInternalNoteMode ? '#fefce8' : '#fff',
+                                                                cursor: 'pointer', fontSize: '0.82rem', fontWeight: 500,
+                                                                color: isInternalNoteMode ? '#a16207' : '#374151',
+                                                                transition: 'all 0.15s'
                                                             }}
                                                         >
-                                                            <Zap size={14} />
-                                                            Şablon
+                                                            <span style={{ fontSize: '0.9rem' }}>
+                                                                {isInternalNoteMode ? '📝' :
+                                                                 selectedItem?.channel === 'WHATSAPP' ? '💬' :
+                                                                 selectedItem?.channel === 'INSTAGRAM' ? '📸' :
+                                                                 selectedItem?.channel === 'FACEBOOK' ? '📘' :
+                                                                 selectedItem?.channel === 'FACEBOOK_COMMENT' ? '💬' :
+                                                                 selectedItem?.channel === 'EMAIL' ? '✉️' :
+                                                                 selectedItem?.channel === 'WIDGET' ? '🌐' :
+                                                                 selectedItem?.channel === 'PHONE' ? '📞' : '💬'}
+                                                            </span>
+                                                            {isInternalNoteMode ? 'Dahili Not' :
+                                                             selectedItem?.channel === 'WHATSAPP' ? 'WhatsApp' :
+                                                             selectedItem?.channel === 'INSTAGRAM' ? 'Instagram' :
+                                                             selectedItem?.channel === 'FACEBOOK' ? 'Messenger' :
+                                                             selectedItem?.channel === 'FACEBOOK_COMMENT' ? 'FB Yorum' :
+                                                             selectedItem?.channel === 'EMAIL' ? 'E-posta' :
+                                                             selectedItem?.channel === 'WIDGET' ? 'Web Widget' :
+                                                             selectedItem?.channel === 'PHONE' ? 'Telefon' :
+                                                             selectedItem?.channel || 'Mesaj'}
+                                                            <ChevronDown size={13} style={{ color: '#9ca3af' }} />
                                                         </button>
-                                                        <div className="template-dropdown-menu">
-                                                            {templates.filter(t => t.status === 'APPROVED').map(template => (
+                                                        <div
+                                                            id="channel-selector-menu"
+                                                            className="template-dropdown-menu"
+                                                            style={{
+                                                                position: 'absolute', bottom: '100%', left: 0,
+                                                                minWidth: 180, marginBottom: 4, zIndex: 100,
+                                                                background: '#fff', borderRadius: 10,
+                                                                boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+                                                                border: '1px solid #e5e7eb', overflow: 'hidden'
+                                                            }}
+                                                        >
+                                                            {/* Current channel option */}
+                                                            {selectedItem?.channel && !isInternalNoteMode && (
                                                                 <div
-                                                                    key={template.id}
-                                                                    className="template-dropdown-item"
+                                                                    style={{
+                                                                        padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+                                                                        fontSize: '0.83rem', color: '#374151', cursor: 'pointer',
+                                                                        background: '#f0f9ff', fontWeight: 600
+                                                                    }}
                                                                     onClick={() => {
-                                                                        openTemplateModal(template);
-                                                                        document.querySelector('.template-dropdown-menu.show')?.classList.remove('show');
+                                                                        setIsInternalNoteMode(false);
+                                                                        document.getElementById('channel-selector-menu')?.classList.remove('show');
                                                                     }}
                                                                 >
-                                                                    <span className="template-item-name">{template.name}</span>
-                                                                    <span className="template-item-category">{template.category}</span>
-                                                                </div>
-                                                            ))}
-                                                            {templates.filter(t => t.status === 'APPROVED').length === 0 && (
-                                                                <div className="template-dropdown-empty">
-                                                                    Onaylı şablon yok
+                                                                    <span>
+                                                                        {selectedItem.channel === 'WHATSAPP' ? '💬' :
+                                                                         selectedItem.channel === 'INSTAGRAM' ? '📸' :
+                                                                         selectedItem.channel === 'FACEBOOK' ? '📘' :
+                                                                         selectedItem.channel === 'EMAIL' ? '✉️' :
+                                                                         selectedItem.channel === 'WIDGET' ? '🌐' : '💬'}
+                                                                    </span>
+                                                                    {selectedItem.channel === 'WHATSAPP' ? 'WhatsApp' :
+                                                                     selectedItem.channel === 'INSTAGRAM' ? 'Instagram' :
+                                                                     selectedItem.channel === 'FACEBOOK' ? 'Messenger' :
+                                                                     selectedItem.channel === 'EMAIL' ? 'E-posta' :
+                                                                     selectedItem.channel === 'WIDGET' ? 'Web Widget' :
+                                                                     selectedItem.channel}
+                                                                    <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>
                                                                 </div>
                                                             )}
+                                                            {/* Internal Note option */}
+                                                            <div
+                                                                style={{
+                                                                    padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+                                                                    fontSize: '0.83rem', cursor: 'pointer',
+                                                                    color: isInternalNoteMode ? '#a16207' : '#374151',
+                                                                    background: isInternalNoteMode ? '#fefce8' : '#fff',
+                                                                    fontWeight: isInternalNoteMode ? 600 : 400,
+                                                                    borderTop: '1px solid #f3f4f6'
+                                                                }}
+                                                                onClick={() => {
+                                                                    setIsInternalNoteMode(!isInternalNoteMode);
+                                                                    document.getElementById('channel-selector-menu')?.classList.remove('show');
+                                                                }}
+                                                            >
+                                                                <span>📝</span>
+                                                                Dahili Not
+                                                                {isInternalNoteMode && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#eab308' }}>✓</span>}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                )}
-                                                {/* Hazır Mesaj Button */}
-                                                <div className="quick-reply-dropdown-container" ref={quickReplyDropdownRef}>
-                                                    <button
-                                                        type="button"
-                                                        className="quick-reply-btn"
-                                                        title="Hazır Mesajlar"
-                                                        onClick={() => setShowQuickReplyDropdown(!showQuickReplyDropdown)}
+
+                                                    {/* Separator */}
+                                                    <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
+
+                                                    {/* Oto Pilot Toggle */}
+                                                    <div
+                                                        className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
+                                                        onClick={handleBotToggle}
+                                                        title={botEnabled ? 'Oto Pilot Aktif' : 'Oto Pilot Kapalı'}
+                                                        style={{ fontSize: '0.8rem' }}
                                                     >
-                                                        <BookOpen size={14} />
-                                                        Hazır Mesaj
-                                                    </button>
-                                                    {showQuickReplyDropdown && (
-                                                        <div className="quick-reply-dropdown-menu">
-                                                            <div className="quick-reply-dropdown-header">
-                                                                <span>Hazır Mesajlar</span>
-                                                                <button type="button" onClick={() => { setShowQuickReplyModal(true); setShowQuickReplyDropdown(false); }}>
-                                                                    <Plus size={14} /> Yönet
-                                                                </button>
-                                                            </div>
-                                                            {quickReplies.length > 0 ? (
-                                                                quickReplies.map(qr => (
-                                                                    <div
-                                                                        key={qr.id}
-                                                                        className="quick-reply-dropdown-item"
-                                                                        onClick={() => handleSelectQuickReply(qr)}
-                                                                    >
-                                                                        <span className="qr-title">{qr.content.substring(0, 30)}</span>
-                                                                        <span className="qr-preview">{qr.content.substring(30, 90)}...</span>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <div className="quick-reply-dropdown-empty">
-                                                                    Henüz hazır mesaj yok
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                                        <Bot size={13} />
+                                                        <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
+                                                        {togglingBot && <Loader size={11} className="spin" />}
+                                                    </div>
                                                 </div>
 
-                                                <button
-                                                    type="button"
-                                                    className="ai-suggest-btn"
-                                                    onClick={fetchAiSuggestions}
-                                                    disabled={loadingSuggestions}
-                                                    title="AI Yanıt Önerileri"
-                                                >
-                                                    {loadingSuggestions ? (
-                                                        <Loader size={14} className="spin" />
-                                                    ) : (
-                                                        <Sparkles size={14} />
+                                                {/* RIGHT SIDE: Templates + Quick Reply + AI Assist + Send */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    {/* WhatsApp Template Button */}
+                                                    {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP') && templates.length > 0 && (
+                                                        <div className="template-dropdown">
+                                                            <button
+                                                                type="button"
+                                                                className="template-btn"
+                                                                title="WhatsApp Şablon Gönder"
+                                                                style={{ fontSize: '0.78rem', padding: '4px 8px' }}
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    const dropdown = e.currentTarget.nextElementSibling;
+                                                                    dropdown.classList.toggle('show');
+                                                                }}
+                                                            >
+                                                                <Zap size={13} />
+                                                                Şablon
+                                                            </button>
+                                                            <div className="template-dropdown-menu">
+                                                                {templates.filter(t => t.status === 'APPROVED').map(template => (
+                                                                    <div
+                                                                        key={template.id}
+                                                                        className="template-dropdown-item"
+                                                                        onClick={() => {
+                                                                            openTemplateModal(template);
+                                                                            document.querySelector('.template-dropdown-menu.show')?.classList.remove('show');
+                                                                        }}
+                                                                    >
+                                                                        <span className="template-item-name">{template.name}</span>
+                                                                        <span className="template-item-category">{template.category}</span>
+                                                                    </div>
+                                                                ))}
+                                                                {templates.filter(t => t.status === 'APPROVED').length === 0 && (
+                                                                    <div className="template-dropdown-empty">
+                                                                        Onaylı şablon yok
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     )}
-                                                    AI
-                                                </button>
-                                                <button type="submit" className="send-btn">
-                                                    <Send size={18} />
-                                                </button>
+                                                    {/* Hazır Mesaj Button */}
+                                                    <div className="quick-reply-dropdown-container" ref={quickReplyDropdownRef}>
+                                                        <button
+                                                            type="button"
+                                                            className="quick-reply-btn"
+                                                            title="Hazır Mesajlar"
+                                                            style={{ fontSize: '0.78rem', padding: '4px 8px' }}
+                                                            onClick={() => setShowQuickReplyDropdown(!showQuickReplyDropdown)}
+                                                        >
+                                                            <BookOpen size={13} />
+                                                            Hazır Mesaj
+                                                        </button>
+                                                        {showQuickReplyDropdown && (
+                                                            <div className="quick-reply-dropdown-menu">
+                                                                <div className="quick-reply-dropdown-header">
+                                                                    <span>Hazır Mesajlar</span>
+                                                                    <button type="button" onClick={() => { setShowQuickReplyModal(true); setShowQuickReplyDropdown(false); }}>
+                                                                        <Plus size={14} /> Yönet
+                                                                    </button>
+                                                                </div>
+                                                                {quickReplies.length > 0 ? (
+                                                                    quickReplies.map(qr => (
+                                                                        <div
+                                                                            key={qr.id}
+                                                                            className="quick-reply-dropdown-item"
+                                                                            onClick={() => handleSelectQuickReply(qr)}
+                                                                        >
+                                                                            <span className="qr-title">{qr.content.substring(0, 30)}</span>
+                                                                            <span className="qr-preview">{qr.content.substring(30, 90)}...</span>
+                                                                        </div>
+                                                                    ))
+                                                                ) : (
+                                                                    <div className="quick-reply-dropdown-empty">
+                                                                        Henüz hazır mesaj yok
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Separator */}
+                                                    <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
+
+                                                    {/* AI Assist Button */}
+                                                    <button
+                                                        type="button"
+                                                        className="ai-suggest-btn"
+                                                        onClick={fetchAiSuggestions}
+                                                        disabled={loadingSuggestions}
+                                                        title="AI Yanıt Önerileri"
+                                                        style={{ fontSize: '0.82rem', padding: '5px 10px', gap: 5 }}
+                                                    >
+                                                        {loadingSuggestions ? (
+                                                            <Loader size={13} className="spin" />
+                                                        ) : (
+                                                            <Sparkles size={13} />
+                                                        )}
+                                                        AI Assist
+                                                    </button>
+
+                                                    {/* Send Button */}
+                                                    <button type="submit" className="send-btn">
+                                                        <Send size={18} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </form>
@@ -5004,6 +5148,7 @@ const Inbox = () => {
                         currentUserId={user?.id}
                         onActivitySaved={handleActivitySaved}
                         onClose={() => setShowContactSidebar(false)}
+                        onOpenConversationPopup={(convId, channel) => setConvPopup({ conversationId: convId, channel })}
                     />
                 </div>
             )}
@@ -5312,6 +5457,17 @@ const Inbox = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+
+            {/* Kanal Yazışma Popup */}
+            {convPopup && (
+                <ConversationPopup
+                    workspaceId={currentWorkspace?.id}
+                    conversationId={convPopup.conversationId}
+                    channel={convPopup.channel}
+                    onClose={() => setConvPopup(null)}
+                />
             )}
 
         </div>

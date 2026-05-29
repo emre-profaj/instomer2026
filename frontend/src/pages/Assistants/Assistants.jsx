@@ -1515,7 +1515,7 @@ const Assistants = () => {
                                     <Phone size={18} />
                                 </div>
                                 <div>
-                                    <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: 0 }}>Arama Asistanları (Retell)</h2>
+                                    <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#111827', margin: 0 }}>Arama Asistanları (AI Ses Agent)</h2>
                                     <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Telefon aramalarını gerçekleştiren sesli yapay zeka asistanları.</p>
                                 </div>
                             </div>
@@ -1525,7 +1525,7 @@ const Assistants = () => {
                             ) : retellAgents.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
                                     <Phone size={36} color="#9ca3af" style={{ marginBottom: '12px' }} />
-                                    <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Yapılandırılmış arama asistanı bulunamadı. Lütfen Retell API entegrasyonunu kontrol edin veya ayarlardan yapılandırın.</p>
+                                    <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Yapılandırılmış arama asistanı bulunamadı. Lütfen API entegrasyonunu kontrol edin veya ayarlardan yapılandırın.</p>
                                 </div>
                             ) : (
                                 <div className="bots-grid">

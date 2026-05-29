@@ -365,14 +365,21 @@ const Funnels = () => {
                                                             {/* Takım seç */}
                                                             <select
                                                                 className="funnels-input funnels-stage-input"
-                                                                style={{ width: '130px', fontSize: '12px', padding: '4px 6px' }}
+                                                                style={{ 
+                                                                    width: '130px', fontSize: '12px', padding: '4px 6px',
+                                                                    ...(!(isEditingThis ? editingStage.teamId : stage.assignedTeamId) && funnel.assignedTeamId ? { color: '#9ca3af', fontStyle: 'italic' } : {})
+                                                                }}
                                                                 value={isEditingThis ? editingStage.teamId : (stage.assignedTeamId || '')}
                                                                 onChange={e => {
                                                                     const val = e.target.value;
                                                                     setEditingStage({ id: stage.id, teamId: val, userId: isEditingThis ? editingStage.userId : (stage.assignedUserId || ''), botId: isEditingThis ? editingStage.botId : (stage.assignedBotId || '') });
                                                                 }}
                                                             >
-                                                                <option value="">Takım Ata</option>
+                                                                <option value="">
+                                                                    {funnel.assignedTeamId 
+                                                                        ? `↑ ${teams.find(t => t.id === funnel.assignedTeamId)?.name || 'Üst Akış'}` 
+                                                                        : 'Takım Ata'}
+                                                                </option>
                                                                 {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                                             </select>
 
@@ -386,7 +393,11 @@ const Funnels = () => {
                                                                     setEditingStage({ id: stage.id, teamId: isEditingThis ? editingStage.teamId : (stage.assignedTeamId || ''), userId: val, botId: isEditingThis ? editingStage.botId : (stage.assignedBotId || '') });
                                                                 }}
                                                             >
-                                                                <option value="">Kişi Ata</option>
+                                                                <option value="">
+                                                                    {funnel.assignedUserId 
+                                                                        ? `↑ ${members.find(m => m.id === funnel.assignedUserId)?.name || 'Üst Akış'}` 
+                                                                        : 'Kişi Ata'}
+                                                                </option>
                                                                 {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                                             </select>
 
@@ -480,7 +491,11 @@ const Funnels = () => {
                                                     value={newStageTeamId}
                                                     onChange={e => setNewStageTeamId(e.target.value)}
                                                 >
-                                                    <option value="">Takım Ata</option>
+                                                <option value="">
+                                                    {funnel.assignedTeamId 
+                                                        ? `↑ ${teams.find(t => t.id === funnel.assignedTeamId)?.name || 'Üst Akış'}` 
+                                                        : 'Takım Ata'}
+                                                </option>
                                                     {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                                 </select>
                                                 <select

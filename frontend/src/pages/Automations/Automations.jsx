@@ -1635,7 +1635,7 @@ const Automations = () => {
                                             ))}
                                         </select>
                                         {retellAgents.length === 0 && (
-                                            <div className="form-hint" style={{color: '#e74c3c'}}>Kayıtlı Retell agent bulunamadı. Lütfen sesli asistan oluşturun.</div>
+                                            <div className="form-hint" style={{color: '#e74c3c'}}>Kayıtlı sesli asistan bulunamadı. Lütfen sesli asistan oluşturun.</div>
                                         )}
                                     </div>
                                 )}

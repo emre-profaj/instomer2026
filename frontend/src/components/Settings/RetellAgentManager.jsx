@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
     Bot, Save, Loader, RefreshCw, CheckCircle, AlertCircle,
-    ChevronDown, ChevronRight, BookOpen, Zap, Settings, Link
+    ChevronDown, ChevronRight, BookOpen, Zap, Settings, Link,
+    Play, Pause, Volume2
 } from 'lucide-react';
 
 const API_BASE = '/api';
@@ -22,10 +23,50 @@ export function RetellAgentManager({ workspaceId }) {
     const [beginMsg, setBeginMsg] = useState('');
     const [agentName, setAgentName] = useState('');
 
+    // Voice selection
+    const [voices, setVoices] = useState([]);
+    const [voiceId, setVoiceId] = useState('');
+    const [voicesLoading, setVoicesLoading] = useState(false);
+    const [playingVoiceId, setPlayingVoiceId] = useState(null);
+    const audioRef = useRef(null);
+
+    // Language selection
+    const [language, setLanguage] = useState('tr-TR');
+
+    // Behavior settings
+    const [showBehavior, setShowBehavior] = useState(false);
+    const [responsiveness, setResponsiveness] = useState(0.5);
+    const [interruptionSensitivity, setInterruptionSensitivity] = useState(0.5);
+    const [enableBackchannel, setEnableBackchannel] = useState(false);
+    const [ambientSound, setAmbientSound] = useState('');
+    const [endCallAfterSilenceMs, setEndCallAfterSilenceMs] = useState('');
+    const [boostedKeywords, setBoostedKeywords] = useState('');
+
     const isConvFlow = agentDetail?.response_engine?.type !== 'retell-llm';
 
+    const LANGUAGE_OPTIONS = [
+        { value: 'tr-TR', label: 'Türkçe' },
+        { value: 'en-US', label: 'İngilizce (ABD)' },
+        { value: 'en-GB', label: 'İngilizce (İngiltere)' },
+        { value: 'de-DE', label: 'Almanca' },
+        { value: 'fr-FR', label: 'Fransızca' },
+        { value: 'ar-SA', label: 'Arapça' },
+        { value: 'multi', label: 'Çok Dilli' }
+    ];
+
+    const AMBIENT_SOUND_OPTIONS = [
+        { value: '', label: 'Yok' },
+        { value: 'coffee-shop', label: '☕ Kafe' },
+        { value: 'convention-hall', label: '🏛️ Konferans Salonu' },
+        { value: 'summer-outdoor', label: '🌿 Yaz Dış Mekan' },
+        { value: 'call-center', label: '📞 Çağrı Merkezi' }
+    ];
+
     useEffect(() => {
-        if (workspaceId) fetchAgents();
+        if (workspaceId) {
+            fetchAgents();
+            fetchVoices();
+        }
     }, [workspaceId]);
 
     const fetchAgents = async () => {
@@ -37,6 +78,19 @@ export function RetellAgentManager({ workspaceId }) {
         }
     };
 
+    const fetchVoices = async () => {
+        setVoicesLoading(true);
+        try {
+            const res = await axios.get(`${API_BASE}/retell/${workspaceId}/voices`);
+            setVoices(res.data.voices || res.data || []);
+        } catch (e) {
+            console.error('Error fetching voices:', e);
+            setVoices([]);
+        } finally {
+            setVoicesLoading(false);
+        }
+    };
+
     const selectAgent = async (agentId) => {
         if (!agentId) { setAgentDetail(null); setLlmDetail(null); return; }
         setSelectedAgentId(agentId);
@@ -44,16 +98,64 @@ export function RetellAgentManager({ workspaceId }) {
         setMessage(null);
         try {
             const res = await axios.get(`${API_BASE}/retell/${workspaceId}/agents/${agentId}`);
-            setAgentDetail(res.data.agent);
+            const agent = res.data.agent;
+            setAgentDetail(agent);
             setLlmDetail(res.data.llm);
-            setAgentName(res.data.agent?.agent_name || '');
+            setAgentName(agent?.agent_name || '');
             setPrompt(res.data.llm?.general_prompt || '');
             setBeginMsg(res.data.llm?.begin_message || '');
+            // Voice & language
+            setVoiceId(agent?.voice_id || '');
+            setLanguage(agent?.language || 'tr-TR');
+            // Behavior
+            setResponsiveness(agent?.responsiveness ?? 0.5);
+            setInterruptionSensitivity(agent?.interruption_sensitivity ?? 0.5);
+            setEnableBackchannel(agent?.enable_backchannel ?? false);
+            setAmbientSound(agent?.ambient_sound || '');
+            setEndCallAfterSilenceMs(agent?.end_call_after_silence_ms || '');
+            setBoostedKeywords((agent?.boosted_keywords || []).join(', '));
         } catch (e) {
             setMessage({ type: 'error', text: 'Agent bilgisi alınamadı: ' + (e.response?.data?.error || e.message) });
         } finally {
             setLoading(false);
         }
+    };
+
+    const handlePlayVoice = (voice) => {
+        const url = voice.preview_audio_url;
+        if (!url) return;
+
+        if (playingVoiceId === voice.voice_id) {
+            // Stop
+            if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+            setPlayingVoiceId(null);
+            return;
+        }
+        // Stop previous
+        if (audioRef.current) { audioRef.current.pause(); }
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        setPlayingVoiceId(voice.voice_id);
+        audio.play().catch(() => {});
+        audio.onended = () => { setPlayingVoiceId(null); audioRef.current = null; };
+    };
+
+    // Group voices: Turkish first, then English, then Other
+    const groupedVoices = () => {
+        const turkish = [];
+        const english = [];
+        const other = [];
+        voices.forEach(v => {
+            const lang = (v.language || v.accent || '').toLowerCase();
+            if (lang.includes('tr') || lang.includes('turk')) {
+                turkish.push(v);
+            } else if (lang.includes('en') || lang.includes('eng')) {
+                english.push(v);
+            } else {
+                other.push(v);
+            }
+        });
+        return { turkish, english, other };
     };
 
     const handleSave = async () => {
@@ -66,14 +168,43 @@ export function RetellAgentManager({ workspaceId }) {
                 payload.generalPrompt = prompt;
                 payload.beginMessage = beginMsg;
             }
+            // Voice & language
+            payload.voiceId = voiceId;
+            payload.language = language;
+            // Behavior
+            payload.responsiveness = responsiveness;
+            payload.interruptionSensitivity = interruptionSensitivity;
+            payload.enableBackchannel = enableBackchannel;
+            payload.ambientSound = ambientSound;
+            payload.endCallAfterSilenceMs = endCallAfterSilenceMs ? Number(endCallAfterSilenceMs) : undefined;
+            payload.boostedKeywords = boostedKeywords ? boostedKeywords.split(',').map(k => k.trim()).filter(Boolean) : undefined;
+
             await axios.patch(`${API_BASE}/retell/${workspaceId}/agents/${selectedAgentId}/prompt`, payload);
-            setMessage({ type: 'success', text: '✅ Agent Retell\'e başarıyla kaydedildi!' });
+            setMessage({ type: 'success', text: '✅ Agent başarıyla kaydedildi!' });
         } catch (e) {
             setMessage({ type: 'error', text: e.response?.data?.error || 'Kayıt başarısız' });
         } finally {
             setSaving(false);
         }
     };
+
+    // Slider component
+    const SliderField = ({ label, value, onChange, min = 0, max = 1, step = 0.1, hint }) => (
+        <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151' }}>{label}</label>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1', background: '#eef2ff', padding: '1px 8px', borderRadius: 6 }}>{value}</span>
+            </div>
+            <input
+                type="range"
+                min={min} max={max} step={step}
+                value={value}
+                onChange={e => onChange(parseFloat(e.target.value))}
+                style={{ width: '100%', accentColor: '#6366f1' }}
+            />
+            {hint && <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 2 }}>{hint}</div>}
+        </div>
+    );
 
     return (
         <div>
@@ -134,7 +265,7 @@ export function RetellAgentManager({ workspaceId }) {
                                 background: isConvFlow ? '#fef9c3' : '#ecfdf5',
                                 color: isConvFlow ? '#854d0e' : '#065f46'
                             }}>
-                                {isConvFlow ? 'Conversation Flow' : 'Retell LLM'}
+                                {isConvFlow ? 'Conversation Flow' : 'AI LLM'}
                             </span>
                         </div>
                         {agentDetail.voice_id && (
@@ -163,10 +294,108 @@ export function RetellAgentManager({ workspaceId }) {
                         />
                     </div>
 
+                    {/* ─── Ses Seçimi ──────────────────────────────────────────── */}
+                    <div>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                            <Volume2 size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                            Ses Seçimi
+                        </label>
+                        {voicesLoading ? (
+                            <div style={{ padding: '8px 0', fontSize: '0.82rem', color: '#9ca3af' }}>
+                                <Loader size={14} className="spin" style={{ verticalAlign: 'middle', marginRight: 6 }} />
+                                Sesler yükleniyor...
+                            </div>
+                        ) : voices.length === 0 ? (
+                            <div style={{ padding: '10px 14px', background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, fontSize: '0.82rem', color: '#92400e' }}>
+                                Ses listesi yüklenemedi veya boş.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <select
+                                    value={voiceId}
+                                    onChange={e => setVoiceId(e.target.value)}
+                                    style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', background: '#fff' }}
+                                >
+                                    <option value="">— Ses Seçin —</option>
+                                    {(() => {
+                                        const { turkish, english, other } = groupedVoices();
+                                        return (
+                                            <>
+                                                {turkish.length > 0 && (
+                                                    <optgroup label="🇹🇷 Türkçe">
+                                                        {turkish.map(v => (
+                                                            <option key={v.voice_id} value={v.voice_id}>
+                                                                {v.gender === 'female' ? '♀' : '♂'} {v.voice_name || v.voice_id}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                {english.length > 0 && (
+                                                    <optgroup label="🇬🇧 English">
+                                                        {english.map(v => (
+                                                            <option key={v.voice_id} value={v.voice_id}>
+                                                                {v.gender === 'female' ? '♀' : '♂'} {v.voice_name || v.voice_id}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                                {other.length > 0 && (
+                                                    <optgroup label="🌍 Diğer">
+                                                        {other.map(v => (
+                                                            <option key={v.voice_id} value={v.voice_id}>
+                                                                {v.gender === 'female' ? '♀' : '♂'} {v.voice_name || v.voice_id}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </select>
+                                {/* Play preview button */}
+                                {voiceId && (() => {
+                                    const selectedVoice = voices.find(v => v.voice_id === voiceId);
+                                    if (!selectedVoice?.preview_audio_url) return null;
+                                    return (
+                                        <button
+                                            onClick={() => handlePlayVoice(selectedVoice)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                width: 36, height: 36, borderRadius: 8, border: '1px solid #e5e7eb',
+                                                background: playingVoiceId === voiceId ? '#eef2ff' : '#fff',
+                                                cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s'
+                                            }}
+                                            title="Sesi Dinle"
+                                        >
+                                            {playingVoiceId === voiceId
+                                                ? <Pause size={14} style={{ color: '#6366f1' }} />
+                                                : <Play size={14} style={{ color: '#6366f1' }} />
+                                            }
+                                        </button>
+                                    );
+                                })()}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ─── Dil Seçimi ──────────────────────────────────────────── */}
+                    <div>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Dil</label>
+                        <select
+                            value={language}
+                            onChange={e => setLanguage(e.target.value)}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.87rem', background: '#fff', boxSizing: 'border-box' }}
+                        >
+                            {LANGUAGE_OPTIONS.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* Prompt Editörü */}
                     {isConvFlow ? (
                         <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 14px', fontSize: '0.82rem', color: '#92400e' }}>
-                            ⚠️ Bu agent <strong>Conversation Flow</strong> kullanıyor. Prompt düzenleme desteklenmiyor — sadece Agent Adı değiştirilebilir. Prompt'u Retell Dashboard'dan düzenleyin.
+                            ⚠️ Bu agent <strong>Conversation Flow</strong> kullanıyor. Prompt düzenleme desteklenmiyor — sadece Agent Adı değiştirilebilir. Prompt'u Dashboard'dan düzenleyin.
                         </div>
                     ) : (
                         <>
@@ -193,11 +422,146 @@ export function RetellAgentManager({ workspaceId }) {
                                     placeholder="Sen Özel Sağlık Hastanesi'nin telefon asistanısın. Görevin..."
                                 />
                                 <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 4 }}>
-                                    {prompt.length} karakter — Retell'e kaydettiğinizde anında aktif olur.
+                                    {prompt.length} karakter — kaydettiğinizde anında aktif olur.
                                 </div>
+                                {/* Dynamic Variables Guide */}
+                                <details style={{ marginTop: 8, fontSize: '0.78rem', color: '#6b7280' }}>
+                                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#6366f1', userSelect: 'none' }}>
+                                        🏷️ Dinamik Değişkenler — Prompt'ta kullanılabilir
+                                    </summary>
+                                    <div style={{ marginTop: 6, padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e5e7eb', lineHeight: 1.8 }}>
+                                        <div style={{ marginBottom: 4, fontWeight: 600, color: '#374151' }}>Arama başlatılırken otomatik doldurulur:</div>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{customer_name}}'}</code> — Müşteri adı<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{interest_topic}}'}</code> — İlgilendiği konu (form/sınıflandırma)<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{company_name}}'}</code> — Şirket/klinik adı<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{customer_email}}'}</code> — Müşteri e-posta<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{customer_tags}}'}</code> — Müşteri etiketleri<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{lead_source}}'}</code> — Lead kaynağı (WhatsApp, Form vb.)<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{form_data}}'}</code> — Form verileri özeti<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{last_customer_message}}'}</code> — Son müşteri mesajı<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{contact_channel}}'}</code> — İletişim kanalı<br/>
+                                        <code style={{ background: '#eef2ff', padding: '1px 5px', borderRadius: 4, color: '#4338ca' }}>{'{{classification}}'}</code> — AI sınıflandırma sonucu<br/>
+                                        <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#9ca3af' }}>
+                                            💡 Örnek: "Merhaba {'{{customer_name}}'}, {'{{interest_topic}}'} hakkında bilgi almak istemiştiniz..."
+                                        </div>
+                                    </div>
+                                </details>
                             </div>
                         </>
                     )}
+
+                    {/* ─── Davranış Ayarları (Expandable) ─────────────────────── */}
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+                        <button
+                            onClick={() => setShowBehavior(!showBehavior)}
+                            style={{
+                                width: '100%', padding: '12px 16px', background: showBehavior ? '#f8faff' : '#f9fafb',
+                                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                                fontSize: '0.85rem', fontWeight: 600, color: '#374151', transition: 'background 0.15s'
+                            }}
+                        >
+                            <Settings size={15} style={{ color: '#6366f1' }} />
+                            Davranış Ayarları
+                            {showBehavior ? <ChevronDown size={15} style={{ marginLeft: 'auto' }} /> : <ChevronRight size={15} style={{ marginLeft: 'auto' }} />}
+                        </button>
+
+                        {showBehavior && (
+                            <div style={{ padding: '16px 16px 8px', borderTop: '1px solid #e5e7eb' }}>
+
+                                {/* Responsiveness */}
+                                <SliderField
+                                    label="Yanıt Hızı"
+                                    value={responsiveness}
+                                    onChange={setResponsiveness}
+                                    hint="Düşük = daha sabırlı bekler, Yüksek = hızlı yanıt verir"
+                                />
+
+                                {/* Interruption Sensitivity */}
+                                <SliderField
+                                    label="Kesme Hassasiyeti"
+                                    value={interruptionSensitivity}
+                                    onChange={setInterruptionSensitivity}
+                                    hint="Düşük = kolay kesilmez, Yüksek = müşteri sözünü kolayca kesebilir"
+                                />
+
+                                {/* Backchannel Toggle */}
+                                <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151' }}>Ara Onaylama (hmm, evet)</div>
+                                        <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>Dinlerken küçük onay sesleri çıkarır</div>
+                                    </div>
+                                    <label style={{ position: 'relative', display: 'inline-block', width: 44, height: 24, flexShrink: 0 }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={enableBackchannel}
+                                            onChange={e => setEnableBackchannel(e.target.checked)}
+                                            style={{ opacity: 0, width: 0, height: 0 }}
+                                        />
+                                        <span style={{
+                                            position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0,
+                                            backgroundColor: enableBackchannel ? '#6366f1' : '#d1d5db',
+                                            borderRadius: 24, transition: 'all 0.2s'
+                                        }}>
+                                            <span style={{
+                                                position: 'absolute', content: '""', height: 18, width: 18,
+                                                left: enableBackchannel ? 22 : 3, bottom: 3,
+                                                backgroundColor: 'white', borderRadius: '50%', transition: 'all 0.2s',
+                                                boxShadow: '0 1px 3px rgba(0,0,0,0.15)'
+                                            }} />
+                                        </span>
+                                    </label>
+                                </div>
+
+                                {/* Ambient Sound */}
+                                <div style={{ marginBottom: 14 }}>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>Arka Plan Sesi</label>
+                                    <select
+                                        value={ambientSound}
+                                        onChange={e => setAmbientSound(e.target.value)}
+                                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', background: '#fff', boxSizing: 'border-box' }}
+                                    >
+                                        {AMBIENT_SOUND_OPTIONS.map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* End Call After Silence */}
+                                <div style={{ marginBottom: 14 }}>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                                        Sessizlikte Kapat (ms)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={endCallAfterSilenceMs}
+                                        onChange={e => setEndCallAfterSilenceMs(e.target.value)}
+                                        placeholder="ör: 30000 (30 saniye)"
+                                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                                    />
+                                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 3 }}>
+                                        Belirtilen süre boyunca sessizlik olursa arama otomatik sonlandırılır. Boş bırakırsanız devre dışı kalır.
+                                    </div>
+                                </div>
+
+                                {/* Boosted Keywords */}
+                                <div style={{ marginBottom: 8 }}>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
+                                        Vurgulanan Kelimeler
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={boostedKeywords}
+                                        onChange={e => setBoostedKeywords(e.target.value)}
+                                        placeholder="randevu, doktor, ameliyat, sigorta"
+                                        style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                                    />
+                                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 3 }}>
+                                        Virgülle ayırarak yazın. Bu kelimeler ses tanıma sırasında önceliklendirilir.
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <button
@@ -210,7 +574,7 @@ export function RetellAgentManager({ workspaceId }) {
                             }}
                         >
                             {saving ? <Loader size={16} className="spin" /> : <Save size={16} />}
-                            {saving ? 'Retell\'e Gönderiliyor...' : 'Retell\'e Kaydet'}
+                            {saving ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
                     </div>
                 </div>
@@ -325,7 +689,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 16px', display: 'flex', gap: 12, alignItems: 'center' }}>
                     <CheckCircle size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
                     <div>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#166534' }}>Retell KB Bağlı</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#166534' }}>Bilgi Bankası Bağlı</div>
                         <code style={{ fontSize: '0.78rem', color: '#6b7280' }}>{syncedKbId}</code>
                         {syncedKbInfo && <span style={{ fontSize: '0.78rem', color: '#6b7280', marginLeft: 8 }}>— {syncedKbInfo.knowledge_base_name}</span>}
                         {lastSynced && <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 2 }}>Son sync: {lastSynced.toLocaleString('tr-TR')}</div>}
@@ -338,7 +702,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <BookOpen size={15} style={{ color: '#6366f1' }} />
                     Instomer Bilgi Bankalarım
-                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 400 }}>— Retell'e gönderilecekleri seçin</span>
+                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 400 }}>— Ses Agent'a gönderilecekleri seçin</span>
                 </div>
                 {instomerKbs.length === 0 ? (
                     <div style={{ padding: '20px 16px', background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, fontSize: '0.82rem', color: '#92400e' }}>
@@ -383,7 +747,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                     onChange={e => setSelectedAgentId(e.target.value)}
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.87rem', background: '#fff' }}
                 >
-                    <option value="">— Varsayılan Agent (Retell ayarlarından) —</option>
+                    <option value="">— Varsayılan Agent (Genel Ayarlardan) —</option>
                     {agents.map(a => (
                         <option key={a.agent_id} value={a.agent_id}>
                             {a.agent_name || a.agent_id}
@@ -391,7 +755,7 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                     ))}
                 </select>
                 <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
-                    Boş bırakırsanız Retell Genel Ayarları'ndaki varsayılan agent kullanılır.
+                    Boş bırakırsanız Genel Ayarlar'daki varsayılan agent kullanılır.
                 </div>
             </div>
 
@@ -408,15 +772,15 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                     }}
                 >
                     {syncing ? <Loader size={16} className="spin" /> : <RefreshCw size={16} />}
-                    {syncing ? 'Retell\'e Gönderiliyor...' : `${selectedKbIds.length} KB'yi Retell'e Sync Et`}
+                    {syncing ? 'Gönderiliyor...' : `${selectedKbIds.length} KB'yi Sync Et`}
                 </button>
             </div>
 
-            {/* Retell'deki tüm KB'ler */}
+            {/* Mevcut Bilgi Bankaları */}
             {retellKbs.length > 0 && (
                 <div style={{ marginTop: 8 }}>
                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Retell'deki Mevcut KB'ler
+                        Mevcut Bilgi Bankaları
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {retellKbs.map(kb => (

@@ -287,19 +287,34 @@ const ChatPopup = ({ conversationId, onClose }) => {
         setStageMegaMenuOpen(false);
         if (!conversation || !conversation.contact) return;
         
-        if (newFunnel !== (conversation.funnelType || '')) {
-            try { await conversationAPI.updateFunnel(currentWorkspace.id, conversation.id, { funnelType: newFunnel }); } catch {}
-        }
         try {
             await contactAPI.update(currentWorkspace.id, conversation.contact.id, { status: newStage });
-            await conversationAPI.updateFunnel(currentWorkspace.id, conversation.id, { funnelStageId: newStage });
-            setConversation(prev => ({ 
-                ...prev, 
-                funnelType: newFunnel, 
-                contact: { ...prev.contact, status: newStage }, 
-                funnelStageId: newStage, 
-                _effectiveStageId: newStage 
-            }));
+            const updatePayload = { funnelStageId: newStage, funnelType: newFunnel };
+            let res = await conversationAPI.updateFunnel(currentWorkspace.id, conversation.id, updatePayload);
+            
+            if (res.data?.needsConfirmation) {
+                const msg = `Bu konuşma ${res.data.currentAssignee.name} kullanıcısına atanmış. Yeni aşama bu konuşmayı ${res.data.suggestedAssignee.name} kullanıcısına atamayı öneriyor. Atamayı değiştirmek ister misiniz?`;
+                const confirmUpdate = window.confirm(msg);
+                res = await conversationAPI.updateFunnel(currentWorkspace.id, conversation.id, {
+                    ...updatePayload,
+                    confirmAssignmentUpdate: confirmUpdate
+                });
+            }
+
+            // Fetch the updated conversation details to keep state in sync
+            const updatedConvRes = await conversationAPI.getById(currentWorkspace.id, conversation.id);
+            const conv = updatedConvRes.data.conversation || updatedConvRes.data;
+            if (conv) {
+                setConversation(conv);
+            } else {
+                setConversation(prev => ({ 
+                    ...prev, 
+                    funnelType: newFunnel, 
+                    contact: { ...prev.contact, status: newStage }, 
+                    funnelStageId: newStage, 
+                    _effectiveStageId: newStage 
+                }));
+            }
         } catch (err) { 
             console.error('Stage update error:', err); 
         }

@@ -149,8 +149,16 @@ model Workspace {
   retellAutoCallDelay     Int      @default(30)  // seconds to wait before calling
   retellAutoCallSchedule  Json?    // { start: "09:00", end: "18:00", days: [1,2,3,4,5] }
 
+  // AI Devralma Ayarları (workspace seviyesi — genel varsayılan)
+  aiFallbackEnabled       Boolean  @default(false) // İnsan aramadığında AI devreye girsin mi?
+  aiFallbackDelayMinutes  Int      @default(60)    // Kaç dk sonra AI devralır
+  aiFallbackPoolEnabled   Boolean  @default(false) // Havuzdaki sahipsiz görevleri AI alsın mı?
+
   // Gayrimenkul
   realEstateEnabled Boolean @default(false)
+
+  // Varsayılan Dil (agent'ta boşsa buradan alınır)
+  defaultLanguage String @default("tr-TR") // tr-TR, en-US, en-GB, de-DE, fr-FR, ar-SA, multi
 
   @@index([companyId])
   @@map("workspaces")
@@ -394,6 +402,7 @@ model Conversation {
   emailChannel          EmailChannel?          @relation(fields: [emailChannelId], references: [id])
   internalNotes         InternalNote[]
   messages              Message[]
+  events                ConversationEvent[]
   formSubmissions       FormSubmission[]
 
   // Performance indexes for high-frequency cron queries
@@ -542,6 +551,29 @@ model ConversationTransfer {
   @@map("conversation_transfers")
 }
 
+// Konuşma Olay Günlüğü — timeline'da inline gösterilecek
+model ConversationEvent {
+  id              String       @id @default(uuid())
+  conversationId  String
+  contactId       String
+  workspaceId     String
+  eventType       String       // ASSIGNED, TEAM_CHANGED, FUNNEL_CHANGED, STAGE_CHANGED,
+                               // AUTOMATION_TRIGGERED, BOT_RESPONDED, MESSAGE_READ,
+                               // STATUS_CHANGED, TRANSFERRED, CLAIMED, CLASSIFIED
+  title           String       // Human-readable: "Dilan'a atandı"
+  details         String?      @db.Text // JSON ek bilgiler
+  actorId         String?      // Kim tetikledi
+  actorType       String       @default("SYSTEM") // USER, BOT, SYSTEM, AUTOMATION
+  createdAt       DateTime     @default(now())
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, createdAt])
+  @@index([conversationId, createdAt])
+  @@index([workspaceId])
+  @@map("conversation_events")
+}
+
 model Team {
   id              String                 @id @default(uuid())
   workspaceId     String
@@ -555,6 +587,11 @@ model Team {
   children        Team[]                 @relation("TeamHierarchy")
   assignmentRule  String                 @default("POOL") // POOL | ROUND_ROBIN | LEAST_BUSY
   roundRobinIndex Int                    @default(0)
+
+  // AI Devralma Ayarları (takım seviyesi — workspace'i override eder)
+  aiFallbackEnabled      Boolean?  // null = workspace ayarını kullan, true/false = override
+  aiFallbackDelayMinutes Int?      // null = workspace ayarını kullan
+
   createdAt       DateTime               @default(now())
   transfers       ConversationTransfer[]
   members         TeamMember[]
@@ -1070,19 +1107,20 @@ model QuickReply {
 
 // Scheduled AI Calls
 model ScheduledCall {
-  id            String   @id @default(uuid())
-  workspaceId   String
-  contactId     String?
-  contactName   String?
-  toNumber      String
-  agentId       String?
-  scheduledAt   DateTime
-  status        String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED
-  retellCallId  String?
-  errorMessage  String?
-  createdById   String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String   @id @default(uuid())
+  workspaceId      String
+  contactId        String?
+  contactName      String?
+  toNumber         String
+  agentId          String?
+  scheduledAt      DateTime
+  status           String   @default("PENDING") // PENDING, COMPLETED, FAILED, CANCELLED
+  retellCallId     String?
+  errorMessage     String?
+  createdById      String
+  dynamicVariables String?  @db.Text // JSON: { customer_name, interest_topic, source, custom_instruction, ... }
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -1363,9 +1401,18 @@ model ContactActivity {
   result          String?      @db.Text // Tamamlama notu / sonuç
   source          String       @default("MANUAL") // MANUAL | AUTOMATION | RETELL | SYSTEM
   priority        String       @default("NORMAL") // LOW | NORMAL | HIGH | URGENT
-  assignedToId    String?      // Atanan agent
+  assignedToId    String?      // Atanan agent (insan)
   teamId          String?      // Atanan takım
   createdBy       String?      // Oluşturan user id (Sistem/Bot ise null)
+
+  // ─── Birleşik Arama Planlama ───────────────────────────────
+  callTopic       String?      // Arama konusu (Obezite Cerrahisi, Tanurla Loft vb.)
+  aiAgentId       String?      // Doğrudan AI agent'a atandıysa
+  fallbackToAi    Boolean      @default(false) // İnsan yapmazsa AI devralsın mı?
+  fallbackDelayMinutes Int     @default(60)    // Kaç dk sonra AI devralır
+  aiFallbackTriggered  Boolean @default(false) // AI devralma tetiklendi mi?
+  // ──────────────────────────────────────────────────────────
+
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -1378,6 +1425,7 @@ model ContactActivity {
   @@index([contactId, createdAt])
   @@index([workspaceId])
   @@index([status])
+  @@index([type, status, dueDate])  // Overdue call query optimization
   @@map("contact_activities")
 }
 

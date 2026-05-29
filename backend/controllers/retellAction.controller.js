@@ -152,6 +152,47 @@ export const handleRetellAction = async (req, res) => {
             return res.status(200).json({ result: 'Hata: action parametresi eksik.' });
         }
 
+        // ── Built-in Fonksiyonlar: Randevu Sistemi ──
+        const APPOINTMENT_FUNCTIONS = ['check_availability', 'book_appointment', 'cancel_appointment', 'list_appointments'];
+        if (APPOINTMENT_FUNCTIONS.includes(actionKey)) {
+            try {
+                const { executeAppointmentFunction } = await import('../services/appointmentFunctions.service.js');
+                
+                // Retell'den gelen parametreleri düzenle
+                const fnParams = { ...args };
+                delete fnParams.action;
+                delete fnParams.action_key;
+                
+                // Eğer müşteri telefonu args'ta yoksa, call'dan al
+                if (!fnParams.customer_phone && (actionKey === 'book_appointment' || actionKey === 'cancel_appointment' || actionKey === 'list_appointments')) {
+                    const customerPhone = await resolveCustomerPhone(workspaceId, callId, fromNumber);
+                    if (customerPhone) fnParams.customer_phone = customerPhone;
+                }
+                
+                // conversation_id bul (eğer varsa)
+                if (!fnParams.conversation_id && callId) {
+                    const callRecord = await prisma.retellCall.findFirst({ where: { callId, workspaceId } });
+                    if (callRecord?.contactId) {
+                        const conv = await prisma.conversation.findFirst({ where: { workspaceId, contactId: callRecord.contactId } });
+                        if (conv) fnParams.conversation_id = conv.id;
+                    }
+                }
+
+                const result = await executeAppointmentFunction(actionKey, workspaceId, fnParams);
+                console.log(`[RetellAction] ✅ ${actionKey} → ${result.success ? 'başarılı' : 'hata'}`);
+                
+                // Retell'e okunabilir sonuç döndür
+                return res.status(200).json({ 
+                    result: result.success 
+                        ? (result.message || result.summary || JSON.stringify(result)) 
+                        : (result.error || 'İşlem başarısız')
+                });
+            } catch (fnErr) {
+                console.error(`[RetellAction] ❌ ${actionKey} error:`, fnErr.message);
+                return res.status(200).json({ result: `Randevu işlemi sırasında hata: ${fnErr.message}` });
+            }
+        }
+
         // 1. Aksiyon konfigürasyonunu bul
         const action = await prisma.retellAction.findFirst({
             where: {

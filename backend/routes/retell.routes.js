@@ -29,7 +29,11 @@ import {
     updateAgentPrompt,
     listKnowledgeBases,
     syncKnowledgeBase,
-    updateAgentKnowledgeBases
+    updateAgentKnowledgeBases,
+    listVoices,
+    searchVoices,
+    createAgent,
+    deleteAgent
 } from '../controllers/retell.controller.js';
 
 const router = express.Router();
@@ -47,6 +51,7 @@ router.put('/:workspaceId/settings', requireWorkspaceAccess, saveSettings);
 
 // Agents
 router.get('/:workspaceId/agents', requireWorkspaceAccess, getAgents);
+router.post('/:workspaceId/agents', requireWorkspaceAccess, createAgent);
 
 // Calls
 router.post('/:workspaceId/call', requireWorkspaceAccess, makeCall);
@@ -71,11 +76,16 @@ router.post('/:workspaceId/actions', requireWorkspaceAccess, createAction);
 router.put('/:workspaceId/actions/:id', requireWorkspaceAccess, updateAction);
 router.delete('/:workspaceId/actions/:id', requireWorkspaceAccess, deleteAction);
 
-// Agent Management (Instomer'dan Retell agent yönetimi)
+// Agent Management
 router.get('/:workspaceId/agents/:agentId', requireWorkspaceAccess, getAgent);
 router.patch('/:workspaceId/agents/:agentId/prompt', requireWorkspaceAccess, updateAgentPrompt);
+router.delete('/:workspaceId/agents/:agentId', requireWorkspaceAccess, deleteAgent);
 
-// Knowledge Base Sync (Instomer KB → Retell KB)
+// Voice Management
+router.get('/:workspaceId/voices', requireWorkspaceAccess, listVoices);
+router.get('/:workspaceId/voices/search', requireWorkspaceAccess, searchVoices);
+
+// Knowledge Base Sync
 router.get('/:workspaceId/knowledge-bases', requireWorkspaceAccess, listKnowledgeBases);
 router.post('/:workspaceId/knowledge-bases/sync', requireWorkspaceAccess, syncKnowledgeBase);
 router.patch('/:workspaceId/agents/:agentId/knowledge-bases', requireWorkspaceAccess, updateAgentKnowledgeBases);

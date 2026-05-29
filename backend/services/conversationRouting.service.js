@@ -95,6 +95,20 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
             }
         });
 
+        // Takım atama kuralına göre kişi ata (POOL modunda assignedToId null kalır)
+        if (isNewConversation && routing.teamId) {
+            try {
+                const { assignToTeamMember } = await import('./teamAssignment.service.js');
+                const assignedUserId = await assignToTeamMember(routing.teamId, conversationId);
+                if (assignedUserId) {
+                    // updatedConversation'a da ekle socket eventleri için
+                    updatedConversation.assignedToId = assignedUserId;
+                }
+            } catch (e) {
+                console.error('❌ [Routing] Team assignment error:', e.message);
+            }
+        }
+
         console.log(`📡 [Routing] ✅ Channel ${channel} → Team "${routing.team?.name}" (Bot delay: ${isNewConversation ? botDelaySeconds + 's' : 'SKIPPED'}, Bot: ${routing.botEnabled ? 'Active' : 'Disabled'})`);
 
         // Socket ile ekip üyelerine bildirim gönder

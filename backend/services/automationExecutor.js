@@ -158,20 +158,32 @@ async function handleScheduleAppointment(automation, context) {
 
 // ─── START_CALL ──────────────────────────────────────────────────
 async function handleStartCall(automation, context) {
-    const { workspaceId, contactId } = context;
+    const { workspaceId, contactId, conversationId, message } = context;
 
     const contact = await prisma.contact.findUnique({ where: { id: contactId } });
     if (!contact?.phone) return { success: false, error: 'Kişinin telefon numarası yok' };
 
-    // Use Retell triggerAutoCall with optional custom agentId
+    // Build dynamic variables from automation context
+    const dynVars = {};
+    if (automation.callAgentId) dynVars.override_agent = automation.callAgentId;
+    if (automation.name) dynVars.automation_name = automation.name;
+
+    // If automation has custom instructions for the call, pass them
+    if (automation.callInstructions) {
+        dynVars.custom_instruction = automation.callInstructions;
+    }
+
+    // Use Retell triggerAutoCall with dynamic variables
     await triggerAutoCall(
         workspaceId,
         contact.phone,
         contactId,
         contact.name || 'Müşteri',
         'AUTOMATION',
-        null, // no message content
-        new Date()
+        message || null,
+        new Date(),
+        null, // no explicit preferred window
+        Object.keys(dynVars).length > 0 ? dynVars : null // extraDynamicVariables
     );
 
     console.log(`📞 [AutomationExecutor] START_CALL: ${contact.phone} (agent: ${automation.callAgentId || 'default'})`);

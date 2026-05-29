@@ -271,7 +271,7 @@ const Teams = () => {
             loadTeams();
         } catch (error) {
             console.error('Error adding Retell agent:', error);
-            alert('Retell arama asistanı eklenemedi.');
+            alert('Arama asistanı eklenemedi.');
         }
     };
 
@@ -481,17 +481,34 @@ const Teams = () => {
                                 {team.children.length} alt takım
                             </span>
                         )}
-                        <span style={{
-                            marginLeft: 'auto',
-                            fontSize: '0.72rem',
-                            padding: '2px 8px',
-                            borderRadius: 20,
-                            background: team.assignmentRule === 'ROUND_ROBIN' ? '#fef3c7' : team.assignmentRule === 'LEAST_BUSY' ? '#dcfce7' : '#eff6ff',
-                            color: team.assignmentRule === 'ROUND_ROBIN' ? '#92400e' : team.assignmentRule === 'LEAST_BUSY' ? '#166534' : '#1e40af',
-                            fontWeight: 500,
-                        }}>
-                            {team.assignmentRule === 'ROUND_ROBIN' ? '🔄 Sıralı' : team.assignmentRule === 'LEAST_BUSY' ? '📊 En Az Yoğun' : '🏊 Havuz'}
-                        </span>
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Atama Kuralı:</span>
+                            <select
+                                value={team.assignmentRule || 'POOL'}
+                                onChange={async (e) => {
+                                    try {
+                                        await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: e.target.value });
+                                        const updateNested = (list) => list.map(t => {
+                                            if (t.id === team.id) return { ...t, assignmentRule: e.target.value };
+                                            if (t.children) return { ...t, children: updateNested(t.children) };
+                                            return t;
+                                        });
+                                        setTeams(prev => updateNested(prev));
+                                    } catch (err) {
+                                        console.error('Assignment rule update error:', err);
+                                    }
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                    fontSize: '0.75rem', padding: '3px 8px', borderRadius: '6px',
+                                    border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer'
+                                }}
+                            >
+                                <option value="POOL">🏊 Havuz (İlk alan üstlenir)</option>
+                                <option value="ROUND_ROBIN">🔄 Sırayla Dağıt</option>
+                                <option value="LEAST_BUSY">📊 En Az Yoğuna Ata</option>
+                            </select>
+                        </div>
                     </div>
 
                     <button className="manage-members-btn" onClick={() => openMembersModal(team)}>

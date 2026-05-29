@@ -318,7 +318,15 @@ export const conversationAPI = {
 
     // Mark conversation as unread
     markUnread: (workspaceId, conversationId) =>
-        api.patch(`/conversations/${workspaceId}/${conversationId}/mark-unread`)
+        api.patch(`/conversations/${workspaceId}/${conversationId}/mark-unread`),
+
+    // Unified Timeline — Contact bazlı birleşik timeline
+    getUnifiedTimeline: (workspaceId, contactId, params) =>
+        api.get(`/conversations/${workspaceId}/unified-timeline/${contactId}`, { params }),
+
+    // Contact-Grouped — Contact bazlı gruplu konuşma listesi
+    getContactGrouped: (workspaceId, params) =>
+        api.get(`/conversations/${workspaceId}/contact-grouped`, { params }),
 };
 
 // Funnel API (user-defined pipeline categories)
@@ -462,7 +470,10 @@ export const appointmentAPI = {
     update: (workspaceId, id, data) => api.put(`/appointments/${workspaceId}/${id}`, data),
     delete: (workspaceId, id) => api.delete(`/appointments/${workspaceId}/${id}`),
     getAvailability: (workspaceId, params) => api.get(`/appointments/${workspaceId}/availability`, { params }),
-    getAgents: (workspaceId) => api.get(`/appointments/${workspaceId}/agents`)
+    getAgents: (workspaceId) => api.get(`/appointments/${workspaceId}/agents`),
+    // Bot fonksiyonları: check_availability, book_appointment, cancel_appointment, list_appointments
+    executeFunction: (workspaceId, functionName, params) => api.post(`/appointments/${workspaceId}/functions/${functionName}`, params),
+    sendReminders: (workspaceId) => api.post(`/appointments/${workspaceId}/send-reminders`)
 };
 
 // Appointment Config API (Branch & Doctor Management)
@@ -602,6 +613,8 @@ export const retellAPI = {
     saveSettings: (workspaceId, data) => api.put(`/retell/${workspaceId}/settings`, data),
     getAgents: (workspaceId) => api.get(`/retell/${workspaceId}/agents`),
     getAgent: (workspaceId, agentId) => api.get(`/retell/${workspaceId}/agents/${agentId}`),
+    createAgent: (workspaceId, data) => api.post(`/retell/${workspaceId}/agents`, data),
+    deleteAgent: (workspaceId, agentId) => api.delete(`/retell/${workspaceId}/agents/${agentId}`),
     updateAgentPrompt: (workspaceId, agentId, data) => api.patch(`/retell/${workspaceId}/agents/${agentId}/prompt`, data),
     makeCall: (workspaceId, data) => api.post(`/retell/${workspaceId}/call`, data),
     getCallHistory: (workspaceId, params = {}) => {
@@ -619,7 +632,13 @@ export const retellAPI = {
     bulkRetryCall: (workspaceId, callIds) => api.post(`/retell/${workspaceId}/bulk-retry`, { callIds }),
     syncCalls: (workspaceId) => api.post(`/retell/${workspaceId}/sync-calls`),
     syncSingleCall: (workspaceId, callId) => api.post(`/retell/${workspaceId}/sync-single-call`, { callId }),
-    syncKnowledgeBase: (workspaceId) => api.post(`/retell/${workspaceId}/knowledge-bases/sync`)
+    syncKnowledgeBase: (workspaceId) => api.post(`/retell/${workspaceId}/knowledge-bases/sync`),
+    // Voice management
+    listVoices: (workspaceId) => api.get(`/retell/${workspaceId}/voices`),
+    searchVoices: (workspaceId, params = {}) => {
+        const query = new URLSearchParams(params).toString();
+        return api.get(`/retell/${workspaceId}/voices/search${query ? `?${query}` : ''}`);
+    }
 };
 
 

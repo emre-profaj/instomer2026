@@ -65,7 +65,7 @@ Bu mesaj belirtilen niyetle örtüşüyor mu? Sadece "EVET" veya "HAYIR" ile cev
 }
 
 // ─── Funnel Stage'e taşıma ────────────────────────────────────
-async function moveConversationToFunnel(conversation, funnelId, botId = null, teamId = null, workspaceId = null) {
+async function moveConversationToFunnel(conversation, funnelId, botId = null, teamId = null, workspaceId = null, skipAssignment = false) {
     try {
         console.log(`🚦 [ROUTER:MOVE] Funnel aranıyor: ${funnelId}`);
 
@@ -98,42 +98,48 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
         };
         if (firstStage?.id) updateData.funnelStageId = firstStage.id;
 
-        // Opsiyonel atamalar — doğru kolon adlarıyla
-        const effectiveBotId = botId || firstStage?.assignedBotId || null;
+        // ── Atama mantığı: Manuel atanmış konuşmaları EZMEMELİ ──
+        if (skipAssignment) {
+            console.log(`🚦 [ROUTER:MOVE] skipAssignment=true → mevcut atama korunuyor`);
+        } else {
+            // Opsiyonel atamalar — doğru kolon adlarıyla
+            const effectiveBotId = botId || firstStage?.assignedBotId || null;
 
-        // Takım atama: Rule target > Stage > Funnel fallback
-        let effectiveTeamId = teamId || firstStage?.assignedTeamId || null;
-        let effectiveUserId = firstStage?.assignedUserId || null;
+            // Takım atama: Rule target > Stage > Funnel fallback
+            let effectiveTeamId = teamId || firstStage?.assignedTeamId || null;
+            let effectiveUserId = firstStage?.assignedUserId || null;
 
-        // Stage'de takım/kişi yoksa, Funnel seviyesine bak
-        if (!effectiveTeamId && funnel.assignedTeamId) {
-            effectiveTeamId = funnel.assignedTeamId;
-            console.log(`📂 [ROUTER:MOVE] Funnel-level takım kullanılıyor: ${effectiveTeamId}`);
-        }
-        if (!effectiveUserId && funnel.assignedUserId) {
-            effectiveUserId = funnel.assignedUserId;
-            console.log(`📂 [ROUTER:MOVE] Funnel-level kişi kullanılıyor: ${effectiveUserId}`);
-        }
+            // Stage'de takım/kişi yoksa, Funnel seviyesine bak
+            if (!effectiveTeamId && funnel.assignedTeamId) {
+                effectiveTeamId = funnel.assignedTeamId;
+                console.log(`📂 [ROUTER:MOVE] Funnel-level takım kullanılıyor: ${effectiveTeamId}`);
+            }
+            if (!effectiveUserId && funnel.assignedUserId) {
+                effectiveUserId = funnel.assignedUserId;
+                console.log(`📂 [ROUTER:MOVE] Funnel-level kişi kullanılıyor: ${effectiveUserId}`);
+            }
 
-        if (effectiveBotId) updateData.assignedBotId = effectiveBotId;
-        if (effectiveTeamId) {
-            updateData.assignedTeamId = effectiveTeamId;
-            updateData.teamIds = JSON.stringify([effectiveTeamId]);
+            if (effectiveBotId) updateData.assignedBotId = effectiveBotId;
+            if (effectiveTeamId) {
+                updateData.assignedTeamId = effectiveTeamId;
+                updateData.teamIds = JSON.stringify([effectiveTeamId]);
 
-            // Round-robin ile takımdan kişi ata (kişi henüz belirlenmediyse)
-            if (!effectiveUserId) {
-                try {
-                    const rrUserId = await assignRoundRobin(effectiveTeamId, conversation.id);
-                    if (rrUserId) {
-                        effectiveUserId = rrUserId;
-                        console.log(`👥 [ROUTER:MOVE] Round-Robin → user: ${rrUserId}`);
+                // Takım atama kuralına göre kişi ata (POOL/ROUND_ROBIN/LEAST_BUSY)
+                if (!effectiveUserId) {
+                    try {
+                        const { assignToTeamMember } = await import('./teamAssignment.service.js');
+                        const rrUserId = await assignToTeamMember(effectiveTeamId, conversation.id);
+                        if (rrUserId) {
+                            effectiveUserId = rrUserId;
+                            console.log(`👥 [ROUTER:MOVE] TeamAssignment → user: ${rrUserId}`);
+                        }
+                    } catch (rrErr) {
+                        console.error(`[ROUTER:MOVE] Team assignment error:`, rrErr.message);
                     }
-                } catch (rrErr) {
-                    console.error(`[ROUTER:MOVE] Round-robin error:`, rrErr.message);
                 }
             }
+            if (effectiveUserId) updateData.assignedToId = effectiveUserId;
         }
-        if (effectiveUserId) updateData.assignedToId = effectiveUserId;
 
         console.log(`🚦 [ROUTER:MOVE] Güncelleme yapılıyor:`, JSON.stringify(updateData));
 
@@ -211,11 +217,19 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message) {
 
         const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            select: { id: true, funnelType: true }
+            select: { id: true, funnelType: true, assignedToId: true }
         });
 
         console.log(`🚦 [ROUTER] conversation: ${JSON.stringify(conversation)}`);
         if (!conversation) { console.log('🚦 [ROUTER] conversation bulunamadı!'); return { matched: false }; }
+
+        // ── Zaten bir funnel'da ve birine atanmışsa, tekrar yönlendirme! ──
+        const alreadyRouted = !!conversation.funnelType;
+        const alreadyAssigned = !!conversation.assignedToId;
+        if (alreadyRouted && alreadyAssigned) {
+            console.log(`🚦 [ROUTER] Konuşma zaten funnel'da (${conversation.funnelType}) ve atanmış (${conversation.assignedToId}) → ATLANIYOR`);
+            return { matched: false };
+        }
 
         for (const rule of rules) {
             let conditions = {};
@@ -258,7 +272,8 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message) {
                     targets.funnelId,
                     targets.botId || null,
                     targets.teamId || null,
-                    workspaceId
+                    workspaceId,
+                    alreadyAssigned // skipAssignment: zaten birine atanmışsa atamayı ezme
                 );
                 console.log('🚦 [ROUTER] Taşıma tamamlandı:', result ? 'başarılı' : 'sonuç yok');
                 return { matched: true, rule, result };

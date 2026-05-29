@@ -70,10 +70,42 @@ router.delete(
     deleteAppointment
 );
 
+// ─── Bot/AI Function Endpoints ───────────────────────────────────────────────
+// Bu endpoint'ler AI botlar ve Retell tarafından function calling ile kullanılır
+
+import { executeAppointmentFunction, checkAndSendReminders } from '../services/appointmentFunctions.service.js';
+
+// Generic dispatcher: POST /:workspaceId/functions/:functionName
+router.post(
+    '/:workspaceId/functions/:functionName',
+    requireWorkspaceAccess,
+    async (req, res) => {
+        try {
+            const { workspaceId, functionName } = req.params;
+            const result = await executeAppointmentFunction(functionName, workspaceId, req.body);
+            res.json(result);
+        } catch (error) {
+            console.error(`❌ [AppointmentFn] ${req.params.functionName} error:`, error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+);
+
+// Manual reminder trigger
+router.post(
+    '/:workspaceId/send-reminders',
+    requireWorkspaceAccess,
+    async (req, res) => {
+        try {
+            const result = await checkAndSendReminders();
+            res.json(result);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+);
+
 export default router;
-
-
-
 
 
 
