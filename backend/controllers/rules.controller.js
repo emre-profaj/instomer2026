@@ -504,7 +504,7 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 contactId: contact.id,
                 type: 'CALL',
                 title: 'Arama Planlandı (Otomatik)',
-                description: `Müşteri telefon numarası paylaştı. Otomatik arama planlandı.\nNumara: ${contact.phone || messageContent.match(phoneRegex)?.[0] || '-'}`,
+                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${conversation.subject || conversation.topic || '-'}\nNumara: ${contact.phone || messageContent.match(phoneRegex)?.[0] || '-'}\nKaynak: ${conversation.channel || '-'}`,
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
@@ -546,11 +546,18 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
 
         const config = rule ? safeParseJSON(rule.config, {}) : {};
 
-        // 2. Get contact
+        // 2. Get contact + latest conversation for context
         const contact = await prisma.contact.findUnique({
             where: { id: contactId }
         });
         if (!contact || !contact.phone || !contact.phone.trim()) return;
+
+        // Get latest conversation for topic/channel info
+        const latestConversation = await prisma.conversation.findFirst({
+            where: { workspaceId, contactId },
+            orderBy: { updatedAt: 'desc' },
+            select: { subject: true, topic: true, channel: true }
+        });
 
         // 3. Check if there's already a PLANNED call activity for this contact (avoid duplicates)
         const existingCall = await prisma.contactActivity.findFirst({
@@ -633,7 +640,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 contactId,
                 type: 'CALL',
                 title: 'Arama Planlandı (Otomatik)',
-                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nNumara: ${contact.phone}\nKaynak: ${source}`,
+                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${latestConversation?.subject || latestConversation?.topic || '-'}\nNumara: ${contact.phone}\nKaynak: ${source}${latestConversation?.channel ? ' (' + latestConversation.channel + ')' : ''}`,
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,

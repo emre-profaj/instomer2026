@@ -144,6 +144,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [deals, setDeals] = useState([]);
     const [dealsLoading, setDealsLoading] = useState(false);
     const [contactConversations, setContactConversations] = useState([]);
+    const [localConvOverride, setLocalConvOverride] = useState(null);
     const [newNote, setNewNote] = useState('');
     const [savingNote, setSavingNote] = useState(false);
     const [notesExpanded, setNotesExpanded] = useState(false);
@@ -274,6 +275,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
     // conversationData prop değişince local atama state'ini sync et
     useEffect(() => {
+        setLocalConvOverride(null); // Reset override when conversation changes
         if (conversationData) {
             const tid = conversationData.teamIds ? (JSON.parse(conversationData.teamIds)[0] || '') : '';
             setLocalTeamId(tid);
@@ -728,7 +730,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }
     };
 
-    const activeConv = conversationData || (contactConversations.length > 0 ? contactConversations[0] : null);
+    const activeConv = localConvOverride || conversationData || (contactConversations.length > 0 ? contactConversations[0] : null);
 
     const handleAssign = async (teamId, userId) => {
         if (!activeConv) return;
@@ -740,11 +742,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 } else {
                     await conversationAPI.assign(currentWorkspace.id, activeConv.id, { userId: userId || null });
                 }
-                // Update local state in contactConversations
+                // Update local state in contactConversations AND local override
+                const updatedAssign = { assignedToId: userId || null, assignedTo: userId ? members.find(m => m.id === userId) : null };
+                setLocalConvOverride(prev => ({ ...(prev || activeConv), ...updatedAssign }));
                 setContactConversations(prev => prev.map(c =>
-                    c.id === activeConv.id
-                        ? { ...c, assignedToId: userId || null, assignedTo: userId ? members.find(m => m.id === userId) : null }
-                        : c
+                    c.id === activeConv.id ? { ...c, ...updatedAssign } : c
                 ));
             } else {
                 if (onAssignTeam) {
@@ -753,6 +755,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                     await conversationAPI.assign(currentWorkspace.id, activeConv.id, { teamId: teamId || null });
                 }
                 const newTeamIds = teamId ? JSON.stringify([teamId]) : '[]';
+                setLocalConvOverride(prev => ({ ...(prev || activeConv), teamIds: newTeamIds }));
                 setContactConversations(prev => prev.map(c =>
                     c.id === activeConv.id ? { ...c, teamIds: newTeamIds } : c
                 ));
@@ -774,10 +777,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             }
             const myId = currentUserId || user?.id;
             const myName = user?.name || 'Ben';
+            const claimUpdate = { assignedToId: myId, assignedTo: { id: myId, name: myName } };
+            setLocalConvOverride(prev => ({ ...(prev || activeConv), ...claimUpdate }));
             setContactConversations(prev => prev.map(c =>
-                c.id === activeConv.id
-                    ? { ...c, assignedToId: myId, assignedTo: { id: myId, name: myName } }
-                    : c
+                c.id === activeConv.id ? { ...c, ...claimUpdate } : c
             ));
         } catch (err) {
             console.error('Claim error:', err);

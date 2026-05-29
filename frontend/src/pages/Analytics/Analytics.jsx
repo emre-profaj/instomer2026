@@ -4,7 +4,8 @@ import {
     TrendingUp, Calendar, Filter, MoreHorizontal,
     Instagram, Facebook, Mail, Globe, MessageCircle,
     UserCheck, Clock, CheckCircle2, ChevronRight, Zap,
-    ClipboardList, Briefcase, Headphones, Truck, Building2, DollarSign, Wallet
+    ClipboardList, Briefcase, Headphones, Truck, Building2, DollarSign, Wallet,
+    Phone, PhoneOff
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, dealAPI, funnelAPI } from '../../services/api';
@@ -21,6 +22,7 @@ const Analytics = () => {
     const [selectedFunnel, setSelectedFunnel] = useState('');
     const [isInitialDataLoaded, setIsInitialDataLoaded] = useState(false);
     const [error, setError] = useState(null);
+    const [contactStats, setContactStats] = useState(null);
 
     // Date filter states
     const [dateFilter, setDateFilter] = useState('7d');
@@ -77,6 +79,14 @@ const Analytics = () => {
             setAnalytics(analyticsRes.data);
             setAgentPerformance(performanceRes.data);
             setError(null);
+
+            // Load contact daily stats
+            try {
+                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, { days: 30 });
+                setContactStats(statsRes.data);
+            } catch (e) {
+                console.warn('Contact stats load failed:', e.message);
+            }
         } catch (err) {
             console.error('Analytics load error:', err);
             setError('Veriler yüklenirken bir hata oluştu.');
@@ -193,6 +203,136 @@ const Analytics = () => {
                 </div>
             </div>
 
+
+            {/* Contact Analytics Panel */}
+            {contactStats && (
+                <div style={{
+                    background: '#fff', borderRadius: '16px', padding: '20px',
+                    border: '1px solid #e5e7eb', marginBottom: '20px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '20px' }}>
+                        <div style={{
+                            background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', borderRadius: '12px',
+                            padding: '16px', display: 'flex', alignItems: 'center', gap: '12px'
+                        }}>
+                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Users size={20} color="#fff" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toplam Kişi</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#312e81' }}>{contactStats.totals?.total || 0}</div>
+                            </div>
+                        </div>
+                        <div style={{
+                            background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)', borderRadius: '12px',
+                            padding: '16px', display: 'flex', alignItems: 'center', gap: '12px'
+                        }}>
+                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <Phone size={20} color="#fff" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Telefonlu</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#064e3b' }}>{contactStats.totals?.withPhone || 0}</div>
+                            </div>
+                        </div>
+                        <div style={{
+                            background: 'linear-gradient(135deg, #fef2f2, #fecaca)', borderRadius: '12px',
+                            padding: '16px', display: 'flex', alignItems: 'center', gap: '12px'
+                        }}>
+                            <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <PhoneOff size={20} color="#fff" />
+                            </div>
+                            <div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Telefonsuz</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#991b1b' }}>{contactStats.totals?.withoutPhone || 0}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Chart */}
+                    <div style={{ position: 'relative' }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6b7280', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <span>Günlük Gelen Kişi Sayısı</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ width: 10, height: 3, background: '#6366f1', borderRadius: 2, display: 'inline-block' }}></span>
+                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Toplam</span>
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ width: 10, height: 3, background: '#10b981', borderRadius: 2, display: 'inline-block' }}></span>
+                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Telefonlu</span>
+                            </span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <span style={{ width: 10, height: 3, background: '#ef4444', borderRadius: 2, display: 'inline-block' }}></span>
+                                <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>Telefonsuz</span>
+                            </span>
+                        </div>
+                        {(() => {
+                            const stats = contactStats.dailyStats || [];
+                            if (!stats.length) return <p style={{ color: '#9ca3af', fontSize: '0.85rem' }}>Veri yok</p>;
+                            const maxVal = Math.max(...stats.map(s => s.total), 1);
+                            const w = 900, h = 180, padL = 40, padR = 10, padT = 10, padB = 30;
+                            const chartW = w - padL - padR, chartH = h - padT - padB;
+                            const stepX = chartW / Math.max(stats.length - 1, 1);
+
+                            const makeLine = (key) => stats.map((s, i) => {
+                                const x = padL + i * stepX;
+                                const y = padT + chartH - (s[key] / maxVal) * chartH;
+                                return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+                            }).join(' ');
+
+                            const makeArea = (key) => {
+                                const line = stats.map((s, i) => {
+                                    const x = padL + i * stepX;
+                                    const y = padT + chartH - (s[key] / maxVal) * chartH;
+                                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                                });
+                                return `M${padL},${padT + chartH} L${line.join(' L')} L${padL + (stats.length - 1) * stepX},${padT + chartH} Z`;
+                            };
+
+                            const ySteps = 4;
+                            const yLabels = Array.from({ length: ySteps + 1 }, (_, i) => Math.round(maxVal * i / ySteps));
+                            const showEvery = stats.length > 30 ? 7 : stats.length > 14 ? 3 : 2;
+
+                            return (
+                                <div style={{ overflowX: 'auto' }}>
+                                    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', maxHeight: '220px' }}>
+                                        {yLabels.map((val, i) => {
+                                            const y = padT + chartH - (val / maxVal) * chartH;
+                                            return (
+                                                <g key={i}>
+                                                    <line x1={padL} y1={y} x2={w - padR} y2={y} stroke="#f1f5f9" strokeWidth="0.5" />
+                                                    <text x={padL - 5} y={y + 3} textAnchor="end" fill="#94a3b8" fontSize="8">{val}</text>
+                                                </g>
+                                            );
+                                        })}
+                                        <path d={makeArea('total')} fill="#6366f120" />
+                                        <path d={makeArea('withPhone')} fill="#10b98115" />
+                                        <path d={makeLine('total')} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                        <path d={makeLine('withPhone')} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4,2" />
+                                        <path d={makeLine('withoutPhone')} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="2,2" />
+                                        {stats.map((s, i) => {
+                                            const x = padL + i * stepX;
+                                            const yTotal = padT + chartH - (s.total / maxVal) * chartH;
+                                            return (
+                                                <g key={i}>
+                                                    <circle cx={x} cy={yTotal} r="2.5" fill="#6366f1" />
+                                                    <title>{`${s.date}\nToplam: ${s.total}\nTelefonlu: ${s.withPhone}\nTelefonsuz: ${s.withoutPhone}`}</title>
+                                                    {i % showEvery === 0 && (
+                                                        <text x={x} y={h - 5} textAnchor="middle" fill="#94a3b8" fontSize="7">
+                                                            {s.date.slice(5)}
+                                                        </text>
+                                                    )}
+                                                </g>
+                                            );
+                                        })}
+                                    </svg>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
 
             {/* Top Stats Overview */}
             <div className="stats-overview-grid">

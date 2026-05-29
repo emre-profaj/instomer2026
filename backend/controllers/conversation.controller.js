@@ -895,7 +895,7 @@ export const assignConversation = async (req, res) => {
             contactId: conversation.contact?.id,
             workspaceId,
             eventType: 'ASSIGNED',
-            title: `${conversation.assignedTo?.name || 'Bilinmeyen'} kullanıcısına atandı`,
+            title: `Konuşma <b>${conversation.assignedTo?.name || 'Bilinmeyen'}</b> kullanıcısına atandı`,
             actorId: req.user?.id,
             actorType: 'USER'
         }).catch(() => {});
@@ -1106,7 +1106,7 @@ export const updateConversationStatus = async (req, res) => {
             conversationId,
             workspaceId,
             eventType: 'STATUS_CHANGED',
-            title: status === 'RESOLVED' ? 'Konuşma çözüldü' : 'Konuşma yeniden açıldı',
+            title: status === 'RESOLVED' ? 'Konuşma <b>çözüldü</b>' : 'Konuşma <b>yeniden açıldı</b>',
             actorId: userId,
             actorType: 'USER'
         }).catch(() => {});
@@ -1761,7 +1761,7 @@ export const getPendingTransfers = async (req, res) => {
 export const createManualConversation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone, email, description, channel, funnelType, funnelStageId, date } = req.body;
+        const { name, phone, email, description, channel, funnelType, funnelStageId, date, aiTopic } = req.body;
 
         console.log(`📝 [Manual Conversation] Creating for workspace: ${workspaceId}`);
 
@@ -1852,7 +1852,8 @@ export const createManualConversation = async (req, res) => {
                     teamIds: '[]',
                     assignedToId: req.user.id,
                     ...(funnelType && { funnelType }),
-                    ...(funnelStageId && { funnelStageId })
+                    ...(funnelStageId && { funnelStageId }),
+                    ...(aiTopic && { aiTopic })
                 },
                 include: {
                     contact: true
@@ -1948,7 +1949,7 @@ export const toggleBotEnabled = async (req, res) => {
             conversationId,
             workspaceId,
             eventType: 'BOT_TOGGLED',
-            title: `Oto Pilot ${conversation.botEnabled ? 'açıldı' : 'kapatıldı'}`,
+            title: `Oto Pilot <b>${conversation.botEnabled ? 'açıldı' : 'kapatıldı'}</b>`,
             actorId: req.user?.id,
             actorType: 'USER'
         }).catch(() => {});
@@ -2280,28 +2281,48 @@ export const updateFunnel = async (req, res) => {
         }
 
 
-        // Log funnel/stage change events
+        // Log funnel/stage change events (with names)
         if (funnelChanged) {
-            logEvent({
-                conversationId,
-                workspaceId,
-                eventType: 'FUNNEL_CHANGED',
-                title: `Akış değiştirildi`,
-                details: { from: existing.funnelType, to: funnelType },
-                actorId: req.user?.id,
-                actorType: 'USER'
-            }).catch(() => {});
+            (async () => {
+                try {
+                    const [oldFunnel, newFunnel] = await Promise.all([
+                        existing.funnelType ? prisma.funnel.findUnique({ where: { id: existing.funnelType }, select: { name: true } }).catch(() => null) : null,
+                        (funnelType && funnelType !== '') ? prisma.funnel.findUnique({ where: { id: funnelType }, select: { name: true } }).catch(() => null) : null
+                    ]);
+                    const fromName = oldFunnel?.name || 'Genel';
+                    const toName = newFunnel?.name || 'Genel';
+                    logEvent({
+                        conversationId,
+                        workspaceId,
+                        eventType: 'FUNNEL_CHANGED',
+                        title: `Akış <b>${fromName}</b> → <b>${toName}</b> olarak değiştirildi`,
+                        details: { from: existing.funnelType, to: funnelType },
+                        actorId: req.user?.id,
+                        actorType: 'USER'
+                    }).catch(() => {});
+                } catch (_) {}
+            })();
         }
         if (stageChanged) {
-            logEvent({
-                conversationId,
-                workspaceId,
-                eventType: 'STAGE_CHANGED',
-                title: `Aşama değiştirildi`,
-                details: { from: existing.funnelStageId, to: funnelStageId },
-                actorId: req.user?.id,
-                actorType: 'USER'
-            }).catch(() => {});
+            (async () => {
+                try {
+                    const [oldStage, newStage] = await Promise.all([
+                        existing.funnelStageId ? prisma.funnelStage.findUnique({ where: { id: existing.funnelStageId }, select: { name: true } }).catch(() => null) : null,
+                        prisma.funnelStage.findUnique({ where: { id: funnelStageId }, select: { name: true } }).catch(() => null)
+                    ]);
+                    const fromName = oldStage?.name || 'Belirsiz';
+                    const toName = newStage?.name || 'Belirsiz';
+                    logEvent({
+                        conversationId,
+                        workspaceId,
+                        eventType: 'STAGE_CHANGED',
+                        title: `Aşama <b>${fromName}</b> → <b>${toName}</b> olarak değiştirildi`,
+                        details: { from: existing.funnelStageId, to: funnelStageId },
+                        actorId: req.user?.id,
+                        actorType: 'USER'
+                    }).catch(() => {});
+                } catch (_) {}
+            })();
         }
 
         if (stageChanged || (funnelChanged && hasValidStageId)) {
@@ -2537,6 +2558,37 @@ export const smartAssignConversation = async (req, res) => {
         } catch {}
 
         console.log(`✅ [Assign] Conv ${conversationId} → team:${teamId || 'none'} agent:${resolvedAgentId || 'pool'}`);
+
+        // Log assignment event
+        try {
+            let teamName = null;
+            if (teamId) {
+                const t = await prisma.team.findUnique({ where: { id: teamId }, select: { name: true } });
+                teamName = t?.name;
+            }
+            const agentName = assignedTo?.name || null;
+            let title = '';
+            if (teamName && agentName) {
+                title = `<b>${teamName}</b> takımına atandı — <b>${agentName}</b>'e verildi`;
+            } else if (teamName) {
+                title = `<b>${teamName}</b> takımına atandı (havuz)`;
+            } else if (agentName) {
+                title = `<b>${agentName}</b> kişisine atandı`;
+            } else {
+                title = 'Atama güncellendi';
+            }
+            logEvent({
+                conversationId,
+                contactId: conversation.contactId,
+                workspaceId,
+                eventType: 'ASSIGNED',
+                title,
+                details: { teamId: teamId || null, agentId: resolvedAgentId || null, teamName, agentName },
+                actorId: req.user?.id,
+                actorType: 'USER'
+            }).catch(() => {});
+        } catch (_) {}
+
         res.json({ success: true, conversation: { ...updated, assignedTo }, resolvedAgentId });
     } catch (error) {
         console.error('Assign Conversation Error:', error);
@@ -2592,9 +2644,10 @@ export const claimConversation = async (req, res) => {
         // Log claim event
         logEvent({
             conversationId,
+            contactId: conversation.contactId,
             workspaceId,
             eventType: 'CLAIMED',
-            title: `${req.user?.name || 'Bilinmeyen'} üzerine aldı`,
+            title: `Konuşma <b>${req.user?.name || 'Bilinmeyen'}</b> tarafından üstlenildi`,
             actorId: req.user?.id,
             actorType: 'USER'
         }).catch(() => {});

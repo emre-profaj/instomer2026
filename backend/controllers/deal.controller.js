@@ -40,12 +40,22 @@ const computeEffectiveStatus = (deal) => {
 export const getDeals = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { stage, status, contactId, page = 1, limit = 50 } = req.query;
+        const { stage, status, contactId, assignedToId, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
 
         const where = { workspaceId };
         if (stage) where.stage = stage;
         if (status && status !== 'OVERDUE') where.status = status;
         if (contactId) where.contactId = contactId;
+        if (assignedToId) where.assignedToId = assignedToId;
+        if (dateFrom || dateTo) {
+            where.createdAt = {};
+            if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+            if (dateTo) {
+                const end = new Date(dateTo);
+                end.setHours(23, 59, 59, 999);
+                where.createdAt.lte = end;
+            }
+        }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);
 

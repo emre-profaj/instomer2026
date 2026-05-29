@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
-import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart } from 'lucide-react';
+import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User } from 'lucide-react';
 import './Sales.css';
 
 const Orders = () => {
@@ -15,6 +15,14 @@ const Orders = () => {
     const [stats, setStats] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [contacts, setContacts] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [editingDeal, setEditingDeal] = useState(null);
+
+    // Filter states
+    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [agentFilter, setAgentFilter] = useState('ALL');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
 
     // Form state
     const [formData, setFormData] = useState({
@@ -23,6 +31,7 @@ const Orders = () => {
         description: '',
         currency: 'TRY',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
+        assignedToId: '',
         notes: ''
     });
 
@@ -31,6 +40,7 @@ const Orders = () => {
             fetchDeals();
             fetchStats();
             fetchContacts();
+            fetchUsers();
         }
     }, [currentWorkspace?.id]);
 
@@ -64,7 +74,19 @@ const Orders = () => {
         }
     };
 
-    const handleCreateOrder = async (e) => {
+    const fetchUsers = async () => {
+        try {
+            const response = await fetch(`/api/workspaces/${currentWorkspace.id}/members`, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            const data = await response.json();
+            setUsers(data.members || data || []);
+        } catch (error) {
+            console.error('Failed to fetch users:', error);
+        }
+    };
+
+    const handleSaveOrder = async (e) => {
         e.preventDefault();
         try {
             const totalAmount = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
@@ -73,25 +95,32 @@ const Orders = () => {
                 total: p.quantity * p.unitPrice
             }));
 
-            await dealAPI.create(currentWorkspace.id, {
+            const payload = {
                 ...formData,
                 amount: totalAmount,
                 products: productsWithTotal,
                 stage: 'ORDER'
-            });
+            };
+
+            if (editingDeal) {
+                await dealAPI.update(currentWorkspace.id, editingDeal.id, payload);
+            } else {
+                await dealAPI.create(currentWorkspace.id, payload);
+            }
 
             setShowForm(false);
+            setEditingDeal(null);
             resetForm();
             fetchDeals();
             fetchStats();
         } catch (error) {
-            console.error('Failed to create order:', error);
-            alert('Error creating order');
+            console.error('Failed to save order:', error);
+            alert('Sipariş kaydedilemedi');
         }
     };
 
     const handleConvertToInvoice = async (dealId) => {
-        if (!confirm('Are you sure you want to convert this order to invoice?')) return;
+        if (!confirm('Bu siparişi faturaya dönüştürmek istiyor musunuz?')) return;
         try {
             await dealAPI.convert(currentWorkspace.id, dealId, 'INVOICE');
             fetchDeals();
@@ -99,12 +128,12 @@ const Orders = () => {
             setSelectedDeal(null);
         } catch (error) {
             console.error('Failed to convert deal:', error);
-            alert('Conversion failed');
+            alert('Dönüştürme başarısız');
         }
     };
 
     const handleDeleteDeal = async (dealId) => {
-        if (!confirm('Are you sure you want to delete this order?')) return;
+        if (!confirm('Bu siparişi silmek istiyor musunuz?')) return;
         try {
             await dealAPI.delete(currentWorkspace.id, dealId);
             fetchDeals();
@@ -125,6 +154,26 @@ const Orders = () => {
         }
     };
 
+    const openEditForm = (deal) => {
+        setEditingDeal(deal);
+        setFormData({
+            contactId: deal.contactId || '',
+            title: deal.title || '',
+            description: deal.description || '',
+            currency: deal.currency || 'TRY',
+            products: deal.products?.length ? deal.products : [{ name: '', quantity: 1, unitPrice: 0 }],
+            assignedToId: deal.assignedToId || '',
+            notes: deal.notes || ''
+        });
+        setShowForm(true);
+    };
+
+    const closeForm = () => {
+        setShowForm(false);
+        setEditingDeal(null);
+        resetForm();
+    };
+
     const resetForm = () => {
         setFormData({
             contactId: '',
@@ -132,6 +181,7 @@ const Orders = () => {
             description: '',
             currency: 'TRY',
             products: [{ name: '', quantity: 1, unitPrice: 0 }],
+            assignedToId: '',
             notes: ''
         });
     };
@@ -161,11 +211,28 @@ const Orders = () => {
         return `${symbols[currency] || ''}${amount?.toLocaleString('tr-TR') || 0}`;
     };
 
-    const filteredDeals = deals.filter(deal =>
-        deal.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        deal.contact?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        deal.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Filtered deals with all filters
+    const filteredDeals = deals.filter(deal => {
+        const matchesSearch = !searchQuery ||
+            deal.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            deal.contact?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            deal.orderNumber?.toLowerCase().includes(searchQuery.toLowerCase());
+
+        const matchesStatus = statusFilter === 'ALL' || deal.status === statusFilter;
+        const matchesAgent = agentFilter === 'ALL' || deal.assignedToId === agentFilter;
+
+        let matchesDate = true;
+        if (dateFrom) {
+            matchesDate = new Date(deal.createdAt) >= new Date(dateFrom);
+        }
+        if (dateTo && matchesDate) {
+            const end = new Date(dateTo);
+            end.setHours(23, 59, 59, 999);
+            matchesDate = new Date(deal.createdAt) <= end;
+        }
+
+        return matchesSearch && matchesStatus && matchesAgent && matchesDate;
+    });
 
     const orderStats = stats?.stageStats?.find(s => s.stage === 'ORDER') || { count: 0, totalAmount: 0 };
 
@@ -212,7 +279,7 @@ const Orders = () => {
                 </div>
             </div>
 
-            {/* Search */}
+            {/* Search & Filters */}
             <div className="sales-toolbar">
                 <div className="search-box">
                     <Search size={18} />
@@ -223,6 +290,43 @@ const Orders = () => {
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', background: '#fff', cursor: 'pointer' }}
+                    >
+                        <option value="ALL">Tüm Durumlar</option>
+                        <option value="OPEN">Açık</option>
+                        <option value="WON">Tamamlandı</option>
+                        <option value="LOST">İptal</option>
+                    </select>
+                    <select
+                        value={agentFilter}
+                        onChange={(e) => setAgentFilter(e.target.value)}
+                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', background: '#fff', cursor: 'pointer' }}
+                    >
+                        <option value="ALL">Tüm Temsilciler</option>
+                        {users.map(u => (
+                            <option key={u.id || u.userId} value={u.id || u.userId}>
+                                {u.name || u.user?.name}
+                            </option>
+                        ))}
+                    </select>
+                    <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', cursor: 'pointer' }}
+                    />
+                    <span style={{ color: '#9ca3af' }}>—</span>
+                    <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', cursor: 'pointer' }}
+                    />
+                </div>
             </div>
 
             {/* Content */}
@@ -230,7 +334,7 @@ const Orders = () => {
                 {/* Deals List */}
                 <div className="deals-list">
                     {loading ? (
-                        <div className="loading-state">Loading...</div>
+                        <div className="loading-state">Yükleniyor...</div>
                     ) : filteredDeals.length === 0 ? (
                         <div className="empty-state">
                             <ShoppingCart size={48} />
@@ -252,6 +356,11 @@ const Orders = () => {
                                 </div>
                                 <h3 className="deal-title">{deal.title}</h3>
                                 <p className="deal-contact">{deal.contact?.name || deal.contact?.fullName}</p>
+                                {deal.assignedTo && (
+                                    <p style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 500, margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <User size={11} /> {deal.assignedTo.name}
+                                    </p>
+                                )}
                                 <div className="deal-footer">
                                     <span className="deal-amount">{formatCurrency(deal.amount, deal.currency)}</span>
                                     <span className="deal-date">{new Date(deal.orderCreatedAt || deal.createdAt).toLocaleDateString('tr-TR')}</span>
@@ -287,6 +396,10 @@ const Orders = () => {
                                 <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName}</span>
                             </div>
                             <div className="info-row">
+                                <span className="label">Temsilci:</span>
+                                <span className="value">{selectedDeal.assignedTo?.name || '—'}</span>
+                            </div>
+                            <div className="info-row">
                                 <span className="label">Tutar:</span>
                                 <span className="value amount">{formatCurrency(selectedDeal.amount, selectedDeal.currency)}</span>
                             </div>
@@ -299,8 +412,12 @@ const Orders = () => {
                                 >
                                     <option value="OPEN">Açık</option>
                                     <option value="WON">Tamamlandı</option>
-                                    <option value="LOST">Cancel</option>
+                                    <option value="LOST">İptal</option>
                                 </select>
+                            </div>
+                            <div className="info-row">
+                                <span className="label">Tarih:</span>
+                                <span className="value">{new Date(selectedDeal.orderCreatedAt || selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
                             </div>
                         </div>
 
@@ -318,8 +435,23 @@ const Orders = () => {
                             </div>
                         </div>
 
+                        {/* Notes */}
+                        {selectedDeal.notes && (
+                            <div className="detail-notes">
+                                <h4>Notlar</h4>
+                                <p>{selectedDeal.notes}</p>
+                            </div>
+                        )}
+
                         {/* Actions */}
                         <div className="detail-actions">
+                            <button
+                                className="btn-secondary"
+                                onClick={() => openEditForm(selectedDeal)}
+                            >
+                                <Edit2 size={16} />
+                                Düzenle
+                            </button>
                             {selectedDeal.status === 'OPEN' && (
                                 <button
                                     className="btn-primary"
@@ -341,18 +473,18 @@ const Orders = () => {
                 )}
             </div>
 
-            {/* Create Form Modal */}
+            {/* Create/Edit Form Modal */}
             {showForm && (
-                <div className="modal-overlay" onClick={() => setShowForm(false)}>
+                <div className="modal-overlay" onClick={closeForm}>
                     <div className="modal-content deal-form" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h2>New Sipariş Create</h2>
-                            <button className="btn-icon" onClick={() => setShowForm(false)}>
+                            <h2>{editingDeal ? 'Siparişi Düzenle' : 'Yeni Sipariş Oluştur'}</h2>
+                            <button className="btn-icon" onClick={closeForm}>
                                 <X size={20} />
                             </button>
                         </div>
 
-                        <form onSubmit={handleCreateOrder}>
+                        <form onSubmit={handleSaveOrder}>
                             <div className="form-group">
                                 <label>{t('sales.customerLabel')}</label>
                                 <select
@@ -364,6 +496,21 @@ const Orders = () => {
                                     {contacts.map(c => (
                                         <option key={c.id} value={c.id}>
                                             {c.name || c.fullName || c.email || c.phone}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="form-group">
+                                <label>Temsilci</label>
+                                <select
+                                    value={formData.assignedToId}
+                                    onChange={(e) => setFormData({ ...formData, assignedToId: e.target.value })}
+                                >
+                                    <option value="">Temsilci Seç (Opsiyonel)</option>
+                                    {users.map(u => (
+                                        <option key={u.id || u.userId} value={u.id || u.userId}>
+                                            {u.name || u.user?.name}
                                         </option>
                                     ))}
                                 </select>
@@ -452,11 +599,11 @@ const Orders = () => {
                             </div>
 
                             <div className="form-actions">
-                                <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>
+                                <button type="button" className="btn-secondary" onClick={closeForm}>
                                     İptal
                                 </button>
                                 <button type="submit" className="btn-primary">
-                                    Sipariş Oluştur
+                                    {editingDeal ? 'Güncelle' : 'Sipariş Oluştur'}
                                 </button>
                             </div>
                         </form>

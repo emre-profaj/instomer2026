@@ -2533,15 +2533,15 @@
    ═══════════════════════════════════════════════════════════════ */
 .unified-profile-card {
     position: relative;
-    padding: 12px 0 16px 0;
+    padding: 4px 0 4px 0;
     background: transparent;
 }
 
 /* Çarpı butonunu kartın sağ üstüne sabitle — sidebar-content paddingi hesaba katarak */
 .unified-close-btn {
     position: absolute;
-    top: 20px;
-    right: 10px;
+    top: 14px;
+    right: 8px;
     z-index: 1;
     background: transparent;
     border: none;
@@ -2567,14 +2567,14 @@
     gap: 0;
     background: #f8fafc;
     border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 12px 14px;
+    border-radius: 8px;
+    padding: 6px 10px 6px 10px;
 }
 
 .unified-profile-top {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 }
 
 .unified-profile-top .unified-name-editable,
@@ -2609,10 +2609,10 @@
 }
 
 .unified-name-editable {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     color: #1e293b;
-    margin: 0 0 8px 0;
+    margin: 0 0 2px 0;
     line-height: 1.2;
     cursor: pointer;
     border-bottom: 1px dashed transparent;
@@ -2625,13 +2625,13 @@
 }
 
 .unified-name-input {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     color: #1e293b;
-    margin: 0 0 8px 0;
+    margin: 0 0 2px 0;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
-    padding: 4px 8px;
+    padding: 2px 6px;
     width: 100%;
     outline: none;
 }
@@ -2646,11 +2646,11 @@
     border: none;
     border-top: 1px solid #e2e8f0;
     border-radius: 0;
-    padding: 12px 0 0 0;
-    margin-top: 10px;
+    padding: 4px 0 0 0;
+    margin-top: 4px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0;
     width: 100%;
     box-sizing: border-box;
 }
@@ -2658,15 +2658,15 @@
 .unified-contact-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 4px;
+    gap: 1px;
+    margin-bottom: 0;
 }
 
 .unified-contact-item {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 13px;
+    gap: 6px;
+    font-size: 12px;
     font-weight: 500;
     color: #475569;
 }
@@ -2707,10 +2707,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    border-radius: 5px;
     cursor: pointer;
     transition: all 0.2s;
     flex-shrink: 0;
@@ -2752,12 +2752,12 @@
 .unified-add-contact-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 4px;
+    padding: 3px 8px;
     background: #fff;
     border: 1px dashed #cbd5e1;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: 5px;
+    font-size: 10.5px;
     font-weight: 600;
     color: #64748b;
     cursor: pointer;
@@ -2829,17 +2829,17 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    margin-top: 12px;
+    gap: 6px;
+    margin-top: 8px;
 }
 
 .unified-tag {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 11px;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    font-size: 10.5px;
     font-weight: 600;
 }
 

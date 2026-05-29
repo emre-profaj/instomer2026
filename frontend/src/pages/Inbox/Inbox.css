@@ -4105,17 +4105,21 @@
     overflow: hidden;
 }
 
-.phone-input-with-prefix .phone-prefix {
+.phone-input-with-prefix .phone-prefix,
+.phone-input-with-prefix .phone-prefix-select {
     display: flex;
     align-items: center;
-    padding: 0 12px;
+    padding: 0 4px 0 8px;
     background: #f3f4f6;
-    color: #6b7280;
-    font-size: 14px;
+    color: #374151;
+    font-size: 13px;
     font-weight: 600;
+    border: none;
     border-right: 1px solid #d1d5db;
     white-space: nowrap;
-    user-select: none;
+    cursor: pointer;
+    outline: none;
+    min-width: 86px;
 }
 
 .phone-input-with-prefix input {

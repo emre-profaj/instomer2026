@@ -593,6 +593,7 @@ const Inbox = () => {
 
     // Message conversation states
     const [messages, setMessages] = useState([]);
+    const [selectedActivityPopup, setSelectedActivityPopup] = useState(null);
     const [newMessage, setNewMessage] = useState('');
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const emojiPickerRef = useRef(null);
@@ -656,11 +657,13 @@ const Inbox = () => {
     // New Conversation Modal states
     const [showNewConversationModal, setShowNewConversationModal] = useState(false);
     const [newConversationPhone, setNewConversationPhone] = useState('');
+    const [newConversationPhonePrefix, setNewConversationPhonePrefix] = useState('+90');
     const [newConversationName, setNewConversationName] = useState('');
     const [newConversationMessage, setNewConversationMessage] = useState('');
     const [newConversationFunnel, setNewConversationFunnel] = useState('');
     const [newConversationFunnelStage, setNewConversationFunnelStage] = useState('');
     const [newConversationDate, setNewConversationDate] = useState('');
+    const [newConversationTopic, setNewConversationTopic] = useState('');
     const [creatingConversation, setCreatingConversation] = useState(false);
 
     // Quick Reply (Hazır Mesaj) states
@@ -1251,6 +1254,28 @@ const Inbox = () => {
                 new Notification('Bot Yönlendirmesi', {
                     body: `${botName} müşteriye yardımcı olamadı. Sohbet takıma aktarıldı.`,
                     icon: '/favicon.ico'
+                });
+            }
+        });
+
+        // Listen for real-time system events (assign, status, funnel change, etc.)
+        socket.on('conversation_event', (data) => {
+            const { conversationId, event } = data;
+            // Only add to timeline if this conversation is currently open
+            if (selectedItemRef.current?.id === conversationId && event) {
+                setMessages(prev => {
+                    // Prevent duplicate events
+                    if (prev.some(m => m.id === event.id)) return prev;
+                    return [...prev, {
+                        id: event.id,
+                        createdAt: event.createdAt,
+                        isSystemEvent: true,
+                        eventType: event.eventType,
+                        title: event.title,
+                        actorType: event.actorType,
+                        actorId: event.actorId,
+                        details: event.details
+                    }];
                 });
             }
         });
@@ -1872,10 +1897,46 @@ const Inbox = () => {
                 eventType: e.eventType,
                 title: e.title,
                 actorType: e.actorType,
+                actorId: e.actorId,
                 details: e.details
             }));
 
-            const combined = [...msgs, ...formattedNotes, ...formattedEvents].sort((a, b) =>
+            // Load activities for this contact and merge into timeline
+            let formattedActivities = [];
+            const contactId = response.data.conversation.contactId;
+            if (contactId && currentWorkspace?.id) {
+                try {
+                    const actRes = await activityAPI.getTimeline(contactId, currentWorkspace.id);
+                    // API returns { planned: [...], past: [...] }
+                    // Each item: { id: 'act_123', sourceType: 'ACTIVITY', type, title, content, date, dueDate, status, isCompleted, result, labelName, assignedToName, raw }
+                    const allActivities = [
+                        ...(actRes?.planned || []),
+                        ...(actRes?.past || [])
+                    ];
+                    formattedActivities = allActivities
+                        .filter(a => a.sourceType === 'ACTIVITY' && a.type !== 'NOTE')
+                        .map(a => ({
+                            id: `activity-${a.id}`,
+                            createdAt: a.date || a.dueDate || a.raw?.createdAt,
+                            isActivity: true,
+                            activityId: a.raw?.id || a.id,
+                            activityType: a.type,
+                            activityStatus: a.status || (a.isCompleted ? 'COMPLETED' : 'PLANNED'),
+                            activityTitle: a.title,
+                            activityContent: a.content || '',
+                            activityResult: a.result || a.raw?.result || '',
+                            activityDueDate: a.dueDate,
+                            activityAssignedTo: a.assignedToName || a.labelName || '',
+                            activityTeam: a.raw?.team?.name || '',
+                            activityCreatedBy: a.labelName || '',
+                        }));
+                    console.log(`📋 [Timeline] Loaded ${formattedActivities.length} activities for contact ${contactId}`);
+                } catch (e) {
+                    console.warn('Activities load failed:', e.message);
+                }
+            }
+
+            const combined = [...msgs, ...formattedNotes, ...formattedEvents, ...formattedActivities].sort((a, b) =>
                 new Date(a.createdAt) - new Date(b.createdAt)
             );
             setMessages(combined);
@@ -2129,9 +2190,11 @@ const Inbox = () => {
             if (phone.startsWith('0')) {
                 phone = phone.substring(1);
             }
-            // Add country code if not present
-            if (!phone.startsWith('90') && !phone.startsWith('+90')) {
-                phone = '90' + phone;
+            // Prefix'ten ülke kodunu al (+90 → 90)
+            const countryCode = newConversationPhonePrefix.replace('+', '');
+            // Add country code if not already present
+            if (!phone.startsWith(countryCode)) {
+                phone = countryCode + phone;
             }
             phone = phone.replace('+', '');
 
@@ -2139,6 +2202,7 @@ const Inbox = () => {
                 phone,
                 name: newConversationName || `Müşteri ${phone.slice(-4)}`,
                 description: newConversationMessage || null,
+                ...(newConversationTopic && { aiTopic: newConversationTopic }),
                 ...(newConversationFunnel && { funnelType: newConversationFunnel }),
                 ...(newConversationFunnelStage && { funnelStageId: newConversationFunnelStage }),
                 ...(newConversationDate && { date: new Date(newConversationDate).toISOString() })
@@ -2147,8 +2211,10 @@ const Inbox = () => {
             // Close modal and reset
             setShowNewConversationModal(false);
             setNewConversationPhone('');
+            setNewConversationPhonePrefix('+90');
             setNewConversationName('');
             setNewConversationMessage('');
+            setNewConversationTopic('');
             setNewConversationFunnel('');
             setNewConversationFunnelStage('');
             setNewConversationDate('');
@@ -3421,6 +3487,14 @@ const Inbox = () => {
                                         <span className="inbox-avatar-channel">
                                             {getItemIcon(item)}
                                         </span>
+                                        {item.channel === 'LEAD' && (
+                                            <span style={{
+                                                fontSize: '0.5rem', fontWeight: 700, color: '#6366f1',
+                                                background: '#eef2ff', border: '1px solid #c7d2fe',
+                                                borderRadius: 3, padding: '0px 3px', marginTop: 2,
+                                                display: 'block', textAlign: 'center', lineHeight: 1.4
+                                            }}>LEAD</span>
+                                        )}
                                     </div>
                                     <div className="inbox-item-content">
                                         {/* ── Row 1: Name + Time + Unread Count ── */}
@@ -3448,23 +3522,28 @@ const Inbox = () => {
                                         </div>
 
                                         {/* ── Row 3: Flow/Stage | Team/Person ── */}
-                                        <div className="inbox-item-footer">
-                                            <div className="inbox-footer-left">
-                                                {/* Akış + Aşama (Target icon) */}
+                                        <div className="inbox-item-footer" style={{ gap: 3 }}>
+                                            <div className="inbox-footer-left" style={{ gap: 3, flexWrap: 'nowrap', overflow: 'hidden' }}>
+                                                {/* Akış + Aşama (compact) */}
                                                 <span className="classification-badge" title={`${funnelName}${stageName ? ' / ' + stageName : ''}`} style={{
                                                     background: `${funnelColor}15`,
                                                     color: funnelColor,
-                                                    border: `1px solid ${funnelColor}30`
+                                                    border: `1px solid ${funnelColor}30`,
+                                                    fontSize: '0.58rem', padding: '1px 5px', borderRadius: 4, maxWidth: 130,
+                                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                    display: 'inline-flex', alignItems: 'center', gap: 2, lineHeight: 1.3
                                                 }}>
-                                                    <Target size={11} style={{ flexShrink: 0 }} /> {funnelName}{stageName ? ` / ${stageName}` : ''}
+                                                    <Target size={9} style={{ flexShrink: 0 }} /> {funnelName}{stageName ? ` / ${stageName}` : ''}
                                                 </span>
-                                                {item.channel === 'LEAD' && (
-                                                    <span className="lead-channel-badge">Lead</span>
-                                                )}
-                                                {/* Takım + Atanan */}
+
+                                                {/* Takım + Atanan (compact icon style) */}
                                                 {(teamName || item.assignedTo) && (
-                                                    <span className="team-assign-badge" title={`${teamName || 'Havuz'} / ${item.assignedTo?.name || 'Havuz'}`}>
-                                                        <Users size={11} style={{ flexShrink: 0 }} /> {teamName || 'Havuz'} / {item.assignedTo?.name || 'Havuz'}
+                                                    <span className="team-assign-badge" title={`${teamName || 'Havuz'} / ${item.assignedTo?.name || 'Havuz'}`} style={{
+                                                        fontSize: '0.58rem', padding: '1px 5px', borderRadius: 4, maxWidth: 120,
+                                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                        display: 'inline-flex', alignItems: 'center', gap: 2, lineHeight: 1.3
+                                                    }}>
+                                                        <Users size={9} style={{ flexShrink: 0 }} /> {teamName || ''}{item.assignedTo?.name ? ` / ${item.assignedTo.name.split(' ')[0]}` : ' / Havuz'}
                                                     </span>
                                                 )}
                                             </div>
@@ -3479,6 +3558,18 @@ const Inbox = () => {
                                                 {contactTags.length > 4 && (
                                                     <span className="inbox-micro-tag more">+{contactTags.length - 4}</span>
                                                 )}
+                                            </div>
+                                        )}
+
+                                        {/* ── Row 4b: Topic/Subject under tags ── */}
+                                        {item.aiTopic && (
+                                            <div style={{
+                                                fontSize: '0.68rem', color: '#6b7280', fontWeight: 500,
+                                                padding: '0 2px', marginTop: 1, overflow: 'hidden',
+                                                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                                display: 'flex', alignItems: 'center', gap: 3
+                                            }}>
+                                                <span style={{ color: '#9ca3af' }}>📌</span> {item.aiTopic}
                                             </div>
                                         )}
 
@@ -3651,8 +3742,13 @@ const Inbox = () => {
                                                             }}
                                                             onBlur={async (e) => {
                                                                 setTimeout(() => setTopicDropdownOpen(false), 150);
+                                                                const newTopic = e.target.value;
                                                                 try {
-                                                                    await conversationAPI.updateTopic(currentWorkspace.id, selectedItem.id, e.target.value);
+                                                                    await conversationAPI.updateTopic(currentWorkspace.id, selectedItem.id, newTopic);
+                                                                    // Sol listedeki inboxItems'ı da güncelle
+                                                                    setInboxItems(prev => prev.map(item =>
+                                                                        item.id === selectedItem.id ? { ...item, aiTopic: newTopic } : item
+                                                                    ));
                                                                 } catch (err) { console.error('Topic update error:', err); }
                                                             }}
                                                         />
@@ -3677,6 +3773,9 @@ const Inbox = () => {
                                                                             setTopicDropdownOpen(false);
                                                                             try {
                                                                                 await conversationAPI.updateTopic(currentWorkspace.id, selectedItem.id, topic);
+                                                                                setInboxItems(prev => prev.map(item =>
+                                                                                    item.id === selectedItem.id ? { ...item, aiTopic: topic } : item
+                                                                                ));
                                                                             } catch (err) { console.error('Topic update error:', err); }
                                                                         }}
                                                                     >
@@ -4123,31 +4222,98 @@ const Inbox = () => {
                                     {messages.map((msg) => {
                                         // ── System Event (inline log) ──
                                         if (msg.isSystemEvent) {
-                                            const eventIcons = {
-                                                ASSIGNED: '👤',
-                                                TEAM_CHANGED: '👥',
-                                                STATUS_CHANGED: '🔄',
-                                                FUNNEL_CHANGED: '📊',
-                                                STAGE_CHANGED: '📊',
-                                                BOT_TOGGLED: '🤖',
-                                                TRANSFERRED: '🔀',
-                                                CLASSIFIED: '🏷️',
-                                                CLAIMED: '✋',
-                                                AUTOMATION_TRIGGERED: '⚡'
-                                            };
-                                            const icon = eventIcons[msg.eventType] || 'ℹ️';
+                                            const evtTime = msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
+                                            const actorName = (() => {
+                                                if (msg.actorType === 'SYSTEM') return 'Sistem';
+                                                if (msg.actorType === 'BOT') return 'Bot';
+                                                if (msg.actorType === 'AUTOMATION') return 'Otomasyon';
+                                                if (msg.actorId && members?.length) {
+                                                    const m = members.find(u => u.id === msg.actorId || u.userId === msg.actorId);
+                                                    if (m) return m.name || m.user?.name || 'Kullanıcı';
+                                                }
+                                                return msg.actorType === 'USER' ? 'Kullanıcı' : '';
+                                            })();
                                             return (
                                                 <div key={msg.id} style={{
                                                     display: 'flex', justifyContent: 'center', alignItems: 'center',
-                                                    padding: '6px 0', margin: '2px 0'
+                                                    padding: '4px 16px', margin: '2px 0'
                                                 }}>
                                                     <span style={{
-                                                        fontSize: '0.75rem', color: '#8b95a5', fontWeight: 400,
+                                                        fontSize: '0.75rem', color: '#9ca3af', fontWeight: 400,
                                                         background: 'transparent', padding: '0',
-                                                        letterSpacing: '0.01em', lineHeight: 1.4
+                                                        letterSpacing: '0.01em', lineHeight: 1.5,
+                                                        textAlign: 'center'
                                                     }}>
-                                                        {msg.title}
+                                                        {evtTime && <span style={{ marginRight: '6px', color: '#b0b8c4', fontWeight: 500, fontSize: '0.7rem' }}>{evtTime}</span>}
+                                                        <span dangerouslySetInnerHTML={{ __html: msg.title }} />
+                                                        {actorName && <span style={{ marginLeft: '6px', color: '#b0b8c4', fontStyle: 'italic', fontSize: '0.7rem' }}>— {actorName}</span>}
                                                     </span>
+                                                </div>
+                                            );
+                                        }
+
+                                        // ── Activity Card (inline) ──
+                                        if (msg.isActivity) {
+                                            const actTypeConfig = {
+                                                CALL:     { icon: '📞', label: 'Arama', accent: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe' },
+                                                NOTE:     { icon: '📝', label: 'Not', accent: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+                                                MEETING:  { icon: '📅', label: 'Görüşme', accent: '#10b981', bg: '#f0fdf4', border: '#a7f3d0' },
+                                                REMINDER: { icon: '🔔', label: 'Hatırlatıcı', accent: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+                                                TASK:     { icon: '✅', label: 'Görev', accent: '#8b5cf6', bg: '#faf5ff', border: '#ddd6fe' },
+                                                VISIT:    { icon: '📍', label: 'Ziyaret', accent: '#a855f7', bg: '#fdf4ff', border: '#e9d5ff' },
+                                                PAYMENT:  { icon: '💰', label: 'Tahsilat', accent: '#eab308', bg: '#fefce8', border: '#fef08a' },
+                                            };
+                                            const actStatusConfig = {
+                                                COMPLETED: { emoji: '✅', label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d' },
+                                                PLANNED:   { emoji: '🕐', label: 'Planlandı', bg: '#dbeafe', color: '#1d4ed8' },
+                                                CANCELLED: { emoji: '❌', label: 'İptal', bg: '#f3f4f6', color: '#6b7280' },
+                                            };
+                                            const cfg = actTypeConfig[msg.activityType] || actTypeConfig.NOTE;
+                                            const sc = actStatusConfig[msg.activityStatus] || actStatusConfig.PLANNED;
+                                            const actDate = msg.createdAt ? new Date(msg.createdAt) : null;
+                                            const displayText = msg.activityResult || msg.activityContent || msg.activityTitle || '';
+
+                                            return (
+                                                <div key={msg.id} style={{
+                                                    display: 'flex', justifyContent: 'center',
+                                                    padding: '6px 40px', margin: '4px 0'
+                                                }}>
+                                                    <div
+                                                        onClick={() => setSelectedActivityPopup(msg)}
+                                                        style={{
+                                                            background: cfg.bg, border: `1px solid ${cfg.border}`,
+                                                            borderRadius: 10, padding: '8px 14px', maxWidth: 420, width: '100%',
+                                                            cursor: 'pointer', transition: 'box-shadow 0.15s',
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.boxShadow = '0 3px 12px rgba(0,0,0,0.1)'}
+                                                        onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                                            <span style={{ fontSize: '1rem' }}>{cfg.icon}</span>
+                                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cfg.accent }}>{cfg.label}</span>
+                                                            <span style={{
+                                                                fontSize: '0.6rem', fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+                                                                background: sc.bg, color: sc.color,
+                                                            }}>{sc.emoji} {sc.label}</span>
+                                                            <span style={{ marginLeft: 'auto', fontSize: '0.65rem', color: '#9ca3af' }}>
+                                                                {actDate ? actDate.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                                                            </span>
+                                                        </div>
+                                                        {msg.activityAssignedTo && (
+                                                            <div style={{ fontSize: '0.68rem', color: '#6b7280', marginBottom: 3 }}>
+                                                                👤 {msg.activityAssignedTo} {msg.activityTeam ? `(${msg.activityTeam})` : ''}
+                                                            </div>
+                                                        )}
+                                                        {displayText && (
+                                                            <div style={{
+                                                                fontSize: '0.78rem', color: '#374151', lineHeight: 1.4,
+                                                                overflow: 'hidden', textOverflow: 'ellipsis',
+                                                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical'
+                                                            }}>
+                                                                {displayText}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             );
                                         }
@@ -4654,7 +4820,7 @@ const Inbox = () => {
                                                                     }}
                                                                     onClick={() => {
                                                                         setIsInternalNoteMode(false);
-                                                                        document.getElementById('channel-selector-menu')?.classList.remove('show');
+                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
                                                                     }}
                                                                 >
                                                                     <span>
@@ -4684,7 +4850,7 @@ const Inbox = () => {
                                                                 }}
                                                                 onClick={() => {
                                                                     setIsInternalNoteMode(!isInternalNoteMode);
-                                                                    document.getElementById('channel-selector-menu')?.classList.remove('show');
+                                                                    setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
                                                                 }}
                                                             >
                                                                 <span>📝</span>
@@ -5332,7 +5498,49 @@ const Inbox = () => {
                                     Telefon Numarası <span className="required">*</span>
                                 </label>
                                 <div className="phone-input-with-prefix">
-                                    <span className="phone-prefix">+90</span>
+                                    <select
+                                        className="phone-prefix-select"
+                                        value={newConversationPhonePrefix}
+                                        onChange={(e) => setNewConversationPhonePrefix(e.target.value)}
+                                    >
+                                        <option value="+90">🇹🇷 +90</option>
+                                        <option value="+44">🇬🇧 +44</option>
+                                        <option value="+49">🇩🇪 +49</option>
+                                        <option value="+1">🇺🇸 +1</option>
+                                        <option value="+33">🇫🇷 +33</option>
+                                        <option value="+39">🇮🇹 +39</option>
+                                        <option value="+34">🇪🇸 +34</option>
+                                        <option value="+31">🇳🇱 +31</option>
+                                        <option value="+46">🇸🇪 +46</option>
+                                        <option value="+47">🇳🇴 +47</option>
+                                        <option value="+45">🇩🇰 +45</option>
+                                        <option value="+43">🇦🇹 +43</option>
+                                        <option value="+41">🇨🇭 +41</option>
+                                        <option value="+32">🇧🇪 +32</option>
+                                        <option value="+48">🇵🇱 +48</option>
+                                        <option value="+30">🇬🇷 +30</option>
+                                        <option value="+7">🇷🇺 +7</option>
+                                        <option value="+380">🇺🇦 +380</option>
+                                        <option value="+966">🇸🇦 +966</option>
+                                        <option value="+971">🇦🇪 +971</option>
+                                        <option value="+974">🇶🇦 +974</option>
+                                        <option value="+973">🇧🇭 +973</option>
+                                        <option value="+965">🇰🇼 +965</option>
+                                        <option value="+962">🇯🇴 +962</option>
+                                        <option value="+961">🇱🇧 +961</option>
+                                        <option value="+964">🇮🇶 +964</option>
+                                        <option value="+98">🇮🇷 +98</option>
+                                        <option value="+20">🇪🇬 +20</option>
+                                        <option value="+212">🇲🇦 +212</option>
+                                        <option value="+213">🇩🇿 +213</option>
+                                        <option value="+216">🇹🇳 +216</option>
+                                        <option value="+91">🇮🇳 +91</option>
+                                        <option value="+86">🇨🇳 +86</option>
+                                        <option value="+81">🇯🇵 +81</option>
+                                        <option value="+82">🇰🇷 +82</option>
+                                        <option value="+55">🇧🇷 +55</option>
+                                        <option value="+61">🇦🇺 +61</option>
+                                    </select>
                                     <input
                                         type="tel"
                                         placeholder="5xxxxxxxxx"
@@ -5405,6 +5613,18 @@ const Inbox = () => {
                                 <small style={{display: 'block', marginTop: '4px', color: '#6b7280', fontSize: '11px'}}>Varsayılan olarak şu anki zaman seçilidir.</small>
                             </div>
 
+                            <div className="form-group">
+                                <label>
+                                    <Target size={18} />
+                                    Konu Başlığı
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Örn: Doğum Paketi Bilgi, Fiyat Talebi..."
+                                    value={newConversationTopic}
+                                    onChange={(e) => setNewConversationTopic(e.target.value)}
+                                />
+                            </div>
                             <div className="form-group">
                                 <label>
                                     <MessageSquare size={18} />
@@ -5513,6 +5733,83 @@ const Inbox = () => {
                     channel={convPopup.channel}
                     onClose={() => setConvPopup(null)}
                 />
+            )}
+
+            {/* ── Activity Detail Popup ── */}
+            {selectedActivityPopup && ReactDOM.createPortal(
+                <>
+                    <div onClick={() => setSelectedActivityPopup(null)} style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 99998
+                    }} />
+                    <div style={{
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                        zIndex: 99999, background: '#fff', borderRadius: 16, padding: '24px 28px',
+                        minWidth: 380, maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+                    }}>
+                        {(() => {
+                            const a = selectedActivityPopup;
+                            const typeLabels = { CALL: '📞 Arama', NOTE: '📝 Not', MEETING: '📅 Görüşme', REMINDER: '🔔 Hatırlatıcı', TASK: '✅ Görev', VISIT: '📍 Ziyaret', PAYMENT: '💰 Tahsilat' };
+                            const statusLabels = { COMPLETED: { emoji: '✅', label: 'Tamamlandı', color: '#15803d', bg: '#dcfce7' }, PLANNED: { emoji: '🕐', label: 'Planlandı', color: '#1d4ed8', bg: '#dbeafe' }, CANCELLED: { emoji: '❌', label: 'İptal', color: '#6b7280', bg: '#f3f4f6' } };
+                            const sc = statusLabels[a.activityStatus] || statusLabels.PLANNED;
+                            return (
+                                <>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                                        <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827' }}>
+                                            {typeLabels[a.activityType] || a.activityType}
+                                        </span>
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '3px 10px', borderRadius: 999, background: sc.bg, color: sc.color }}>
+                                            {sc.emoji} {sc.label}
+                                        </span>
+                                    </div>
+                                    {a.activityTitle && (
+                                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: 10 }}>
+                                            {a.activityTitle}
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        {a.activityAssignedTo && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#4b5563' }}>
+                                                <span style={{ fontWeight: 600, color: '#6b7280', minWidth: 70 }}>Atanan:</span>
+                                                <span>{a.activityAssignedTo} {a.activityTeam ? `(${a.activityTeam})` : ''}</span>
+                                            </div>
+                                        )}
+                                        {a.activityDueDate && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#4b5563' }}>
+                                                <span style={{ fontWeight: 600, color: '#6b7280', minWidth: 70 }}>Tarih:</span>
+                                                <span>{new Date(a.activityDueDate).toLocaleString('tr-TR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                        )}
+                                        {a.activityCreatedBy && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: '#4b5563' }}>
+                                                <span style={{ fontWeight: 600, color: '#6b7280', minWidth: 70 }}>Oluşturan:</span>
+                                                <span>{a.activityCreatedBy}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {a.activityContent && (
+                                        <div style={{ marginTop: 14, padding: '10px 14px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', marginBottom: 4 }}>Açıklama</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{a.activityContent}</div>
+                                        </div>
+                                    )}
+                                    {a.activityResult && (
+                                        <div style={{ marginTop: 10, padding: '10px 14px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #a7f3d0' }}>
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase', marginBottom: 4 }}>Sonuç</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#374151', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{a.activityResult}</div>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={() => setSelectedActivityPopup(null)}
+                                        style={{ marginTop: 18, width: '100%', padding: '10px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 10, fontSize: '0.85rem', fontWeight: 600, color: '#374151', cursor: 'pointer' }}
+                                    >
+                                        Kapat
+                                    </button>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </>,
+                document.body
             )}
 
         </div>

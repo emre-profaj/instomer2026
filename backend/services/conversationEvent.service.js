@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { emitToWorkspace } from '../socket.js';
 
 /**
  * Konuşma olayı kaydet — timeline'da gösterilecek
@@ -33,6 +34,23 @@ export async function logEvent({ conversationId, contactId, workspaceId, eventTy
             }
         });
         console.log(`📝 [EventLog] ${eventType}: ${title}`);
+
+        // Emit socket event for real-time timeline update
+        try {
+            emitToWorkspace(workspaceId, 'conversation_event', {
+                conversationId,
+                event: {
+                    id: event.id,
+                    createdAt: event.createdAt,
+                    eventType: event.eventType,
+                    title: event.title,
+                    actorType: event.actorType,
+                    actorId: event.actorId,
+                    details: event.details
+                }
+            });
+        } catch (_) {}
+
         return event;
     } catch (err) {
         // Don't crash if ConversationEvent table doesn't exist yet (pre-migration)

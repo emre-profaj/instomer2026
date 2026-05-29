@@ -308,8 +308,8 @@ const Sidebar = () => {
                                 );
                             })}
 
-                            {/* Gayrimenkul */}
-                            {(workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (
+                            {/* Gayrimenkul — sadece workspace'te aktifse göster */}
+                            {currentWorkspace?.realEstateEnabled && (workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (
                                 <div className="nav-category">
                                     <button
                                         className={`nav-category-header ${location.pathname.startsWith('/real-estate') ? 'active' : ''}`}

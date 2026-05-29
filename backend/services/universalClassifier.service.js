@@ -604,9 +604,12 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                         status: 'PLANNED',
                         priority: 'NORMAL',
                         title,
-                        description: extractedData.preferredCallTime
-                            ? `Tercih edilen zaman: ${extractedData.preferredCallTime}`
-                            : `Otomatik oluşturuldu — Sınıflandırma: ${classification}`,
+                        description: [
+                            extractedData.topic ? `📌 Konu: ${extractedData.topic}` : null,
+                            extractedData.phone ? `📱 Numara: ${extractedData.phone}` : null,
+                            extractedData.preferredCallTime ? `🕐 Tercih edilen zaman: ${extractedData.preferredCallTime}` : null,
+                            `Kaynak: ${channel || 'UNKNOWN'}`,
+                        ].filter(Boolean).join('\n'),
                         dueDate,
                         contactId,
                         workspaceId,
