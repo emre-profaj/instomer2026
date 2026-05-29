@@ -599,6 +599,7 @@ const Inbox = () => {
     const emojiPickerRef = useRef(null);
     const textareaRef = useRef(null);
     const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
+    const [replyChannel, setReplyChannel] = useState(null); // null = use conversation's native channel, 'WHATSAPP', 'EMAIL', 'MESSENGER'
     const [isCallNote, setIsCallNote] = useState(false);
 
     // AI Suggestion states
@@ -1844,6 +1845,7 @@ const Inbox = () => {
         setSelectedItem(item);
         setSelectedItemType(item.inboxType);
         setShowContactSidebar(true);
+        setReplyChannel(null);
 
         if (item.inboxType === INBOX_TYPES.MESSAGE || item.inboxType === INBOX_TYPES.EMAIL) {
             await loadConversationDetails(item.id);
@@ -3501,6 +3503,11 @@ const Inbox = () => {
                                         <div className="inbox-item-header">
                                             <span className="inbox-item-name">
                                                 {getItemName(item)}
+                                                {item.hasPlannedCall && (
+                                                    <span className="planned-call-badge" title="Planlanmış arama var">
+                                                        <PhoneCall size={12} />
+                                                    </span>
+                                                )}
                                             </span>
                                             <div className="inbox-item-header-right">
                                                 {(item.unreadCount || 0) > 0 && (
@@ -4777,6 +4784,9 @@ const Inbox = () => {
                                                         >
                                                             <span style={{ fontSize: '0.85rem' }}>
                                                                 {isInternalNoteMode ? '📝' :
+                                                                 replyChannel === 'WHATSAPP' ? '💬' :
+                                                                 replyChannel === 'EMAIL' ? '✉️' :
+                                                                 replyChannel === 'MESSENGER' ? '📘' :
                                                                  selectedItem?.channel === 'WHATSAPP' ? '💬' :
                                                                  selectedItem?.channel === 'INSTAGRAM' ? '📸' :
                                                                  selectedItem?.channel === 'FACEBOOK' ? '📘' :
@@ -4786,6 +4796,9 @@ const Inbox = () => {
                                                                  selectedItem?.channel === 'PHONE' ? '📞' : '💬'}
                                                             </span>
                                                             <span>{isInternalNoteMode ? 'Dahili Not' :
+                                                             replyChannel === 'WHATSAPP' ? 'WhatsApp Şablon' :
+                                                             replyChannel === 'EMAIL' ? 'E-posta' :
+                                                             replyChannel === 'MESSENGER' ? 'Messenger' :
                                                              selectedItem?.channel === 'WHATSAPP' ? 'WhatsApp' :
                                                              selectedItem?.channel === 'INSTAGRAM' ? 'Instagram' :
                                                              selectedItem?.channel === 'FACEBOOK' ? 'Messenger' :
@@ -4807,6 +4820,7 @@ const Inbox = () => {
                                                                 border: '1px solid #e5e7eb', overflow: 'hidden'
                                                             }}
                                                         >
+                                                            {/* Current channel - always shown */}
                                                             {selectedItem?.channel && !isInternalNoteMode && (
                                                                 <div
                                                                     style={{
@@ -4816,6 +4830,7 @@ const Inbox = () => {
                                                                     }}
                                                                     onClick={() => {
                                                                         setIsInternalNoteMode(false);
+                                                                        setReplyChannel(null);
                                                                         setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
                                                                     }}
                                                                 >
@@ -4823,18 +4838,87 @@ const Inbox = () => {
                                                                         {selectedItem.channel === 'WHATSAPP' ? '💬' :
                                                                          selectedItem.channel === 'INSTAGRAM' ? '📸' :
                                                                          selectedItem.channel === 'FACEBOOK' ? '📘' :
+                                                                         selectedItem.channel === 'LEAD' ? '📋' :
                                                                          selectedItem.channel === 'EMAIL' ? '✉️' :
                                                                          selectedItem.channel === 'WIDGET' ? '🌐' : '💬'}
                                                                     </span>
                                                                     {selectedItem.channel === 'WHATSAPP' ? 'WhatsApp' :
                                                                      selectedItem.channel === 'INSTAGRAM' ? 'Instagram' :
                                                                      selectedItem.channel === 'FACEBOOK' ? 'Messenger' :
+                                                                     selectedItem.channel === 'LEAD' ? 'LEAD' :
                                                                      selectedItem.channel === 'EMAIL' ? 'E-posta' :
                                                                      selectedItem.channel === 'WIDGET' ? 'Web Widget' :
                                                                      selectedItem.channel}
-                                                                    <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>
+                                                                    {!replyChannel && !isInternalNoteMode && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>}
                                                                 </div>
                                                             )}
+                                                            {/* WhatsApp - show if contact has phone AND current channel is NOT WhatsApp */}
+                                                            {selectedItem?.contact?.phone && selectedItem?.channel !== 'WHATSAPP' && (
+                                                                <div
+                                                                    style={{
+                                                                        padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+                                                                        fontSize: '0.83rem', cursor: 'pointer',
+                                                                        color: replyChannel === 'WHATSAPP' ? '#16a34a' : '#374151',
+                                                                        background: replyChannel === 'WHATSAPP' ? '#f0fdf4' : '#fff',
+                                                                        fontWeight: replyChannel === 'WHATSAPP' ? 600 : 400,
+                                                                        borderTop: '1px solid #f3f4f6'
+                                                                    }}
+                                                                    onClick={() => {
+                                                                        setIsInternalNoteMode(false);
+                                                                        setReplyChannel('WHATSAPP');
+                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                    }}
+                                                                >
+                                                                    <span>💬</span>
+                                                                    WhatsApp Şablon
+                                                                    {replyChannel === 'WHATSAPP' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#16a34a' }}>✓</span>}
+                                                                </div>
+                                                            )}
+                                                            {/* Email - show if contact has email AND current channel is NOT Email */}
+                                                            {selectedItem?.contact?.email && selectedItem?.channel !== 'EMAIL' && (
+                                                                <div
+                                                                    style={{
+                                                                        padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+                                                                        fontSize: '0.83rem', cursor: 'pointer',
+                                                                        color: replyChannel === 'EMAIL' ? '#dc2626' : '#374151',
+                                                                        background: replyChannel === 'EMAIL' ? '#fef2f2' : '#fff',
+                                                                        fontWeight: replyChannel === 'EMAIL' ? 600 : 400,
+                                                                        borderTop: '1px solid #f3f4f6'
+                                                                    }}
+                                                                    onClick={() => {
+                                                                        setIsInternalNoteMode(false);
+                                                                        setReplyChannel('EMAIL');
+                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                    }}
+                                                                >
+                                                                    <span>✉️</span>
+                                                                    E-posta
+                                                                    {replyChannel === 'EMAIL' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#dc2626' }}>✓</span>}
+                                                                </div>
+                                                            )}
+                                                            {/* Messenger - show if LEAD channel (lead came through Facebook page) */}
+                                                            {selectedItem?.channel === 'LEAD' && selectedItem?.facebookPageId && (
+                                                                <div
+                                                                    style={{
+                                                                        padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+                                                                        fontSize: '0.83rem', cursor: 'pointer',
+                                                                        color: replyChannel === 'MESSENGER' ? '#1d4ed8' : '#374151',
+                                                                        background: replyChannel === 'MESSENGER' ? '#eff6ff' : '#fff',
+                                                                        fontWeight: replyChannel === 'MESSENGER' ? 600 : 400,
+                                                                        borderTop: '1px solid #f3f4f6'
+                                                                    }}
+                                                                    onClick={() => {
+                                                                        setIsInternalNoteMode(false);
+                                                                        setReplyChannel('MESSENGER');
+                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                    }}
+                                                                >
+                                                                    <span>📘</span>
+                                                                    Messenger
+                                                                    {replyChannel === 'MESSENGER' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#1d4ed8' }}>✓</span>}
+                                                                </div>
+                                                            )}
+                                                            {/* Dahili Not - always shown */}
                                                             <div
                                                                 style={{
                                                                     padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
@@ -4846,6 +4930,7 @@ const Inbox = () => {
                                                                 }}
                                                                 onClick={() => {
                                                                     setIsInternalNoteMode(!isInternalNoteMode);
+                                                                    setReplyChannel(null);
                                                                     setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
                                                                 }}
                                                             >
@@ -4883,7 +4968,7 @@ const Inbox = () => {
                                                 {/* RIGHT: Action icons + AI Assist + Send */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                     {/* Template icon */}
-                                                    {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP') && templates.length > 0 && (
+                                                    {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP' || replyChannel === 'WHATSAPP') && templates.length > 0 && (
                                                         <div className="template-dropdown">
                                                             <button
                                                                 type="button"

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
-import { aiAPI, workspaceAPI, automationAPI, retellAPI } from '../../services/api';
-import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic, Wand2, ChevronRight, ChevronLeft, Languages, MessageSquare, Shield, Eye, Sparkles, ClipboardList } from 'lucide-react';
+import { aiAPI, workspaceAPI, automationAPI, retellAPI, facebookAPI, whatsappAPI, emailAPI, formWebhookAPI, webWidgetAPI } from '../../services/api';
+import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic, Wand2, ChevronRight, ChevronLeft, Languages, MessageSquare, Shield, Eye, Sparkles, ClipboardList, Key, Loader, CheckCircle, RefreshCw, PhoneCall, Calendar, BookOpen, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 import AppointmentBotConfig from '../../components/Settings/AppointmentBotConfig';
@@ -1199,12 +1199,32 @@ const Assistants = () => {
     const [retellAgents, setRetellAgents] = useState([]);
     const [retellLoading, setRetellLoading] = useState(false);
 
+    // Retell Settings State
+    const [retellSettings, setRetellSettings] = useState({
+        retellApiKey: '',
+        retellAgentId: '',
+        retellFromNumber: '',
+        retellAutoCallEnabled: false,
+        retellAutoCallTriggers: {},
+        retellAutoCallDelay: 30,
+        retellAutoCallSchedule: { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+        aiFallbackEnabled: false,
+        aiFallbackDelayMinutes: 60,
+        aiFallbackPoolEnabled: false
+    });
+    const [retellRules, setRetellRules] = useState([]);
+    const [retellSaving, setRetellSaving] = useState(false);
+    const [retellMessage, setRetellMessage] = useState(null);
+    const [connectedChannels, setConnectedChannels] = useState([]);
+
     useEffect(() => {
         if (workspaceId) {
             loadBots();
             loadAiUsage();
             loadAutomations();
             loadRetellAgents();
+            loadRetellSettings();
+            loadConnectedChannels();
         }
     }, [workspaceId]);
 
@@ -1220,6 +1240,145 @@ const Assistants = () => {
         } finally {
             setRetellLoading(false);
         }
+    };
+
+    const loadRetellSettings = async () => {
+        if (!workspaceId) return;
+        try {
+            const res = await retellAPI.getSettings(workspaceId);
+            const triggers = res.data.retellAutoCallTriggers || {};
+            const existingRules = Object.entries(triggers)
+                .filter(([_, v]) => v && (v === true || v.enabled))
+                .map(([source, val]) => ({
+                    source,
+                    delay: typeof val === 'object' && val.delay !== undefined ? val.delay : (res.data.retellAutoCallDelay ?? 30),
+                    agentId: typeof val === 'object' && val.agentId ? val.agentId : '',
+                    status: typeof val === 'object' && val.status ? val.status : '',
+                    callStart: typeof val === 'object' && val.callStart ? val.callStart : '09:00',
+                    callEnd: typeof val === 'object' && val.callEnd ? val.callEnd : '18:00'
+                }));
+            setRetellRules(existingRules);
+            setRetellSettings({
+                retellApiKey: '',
+                retellAgentId: res.data.retellAgentId || '',
+                retellFromNumber: res.data.retellFromNumber || '',
+                retellAutoCallEnabled: res.data.retellAutoCallEnabled || false,
+                retellAutoCallTriggers: triggers,
+                retellAutoCallSchedule: res.data.retellAutoCallSchedule || { start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5] },
+                aiFallbackEnabled: res.data.aiFallbackEnabled || false,
+                aiFallbackDelayMinutes: res.data.aiFallbackDelayMinutes ?? 60,
+                aiFallbackPoolEnabled: res.data.aiFallbackPoolEnabled || false
+            });
+        } catch (err) {
+            console.error('Error loading Retell settings:', err);
+        }
+    };
+
+    const loadConnectedChannels = async () => {
+        try {
+            const [pagesRes, waRes, emailRes, formRes, widgetRes] = await Promise.all([
+                facebookAPI.getPages(workspaceId).catch(() => ({ data: { pages: [] } })),
+                whatsappAPI.getPhoneNumbers(workspaceId).catch(() => ({ data: { phoneNumbers: [] } })),
+                emailAPI.getChannels(workspaceId).catch(() => ({ data: { emailChannels: [] } })),
+                formWebhookAPI.getWebhooks(workspaceId).catch(() => ({ data: { webhooks: [] } })),
+                webWidgetAPI.getAll(workspaceId).catch(() => ({ data: { widgets: [] } }))
+            ]);
+            const channels = [];
+            const pages = pagesRes.data.pages || pagesRes.data || [];
+            if (Array.isArray(pages) && pages.length > 0) {
+                channels.push('LEAD', 'FACEBOOK');
+                if (pages.some(p => p.instagramBusinessId)) channels.push('INSTAGRAM');
+            }
+            const waNumbers = waRes.data.phoneNumbers || waRes.data || [];
+            if (Array.isArray(waNumbers) && waNumbers.length > 0) channels.push('WHATSAPP');
+            const emails = emailRes.data.emailChannels || emailRes.data || [];
+            if (Array.isArray(emails) && emails.length > 0) channels.push('EMAIL');
+            const forms = formRes.data.webhooks || formRes.data || [];
+            if (Array.isArray(forms) && forms.length > 0) channels.push('FORM');
+            const widgets = widgetRes.data.widgets || widgetRes.data || [];
+            if (Array.isArray(widgets) && widgets.length > 0) channels.push('WIDGET');
+            setConnectedChannels(channels);
+        } catch (err) {
+            console.error('Error loading channels:', err);
+        }
+    };
+
+    const handleSaveRetellSettings = async () => {
+        try {
+            setRetellSaving(true);
+            setRetellMessage(null);
+            const data = {};
+            if (retellSettings.retellApiKey) data.retellApiKey = retellSettings.retellApiKey;
+            if (retellSettings.retellAgentId !== undefined) data.retellAgentId = retellSettings.retellAgentId;
+            if (retellSettings.retellFromNumber !== undefined) data.retellFromNumber = retellSettings.retellFromNumber;
+            data.retellAutoCallEnabled = retellSettings.retellAutoCallEnabled;
+            const triggers = {};
+            retellRules.forEach(r => {
+                if (r.source) {
+                    triggers[r.source] = {
+                        enabled: true,
+                        delay: parseInt(r.delay) || 0,
+                        agentId: r.agentId || '',
+                        status: r.status || '',
+                        callStart: r.callStart || '09:00',
+                        callEnd: r.callEnd || '18:00'
+                    };
+                }
+            });
+            data.retellAutoCallTriggers = triggers;
+            data.retellAutoCallSchedule = retellSettings.retellAutoCallSchedule;
+            data.aiFallbackEnabled = retellSettings.aiFallbackEnabled;
+            data.aiFallbackDelayMinutes = parseInt(retellSettings.aiFallbackDelayMinutes) || 60;
+            data.aiFallbackPoolEnabled = retellSettings.aiFallbackPoolEnabled;
+            await retellAPI.saveSettings(workspaceId, data);
+            setRetellMessage({ type: 'success', text: 'Ayarlar başarıyla kaydedildi!' });
+            if (retellSettings.retellApiKey) setTimeout(loadRetellAgents, 500);
+        } catch (err) {
+            setRetellMessage({ type: 'error', text: err.response?.data?.error || 'Kayıt başarısız' });
+        } finally { setRetellSaving(false); }
+    };
+
+    const channelLabels = {
+        ALL: 'Tümü', LEAD: 'Lead Ads', FACEBOOK: 'Facebook Messenger',
+        INSTAGRAM: 'Instagram DM', WHATSAPP: 'WhatsApp', EMAIL: 'E-posta',
+        FORM: 'Web Form', WIDGET: 'Web Widget'
+    };
+
+    const statusOptions = [
+        { value: '', label: 'Tüm Durumlar (Filtre Yok)' },
+        { value: 'NEW_APPLICATION', label: 'Yeni Başvuru' },
+        { value: 'OPPORTUNITY', label: 'Fırsat' },
+        { value: 'HOT_OPPORTUNITY', label: 'Sıcak Fırsat' },
+        { value: 'COMPLAINT', label: 'Şikayet' },
+        { value: 'INFO_PROVIDED', label: 'Bilgi Verildi' },
+        { value: 'APPOINTMENT_SCHEDULED', label: 'Randevu Planlandı' },
+        { value: 'SALE_COMPLETED', label: 'Satış Gerçekleşti' },
+        { value: 'UNREACHABLE', label: 'Ulaşılamadı' },
+        { value: 'CALLBACK', label: 'Tekrar Ara' },
+        { value: 'SPAM', label: 'Spam' },
+        { value: 'LOST', label: 'Kaybedildi' }
+    ];
+
+    const addRetellRule = () => {
+        if (retellRules.some(r => r.source === 'ALL')) return;
+        setRetellRules([...retellRules, { source: 'ALL', delay: 30, agentId: '', status: '', callStart: '09:00', callEnd: '18:00' }]);
+    };
+
+    const removeRetellRule = (index) => {
+        setRetellRules(retellRules.filter((_, i) => i !== index));
+    };
+
+    const updateRetellRuleField = (index, field, value) => {
+        const newRules = [...retellRules];
+        newRules[index] = { ...newRules[index], [field]: value };
+        setRetellRules(newRules);
+    };
+
+    const getAvailableChannels = (currentSource) => {
+        const usedSources = retellRules.map(r => r.source).filter(s => s !== currentSource);
+        const available = connectedChannels.filter(ch => !usedSources.includes(ch));
+        if (!usedSources.includes('ALL')) return ['ALL', ...available];
+        return available;
     };
 
     const loadAutomations = async () => {
@@ -1503,14 +1662,9 @@ const Assistants = () => {
                         <div className="retell-agents-section" style={{ marginTop: '48px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                                 <div style={{ 
-                                    width: '32px', 
-                                    height: '32px', 
-                                    borderRadius: '8px', 
-                                    background: '#ccfbf1', 
-                                    color: '#0f766e', 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    justifyContent: 'center' 
+                                    width: '32px', height: '32px', borderRadius: '8px', 
+                                    background: '#ccfbf1', color: '#0f766e', 
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center' 
                                 }}>
                                     <Phone size={18} />
                                 </div>
@@ -1520,21 +1674,225 @@ const Assistants = () => {
                                 </div>
                             </div>
 
+                            {retellMessage && (
+                                <div style={{
+                                    padding: '12px 16px', borderRadius: 8, marginBottom: 16,
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    background: retellMessage.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                                    color: retellMessage.type === 'success' ? '#065f46' : '#991b1b',
+                                    border: `1px solid ${retellMessage.type === 'success' ? '#a7f3d0' : '#fecaca'}`
+                                }}>
+                                    {retellMessage.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+                                    {retellMessage.text}
+                                </div>
+                            )}
+
+                            {/* Genel Ayarlar Card */}
+                            <div className="bot-card" style={{ borderLeft: '3px solid #0d9488', marginBottom: '16px' }}>
+                                <div style={{ padding: '20px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                        <Key size={16} style={{ color: '#0d9488' }} />
+                                        <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>Genel Bağlantı Ayarları</span>
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 14 }}>
+                                        <label className="form-label">API Key</label>
+                                        <input type="password" className="input-modern"
+                                            value={retellSettings.retellApiKey}
+                                            onChange={(e) => setRetellSettings(prev => ({ ...prev, retellApiKey: e.target.value }))}
+                                            placeholder="AI Call API Key girin..."
+                                        />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 14 }}>
+                                        <label className="form-label">Varsayılan AI Agent</label>
+                                        {retellAgents.length > 0 ? (
+                                            <select className="input-modern" value={retellSettings.retellAgentId}
+                                                onChange={(e) => setRetellSettings(prev => ({ ...prev, retellAgentId: e.target.value }))}>
+                                                <option value="">Agent seçin...</option>
+                                                {retellAgents.map(a => <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>)}
+                                            </select>
+                                        ) : (
+                                            <input type="text" className="input-modern"
+                                                value={retellSettings.retellAgentId}
+                                                onChange={(e) => setRetellSettings(prev => ({ ...prev, retellAgentId: e.target.value }))}
+                                                placeholder="Agent ID girin veya API key kaydedip listeden seçin"
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Arama Numarası</label>
+                                        <input type="text" className="input-modern"
+                                            value={retellSettings.retellFromNumber}
+                                            onChange={(e) => setRetellSettings(prev => ({ ...prev, retellFromNumber: e.target.value }))}
+                                            placeholder="+905xxxxxxxxx"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Otomatik Arama Card */}
+                            <div className="bot-card" style={{ borderLeft: '3px solid #6366f1', marginBottom: '16px' }}>
+                                <div style={{ padding: '20px' }}>
+                                    <div className="section-header-toggle">
+                                        <div className="section-title-group">
+                                            <PhoneCall size={18} style={{ color: '#6366f1' }} />
+                                            <span>Otomatik Arama (Auto-Call)</span>
+                                        </div>
+                                        <label className="toggle-switch">
+                                            <input type="checkbox" checked={retellSettings.retellAutoCallEnabled}
+                                                onChange={(e) => setRetellSettings(prev => ({ ...prev, retellAutoCallEnabled: e.target.checked }))} />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    {retellSettings.retellAutoCallEnabled && (
+                                        <div className="section-content" style={{ marginTop: 12 }}>
+                                            <p className="section-description">Belirli kanallardan numara geldiğinde otomatik arama başlatır.</p>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                                                {retellRules.map((rule, index) => (
+                                                    <div key={index} style={{ border: '1px solid #e5e7eb', background: '#f9fafb', borderRadius: 8, padding: '12px 16px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                                                            <span style={{ background: '#eef2ff', color: '#4338ca', padding: '4px 10px', borderRadius: 6, fontSize: '12px', fontWeight: 600 }}>Eğer</span>
+                                                            <span style={{ fontSize: '12px', color: '#6b7280' }}>kaynak =</span>
+                                                            <select className="input-modern" style={{ width: 'auto', minWidth: 150 }} value={rule.source} onChange={(e) => updateRetellRuleField(index, 'source', e.target.value)}>
+                                                                {getAvailableChannels(rule.source).map(ch => (
+                                                                    <option key={ch} value={ch}>{channelLabels[ch] || ch}</option>
+                                                                ))}
+                                                            </select>
+                                                            <span style={{ color: '#9ca3af' }}>→</span>
+                                                            <span style={{ background: '#ecfdf5', color: '#059669', padding: '4px 10px', borderRadius: 6, fontSize: '12px', fontWeight: 600 }}>Otomatik Ara</span>
+                                                            <div style={{ flex: 1 }} />
+                                                            <button onClick={() => removeRetellRule(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}>
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <Clock size={14} color="#6b7280" />
+                                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Gecikme:</span>
+                                                                <input type="number" className="input-modern" min="0" max="3600" value={rule.delay}
+                                                                    onChange={(e) => updateRetellRuleField(index, 'delay', e.target.value)}
+                                                                    style={{ width: 70, textAlign: 'center' }} />
+                                                                <span style={{ fontSize: '12px', color: '#6b7280' }}>sn</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <Bot size={14} color="#6b7280" />
+                                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Agent:</span>
+                                                                <select className="input-modern" style={{ width: 'auto', minWidth: 150 }} value={rule.agentId || ''} onChange={(e) => updateRetellRuleField(index, 'agentId', e.target.value)}>
+                                                                    <option value="">Varsayılan</option>
+                                                                    {retellAgents.map(a => <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>)}
+                                                                </select>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Durum:</span>
+                                                                <select className="input-modern" style={{ width: 'auto', minWidth: 150 }} value={rule.status || ''} onChange={(e) => updateRetellRuleField(index, 'status', e.target.value)}>
+                                                                    {statusOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px dashed #e5e7eb', flexWrap: 'wrap' }}>
+                                                            <Calendar size={14} color="#6b7280" />
+                                                            <span style={{ fontSize: '12px', fontWeight: 500 }}>Arama Saatleri:</span>
+                                                            <input type="time" className="input-modern" value={rule.callStart || '09:00'} onChange={(e) => updateRetellRuleField(index, 'callStart', e.target.value)} style={{ width: 110 }} />
+                                                            <span style={{ color: '#9ca3af' }}>—</span>
+                                                            <input type="time" className="input-modern" value={rule.callEnd || '18:00'} onChange={(e) => updateRetellRuleField(index, 'callEnd', e.target.value)} style={{ width: 110 }} />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <button onClick={addRetellRule}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #d1d5db', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', color: '#6b7280', fontSize: '12px', fontWeight: 500, marginTop: 12 }}>
+                                                <Plus size={14} /> Kural Ekle
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* AI Arama Devralma Card */}
+                            {retellSettings.retellAutoCallEnabled && (
+                                <div className="bot-card" style={{ borderLeft: '3px solid #8b5cf6', marginBottom: '16px' }}>
+                                    <div style={{ padding: '20px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                            <Bot size={18} style={{ color: '#8b5cf6' }} />
+                                            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e1b4b' }}>AI Arama Devralma</span>
+                                        </div>
+                                        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: 0, marginBottom: 16 }}>AI ses agent'ı hangi arama görevlerini üstlenebilir?</p>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'default', padding: '12px 14px', borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                                                <input type="checkbox" checked={true} disabled style={{ marginTop: 2, accentColor: '#10b981', width: 16, height: 16 }} />
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#065f46' }}>Sadece Kendi Arama Görevleri</div>
+                                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2 }}>AI agent'a doğrudan atanmış aramalar. Her zaman aktiftir.</div>
+                                                </div>
+                                            </label>
+
+                                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '12px 14px', borderRadius: 10, background: retellSettings.aiFallbackPoolEnabled ? '#eff6ff' : '#f9fafb', border: `1px solid ${retellSettings.aiFallbackPoolEnabled ? '#93c5fd' : '#e5e7eb'}` }}>
+                                                <input type="checkbox" checked={retellSettings.aiFallbackPoolEnabled}
+                                                    onChange={e => setRetellSettings(prev => ({ ...prev, aiFallbackPoolEnabled: e.target.checked }))}
+                                                    style={{ marginTop: 2, accentColor: '#3b82f6', width: 16, height: 16 }} />
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#1e3a5f' }}>Havuzdaki Sahipsiz Görevler</div>
+                                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2 }}>Kimseye atanmamış arama görevlerini AI üstlensin.</div>
+                                                </div>
+                                            </label>
+
+                                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '12px 14px', borderRadius: 10, background: retellSettings.aiFallbackEnabled ? '#faf5ff' : '#f9fafb', border: `1px solid ${retellSettings.aiFallbackEnabled ? '#c4b5fd' : '#e5e7eb'}` }}>
+                                                <input type="checkbox" checked={retellSettings.aiFallbackEnabled}
+                                                    onChange={e => setRetellSettings(prev => ({ ...prev, aiFallbackEnabled: e.target.checked }))}
+                                                    style={{ marginTop: 2, accentColor: '#8b5cf6', width: 16, height: 16 }} />
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#3b0764' }}>Aynı Takımdaki Yapılmamış Aramalar</div>
+                                                    <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2 }}>İnsan agent süresinde aramazsa AI devreye girsin.</div>
+                                                    {retellSettings.aiFallbackEnabled && (
+                                                        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                            <Clock size={14} color="#8b5cf6" />
+                                                            <span style={{ fontSize: '12px', fontWeight: 500 }}>Bekleme:</span>
+                                                            <select className="input-modern" style={{ width: 'auto' }}
+                                                                value={retellSettings.aiFallbackDelayMinutes}
+                                                                onChange={e => setRetellSettings(prev => ({ ...prev, aiFallbackDelayMinutes: parseInt(e.target.value) }))}>
+                                                                <option value={15}>15 dakika</option>
+                                                                <option value={30}>30 dakika</option>
+                                                                <option value={60}>1 saat</option>
+                                                                <option value={120}>2 saat</option>
+                                                                <option value={180}>3 saat</option>
+                                                                <option value={240}>4 saat</option>
+                                                                <option value={480}>8 saat</option>
+                                                                <option value={1440}>24 saat</option>
+                                                            </select>
+                                                            <span style={{ fontSize: '11px', color: '#9ca3af' }}>sonra AI arar</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Arama Ayarları Kaydet */}
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px' }}>
+                                <button className="btn-modern btn-primary" onClick={handleSaveRetellSettings} disabled={retellSaving}
+                                    style={{ background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', boxShadow: '0 2px 8px rgba(13, 148, 136, 0.25)', padding: '10px 24px', fontSize: '13px' }}>
+                                    {retellSaving ? <Loader size={14} className="spin" /> : <Save size={14} />}
+                                    {retellSaving ? 'Kaydediliyor...' : 'Arama Ayarlarını Kaydet'}
+                                </button>
+                            </div>
+
+                            {/* Agent List */}
                             {retellLoading ? (
                                 <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>
                             ) : retellAgents.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
                                     <Phone size={36} color="#9ca3af" style={{ marginBottom: '12px' }} />
-                                    <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Yapılandırılmış arama asistanı bulunamadı. Lütfen API entegrasyonunu kontrol edin veya ayarlardan yapılandırın.</p>
+                                    <p className="text-muted" style={{ fontSize: '13px', margin: 0 }}>Yapılandırılmış arama asistanı bulunamadı.</p>
                                 </div>
                             ) : (
                                 <div className="bots-grid">
                                     {retellAgents.map(agent => (
-                                        <RetellAgentItem
-                                            key={agent.agent_id}
-                                            agent={agent}
-                                            workspaceId={workspaceId}
-                                        />
+                                        <RetellAgentItem key={agent.agent_id} agent={agent} workspaceId={workspaceId} />
                                     ))}
                                 </div>
                             )}

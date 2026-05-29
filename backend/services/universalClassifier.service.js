@@ -158,7 +158,7 @@ SADECE JSON döndür, başka bir şey yazma:
         // Lead kalifikasyonu: İsim + Telefon + Konu
         const ed = parsed.extractedData || {};
         const hasName = ed.name && ed.name !== 'null';
-        const hasPhone = ed.phone && ed.phone !== 'null' || (contact?.phone);
+        const hasPhone = (ed.phone && ed.phone !== 'null') || !!(contact?.phone);
         const hasTopic = ed.topic && ed.topic !== 'null';
         parsed.isQualifiedLead = !!(hasName && hasPhone && hasTopic && (parsed.classification === 'FIRSAT' || parsed.classification === 'RANDEVU'));
 

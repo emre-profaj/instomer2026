@@ -367,6 +367,9 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             'arayalım', 'arayacağız', 'sizi arayalım', 'sizi arayacağız',
             'numaranızı', 'aranacaksınız', 'beni arayın', 'arar mısınız',
             'arar misin', 'arayabilir misiniz', 'iletişime geçelim',
+            'arayıp', 'iletişime geçecektir', 'iletişime geçeceğiz',
+            'sizinle iletişime', 'sizi arayıp', 'geri arayacağız',
+            'geri dönüş yapacağız', 'ekibimiz arayacak', 'uzman ekibimiz',
         ];
         const recentMessages = await prisma.message.findMany({
             where: { conversationId },
@@ -536,14 +539,18 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
  */
 export const executeAutoCallPlanning = async (workspaceId, contactId, source = 'AUTOMATION') => {
     try {
-        // 1. Check if SALES_PHONE_CALL rule exists and is not explicitly disabled
+        // 1. Auto-call planning: workspace ayarından kontrol et
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellAutoCallEnabled: true }
+        });
+        // retellAutoCallEnabled açıkça false ise atla
+        if (workspace?.retellAutoCallEnabled === false) return;
+
+        // SALES_PHONE_CALL config'inden team/funnel bilgisi al (varsa)
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'SALES_PHONE_CALL' } }
         });
-        // If rule exists but is explicitly disabled → skip
-        if (rule && !rule.isActive) return;
-        // If rule doesn't exist → proceed with defaults (auto call planning always on by default)
-
         const config = rule ? safeParseJSON(rule.config, {}) : {};
 
         // 2. Get contact + latest conversation for context
@@ -570,6 +577,39 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         });
         if (existingCall) {
             console.log(`ℹ️ [RULE:AUTO_CALL] Contact ${contactId} already has a planned call, skipping`);
+            return;
+        }
+
+        // 3b. Anti-loop: Müşteri insan callback istemiş (HUMAN_REQUESTED) ise
+        // bu görev tamamlanana kadar AI tekrar aramasın (zamandan bağımsız)
+        const humanCallback = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId,
+                type: 'CALL',
+                source: 'HUMAN_REQUESTED',
+                status: 'PLANNED'
+            }
+        });
+        if (humanCallback) {
+            console.log(`🚫 [RULE:AUTO_CALL] Contact ${contactId} has a pending human-requested callback (due: ${humanCallback.dueDate}) — AI call blocked`);
+            return;
+        }
+
+        // 3c. Genel cooldown: Son 4 saat içinde Retell araması yapıldıysa tekrar aramayı engelle
+        const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+        const recentRetellCall = await prisma.contactActivity.findFirst({
+            where: {
+                workspaceId,
+                contactId,
+                type: 'CALL',
+                source: 'RETELL',
+                status: 'COMPLETED',
+                completedAt: { gte: fourHoursAgo }
+            }
+        });
+        if (recentRetellCall) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Contact ${contactId} was called by Retell within last 4 hours, skipping auto-call`);
             return;
         }
 

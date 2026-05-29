@@ -2341,7 +2341,7 @@ async function handleCallAnalyzed(call) {
                                     dueDate,
                                     contactId: callRecord.contactId,
                                     workspaceId: callRecord.workspaceId,
-                                    source: 'RETELL'
+                                    source: 'HUMAN_REQUESTED'
                                 }
                             });
                             console.log(`✅ [Retell Transcript] Otomatik ${actType} aktivitesi oluşturuldu`);

@@ -327,14 +327,17 @@ const Funnels = () => {
                                                 )}
                                             </span>
                                             <span className="funnels-stage-count">{stages.length} durum</span>
-                                            <button className="funnels-icon-btn" onClick={() => setEditingFunnel({ 
-                                                id: funnel.id, 
-                                                name: funnel.name, 
-                                                color: funnel.color,
-                                                assignedTeamId: funnel.assignedTeamId || '',
-                                                assignedUserId: funnel.assignedUserId || '',
-                                                classificationCriteria: funnel.classificationCriteria || ''
-                                            })} title={t('common.edit')}>
+                                            <button className="funnels-icon-btn" onClick={() => {
+                                                setEditingFunnel({ 
+                                                    id: funnel.id, 
+                                                    name: funnel.name, 
+                                                    color: funnel.color,
+                                                    assignedTeamId: funnel.assignedTeamId || '',
+                                                    assignedUserId: funnel.assignedUserId || '',
+                                                    classificationCriteria: funnel.classificationCriteria || ''
+                                                });
+                                                setExpandedFunnel(funnel.id);
+                                            }} title={t('common.edit')}>
                                                 <Edit2 size={15} />
                                             </button>
                                             <button className="funnels-icon-btn funnels-icon-btn-danger" onClick={() => handleDelete(funnel.id)} title={t('common.delete')}>

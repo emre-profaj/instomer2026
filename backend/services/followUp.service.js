@@ -33,7 +33,8 @@ export const processInactivityWarnings = async () => {
                 OR: [
                     { assignedBotId: { not: null } },
                     { facebookPage: { assignedBotId: { not: null } } },
-                    { emailChannel: { assignedBotId: { not: null } } }
+                    { emailChannel: { assignedBotId: { not: null } } },
+                    { whatsappPhoneNumber: { assignedBotId: { not: null } } }
                 ],
                 lastBotMessageAt: {
                     not: null,
@@ -47,7 +48,7 @@ export const processInactivityWarnings = async () => {
                 assignedBot: true,
                 contact: true,
                 facebookPage: { include: { assignedBot: true } },
-                whatsappPhoneNumber: true,
+                whatsappPhoneNumber: { include: { assignedBot: true } },
                 emailChannel: { include: { assignedBot: true } }
             },
             take: 100  // Hard limit to prevent memory spikes
@@ -76,6 +77,9 @@ export const processInactivityWarnings = async () => {
             }
             if (!bot && conversation.emailChannel?.assignedBot) {
                 bot = conversation.emailChannel.assignedBot;
+            }
+            if (!bot && conversation.whatsappPhoneNumber?.assignedBot) {
+                bot = conversation.whatsappPhoneNumber.assignedBot;
             }
 
             if (!bot) {
@@ -149,7 +153,8 @@ export const processDailyReminders = async () => {
                 OR: [
                     { assignedBotId: { not: null } },
                     { facebookPage: { assignedBotId: { not: null } } },
-                    { emailChannel: { assignedBotId: { not: null } } }
+                    { emailChannel: { assignedBotId: { not: null } } },
+                    { whatsappPhoneNumber: { assignedBotId: { not: null } } }
                 ],
                 lastBotMessageAt: {
                     not: null,
@@ -163,7 +168,7 @@ export const processDailyReminders = async () => {
                 assignedBot: true,
                 contact: true,
                 facebookPage: { include: { assignedBot: true } },
-                whatsappPhoneNumber: true,
+                whatsappPhoneNumber: { include: { assignedBot: true } },
                 emailChannel: { include: { assignedBot: true } }
             },
             take: 50  // Hard limit
@@ -186,6 +191,9 @@ export const processDailyReminders = async () => {
             }
             if (!bot && conversation.emailChannel?.assignedBot) {
                 bot = conversation.emailChannel.assignedBot;
+            }
+            if (!bot && conversation.whatsappPhoneNumber?.assignedBot) {
+                bot = conversation.whatsappPhoneNumber.assignedBot;
             }
 
             if (!bot || !bot.dailyReminderEnabled) continue;
