@@ -296,6 +296,21 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         let targetFunnelId = matchedFunnelId;
         let targetStageId = null;
 
+        // matchedFunnelId varsa, sınıflandırma türüyle uyumlu mu kontrol et
+        // AI "Genel Akış"ı matchlediyse ama classification RANDEVU/FIRSAT/DESTEK ise → override et
+        if (targetFunnelId && classification !== 'GENEL') {
+            try {
+                const matchedFunnel = await prisma.funnel.findUnique({
+                    where: { id: targetFunnelId },
+                    select: { name: true }
+                });
+                if (matchedFunnel && /^genel/i.test(matchedFunnel.name)) {
+                    console.log(`⚠️ [Classifier] AI "Genel Akış" matchledi ama classification=${classification} — override ediliyor`);
+                    targetFunnelId = null; // fallback'e düşür
+                }
+            } catch (_) {}
+        }
+
         if (!targetFunnelId && classification !== 'GENEL') {
             // Varsayılan akış eşleşmesi (fallback)
             const funnelMap = {
@@ -328,6 +343,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 if (funnel) {
                     targetFunnelId = funnel.id;
                     targetStageId = funnel.stages[0]?.id;
+                    console.log(`📊 [Classifier] funnelMap fallback: ${classification} → "${funnel.name}" (${funnel.id})`);
                 }
             }
         }
