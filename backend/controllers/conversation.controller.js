@@ -1,12 +1,12 @@
 import { validationResult } from 'express-validator';
 import prisma from '../lib/prisma.js';
+import { logEvent } from '../services/conversationEvent.service.js';
 import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
 import { maskSensitiveInfo } from '../utils/masking.js';
 import { processShortcodes } from '../utils/shortcodeExecutor.js';
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
-import { logEvent } from '../services/conversationEvent.service.js';
 
 const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v18.0';
 
@@ -469,6 +469,9 @@ export const getConversation = async (req, res) => {
                             select: { id: true, name: true }
                         }
                     }
+                },
+                events: {
+                    orderBy: { createdAt: 'asc' }
                 }
             }
         });
@@ -1097,6 +1100,16 @@ export const updateConversationStatus = async (req, res) => {
 
         console.log(`✅ [Conversation Status] ${conversationId} -> ${status}${status === 'RESOLVED' ? ` (resolvedAt set, resolvedBy: ${userId})` : ''}`);
         console.log(`   Updated conversation:`, conversation.id, conversation.status);
+
+        // Log status change event
+        logEvent({
+            conversationId,
+            workspaceId,
+            eventType: 'STATUS_CHANGED',
+            title: status === 'RESOLVED' ? 'Konuşma çözüldü' : 'Konuşma yeniden açıldı',
+            actorId: userId,
+            actorType: 'USER'
+        }).catch(() => {});
 
         res.json({ conversation });
     } catch (error) {
@@ -1929,6 +1942,16 @@ export const toggleBotEnabled = async (req, res) => {
         });
 
         console.log(`✅ [Bot Toggle] Success - Conversation: ${conversationId}, Bot: ${conversation.botEnabled ? 'ON' : 'OFF'}, AssignedTo: ${conversation.assignedToId || 'NULL'}`);
+
+        // Log bot toggle event
+        logEvent({
+            conversationId,
+            workspaceId,
+            eventType: 'BOT_TOGGLED',
+            title: `Oto Pilot ${conversation.botEnabled ? 'açıldı' : 'kapatıldı'}`,
+            actorId: req.user?.id,
+            actorType: 'USER'
+        }).catch(() => {});
 
         res.json({
             success: true,

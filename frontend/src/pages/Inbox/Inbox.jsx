@@ -1855,6 +1855,7 @@ const Inbox = () => {
 
             const msgs = response.data.conversation.messages || [];
             const notes = response.data.conversation.internalNotes || [];
+            const events = response.data.conversation.events || [];
 
             const formattedNotes = notes.map(n => ({
                 ...n,
@@ -1864,7 +1865,17 @@ const Inbox = () => {
                 isFromContact: false
             }));
 
-            const combined = [...msgs, ...formattedNotes].sort((a, b) =>
+            const formattedEvents = events.map(e => ({
+                id: e.id,
+                createdAt: e.createdAt,
+                isSystemEvent: true,
+                eventType: e.eventType,
+                title: e.title,
+                actorType: e.actorType,
+                details: e.details
+            }));
+
+            const combined = [...msgs, ...formattedNotes, ...formattedEvents].sort((a, b) =>
                 new Date(a.createdAt) - new Date(b.createdAt)
             );
             setMessages(combined);
@@ -4110,6 +4121,37 @@ const Inbox = () => {
 
                                 <div className="messages-container" ref={messagesContainerRef}>
                                     {messages.map((msg) => {
+                                        // ── System Event (inline log) ──
+                                        if (msg.isSystemEvent) {
+                                            const eventIcons = {
+                                                ASSIGNED: '👤',
+                                                TEAM_CHANGED: '👥',
+                                                STATUS_CHANGED: '🔄',
+                                                FUNNEL_CHANGED: '📊',
+                                                STAGE_CHANGED: '📊',
+                                                BOT_TOGGLED: '🤖',
+                                                TRANSFERRED: '🔀',
+                                                CLASSIFIED: '🏷️',
+                                                CLAIMED: '✋',
+                                                AUTOMATION_TRIGGERED: '⚡'
+                                            };
+                                            const icon = eventIcons[msg.eventType] || 'ℹ️';
+                                            return (
+                                                <div key={msg.id} style={{
+                                                    display: 'flex', justifyContent: 'center', alignItems: 'center',
+                                                    padding: '6px 0', margin: '2px 0'
+                                                }}>
+                                                    <span style={{
+                                                        fontSize: '0.75rem', color: '#8b95a5', fontWeight: 400,
+                                                        background: 'transparent', padding: '0',
+                                                        letterSpacing: '0.01em', lineHeight: 1.4
+                                                    }}>
+                                                        {msg.title}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }
+
                                         // Check if this is a lead form message
                                         const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead');
                                         const isImportedLead = msg.content?.includes('İçe aktarılan lead bilgileri:');
