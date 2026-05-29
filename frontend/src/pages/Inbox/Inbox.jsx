@@ -4769,9 +4769,23 @@ const Inbox = () => {
                                                     <div style={{ position: 'relative' }}>
                                                         <button
                                                             type="button"
-                                                            onClick={() => {
+                                                            id="channel-selector-toggle"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
                                                                 const menu = document.getElementById('channel-selector-menu');
-                                                                if (menu) menu.classList.toggle('show');
+                                                                if (!menu) return;
+                                                                const isOpen = menu.classList.contains('show');
+                                                                menu.classList.toggle('show');
+                                                                if (!isOpen) {
+                                                                    // Dışarı tıklayınca kapat
+                                                                    const closeHandler = (evt) => {
+                                                                        if (!evt.target.closest('#channel-selector-menu') && !evt.target.closest('#channel-selector-toggle')) {
+                                                                            menu.classList.remove('show');
+                                                                            document.removeEventListener('click', closeHandler);
+                                                                        }
+                                                                    };
+                                                                    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+                                                                }
                                                             }}
                                                             style={{
                                                                 display: 'flex', alignItems: 'center', gap: 5,
