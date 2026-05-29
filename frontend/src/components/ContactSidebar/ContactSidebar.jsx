@@ -1451,48 +1451,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </div>
                             </div>
 
-                            {/* Kanal Konuşmaları */}
-                            {contactConversations && contactConversations.length > 1 && (
-                                <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
-                                    <h4 style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kanallar</h4>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {contactConversations.map(conv => {
-                                            const channelConfig = {
-                                                WHATSAPP: { icon: '💬', label: 'WhatsApp', color: '#25D366' },
-                                                INSTAGRAM: { icon: '📱', label: 'Instagram', color: '#E4405F' },
-                                                FACEBOOK: { icon: '📘', label: 'Facebook', color: '#1877F2' },
-                                                EMAIL: { icon: '📧', label: 'Email', color: '#4285F4' },
-                                                WIDGET: { icon: '🌐', label: 'Web', color: '#FF9800' },
-                                                PHONE: { icon: '📞', label: 'Telefon', color: '#F44336' },
-                                                LEAD: { icon: '📋', label: 'Lead', color: '#9C27B0' },
-                                                FORM: { icon: '📝', label: 'Form', color: '#607D8B' },
-                                            };
-                                            const ch = channelConfig[conv.channel] || { icon: '💬', label: conv.channel, color: '#78909C' };
-                                            return (
-                                                <div
-                                                    key={conv.id}
-                                                    onClick={() => onOpenConversationPopup?.(conv.id, conv.channel)}
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                                        padding: '8px 10px', borderRadius: '8px', cursor: 'pointer',
-                                                        border: `1px solid ${ch.color}22`, background: `${ch.color}08`,
-                                                        transition: 'all 0.15s'
-                                                    }}
-                                                    onMouseEnter={e => { e.currentTarget.style.background = `${ch.color}15`; e.currentTarget.style.transform = 'translateX(2px)'; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.background = `${ch.color}08`; e.currentTarget.style.transform = 'none'; }}
-                                                >
-                                                    <span style={{ fontSize: '1.1rem' }}>{ch.icon}</span>
-                                                    <span style={{ flex: 1, fontSize: '0.8rem', fontWeight: 500, color: '#334155' }}>{ch.label}</span>
-                                                    {conv.unreadCount > 0 && (
-                                                        <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px', fontWeight: 600 }}>{conv.unreadCount}</span>
-                                                    )}
-                                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>→</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
 
                             {/* Atama / Üstlen Widget */}
                             {!readOnly && activeConv && (

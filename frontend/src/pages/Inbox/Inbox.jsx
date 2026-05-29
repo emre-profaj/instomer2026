@@ -4552,10 +4552,9 @@ const Inbox = () => {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="input-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 8px', borderTop: '1px solid #f0f0f0' }}>
-                                                {/* LEFT SIDE: Channel Selector + Note + AutoPilot */}
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    {/* Channel Selector Dropdown */}
+                                            <div className="input-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 10px', borderTop: '1px solid #e8eaed', background: '#fafbfc', borderRadius: '0 0 12px 12px', minHeight: 38 }}>
+                                                {/* LEFT: Channel Selector */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
                                                     <div style={{ position: 'relative' }}>
                                                         <button
                                                             type="button"
@@ -4565,14 +4564,14 @@ const Inbox = () => {
                                                             }}
                                                             style={{
                                                                 display: 'flex', alignItems: 'center', gap: 5,
-                                                                padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 8,
-                                                                background: isInternalNoteMode ? '#fefce8' : '#fff',
-                                                                cursor: 'pointer', fontSize: '0.82rem', fontWeight: 500,
-                                                                color: isInternalNoteMode ? '#a16207' : '#374151',
+                                                                padding: '4px 10px', border: 'none', borderRadius: 6,
+                                                                background: isInternalNoteMode ? '#fef9c3' : 'transparent',
+                                                                cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
+                                                                color: isInternalNoteMode ? '#92400e' : '#4b5563',
                                                                 transition: 'all 0.15s'
                                                             }}
                                                         >
-                                                            <span style={{ fontSize: '0.9rem' }}>
+                                                            <span style={{ fontSize: '0.85rem' }}>
                                                                 {isInternalNoteMode ? '📝' :
                                                                  selectedItem?.channel === 'WHATSAPP' ? '💬' :
                                                                  selectedItem?.channel === 'INSTAGRAM' ? '📸' :
@@ -4582,7 +4581,7 @@ const Inbox = () => {
                                                                  selectedItem?.channel === 'WIDGET' ? '🌐' :
                                                                  selectedItem?.channel === 'PHONE' ? '📞' : '💬'}
                                                             </span>
-                                                            {isInternalNoteMode ? 'Dahili Not' :
+                                                            <span>{isInternalNoteMode ? 'Dahili Not' :
                                                              selectedItem?.channel === 'WHATSAPP' ? 'WhatsApp' :
                                                              selectedItem?.channel === 'INSTAGRAM' ? 'Instagram' :
                                                              selectedItem?.channel === 'FACEBOOK' ? 'Messenger' :
@@ -4590,8 +4589,8 @@ const Inbox = () => {
                                                              selectedItem?.channel === 'EMAIL' ? 'E-posta' :
                                                              selectedItem?.channel === 'WIDGET' ? 'Web Widget' :
                                                              selectedItem?.channel === 'PHONE' ? 'Telefon' :
-                                                             selectedItem?.channel || 'Mesaj'}
-                                                            <ChevronDown size={13} style={{ color: '#9ca3af' }} />
+                                                             selectedItem?.channel || 'Mesaj'}</span>
+                                                            <ChevronDown size={12} style={{ color: '#9ca3af' }} />
                                                         </button>
                                                         <div
                                                             id="channel-selector-menu"
@@ -4604,7 +4603,6 @@ const Inbox = () => {
                                                                 border: '1px solid #e5e7eb', overflow: 'hidden'
                                                             }}
                                                         >
-                                                            {/* Current channel option */}
                                                             {selectedItem?.channel && !isInternalNoteMode && (
                                                                 <div
                                                                     style={{
@@ -4633,7 +4631,6 @@ const Inbox = () => {
                                                                     <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>
                                                                 </div>
                                                             )}
-                                                            {/* Internal Note option */}
                                                             <div
                                                                 style={{
                                                                     padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
@@ -4655,40 +4652,47 @@ const Inbox = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* Separator */}
-                                                    <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
-
-                                                    {/* Oto Pilot Toggle */}
-                                                    <div
-                                                        className={`autopilot-toggle ${botEnabled ? 'active' : 'inactive'}`}
+                                                    {/* Oto Pilot - minimal icon */}
+                                                    <button
+                                                        type="button"
                                                         onClick={handleBotToggle}
-                                                        title={botEnabled ? 'Oto Pilot Aktif' : 'Oto Pilot Kapalı'}
-                                                        style={{ fontSize: '0.8rem' }}
+                                                        title={botEnabled ? 'Oto Pilot Aktif — kapat' : 'Oto Pilot Kapalı — aç'}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 4,
+                                                            padding: '4px 8px', border: 'none', borderRadius: 6,
+                                                            background: botEnabled ? '#dcfce7' : 'transparent',
+                                                            cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500,
+                                                            color: botEnabled ? '#16a34a' : '#9ca3af',
+                                                            transition: 'all 0.15s'
+                                                        }}
                                                     >
-                                                        <Bot size={13} />
-                                                        <span>{botEnabled ? 'Oto Pilot Açık' : 'Oto Pilot Kapalı'}</span>
+                                                        <Bot size={14} />
                                                         {togglingBot && <Loader size={11} className="spin" />}
-                                                    </div>
+                                                    </button>
                                                 </div>
 
-                                                {/* RIGHT SIDE: Templates + Quick Reply + AI Assist + Send */}
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    {/* WhatsApp Template Button */}
+                                                {/* CENTER: hint text */}
+                                                <span style={{ fontSize: '0.7rem', color: '#c0c5cc', userSelect: 'none', flex: 1, textAlign: 'center', display: window.innerWidth < 768 ? 'none' : 'block' }}>
+                                                    Enter ile gönder
+                                                </span>
+
+                                                {/* RIGHT: Action icons + AI Assist + Send */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                    {/* Template icon */}
                                                     {(selectedItem?.channel === 'LEAD' || selectedItem?.channel === 'WHATSAPP') && templates.length > 0 && (
                                                         <div className="template-dropdown">
                                                             <button
                                                                 type="button"
                                                                 className="template-btn"
                                                                 title="WhatsApp Şablon Gönder"
-                                                                style={{ fontSize: '0.78rem', padding: '4px 8px' }}
+                                                                style={{ fontSize: '0.75rem', padding: '4px 6px', border: 'none', background: 'transparent', color: '#6b7280', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }}
                                                                 onClick={(e) => {
                                                                     e.preventDefault();
                                                                     const dropdown = e.currentTarget.nextElementSibling;
                                                                     dropdown.classList.toggle('show');
                                                                 }}
                                                             >
-                                                                <Zap size={13} />
-                                                                Şablon
+                                                                <Zap size={15} />
                                                             </button>
                                                             <div className="template-dropdown-menu">
                                                                 {templates.filter(t => t.status === 'APPROVED').map(template => (
@@ -4712,17 +4716,15 @@ const Inbox = () => {
                                                             </div>
                                                         </div>
                                                     )}
-                                                    {/* Hazır Mesaj Button */}
+                                                    {/* Quick Reply icon */}
                                                     <div className="quick-reply-dropdown-container" ref={quickReplyDropdownRef}>
                                                         <button
                                                             type="button"
-                                                            className="quick-reply-btn"
                                                             title="Hazır Mesajlar"
-                                                            style={{ fontSize: '0.78rem', padding: '4px 8px' }}
+                                                            style={{ padding: '4px 6px', border: 'none', background: 'transparent', color: '#6b7280', cursor: 'pointer', borderRadius: 6, display: 'flex', alignItems: 'center' }}
                                                             onClick={() => setShowQuickReplyDropdown(!showQuickReplyDropdown)}
                                                         >
-                                                            <BookOpen size={13} />
-                                                            Hazır Mesaj
+                                                            <BookOpen size={15} />
                                                         </button>
                                                         {showQuickReplyDropdown && (
                                                             <div className="quick-reply-dropdown-menu">
@@ -4753,28 +4755,29 @@ const Inbox = () => {
                                                     </div>
 
                                                     {/* Separator */}
-                                                    <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
+                                                    <div style={{ width: 1, height: 18, background: '#e5e7eb', margin: '0 4px' }} />
 
-                                                    {/* AI Assist Button */}
+                                                    {/* AI Assist */}
                                                     <button
                                                         type="button"
-                                                        className="ai-suggest-btn"
                                                         onClick={fetchAiSuggestions}
                                                         disabled={loadingSuggestions}
                                                         title="AI Yanıt Önerileri"
-                                                        style={{ fontSize: '0.82rem', padding: '5px 10px', gap: 5 }}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 4,
+                                                            padding: '4px 10px', border: 'none', borderRadius: 6,
+                                                            background: 'transparent', cursor: 'pointer',
+                                                            fontSize: '0.78rem', fontWeight: 500, color: '#7c3aed',
+                                                            transition: 'all 0.15s'
+                                                        }}
                                                     >
-                                                        {loadingSuggestions ? (
-                                                            <Loader size={13} className="spin" />
-                                                        ) : (
-                                                            <Sparkles size={13} />
-                                                        )}
-                                                        AI Assist
+                                                        {loadingSuggestions ? <Loader size={13} className="spin" /> : <Sparkles size={14} />}
+                                                        <span>AI Assist</span>
                                                     </button>
 
-                                                    {/* Send Button */}
-                                                    <button type="submit" className="send-btn">
-                                                        <Send size={18} />
+                                                    {/* Send */}
+                                                    <button type="submit" className="send-btn" style={{ padding: '5px 8px', borderRadius: 8, marginLeft: 2 }}>
+                                                        <Send size={16} />
                                                     </button>
                                                 </div>
                                             </div>
