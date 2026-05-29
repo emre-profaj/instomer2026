@@ -343,6 +343,9 @@ model Contact {
   deals             Deal[]
   company           String?
   notes             String?
+  language          String?
+  country           String?
+  city              String?
   importGroup       String?
   activities        ContactActivity[]
 

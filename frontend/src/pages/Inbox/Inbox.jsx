@@ -3512,13 +3512,9 @@ const Inbox = () => {
                                             </div>
                                         </div>
 
-                                        {/* ── Row 2: Topic + Last message preview ── */}
+                                        {/* ── Row 2: Last message preview ── */}
                                         <div className="inbox-item-preview">
-                                            {item.aiTopic ? (
-                                                <><span className="inbox-item-subject">{item.aiTopic}</span> — {getItemPreview(item)}</>
-                                            ) : (
-                                                getItemPreview(item)
-                                            )}
+                                            {getItemPreview(item)}
                                         </div>
 
                                         {/* ── Row 3: Flow/Stage | Team/Person ── */}
@@ -3569,7 +3565,7 @@ const Inbox = () => {
                                                 textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                                 display: 'flex', alignItems: 'center', gap: 3
                                             }}>
-                                                <span style={{ color: '#9ca3af' }}>📌</span> {item.aiTopic}
+                                                {item.aiTopic}
                                             </div>
                                         )}
 

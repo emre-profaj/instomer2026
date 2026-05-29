@@ -502,7 +502,7 @@ export const getContactById = async (req, res) => {
 export const updateContact = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId } = req.body;
+        const { name, fullName, phone, email, notes, tags, status, company, category, funnelType, funnelStageId, language, country, city } = req.body;
 
         // Verify contact belongs to this workspace (either directly or via conversation)
         const existing = await prisma.contact.findFirst({
@@ -530,6 +530,9 @@ export const updateContact = async (req, res) => {
         if (category !== undefined) updateData.category = category;
         if (funnelType !== undefined) updateData.funnelType = funnelType;
         if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
+        if (language !== undefined) updateData.language = language;
+        if (country !== undefined) updateData.country = country;
+        if (city !== undefined) updateData.city = city;
         if (tags !== undefined) {
             updateData.tags = typeof tags === 'string' ? tags : JSON.stringify(tags);
         }
@@ -1074,8 +1077,7 @@ export const getContactAnalytics = async (req, res) => {
             where: {
                 conversations: { some: { workspaceId } },
                 phone: { not: null },
-                NOT: { phone: '' },
-                ...dateFilter
+                NOT: { phone: '' }
             }
         });
 
@@ -1146,8 +1148,7 @@ export const getContactAnalytics = async (req, res) => {
             where: {
                 conversations: { some: { workspaceId } },
                 phone: { not: null },
-                NOT: { phone: '' },
-                ...dateFilter
+                NOT: { phone: '' }
             },
             select: {
                 id: true,
@@ -1258,6 +1259,18 @@ export const getAgentPerformance = async (req, res) => {
         });
 
         const agentMetrics = [];
+
+        // Build activity date filter (separate from conversation dateFilter)
+        const activityDateFilter = {};
+        if (startDate || endDate) {
+            activityDateFilter.createdAt = {};
+            if (startDate) activityDateFilter.createdAt.gte = new Date(startDate);
+            if (endDate) {
+                const actEnd = new Date(endDate);
+                actEnd.setHours(23, 59, 59, 999);
+                activityDateFilter.createdAt.lte = actEnd;
+            }
+        }
 
         for (const member of workspaceMembers) {
             const userId = member.user.id;
@@ -1379,6 +1392,73 @@ export const getAgentPerformance = async (req, res) => {
                 ? Math.round((resolvedConversations / totalConversations) * 100)
                 : 0;
 
+            // ── Activity Metrics per Agent ──
+            const agentActivities = await prisma.contactActivity.groupBy({
+                by: ['type'],
+                where: {
+                    workspaceId,
+                    OR: [
+                        { assignedToId: userId },
+                        { createdBy: userId }
+                    ],
+                    ...activityDateFilter
+                },
+                _count: { id: true }
+            });
+
+            const activityCounts = {};
+            for (const a of agentActivities) {
+                activityCounts[a.type] = a._count.id;
+            }
+
+            // ── Deal Metrics per Agent ──
+            const agentDeals = await prisma.deal.groupBy({
+                by: ['stage', 'status'],
+                where: {
+                    workspaceId,
+                    assignedToId: userId,
+                    ...dateFilter
+                },
+                _count: { id: true },
+                _sum: { amount: true }
+            });
+
+            let dealQuotes = 0, dealOrders = 0, dealInvoices = 0;
+            let dealWon = 0, dealLost = 0, dealOpen = 0;
+            let dealTotalAmount = 0, dealWonAmount = 0;
+            for (const d of agentDeals) {
+                const count = d._count.id;
+                const amount = d._sum.amount || 0;
+                if (d.stage === 'QUOTE') dealQuotes += count;
+                if (d.stage === 'ORDER') dealOrders += count;
+                if (d.stage === 'INVOICE') dealInvoices += count;
+                if (d.status === 'WON') { dealWon += count; dealWonAmount += amount; }
+                if (d.status === 'LOST') dealLost += count;
+                if (d.status === 'OPEN') dealOpen += count;
+                dealTotalAmount += amount;
+            }
+
+            // ── Randevu Sayısı ──
+            const appointmentCount = await prisma.appointment.count({
+                where: {
+                    workspaceId,
+                    OR: [
+                        { assignedToId: userId },
+                        { createdById: userId }
+                    ],
+                    ...activityDateFilter
+                }
+            });
+
+            // ── AI Arama Sayısı (RetellCall) ──
+            const retellCallCount = await prisma.retellCall.count({
+                where: {
+                    workspaceId,
+                    createdById: userId,
+                    ...activityDateFilter
+                }
+            });
+
             agentMetrics.push({
                 userId: member.user.id,
                 name: member.user.name,
@@ -1391,7 +1471,21 @@ export const getAgentPerformance = async (req, res) => {
                 messagesSent,
                 avgResponseTimeMinutes,
                 avgResolutionTimeMinutes,
-                resolutionRate: Math.min(resolutionRate, 100)
+                resolutionRate: Math.min(resolutionRate, 100),
+                // Activity metrics
+                callCount: (activityCounts['CALL'] || 0) + retellCallCount,
+                meetingCount: activityCounts['MEETING'] || 0,
+                // Deal metrics
+                dealQuotes,
+                dealOrders,
+                dealInvoices,
+                dealWon,
+                dealLost,
+                dealOpen,
+                dealTotalAmount,
+                dealWonAmount,
+                // Randevu
+                appointmentCount
             });
         }
 

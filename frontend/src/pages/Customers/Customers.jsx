@@ -1357,61 +1357,7 @@ const Customers = () => {
                                 })()}
                             </div>
 
-                            {/* Analytics Toggle - inline */}
-                            <div className="filter-dropdown-item" style={{ flexShrink: 0 }}>
-                                <label><BarChart3 size={12} /> Analiz</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <button
-                                        onClick={async () => {
-                                            const next = !showAnalytics;
-                                            setShowAnalytics(next);
-                                            if (next && !analyticsData) {
-                                                setAnalyticsLoading(true);
-                                                try {
-                                                    const res = await contactAPI.getDailyStats(currentWorkspace.id, { days: analyticsDays });
-                                                    setAnalyticsData(res.data);
-                                                } catch (e) { console.error(e); }
-                                                setAnalyticsLoading(false);
-                                            }
-                                        }}
-                                        className={`filter-select${showAnalytics ? ' active' : ''}`}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '5px',
-                                            cursor: 'pointer', background: showAnalytics ? '#eef2ff' : 'none',
-                                            border: showAnalytics ? '1px solid #6366f1' : '1px solid #e5e7eb',
-                                            borderRadius: '6px', padding: '6px 10px',
-                                            fontSize: '0.8rem', color: showAnalytics ? '#6366f1' : '#374151',
-                                            fontWeight: showAnalytics ? 600 : 400, whiteSpace: 'nowrap'
-                                        }}
-                                    >
-                                        {showAnalytics ? 'Gizle' : 'Göster'}
-                                        <ChevronDown size={12} style={{ transform: showAnalytics ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                                    </button>
-                                    {showAnalytics && (
-                                        <select
-                                            value={analyticsDays}
-                                            onChange={async (e) => {
-                                                const d = parseInt(e.target.value);
-                                                setAnalyticsDays(d);
-                                                setAnalyticsLoading(true);
-                                                try {
-                                                    const res = await contactAPI.getDailyStats(currentWorkspace.id, { days: d });
-                                                    setAnalyticsData(res.data);
-                                                } catch (err) { console.error(err); }
-                                                setAnalyticsLoading(false);
-                                            }}
-                                            className="filter-select"
-                                            style={{ fontSize: '0.78rem', padding: '6px 8px' }}
-                                        >
-                                            <option value={7}>7 Gün</option>
-                                            <option value={14}>14 Gün</option>
-                                            <option value={30}>30 Gün</option>
-                                            <option value={60}>60 Gün</option>
-                                            <option value={90}>90 Gün</option>
-                                        </select>
-                                    )}
-                                </div>
-                            </div>
+
 
                         </div>
                     </div>
@@ -1420,8 +1366,8 @@ const Customers = () => {
 
 
 
-                    {/* Analytics Panel */}
-                    {showAnalytics && (
+                    {/* Analytics Panel - removed */}
+                    {false && (
                         <div style={{
                             background: '#fff', borderRadius: '14px', padding: '20px',
                             border: '1px solid #e5e7eb', marginBottom: '12px',

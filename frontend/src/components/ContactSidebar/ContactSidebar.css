@@ -3221,3 +3221,51 @@
 .assign-claim-btn:active {
     transform: scale(0.97);
 }
+
+/* Location / Language Row */
+.unified-location-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0 2px;
+    border-top: 1px solid rgba(0,0,0,0.06);
+    margin-top: 4px;
+}
+.unified-loc-item {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+}
+.unified-loc-item svg {
+    flex-shrink: 0;
+    color: #9ca3af;
+}
+.unified-loc-select,
+.unified-loc-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: #374151;
+    padding: 2px 0;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.unified-loc-select {
+    padding-right: 2px;
+}
+.unified-loc-input::placeholder {
+    color: #c0c4cc;
+}
+.unified-loc-select:hover,
+.unified-loc-input:hover {
+    color: #111827;
+}
+.unified-loc-select:focus,
+.unified-loc-input:focus {
+    color: #111827;
+}

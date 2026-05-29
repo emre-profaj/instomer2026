@@ -895,7 +895,7 @@ export const assignConversation = async (req, res) => {
             contactId: conversation.contact?.id,
             workspaceId,
             eventType: 'ASSIGNED',
-            title: `Konuşma <b>${conversation.assignedTo?.name || 'Bilinmeyen'}</b> kullanıcısına atandı`,
+            title: `<b>${req.user?.name || 'Kullanıcı'}</b> konuşmayı <b>${conversation.assignedTo?.name || 'Bilinmeyen'}</b> kullanıcısına atadı`,
             actorId: req.user?.id,
             actorType: 'USER'
         }).catch(() => {});
@@ -1949,7 +1949,7 @@ export const toggleBotEnabled = async (req, res) => {
             conversationId,
             workspaceId,
             eventType: 'BOT_TOGGLED',
-            title: `Oto Pilot <b>${conversation.botEnabled ? 'açıldı' : 'kapatıldı'}</b>`,
+            title: `<b>${req.user?.name || 'Kullanıcı'}</b> Oto Pilot'u <b>${conversation.botEnabled ? 'açtı' : 'kapattı'}</b>`,
             actorId: req.user?.id,
             actorType: 'USER'
         }).catch(() => {});

@@ -587,14 +587,21 @@ const Analytics = () => {
                             <h2>Ekip Performans Liderleri</h2>
                         </div>
                     </div>
-                    <table className="modern-table">
+                    <table className="modern-table" style={{ fontSize: '0.82rem' }}>
                         <thead>
                             <tr>
                                 <th>Temsilci</th>
-                                <th>Toplam İşlem</th>
-                                <th>Çözümleme</th>
+                                <th style={{ textAlign: 'center' }}>Sohbet</th>
+                                <th style={{ textAlign: 'center' }}>Çözülen</th>
+                                <th style={{ textAlign: 'center' }}>Açık</th>
+                                <th style={{ textAlign: 'center' }}>Mesaj</th>
+                                <th style={{ textAlign: 'center' }}>Arama</th>
+                                <th style={{ textAlign: 'center' }}>Görüşme</th>
+                                <th style={{ textAlign: 'center' }}>Randevu</th>
+                                <th style={{ textAlign: 'center' }}>Teklif</th>
+                                <th style={{ textAlign: 'center' }}>Sipariş</th>
+                                <th style={{ textAlign: 'center' }}>Çözüm</th>
                                 <th>Yanıt Süresi</th>
-                                <th>Açık Konuşma</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -611,35 +618,47 @@ const Analytics = () => {
                                             )}
                                             <div className="agent-details">
                                                 <span className="agent-name-modern">{agent.name}</span>
-                                                <span className="agent-role-modern">{agent.isBot ? 'Yapay Zeka' : 'Müşteri Temsilcisi'}</span>
+                                                <span className="agent-role-modern">{agent.isBot ? 'Yapay Zeka' : agent.role === 'OWNER' ? 'Yönetici' : 'Temsilci'}</span>
                                             </div>
                                         </div>
                                     </td>
-                                    <td>
-                                        <div className="performance-metric">
-                                            <span className="metric-top-val">{agent.totalConversations}</span>
-                                            <span className="metric-sub-val">Konuşma</span>
-                                        </div>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: '#6366f1', fontSize: '0.95rem' }}>{agent.totalConversations}</span>
                                     </td>
-                                    <td>
-                                        <div className="performance-metric">
-                                            <span className="metric-top-val">{agent.resolutionRate}%</span>
-                                            <div style={{ height: '4px', background: '#f1f5f9', borderRadius: '2px', width: '60px', marginTop: '6px' }}>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: '#10b981' }}>{agent.resolvedConversations || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: agent.openConversations > 0 ? '#f59e0b' : '#94a3b8' }}>{agent.openConversations ?? 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{agent.messagesSent || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: agent.callCount > 0 ? '#059669' : '#d1d5db' }}>{agent.callCount || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: agent.meetingCount > 0 ? '#0ea5e9' : '#d1d5db' }}>{agent.meetingCount || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: agent.appointmentCount > 0 ? '#f97316' : '#d1d5db' }}>{agent.appointmentCount || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: agent.dealQuotes > 0 ? '#8b5cf6' : '#d1d5db' }}>{agent.dealQuotes || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span style={{ fontWeight: 700, color: agent.dealOrders > 0 ? '#f59e0b' : '#d1d5db' }}>{agent.dealOrders || 0}</span>
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                            <span style={{ fontWeight: 700, color: '#10b981', fontSize: '0.9rem' }}>{agent.resolutionRate}%</span>
+                                            <div style={{ height: '3px', background: '#f1f5f9', borderRadius: '2px', width: '40px' }}>
                                                 <div style={{ height: '100%', background: '#10b981', borderRadius: '2px', width: `${agent.resolutionRate}%` }} />
                                             </div>
                                         </div>
                                     </td>
                                     <td>
-                                        <div className="performance-metric">
-                                            <span className="metric-top-val">{agent.avgResponseTime} dk</span>
-                                            <span className="metric-sub-val">Ortalama</span>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div className="performance-metric">
-                                            <span className="metric-top-val">{agent.openConversations ?? '—'}</span>
-                                            <span className="metric-sub-val">Aktif</span>
-                                        </div>
+                                        <span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.82rem' }}>{agent.avgResponseTime || agent.avgResponseTimeMinutes || 0} dk</span>
                                     </td>
                                 </tr>
                             ))}

@@ -140,6 +140,17 @@ export const saveSettings = async (req, res) => {
             data: updateData
         });
 
+        // If auto-call was just turned OFF, cancel all pending scheduled calls
+        if (retellAutoCallEnabled === false) {
+            const cancelled = await prisma.scheduledCall.updateMany({
+                where: { workspaceId, status: 'PENDING' },
+                data: { status: 'CANCELLED', errorMessage: 'Otomatik arama kapatıldı' }
+            });
+            if (cancelled.count > 0) {
+                console.log(`🛑 [Retell] Cancelled ${cancelled.count} pending scheduled calls (auto-call disabled)`);
+            }
+        }
+
         console.log(`✅ [Retell] Settings updated for workspace ${workspaceId}`);
         res.json({ success: true, message: 'Retell ayarları kaydedildi' });
     } catch (error) {

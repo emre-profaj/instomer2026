@@ -1449,6 +1449,67 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </button>
                                                 )}
                                             </div>
+
+                                            {/* Location / Language Row */}
+                                            <div className="unified-location-row">
+                                                <div className="unified-loc-item">
+                                                    <MapPin size={12} />
+                                                    <select
+                                                        className="unified-loc-select"
+                                                        value={profile.country || ''}
+                                                        onChange={(e) => {
+                                                            setProfile(prev => ({ ...prev, country: e.target.value }));
+                                                            handleUpdateProfile({ country: e.target.value });
+                                                        }}
+                                                    >
+                                                        <option value="">Ülke</option>
+                                                        <option value="Türkiye">🇹🇷 Türkiye</option>
+                                                        <option value="Almanya">🇩🇪 Almanya</option>
+                                                        <option value="İngiltere">🇬🇧 İngiltere</option>
+                                                        <option value="Fransa">🇫🇷 Fransa</option>
+                                                        <option value="ABD">🇺🇸 ABD</option>
+                                                        <option value="Rusya">🇷🇺 Rusya</option>
+                                                        <option value="Hollanda">🇳🇱 Hollanda</option>
+                                                        <option value="Belçika">🇧🇪 Belçika</option>
+                                                        <option value="İsviçre">🇨🇭 İsviçre</option>
+                                                        <option value="Avusturya">🇦🇹 Avusturya</option>
+                                                        <option value="İtalya">🇮🇹 İtalya</option>
+                                                        <option value="İspanya">🇪🇸 İspanya</option>
+                                                        <option value="Suudi Arabistan">🇸🇦 S. Arabistan</option>
+                                                        <option value="BAE">🇦🇪 BAE</option>
+                                                        <option value="Diğer">🌍 Diğer</option>
+                                                    </select>
+                                                </div>
+                                                <div className="unified-loc-item">
+                                                    <input
+                                                        type="text"
+                                                        className="unified-loc-input"
+                                                        value={profile.city || ''}
+                                                        onChange={(e) => setProfile(prev => ({ ...prev, city: e.target.value }))}
+                                                        onBlur={() => handleUpdateProfile({ city: profile.city })}
+                                                        placeholder="Şehir"
+                                                    />
+                                                </div>
+                                                <div className="unified-loc-item">
+                                                    <select
+                                                        className="unified-loc-select"
+                                                        value={profile.language || ''}
+                                                        onChange={(e) => {
+                                                            setProfile(prev => ({ ...prev, language: e.target.value }));
+                                                            handleUpdateProfile({ language: e.target.value });
+                                                        }}
+                                                    >
+                                                        <option value="">Dil</option>
+                                                        <option value="tr">🇹🇷 Türkçe</option>
+                                                        <option value="en">🇬🇧 English</option>
+                                                        <option value="de">🇩🇪 Deutsch</option>
+                                                        <option value="fr">🇫🇷 Français</option>
+                                                        <option value="ar">🇸🇦 العربية</option>
+                                                        <option value="ru">🇷🇺 Русский</option>
+                                                        <option value="nl">🇳🇱 Nederlands</option>
+                                                    </select>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

@@ -308,8 +308,8 @@ const Quotes = () => {
                     >
                         <option value="ALL">Tüm Temsilciler</option>
                         {users.map(u => (
-                            <option key={u.id || u.userId} value={u.id || u.userId}>
-                                {u.name || u.user?.name}
+                            <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
+                                {u.user?.name || u.name}
                             </option>
                         ))}
                     </select>
@@ -503,8 +503,8 @@ const Quotes = () => {
                                 >
                                     <option value="">Temsilci Seç (Opsiyonel)</option>
                                     {users.map(u => (
-                                        <option key={u.id || u.userId} value={u.id || u.userId}>
-                                            {u.name || u.user?.name}
+                                        <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
+                                            {u.user?.name || u.name}
                                         </option>
                                     ))}
                                 </select>
