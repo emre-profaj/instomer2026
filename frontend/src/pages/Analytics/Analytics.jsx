@@ -392,57 +392,70 @@ const Analytics = () => {
 
             {/* Main Content Grid */}
             <div className="analytics-main-grid">
-                {/* Left: AI & Bot Intelligence */}
+                {/* Left: Arama Takip & AI Performansı */}
                 <div className="premium-section-card">
                     <div className="section-header-modern">
                         <div className="section-title-modern">
-                            <div className="section-icon-box"><Bot size={20} /></div>
-                            <h2>Yapay Zeka Karnesi</h2>
+                            <div className="section-icon-box"><Phone size={20} /></div>
+                            <h2>Arama & AI Performansı</h2>
                         </div>
                     </div>
                     <div className="ai-perf-container">
-                        <div className="ai-primary-metric">
-                            <span className="ai-metric-label">Otomasyon Verimliliği</span>
-                            <span className="ai-metric-value">
-                                {analytics?.totalMessages > 0 
-                                    ? ((analytics.totalAiMessages / analytics.totalMessages) * 100).toFixed(1) 
-                                    : 0}%
-                            </span>
-                            <div className="ai-handoff-bar">
-                                <div className="handoff-label">
-                                    <span>Handoff (Devretme)</span>
-                                    <span>{analytics?.handoffRate || 0}%</span>
-                                </div>
-                                <div className="handoff-track">
-                                    <div 
-                                        className="handoff-fill" 
-                                        style={{ width: `${analytics?.handoffRate || 0}%` }}
-                                    />
-                                </div>
-                                <p style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '8px' }}>
-                                    Botun yardıma ihtiyaç duyup aktardığı konuşmaların oranı
-                                </p>
+                        {/* Arama İstatistikleri */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                            <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Planlanan Arama</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#064e3b' }}>{analytics?.callTrackingStats?.totalCalled || 0}</div>
+                            </div>
+                            <div style={{ background: '#ecfdf5', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Tamamlanan Arama</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#047857' }}>{analytics?.callTrackingStats?.totalCompleted || 0}</div>
+                            </div>
+                            <div style={{ background: '#fef2f2', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Aranmayan Kişi</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#991b1b' }}>{analytics?.callTrackingStats?.totalNotCalled || 0}</div>
+                            </div>
+                            <div style={{ background: '#eef2ff', borderRadius: '12px', padding: '14px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Arama Oranı</div>
+                                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#312e81' }}>{analytics?.callTrackingStats?.callRate || 0}%</div>
                             </div>
                         </div>
 
-                        <div className="ai-secondary-metrics" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                            <div className="flow-item-premium" style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>AI Yanıt</span>
-                                    <span style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a' }}>{formatNumber(analytics?.totalAiMessages || 0)}</span>
+                        {/* AI Performans */}
+                        <div style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', borderRadius: '14px', padding: '16px', color: '#fff', marginBottom: '14px' }}>
+                            <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>🤖 Yapay Zeka Özeti</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>{formatNumber(analytics?.totalAiMessages || 0)}</div>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>AI Yanıt</div>
                                 </div>
-                            </div>
-                            <div className="flow-item-premium" style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>İnsan Yanıt</span>
-                                    <span style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a' }}>{formatNumber(analytics?.totalHumanMessages || 0)}</span>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>{analytics?.appointmentStats?.byBot || 0}</div>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>AI Randevu</div>
+                                </div>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>{analytics?.handoffRate || 0}%</div>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>Devretme</div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="monthly-trend-premium">
+                        {/* Mesaj Dağılımı */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b', marginBottom: '2px' }}>İnsan Yanıt</div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{formatNumber(analytics?.totalHumanMessages || 0)}</div>
+                            </div>
+                            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b', marginBottom: '2px' }}>Toplam Mesaj</div>
+                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{formatNumber(analytics?.totalMessages || 0)}</div>
+                            </div>
+                        </div>
+
+                        {/* Aylık Trend */}
+                        <div className="monthly-trend-premium" style={{ marginTop: '14px' }}>
                             <span className="stat-label">Aylık Başvuru Trendi</span>
-                            <div className="trend-chart-container" style={{ height: '140px', display: 'flex', alignItems: 'flex-end', gap: '8px', paddingTop: '10px' }}>
+                            <div className="trend-chart-container" style={{ height: '120px', display: 'flex', alignItems: 'flex-end', gap: '8px', paddingTop: '10px' }}>
                                 {(analytics?.monthlyData || []).map((m, idx) => (
                                     <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
                                         <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -456,7 +469,7 @@ const Analytics = () => {
                                                 }}
                                             />
                                         </div>
-                                        <span style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', marginTop: '8px' }}>{m.month}</span>
+                                        <span style={{ fontSize: '0.65rem', fontWeight: '700', color: '#94a3b8', marginTop: '6px' }}>{m.month}</span>
                                     </div>
                                 ))}
                             </div>
