@@ -1635,7 +1635,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* ACTION BUTTONS — Row 1: Aktiviteler */}
                             <div style={{ display: 'flex', gap: '4px', padding: '8px 16px 4px', justifyContent: 'center' }}>
                                 <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
-                                    <PhoneCall size={18} />
+                                    <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                        <PhoneCall size={18} />
+                                        <Check size={10} strokeWidth={3} style={{ position: 'absolute', bottom: -2, right: -4, color: '#10b981' }} />
+                                    </span>
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
                                 </button>
                                 <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
