@@ -600,7 +600,21 @@ const Inbox = () => {
     const textareaRef = useRef(null);
     const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
     const [replyChannel, setReplyChannel] = useState(null); // null = use conversation's native channel, 'WHATSAPP', 'EMAIL', 'MESSENGER'
+    const [showChannelMenu, setShowChannelMenu] = useState(false);
+    const channelMenuRef = useRef(null);
     const [isCallNote, setIsCallNote] = useState(false);
+
+    // Channel menu dışına tıklayınca kapat
+    useEffect(() => {
+        if (!showChannelMenu) return;
+        const handler = (e) => {
+            if (channelMenuRef.current && !channelMenuRef.current.contains(e.target)) {
+                setShowChannelMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [showChannelMenu]);
 
     // AI Suggestion states
     const [aiSuggestions, setAiSuggestions] = useState([]);
@@ -4766,27 +4780,10 @@ const Inbox = () => {
                                             <div className="input-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 10px', borderTop: '1px solid #e8eaed', background: '#fafbfc', borderRadius: '0 0 12px 12px', minHeight: 38 }}>
                                                 {/* LEFT: Channel Selector */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                                                    <div style={{ position: 'relative' }}>
+                                                    <div style={{ position: 'relative' }} ref={channelMenuRef}>
                                                         <button
                                                             type="button"
-                                                            id="channel-selector-toggle"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                const menu = document.getElementById('channel-selector-menu');
-                                                                if (!menu) return;
-                                                                const isOpen = menu.classList.contains('show');
-                                                                menu.classList.toggle('show');
-                                                                if (!isOpen) {
-                                                                    // Dışarı tıklayınca kapat
-                                                                    const closeHandler = (evt) => {
-                                                                        if (!evt.target.closest('#channel-selector-menu') && !evt.target.closest('#channel-selector-toggle')) {
-                                                                            menu.classList.remove('show');
-                                                                            document.removeEventListener('click', closeHandler);
-                                                                        }
-                                                                    };
-                                                                    setTimeout(() => document.addEventListener('click', closeHandler), 0);
-                                                                }
-                                                            }}
+                                                            onClick={() => setShowChannelMenu(prev => !prev)}
                                                             style={{
                                                                 display: 'flex', alignItems: 'center', gap: 5,
                                                                 padding: '4px 10px', border: 'none', borderRadius: 6,
@@ -4823,9 +4820,8 @@ const Inbox = () => {
                                                              selectedItem?.channel || 'Mesaj'}</span>
                                                             <ChevronDown size={12} style={{ color: '#9ca3af' }} />
                                                         </button>
+                                                        {showChannelMenu && (
                                                         <div
-                                                            id="channel-selector-menu"
-                                                            className="template-dropdown-menu"
                                                             style={{
                                                                 position: 'absolute', bottom: '100%', left: 0,
                                                                 minWidth: 180, marginBottom: 4, zIndex: 100,
@@ -4845,7 +4841,7 @@ const Inbox = () => {
                                                                     onClick={() => {
                                                                         setIsInternalNoteMode(false);
                                                                         setReplyChannel(null);
-                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                        setShowChannelMenu(false);
                                                                     }}
                                                                 >
                                                                     <span>
@@ -4866,7 +4862,7 @@ const Inbox = () => {
                                                                     {!replyChannel && !isInternalNoteMode && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>}
                                                                 </div>
                                                             )}
-                                                            {/* WhatsApp - show if contact has phone AND current channel is NOT WhatsApp */}
+                                                            {/* WhatsApp */}
                                                             {selectedItem?.contact?.phone && selectedItem?.channel !== 'WHATSAPP' && (
                                                                 <div
                                                                     style={{
@@ -4880,7 +4876,7 @@ const Inbox = () => {
                                                                     onClick={() => {
                                                                         setIsInternalNoteMode(false);
                                                                         setReplyChannel('WHATSAPP');
-                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                        setShowChannelMenu(false);
                                                                     }}
                                                                 >
                                                                     <span>💬</span>
@@ -4888,7 +4884,7 @@ const Inbox = () => {
                                                                     {replyChannel === 'WHATSAPP' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#16a34a' }}>✓</span>}
                                                                 </div>
                                                             )}
-                                                            {/* Email - show if contact has email AND current channel is NOT Email */}
+                                                            {/* Email */}
                                                             {selectedItem?.contact?.email && selectedItem?.channel !== 'EMAIL' && (
                                                                 <div
                                                                     style={{
@@ -4902,7 +4898,7 @@ const Inbox = () => {
                                                                     onClick={() => {
                                                                         setIsInternalNoteMode(false);
                                                                         setReplyChannel('EMAIL');
-                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                        setShowChannelMenu(false);
                                                                     }}
                                                                 >
                                                                     <span>✉️</span>
@@ -4910,7 +4906,7 @@ const Inbox = () => {
                                                                     {replyChannel === 'EMAIL' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#dc2626' }}>✓</span>}
                                                                 </div>
                                                             )}
-                                                            {/* Messenger - show if LEAD channel (lead came through Facebook page) */}
+                                                            {/* Messenger */}
                                                             {selectedItem?.channel === 'LEAD' && selectedItem?.facebookPageId && (
                                                                 <div
                                                                     style={{
@@ -4924,7 +4920,7 @@ const Inbox = () => {
                                                                     onClick={() => {
                                                                         setIsInternalNoteMode(false);
                                                                         setReplyChannel('MESSENGER');
-                                                                        setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                        setShowChannelMenu(false);
                                                                     }}
                                                                 >
                                                                     <span>📘</span>
@@ -4932,7 +4928,7 @@ const Inbox = () => {
                                                                     {replyChannel === 'MESSENGER' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#1d4ed8' }}>✓</span>}
                                                                 </div>
                                                             )}
-                                                            {/* Dahili Not - always shown */}
+                                                            {/* Dahili Not */}
                                                             <div
                                                                 style={{
                                                                     padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
@@ -4945,7 +4941,7 @@ const Inbox = () => {
                                                                 onClick={() => {
                                                                     setIsInternalNoteMode(!isInternalNoteMode);
                                                                     setReplyChannel(null);
-                                                                    setTimeout(() => document.getElementById('channel-selector-menu')?.classList.remove('show'), 0);
+                                                                    setShowChannelMenu(false);
                                                                 }}
                                                             >
                                                                 <span>📝</span>
@@ -4953,6 +4949,7 @@ const Inbox = () => {
                                                                 {isInternalNoteMode && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#eab308' }}>✓</span>}
                                                             </div>
                                                         </div>
+                                                        )}
                                                     </div>
 
                                                     {/* Oto Pilot - minimal icon */}
