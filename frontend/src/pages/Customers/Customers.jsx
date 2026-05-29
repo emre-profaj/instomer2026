@@ -1559,7 +1559,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         <th style={{ minWidth: '80px', maxWidth: '120px' }}>FİRMA</th>
                                         <th style={{ minWidth: '100px', maxWidth: '130px' }}>TELEFON</th>
                                         <th style={{ minWidth: '80px', maxWidth: '140px' }}>KONU</th>
-                                        <th style={{ minWidth: '80px', maxWidth: '120px' }}>DURUM</th>
+                                        <th style={{ minWidth: '120px', maxWidth: '200px' }}>DURUM</th>
                                         <th style={{ minWidth: '80px', maxWidth: '140px' }}>ATANAN</th>
                                         <th style={{ minWidth: '70px', maxWidth: '100px' }}>KAYNAK</th>
                                         <th style={{ minWidth: '80px', maxWidth: '140px' }}>ETİKETLER</th>
@@ -1638,45 +1638,52 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         </span>
                                                     ) : <span style={{color: '#94a3b8'}}>---</span>}
                                                 </td>
-                                                {/* DURUM */}
-                                                <td className="contact-status" style={{ maxWidth: '120px' }}>
+                                                {/* DURUM = Akış / Aşama */}
+                                                <td className="contact-status" style={{ maxWidth: '200px' }}>
                                                     {(() => {
-                                                        let displayLabel = 'Yeni';
+                                                        let funnelName = '';
+                                                        let stageName = 'Yeni';
                                                         let displayColor = '#6b7280';
                                                         let displayBg = '#6b72801a';
 
-                                                        // Find stage from contact's funnelStageId
                                                         if (contact.funnelStageId && availableFunnels.length > 0) {
                                                             for (const funnel of availableFunnels) {
                                                                 const s = funnel.stages?.find(x => x.id === contact.funnelStageId);
                                                                 if (s) {
-                                                                    displayLabel = s.name;
+                                                                    funnelName = funnel.name;
+                                                                    stageName = s.name;
                                                                     displayColor = s.color || '#6366f1';
                                                                     displayBg = `${displayColor}1a`;
                                                                     break;
                                                                 }
                                                             }
                                                         } else if (contact.status) {
-                                                            // Fallback to legacy status while migrating
                                                             const statusInfo = getStatusInfo(contact.status);
-                                                            displayLabel = statusInfo.label;
+                                                            stageName = statusInfo.label;
                                                             displayColor = statusInfo.color;
                                                             displayBg = statusInfo.bg;
                                                         }
 
                                                         return (
-                                                            <span
-                                                                className="status-badge"
-                                                                style={{
-                                                                    backgroundColor: displayBg,
-                                                                    color: displayColor,
-                                                                    border: (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none',
-                                                                    fontSize: '11px',
-                                                                    padding: '2px 8px'
-                                                                }}
-                                                            >
-                                                                {displayLabel}
-                                                            </span>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                {funnelName && (
+                                                                    <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
+                                                                        {funnelName}
+                                                                    </span>
+                                                                )}
+                                                                <span
+                                                                    className="status-badge"
+                                                                    style={{
+                                                                        backgroundColor: displayBg,
+                                                                        color: displayColor,
+                                                                        border: (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none',
+                                                                        fontSize: '11px',
+                                                                        padding: '2px 8px'
+                                                                    }}
+                                                                >
+                                                                    {stageName}
+                                                                </span>
+                                                            </div>
                                                         );
                                                     })()}
                                                 </td>
