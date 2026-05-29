@@ -1555,18 +1555,18 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                             />
                                         </th>
-                                        <th>İSİM</th>
-                                        <th>KAYNAK</th>
-                                        <th>ATANAN</th>
-                                        <th>TELEFON</th>
-                                        <th>FİRMA</th>
-                                        <th>ETİKETLER</th>
-                                        <th>DURUM</th>
-                                        <th>KONU</th>
-                                        <th>SOHBETLER</th>
-                                        <th>İLK YAZMA</th>
-                                        <th>SON YAZMA</th>
-                                        <th>SON NOT</th>
+                                        <th style={{ minWidth: '140px' }}>İSİM</th>
+                                        <th style={{ minWidth: '80px', maxWidth: '120px' }}>FİRMA</th>
+                                        <th style={{ minWidth: '100px', maxWidth: '130px' }}>TELEFON</th>
+                                        <th style={{ minWidth: '80px', maxWidth: '140px' }}>KONU</th>
+                                        <th style={{ minWidth: '80px', maxWidth: '120px' }}>DURUM</th>
+                                        <th style={{ minWidth: '80px', maxWidth: '140px' }}>ATANAN</th>
+                                        <th style={{ minWidth: '70px', maxWidth: '100px' }}>KAYNAK</th>
+                                        <th style={{ minWidth: '80px', maxWidth: '140px' }}>ETİKETLER</th>
+                                        <th style={{ minWidth: '50px', maxWidth: '70px', textAlign: 'center' }}>SOHBETLER</th>
+                                        <th style={{ minWidth: '75px', maxWidth: '90px' }}>İLK YAZMA</th>
+                                        <th style={{ minWidth: '75px', maxWidth: '90px' }}>SON YAZMA</th>
+                                        <th style={{ minWidth: '100px', maxWidth: '160px' }}>SON NOT</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1593,6 +1593,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                                     />
                                                 </td>
+                                                {/* İSİM */}
                                                 <td>
                                                     <div className="contact-name-cell">
                                                         <img
@@ -1609,58 +1610,36 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="contact-source">
-                                                    <div
-                                                        className="source-badge"
-                                                        style={{
-                                                            backgroundColor: sourceInfo.color ? `${sourceInfo.color}15` : '#f3f4f6',
-                                                            color: sourceInfo.color || '#6b7280'
-                                                        }}
-                                                    >
-                                                        <SourceIcon size={12} />
-                                                        <span>{sourceInfo.label}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="contact-assigned">
-                                                    {(() => {
-                                                        const conv = contact.conversations?.[0];
-                                                        if (!conv) return '---';
-                                                        // Önce ekip adı göster
-                                                        const teamId = conv.assignedTeamId || (() => {
-                                                            try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
-                                                        })();
-                                                        const team = teamId ? teams.find(t => t.id === teamId) : null;
-                                                        const agentName = conv.assignedTo?.name;
-                                                        if (team && agentName) return `${team.name} / ${agentName}`;
-                                                        if (team) return team.name;
-                                                        if (agentName) return agentName;
-                                                        return '---';
-                                                    })()}
-                                                </td>
-                                                <td className="contact-phone">
-                                                    {contact.phone || '---'}
-                                                </td>
-                                                <td className="contact-company">
+                                                {/* FİRMA */}
+                                                <td className="contact-company" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                     {contact.company || '---'}
                                                 </td>
-                                                <td className="contact-tags">
-                                                    {(() => {
-                                                        try {
-                                                            const tagsArray = JSON.parse(contact.tags || '[]');
-                                                            if (!Array.isArray(tagsArray) || tagsArray.length === 0) return <span style={{color: '#94a3b8'}}>-</span>;
-                                                            return (
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                                                    {tagsArray.map((t, idx) => (
-                                                                        <span key={idx} style={{ padding: '2px 6px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '4px', fontSize: '11px', fontWeight: 500 }}>
-                                                                            {t}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            );
-                                                        } catch(e) { return <span style={{color: '#94a3b8'}}>-</span>; }
-                                                    })()}
+                                                {/* TELEFON */}
+                                                <td className="contact-phone" style={{ maxWidth: '130px', fontSize: '0.8rem' }}>
+                                                    {contact.phone || '---'}
                                                 </td>
-                                                <td className="contact-status">
+                                                {/* KONU */}
+                                                <td className="contact-topic" title={contact.aiTopic || ''} style={{ maxWidth: '140px' }}>
+                                                    {contact.aiTopic ? (
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 6px',
+                                                            backgroundColor: '#f0f9ff',
+                                                            color: '#0369a1',
+                                                            borderRadius: '4px',
+                                                            fontSize: '11px',
+                                                            fontWeight: 500,
+                                                            maxWidth: '130px',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {contact.aiTopic}
+                                                        </span>
+                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
+                                                </td>
+                                                {/* DURUM */}
+                                                <td className="contact-status" style={{ maxWidth: '120px' }}>
                                                     {(() => {
                                                         let displayLabel = 'Yeni';
                                                         let displayColor = '#6b7280';
@@ -1691,7 +1670,9 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 style={{
                                                                     backgroundColor: displayBg,
                                                                     color: displayColor,
-                                                                    border: (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none'
+                                                                    border: (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none',
+                                                                    fontSize: '11px',
+                                                                    padding: '2px 8px'
                                                                 }}
                                                             >
                                                                 {displayLabel}
@@ -1699,35 +1680,70 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         );
                                                     })()}
                                                 </td>
-                                                <td className="contact-topic" title={contact.aiTopic || ''}>
-                                                    {contact.aiTopic ? (
-                                                        <span style={{
-                                                            display: 'inline-block',
-                                                            padding: '2px 8px',
-                                                            backgroundColor: '#f0f9ff',
-                                                            color: '#0369a1',
-                                                            borderRadius: '4px',
-                                                            fontSize: '11px',
-                                                            fontWeight: 500,
-                                                            maxWidth: '140px',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            {contact.aiTopic}
-                                                        </span>
-                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
+                                                {/* ATANAN */}
+                                                <td className="contact-assigned" style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
+                                                    {(() => {
+                                                        const conv = contact.conversations?.[0];
+                                                        if (!conv) return '---';
+                                                        // Önce ekip adı göster
+                                                        const teamId = conv.assignedTeamId || (() => {
+                                                            try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
+                                                        })();
+                                                        const team = teamId ? teams.find(t => t.id === teamId) : null;
+                                                        const agentName = conv.assignedTo?.name;
+                                                        if (team && agentName) return `${team.name} / ${agentName}`;
+                                                        if (team) return team.name;
+                                                        if (agentName) return agentName;
+                                                        return '---';
+                                                    })()}
                                                 </td>
-                                                <td className="contact-conversations">
+                                                {/* KAYNAK */}
+                                                <td className="contact-source" style={{ maxWidth: '100px' }}>
+                                                    <div
+                                                        className="source-badge"
+                                                        style={{
+                                                            backgroundColor: sourceInfo.color ? `${sourceInfo.color}15` : '#f3f4f6',
+                                                            color: sourceInfo.color || '#6b7280',
+                                                            fontSize: '11px',
+                                                            padding: '2px 6px'
+                                                        }}
+                                                    >
+                                                        <SourceIcon size={11} />
+                                                        <span>{sourceInfo.label}</span>
+                                                    </div>
+                                                </td>
+                                                {/* ETİKETLER */}
+                                                <td className="contact-tags" style={{ maxWidth: '140px' }}>
+                                                    {(() => {
+                                                        try {
+                                                            const tagsArray = JSON.parse(contact.tags || '[]');
+                                                            if (!Array.isArray(tagsArray) || tagsArray.length === 0) return <span style={{color: '#94a3b8'}}>-</span>;
+                                                            return (
+                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                                                    {tagsArray.map((t, idx) => (
+                                                                        <span key={idx} style={{ padding: '1px 5px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '3px', fontSize: '10px', fontWeight: 500 }}>
+                                                                            {t}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            );
+                                                        } catch(e) { return <span style={{color: '#94a3b8'}}>-</span>; }
+                                                    })()}
+                                                </td>
+                                                {/* SOHBETLER */}
+                                                <td className="contact-conversations" style={{ textAlign: 'center', maxWidth: '70px' }}>
                                                     {contact._count?.conversations || 0}
                                                 </td>
-                                                <td className="contact-first-message">
+                                                {/* İLK YAZMA */}
+                                                <td className="contact-first-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
                                                     {formatDate(contact.firstMessageAt)}
                                                 </td>
-                                                <td className="contact-last-message">
+                                                {/* SON YAZMA */}
+                                                <td className="contact-last-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
                                                     {formatDate(contact.lastMessageAt)}
                                                 </td>
-                                                <td className="contact-last-note">
+                                                {/* SON NOT */}
+                                                <td className="contact-last-note" style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                                                     {(() => {
                                                         if (!contact.notes) return '---';
                                                         try {
