@@ -129,7 +129,10 @@ export const adminAPI = {
     createFlowTemplate: (data) => api.post('/admin/flow-templates', data),
     updateFlowTemplate: (id, data) => api.put(`/admin/flow-templates/${id}`, data),
     deleteFlowTemplate: (id) => api.delete(`/admin/flow-templates/${id}`),
-    importFlowTemplate: (id, workspaceId) => api.post(`/admin/flow-templates/${id}/import`, { workspaceId })
+    importFlowTemplate: (id, workspaceId) => api.post(`/admin/flow-templates/${id}/import`, { workspaceId }),
+
+    // Module toggles
+    toggleRealEstateModule: (workspaceId, enabled) => api.patch(`/admin/workspaces/${workspaceId}/modules/realestate`, { enabled })
 };
 
 export default api;
