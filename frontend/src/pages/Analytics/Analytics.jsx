@@ -80,9 +80,9 @@ const Analytics = () => {
             setAgentPerformance(performanceRes.data);
             setError(null);
 
-            // Load contact daily stats
+            // Load contact daily stats with same date filter
             try {
-                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, { days: 30 });
+                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, dateParams);
                 setContactStats(statsRes.data);
             } catch (e) {
                 console.warn('Contact stats load failed:', e.message);

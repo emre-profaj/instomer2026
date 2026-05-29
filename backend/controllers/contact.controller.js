@@ -1620,17 +1620,28 @@ export const getAgentPerformance = async (req, res) => {
 export const getDailyContactStats = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { days = 30 } = req.query;
+        const { days = 30, startDate: qStart, endDate: qEnd } = req.query;
 
-        const daysCount = Math.min(parseInt(days) || 30, 90);
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - daysCount);
-        startDate.setHours(0, 0, 0, 0);
+        let startDate, endDate;
+        if (qStart) {
+            startDate = new Date(qStart);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = qEnd ? new Date(qEnd) : new Date();
+            endDate.setHours(23, 59, 59, 999);
+        } else {
+            const daysCount = Math.min(parseInt(days) || 30, 90);
+            startDate = new Date();
+            startDate.setDate(startDate.getDate() - daysCount);
+            startDate.setHours(0, 0, 0, 0);
+            endDate = new Date();
+        }
+
+        const daysCount = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
 
         // Get all contacts created in the date range for this workspace
         const contacts = await prisma.contact.findMany({
             where: {
-                createdAt: { gte: startDate },
+                createdAt: { gte: startDate, lte: endDate },
                 isDeleted: false,
                 OR: [
                     { workspaceId },
@@ -1647,8 +1658,8 @@ export const getDailyContactStats = async (req, res) => {
         // Build daily stats map
         const dailyMap = {};
         for (let i = 0; i < daysCount; i++) {
-            const d = new Date();
-            d.setDate(d.getDate() - (daysCount - 1 - i));
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + i);
             const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
             dailyMap[key] = { date: key, total: 0, withPhone: 0, withoutPhone: 0 };
         }
