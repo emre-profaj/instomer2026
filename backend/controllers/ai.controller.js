@@ -1236,8 +1236,10 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                         }
                     });
 
-                    // İlk kez kalifiye lead olduysa aksiyonları çalıştır
-                    if (classResult.isQualifiedLead && !conv?.isQualifiedLead) {
+                    // Aksiyonları çalıştır: Lead olduysa VEYA telefon numarası varsa
+                    const contactHasPhone = !!(classResult.extractedData?.phone || contact?.phone);
+                    const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone;
+                    if (shouldRunActions) {
                         await executeClassificationActions(
                             workspaceId, conversationId, conv.contactId, classResult
                         );

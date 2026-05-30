@@ -691,14 +691,26 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
             });
         } catch {}
 
+        // Takım atamasını belirle: Önce aşama seviyesi, sonra akış seviyesi
+        const teamId = firstStage?.assignedTeamId || defaultFunnel.assignedTeamId || null;
+
+        const updateData = {
+            funnelType: defaultFunnel.id,
+            ...(firstStage && { funnelStageId: firstStage.id })
+        };
+
+        // Akışta veya aşamada takım tanımlıysa, konuşmanın takımını güncelle
+        if (teamId) {
+            updateData.assignedTeamId = teamId;
+            updateData.teamIds = JSON.stringify([teamId]);
+            console.log(`📡 [AutoFunnel] Overriding team to funnel/stage team: ${teamId} (funnel: "${defaultFunnel.name}", stage: "${firstStage?.name || 'N/A'}")`);
+        }
+
         await prisma.conversation.update({
             where: { id: conversationId },
-            data: {
-                funnelType: defaultFunnel.id,
-                ...(firstStage && { funnelStageId: firstStage.id })
-            }
+            data: updateData
         });
-        console.log(`✅ [AutoFunnel] Assigned "${defaultFunnel.name}" funnel to conversation ${conversationId}`);
+        console.log(`✅ [AutoFunnel] Assigned "${defaultFunnel.name}" funnel to conversation ${conversationId}${teamId ? ` (team: ${teamId})` : ''}`);
     } catch (err) {
         console.error('❌ [AutoFunnel] Error:', err.message);
     }

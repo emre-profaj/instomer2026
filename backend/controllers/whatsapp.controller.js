@@ -1372,14 +1372,11 @@ export const webhookHandler = async (req, res) => {
                     // --- AUTO EXTRACT START ---
                     try {
                         const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
-                        const { autoAssignDefaultFunnel } = await import('./funnel.controller.js');
                         autoExtractFromConversation(waNumber.workspaceId, conversation.id);
                         autoGenerateTopic(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                             console.error('❌ [AutoTopic] WA error:', e.message)
                         );
-                        autoAssignDefaultFunnel(waNumber.workspaceId, conversation.id).catch(e =>
-                            console.error('❌ [AutoFunnel] WA error:', e.message)
-                        );
+                        // autoAssignDefaultFunnel artık applyChannelRouting içinde merkezi olarak çalışıyor
                     } catch (extractError) {
                         console.error('❌ AI Auto-Extract (WhatsApp) call failed:', extractError);
                     }

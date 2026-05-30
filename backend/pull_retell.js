@@ -46,7 +46,7 @@ async function backfillRetellConversations() {
                 contact = await prisma.contact.create({
                     data: {
                         workspaceId: ws,
-                        name: 'Retell Arama ' + customerPhone.slice(-4),
+                        name: 'AI Arama ' + customerPhone.slice(-4),
                         phone: customerPhone,
                         source: 'RETELL_CALL',
                         status: 'NEW_APPLICATION',
@@ -96,7 +96,7 @@ async function backfillRetellConversations() {
     }
 
     console.log(`\n🎉 Aktarım Başarıyla Tamamlandı!`);
-    console.log(`✅ Inbox içerisine toplam ${createdCount} adet YENİ Sohbet kutusu açıldı ve Retell çağrılarıyla eşleştirildi.`);
+    console.log(`✅ Inbox içerisine toplam ${createdCount} adet YENİ Sohbet kutusu açıldı ve AI çağrılarıyla eşleştirildi.`);
     
     await prisma.$disconnect();
 }

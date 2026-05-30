@@ -4139,10 +4139,14 @@
     cursor: pointer;
     outline: none;
     min-width: 86px;
+    max-width: 110px;
+    flex-shrink: 0;
 }
 
 .phone-input-with-prefix input {
     flex: 1;
+    min-width: 0;
+    width: auto !important;
     border: none !important;
     border-radius: 0 !important;
     padding: 12px 14px;

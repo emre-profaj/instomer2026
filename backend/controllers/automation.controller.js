@@ -1528,7 +1528,12 @@ const sendTemplateToContact = async (workspaceId, templateId, contact) => {
 
         await prisma.conversation.update({
             where: { id: conversation.id },
-            data: { lastMessageAt: new Date() }
+            data: {
+                lastMessageAt: new Date(),
+                lastBotMessageAt: new Date(),       // Follow-up tracking: marks this as a bot message
+                inactivityWarningSent: false,        // Reset inactivity flag for new bot message
+                reminderSentAt: null                 // Reset reminder flag so reminder can be sent if customer doesn't respond
+            }
         });
 
     } catch (error) {

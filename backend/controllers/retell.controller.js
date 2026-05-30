@@ -3,6 +3,7 @@ import Retell from 'retell-sdk';
 import { createNotification } from './notification.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { emitToWorkspace } from '../socket.js';
+import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
 
 // Helper to find the team that a Retell agent belongs to
 async function resolveAgentTeamId(workspaceId, agentId) {
@@ -110,7 +111,7 @@ export const getSettings = async (req, res) => {
         });
     } catch (error) {
         console.error('❌ [Retell] Get settings error:', error);
-        res.status(500).json({ error: 'Failed to get Retell settings' });
+        res.status(500).json({ error: 'AI Arama ayarları alınamadı' });
     }
 };
 
@@ -152,10 +153,10 @@ export const saveSettings = async (req, res) => {
         }
 
         console.log(`✅ [Retell] Settings updated for workspace ${workspaceId}`);
-        res.json({ success: true, message: 'Retell ayarları kaydedildi' });
+        res.json({ success: true, message: 'AI Arama ayarları kaydedildi' });
     } catch (error) {
         console.error('❌ [Retell] Save settings error:', error);
-        res.status(500).json({ error: 'Failed to save Retell settings' });
+        res.status(500).json({ error: 'AI Arama ayarları kaydedilemedi' });
     }
 };
 
@@ -801,7 +802,7 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
         where: { id: workspaceId },
         select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true, companyName: true, defaultLanguage: true }
     });
-    if (!workspace?.retellApiKey) throw new Error('No Retell API key');
+    if (!workspace?.retellApiKey) throw new Error('No AI Call API key');
     
     // Check if there is a team-specific agent first if agentId is not passed
     let effectiveAgentId = agentId;
@@ -810,7 +811,7 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
         effectiveAgentId = teamAgentId || workspace.retellAgentId;
     }
     
-    if (!effectiveAgentId) throw new Error('No Retell Agent ID configured/provided');
+    if (!effectiveAgentId) throw new Error('No AI Call Agent ID configured/provided');
 
     const client = new Retell({ apiKey: workspace.retellApiKey });
     const formattedFrom = normalizePhone(workspace.retellFromNumber);
@@ -1199,7 +1200,7 @@ export const getAgents = async (req, res) => {
         });
 
         if (!workspace?.retellApiKey) {
-            return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+            return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
         }
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
@@ -1236,7 +1237,7 @@ export const getAgents = async (req, res) => {
         res.json({ agents: uniqueAgents });
     } catch (error) {
         console.error('❌ [Retell] Get agents error:', error);
-        res.status(500).json({ error: 'Failed to fetch Retell agents' });
+        res.status(500).json({ error: 'AI Arama agentları getirilemedi' });
     }
 };
 
@@ -1258,7 +1259,7 @@ export const makeCall = async (req, res) => {
 
         // Allow progress if either a specific agentId is provided OR workspace has a default
         if (!workspace?.retellApiKey || (!agentId && !workspace?.retellAgentId)) {
-            return res.status(400).json({ error: 'Retell ayarları yapılandırılmamış (Agent ID eksik)' });
+            return res.status(400).json({ error: 'AI Arama ayarları yapılandırılmamış (Agent ID eksik)' });
         }
 
         if (!workspace.retellFromNumber) {
@@ -1386,7 +1387,7 @@ export const bulkRetryCall = async (req, res) => {
         });
 
         if (!workspace?.retellApiKey || !workspace?.retellAgentId || !workspace?.retellFromNumber) {
-            return res.status(400).json({ error: 'Retell ayarları eksik' });
+            return res.status(400).json({ error: 'AI Arama ayarları eksik' });
         }
 
         // Get original calls to find phone numbers
@@ -1698,6 +1699,9 @@ async function handleCallStarted(call) {
                     }
                 });
 
+                // Varsayılan akış ataması (merkezi)
+                assignDefaultFunnel(workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Retell error:', e.message));
+
                 // Opening message
                 const msg = await prisma.message.create({
                     data: {
@@ -1995,6 +1999,10 @@ async function handleCallEnded(call) {
                                     assignedTeamId
                                 }
                             });
+
+                            // Varsayılan akış ataması (merkezi)
+                            assignDefaultFunnel(callRecord.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Retell error:', e.message));
+
                             await prisma.retellCall.update({
                                 where: { callId: callRecord.callId },
                                 data: { conversationId: conversation.id }
@@ -2067,8 +2075,8 @@ async function handleCallEnded(call) {
                             status: 'COMPLETED',
                             isCompleted: true,
                             completedAt: new Date(),
-                            result: `Retell araması tamamlandı. Süre: ${durationText}.`,
-                            source: 'RETELL'
+                            result: `AI araması tamamlandı. Süre: ${durationText}.`,
+                            source: 'AI_CALL'
                         }
                     });
                     console.log(`✅ [Retell Webhook] Completed activity ${activityId} via call_ended`);
@@ -2136,6 +2144,10 @@ async function injectTranscriptToChat(callRecord, call, duration) {
                 assignedTeamId
             }
         });
+
+        // Varsayılan akış ataması (merkezi)
+        assignDefaultFunnel(workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Retell error:', e.message));
+
         console.log(`📞 [Retell] Created new PHONE conversation ${conversation.id} for ${direction || 'outbound'} call (no prior conversation found)`);
     }
 
@@ -2272,8 +2284,8 @@ async function handleCallAnalyzed(call) {
                         status: 'COMPLETED',
                         isCompleted: true,
                         completedAt: new Date(),
-                        result: `Retell araması tamamlandı. Süre: ${durationText}.${summaryText ? '\nÖzet: ' + summaryText : ''}`,
-                        source: 'RETELL'
+                        result: `AI araması tamamlandı. Süre: ${durationText}.${summaryText ? '\nÖzet: ' + summaryText : ''}`,
+                        source: 'AI_CALL'
                     }
                 });
                 console.log(`✅ [Retell Webhook] Updated activity ${activityId} with summary via call_analyzed`);
@@ -2337,7 +2349,7 @@ async function handleCallAnalyzed(call) {
                                     status: 'PLANNED',
                                     priority: 'NORMAL',
                                     title: `${typeLabels[actType]}: ${contact?.name || callRecord.toNumber}`,
-                                    description: `Retell görüşmesinden: "${transcriptResult.rawRequest || ''}"`,
+                                    description: `AI görüşmesinden: "${transcriptResult.rawRequest || ''}"`,
                                     dueDate,
                                     contactId: callRecord.contactId,
                                     workspaceId: callRecord.workspaceId,
@@ -2635,6 +2647,9 @@ export const recoverCallConversations = async (req, res) => {
                             lastMessageAt: callRecord.createdAt || new Date()
                         }
                     });
+
+                    // Varsayılan akış ataması (merkezi)
+                    assignDefaultFunnel(workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Retell error:', e.message));
                 }
 
                 const duration = callRecord.duration || 0;
@@ -2691,7 +2706,7 @@ export const syncRetellCalls = async (req, res) => {
         });
 
         if (!workspace?.retellApiKey) {
-            return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+            return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
         }
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
@@ -2856,12 +2871,12 @@ export const syncSingleCall = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true }
         });
-        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const call = await client.call.retrieve(callId);
 
-        if (!call) return res.status(404).json({ error: 'Retell\'de bu arama bulunamadı' });
+        if (!call) return res.status(404).json({ error: 'Bu arama bulunamadı' });
 
         console.log(`🔄 [SingleSync] call_id=${callId} from=${call.from_number} to=${call.to_number}`);
 
@@ -2955,7 +2970,7 @@ export const getAgent = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true }
         });
-        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const agent = await client.agent.retrieve(agentId);
@@ -3017,7 +3032,7 @@ export const updateAgentPrompt = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true }
         });
-        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
 
@@ -3113,7 +3128,7 @@ export const listKnowledgeBases = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true, retellKnowledgeBaseId: true }
         });
-        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const knowledgeBases = await client.knowledgeBase.list();
@@ -3145,7 +3160,7 @@ export const syncKnowledgeBase = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true, retellKnowledgeBaseId: true, retellAgentId: true }
         });
-        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const effectiveAgentId = agentId || workspace.retellAgentId;
 
@@ -3254,7 +3269,7 @@ export const updateAgentKnowledgeBases = async (req, res) => {
             where: { id: workspaceId },
             select: { retellApiKey: true }
         });
-        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'Retell API key yapılandırılmamış' });
+        if (!workspace?.retellApiKey) return res.status(400).json({ error: 'AI Arama API anahtarı yapılandırılmamış' });
 
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const updated = await client.agent.update(agentId, {

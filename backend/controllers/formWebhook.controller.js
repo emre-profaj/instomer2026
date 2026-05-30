@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { smartFieldMatcher } from '../utils/fieldMatcher.js';
 import { executeWebFormAutomation } from './automation.controller.js';
+import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
 
 
 // Generate unique webhook URL and token
@@ -339,6 +340,7 @@ export const handleFormSubmission = async (req, res) => {
                     status: 'OPEN'
                 }
             });
+            assignDefaultFunnel(webhook.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Form error:', e.message));
             isNewConversation = true;
         }
 

@@ -351,7 +351,7 @@ const Inbox = () => {
     const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
     const [searchTerm, setSearchTerm] = useState('');
-    const [assignmentTab, setAssignmentTab] = useState('MINE_OR_UNASSIGNED'); // 'MINE_OR_UNASSIGNED', 'MINE', 'PENDING', 'ALL'
+    const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'ALL', 'MINE_OR_UNASSIGNED', 'MINE', 'PENDING'
     const [showResolved, setShowResolved] = useState(() => {
         try {
             return localStorage.getItem('inbox_showResolved') === 'true';
@@ -771,6 +771,8 @@ const Inbox = () => {
             setAssignmentTab('MINE');
         } else if (tab === 'unassigned') {
             setAssignmentTab('PENDING');
+        } else if (tab === 'pool') {
+            setAssignmentTab('MINE_OR_UNASSIGNED');
         } else if (tab.startsWith('team:')) {
             setAssignmentTab(tab.toUpperCase()); // 'TEAM:xxx-id'
         }
@@ -1187,10 +1189,8 @@ const Inbox = () => {
             console.log('📬 Conversation assigned to you:', data);
             const { conversationId, contact, assignedBy, message } = data;
 
-            // 🚀 Satışçıya atama yapıldığında "Bana Atanan" tab'ına geç
-            // Böylece yeni atanan konuşma listede görünür
-            setAssignmentTab('MINE');
-            // setAssignmentTab('MINE') will trigger loadInboxItems via the useEffect dep array
+            // Inbox'ı yenile ama tab değiştirme — kullanıcı hangi tab'taysa orda kalsın
+            if (loadInboxItemsRef.current) loadInboxItemsRef.current(false);
 
             // Sağ alt köşede popup toast göster
             showAssignment(
@@ -3183,6 +3183,12 @@ const Inbox = () => {
                     {(activeFilters.length === 0 || activeFilters.includes('messages')) && (
                         <div className="inbox-assignment-tabs">
                             <button
+                                className={`assignment-tab ${assignmentTab === 'ALL' ? 'active' : ''}`}
+                                onClick={() => setAssignmentTab('ALL')}
+                            >
+                                Hepsi
+                            </button>
+                            <button
                                 className={`assignment-tab ${assignmentTab === 'MINE_OR_UNASSIGNED' ? 'active' : ''}`}
                                 onClick={() => setAssignmentTab('MINE_OR_UNASSIGNED')}
                                 title="Bana atananlar + Havuzdakiler"
@@ -3199,16 +3205,8 @@ const Inbox = () => {
                                 className={`assignment-tab ${assignmentTab === 'PENDING' ? 'active' : ''}`}
                                 onClick={() => setAssignmentTab('PENDING')}
                             >
-                                Havuz
+                                Atanmamışlar
                             </button>
-                            {isOwner && (
-                                <button
-                                    className={`assignment-tab ${assignmentTab === 'ALL' ? 'active' : ''}`}
-                                    onClick={() => setAssignmentTab('ALL')}
-                                >
-                                    Tümü
-                                </button>
-                            )}
                         </div>
                     )}
                 </div>
@@ -3517,11 +3515,6 @@ const Inbox = () => {
                                         <div className="inbox-item-header">
                                             <span className="inbox-item-name">
                                                 {getItemName(item)}
-                                                {item.hasPlannedCall && (
-                                                    <span className="planned-call-badge" title="Planlanmış arama var">
-                                                        <PhoneCall size={12} />
-                                                    </span>
-                                                )}
                                             </span>
                                             <div className="inbox-item-header-right">
                                                 {(item.unreadCount || 0) > 0 && (
@@ -4709,19 +4702,42 @@ const Inbox = () => {
                                             </div>
                                         )}
 
-                                        <div className="message-input-container">
+                                        <div className="message-input-container" style={isInternalNoteMode ? { border: '2px solid #fbbf24', borderRadius: 12, background: '#fffbeb' } : {}}>
+                                            {/* Dahili Not Modu Banner */}
+                                            {isInternalNoteMode && (
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '6px 14px', background: '#fef3c7', borderBottom: '1px solid #fde68a',
+                                                    borderRadius: '10px 10px 0 0', fontSize: '0.78rem', fontWeight: 600, color: '#92400e'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                        <StickyNote size={14} />
+                                                        <span>Dahili Not — sadece ekip görebilir</span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsInternalNoteMode(false)}
+                                                        style={{
+                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                            color: '#92400e', fontSize: '1rem', fontWeight: 700,
+                                                            padding: '0 4px', lineHeight: 1
+                                                        }}
+                                                    >✕</button>
+                                                </div>
+                                            )}
                                             <div className="textarea-wrapper">
                                                 <textarea
                                                     ref={textareaRef}
                                                     value={newMessage}
                                                     onChange={(e) => setNewMessage(e.target.value)}
-                                                    placeholder="Yanıtınızı yazın..."
+                                                    placeholder={isInternalNoteMode ? '📝 Dahili not yazın...' : 'Yanıtınızı yazın...'}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' && !e.shiftKey) {
                                                             e.preventDefault();
                                                             handleSendMessage(e);
                                                         }
                                                     }}
+                                                    style={isInternalNoteMode ? { background: '#fffbeb' } : {}}
                                                 />
                                                 <div className="emoji-picker-wrapper" ref={emojiPickerRef}>
                                                     <button
@@ -4787,15 +4803,14 @@ const Inbox = () => {
                                                             style={{
                                                                 display: 'flex', alignItems: 'center', gap: 5,
                                                                 padding: '4px 10px', border: 'none', borderRadius: 6,
-                                                                background: isInternalNoteMode ? '#fef9c3' : 'transparent',
+                                                                background: 'transparent',
                                                                 cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500,
-                                                                color: isInternalNoteMode ? '#92400e' : '#4b5563',
+                                                                color: '#4b5563',
                                                                 transition: 'all 0.15s'
                                                             }}
                                                         >
                                                             <span style={{ fontSize: '0.85rem' }}>
-                                                                {isInternalNoteMode ? '📝' :
-                                                                 replyChannel === 'WHATSAPP' ? '💬' :
+                                                                {replyChannel === 'WHATSAPP' ? '💬' :
                                                                  replyChannel === 'EMAIL' ? '✉️' :
                                                                  replyChannel === 'MESSENGER' ? '📘' :
                                                                  selectedItem?.channel === 'WHATSAPP' ? '💬' :
@@ -4806,8 +4821,7 @@ const Inbox = () => {
                                                                  selectedItem?.channel === 'WIDGET' ? '🌐' :
                                                                  selectedItem?.channel === 'PHONE' ? '📞' : '💬'}
                                                             </span>
-                                                            <span>{isInternalNoteMode ? 'Dahili Not' :
-                                                             replyChannel === 'WHATSAPP' ? 'WhatsApp Şablon' :
+                                                            <span>{replyChannel === 'WHATSAPP' ? 'WhatsApp Şablon' :
                                                              replyChannel === 'EMAIL' ? 'E-posta' :
                                                              replyChannel === 'MESSENGER' ? 'Messenger' :
                                                              selectedItem?.channel === 'WHATSAPP' ? 'WhatsApp' :
@@ -4831,15 +4845,15 @@ const Inbox = () => {
                                                             }}
                                                         >
                                                             {/* Current channel - always shown */}
-                                                            {selectedItem?.channel && !isInternalNoteMode && (
+                                                            {selectedItem?.channel && (
                                                                 <div
                                                                     style={{
                                                                         padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
                                                                         fontSize: '0.83rem', color: '#374151', cursor: 'pointer',
-                                                                        background: '#f0f9ff', fontWeight: 600
+                                                                        background: !replyChannel ? '#f0f9ff' : '#fff',
+                                                                        fontWeight: !replyChannel ? 600 : 400
                                                                     }}
                                                                     onClick={() => {
-                                                                        setIsInternalNoteMode(false);
                                                                         setReplyChannel(null);
                                                                         setShowChannelMenu(false);
                                                                     }}
@@ -4859,7 +4873,7 @@ const Inbox = () => {
                                                                      selectedItem.channel === 'EMAIL' ? 'E-posta' :
                                                                      selectedItem.channel === 'WIDGET' ? 'Web Widget' :
                                                                      selectedItem.channel}
-                                                                    {!replyChannel && !isInternalNoteMode && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>}
+                                                                    {!replyChannel && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#3b82f6' }}>✓</span>}
                                                                 </div>
                                                             )}
                                                             {/* WhatsApp */}
@@ -4874,7 +4888,6 @@ const Inbox = () => {
                                                                         borderTop: '1px solid #f3f4f6'
                                                                     }}
                                                                     onClick={() => {
-                                                                        setIsInternalNoteMode(false);
                                                                         setReplyChannel('WHATSAPP');
                                                                         setShowChannelMenu(false);
                                                                     }}
@@ -4896,7 +4909,6 @@ const Inbox = () => {
                                                                         borderTop: '1px solid #f3f4f6'
                                                                     }}
                                                                     onClick={() => {
-                                                                        setIsInternalNoteMode(false);
                                                                         setReplyChannel('EMAIL');
                                                                         setShowChannelMenu(false);
                                                                     }}
@@ -4918,7 +4930,6 @@ const Inbox = () => {
                                                                         borderTop: '1px solid #f3f4f6'
                                                                     }}
                                                                     onClick={() => {
-                                                                        setIsInternalNoteMode(false);
                                                                         setReplyChannel('MESSENGER');
                                                                         setShowChannelMenu(false);
                                                                     }}
@@ -4928,29 +4939,27 @@ const Inbox = () => {
                                                                     {replyChannel === 'MESSENGER' && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#1d4ed8' }}>✓</span>}
                                                                 </div>
                                                             )}
-                                                            {/* Dahili Not */}
-                                                            <div
-                                                                style={{
-                                                                    padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
-                                                                    fontSize: '0.83rem', cursor: 'pointer',
-                                                                    color: isInternalNoteMode ? '#a16207' : '#374151',
-                                                                    background: isInternalNoteMode ? '#fefce8' : '#fff',
-                                                                    fontWeight: isInternalNoteMode ? 600 : 400,
-                                                                    borderTop: '1px solid #f3f4f6'
-                                                                }}
-                                                                onClick={() => {
-                                                                    setIsInternalNoteMode(!isInternalNoteMode);
-                                                                    setReplyChannel(null);
-                                                                    setShowChannelMenu(false);
-                                                                }}
-                                                            >
-                                                                <span>📝</span>
-                                                                Dahili Not
-                                                                {isInternalNoteMode && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#eab308' }}>✓</span>}
-                                                            </div>
                                                         </div>
                                                         )}
                                                     </div>
+
+                                                    {/* Dahili Not — toggle ikon */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                                                        title={isInternalNoteMode ? 'Not modundan çık' : 'Dahili not yaz'}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 4,
+                                                            padding: '4px 8px', border: 'none', borderRadius: 6,
+                                                            background: isInternalNoteMode ? '#fbbf24' : '#f1f5f9',
+                                                            cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500,
+                                                            color: isInternalNoteMode ? '#1f2937' : '#9ca3af',
+                                                            transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        <StickyNote size={14} />
+                                                        <span>Not</span>
+                                                    </button>
 
                                                     {/* Oto Pilot - minimal icon */}
                                                     <button
@@ -5076,8 +5085,11 @@ const Inbox = () => {
                                                     </button>
 
                                                     {/* Send */}
-                                                    <button type="submit" className="send-btn" style={{ padding: '5px 8px', borderRadius: 8, marginLeft: 2 }}>
-                                                        <Send size={16} />
+                                                    <button type="submit" className="send-btn" style={{
+                                                        padding: '5px 8px', borderRadius: 8, marginLeft: 2,
+                                                        ...(isInternalNoteMode ? { background: '#f59e0b' } : {})
+                                                    }}>
+                                                        {isInternalNoteMode ? <StickyNote size={16} /> : <Send size={16} />}
                                                     </button>
                                                 </div>
                                             </div>

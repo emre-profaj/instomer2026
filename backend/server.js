@@ -310,7 +310,7 @@ setTimeout(() => {
 import { processInactivityWarnings, processDailyReminders } from './services/followUp.service.js';
 
 const INACTIVITY_CHECK_INTERVAL = 30000; // 30 saniyede bir kontrol (CPU optimizasyonu: 10s → 30s)
-const REMINDER_CHECK_INTERVAL = 30 * 60 * 1000; // 30 dakikada bir kontrol (1 gün hatırlatma)
+const REMINDER_CHECK_INTERVAL = 10 * 60 * 1000; // 10 dakikada bir kontrol (kısa hatırlatıcılar için)
 
 setTimeout(() => {
   console.log('⏰ [Follow-up] Starting inactivity warning processor (every 10 seconds)');
@@ -324,7 +324,8 @@ setTimeout(() => {
 }, 40000);
 
 setTimeout(() => {
-  console.log('📅 [Follow-up] Starting daily reminder processor (every 30 minutes)');
+  console.log('📅 [Follow-up] Starting daily reminder processor (every 10 minutes)');
+  processDailyReminders(); // İlk çalıştırmayı hemen yap
   setInterval(async () => {
     try {
       await processDailyReminders();

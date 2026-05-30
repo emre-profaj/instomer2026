@@ -137,18 +137,18 @@ export const processInactivityWarnings = async () => {
 };
 
 /**
- * Process daily reminders (24h check)
+ * Process daily reminders (configurable hours check)
  * Called every 30 minutes
+ * 
+ * FIX: Also handles conversations where lastBotMessageAt is null
+ * by falling back to the last bot message timestamp from messages table.
  */
 export const processDailyReminders = async () => {
     try {
         const now = new Date();
 
-        // Pre-filter: Only fetch conversations where lastBotMessageAt is old enough
-        // Minimum reminder threshold dynamically — support short intervals (e.g., 4 hours)
-        const minReminderThreshold = new Date(now.getTime() - 1 * 60 * 60 * 1000); // 1h minimum (actual check per bot below)
-
-        const conversations = await prisma.conversation.findMany({
+        // Query 1: Conversations WITH lastBotMessageAt (normal path)
+        const conversationsWithBotTime = await prisma.conversation.findMany({
             where: {
                 OR: [
                     { assignedBotId: { not: null } },
@@ -157,8 +157,7 @@ export const processDailyReminders = async () => {
                     { whatsappPhoneNumber: { assignedBotId: { not: null } } }
                 ],
                 lastBotMessageAt: {
-                    not: null,
-                    lte: minReminderThreshold  // Only old enough conversations
+                    not: null
                 },
                 reminderSentAt: null,
                 status: 'OPEN',
@@ -171,8 +170,75 @@ export const processDailyReminders = async () => {
                 whatsappPhoneNumber: { include: { assignedBot: true } },
                 emailChannel: { include: { assignedBot: true } }
             },
-            take: 50  // Hard limit
+            take: 50
         });
+
+        // Query 2: Conversations WITHOUT lastBotMessageAt but WITH bot messages
+        // This catches conversations where updateLastBotMessageTime was never called
+        const conversationsWithoutBotTime = await prisma.conversation.findMany({
+            where: {
+                OR: [
+                    { assignedBotId: { not: null } },
+                    { facebookPage: { assignedBotId: { not: null } } },
+                    { emailChannel: { assignedBotId: { not: null } } },
+                    { whatsappPhoneNumber: { assignedBotId: { not: null } } }
+                ],
+                lastBotMessageAt: null,
+                reminderSentAt: null,
+                status: 'OPEN',
+                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] },
+                // Must have at least some messages (bot sent)
+                messages: {
+                    some: {
+                        isFromContact: false,
+                        createdAt: {
+                            lte: new Date(now.getTime() - 1 * 60 * 60 * 1000) // at least 1h old
+                        }
+                    }
+                }
+            },
+            include: {
+                assignedBot: true,
+                contact: true,
+                facebookPage: { include: { assignedBot: true } },
+                whatsappPhoneNumber: { include: { assignedBot: true } },
+                emailChannel: { include: { assignedBot: true } },
+                messages: {
+                    where: { isFromContact: false },
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: { createdAt: true }
+                }
+            },
+            take: 30
+        });
+
+        // For Query 2 results, backfill lastBotMessageAt from the last bot message
+        for (const conv of conversationsWithoutBotTime) {
+            if (conv.messages && conv.messages.length > 0) {
+                conv.lastBotMessageAt = conv.messages[0].createdAt;
+                // Also fix the database for future runs
+                try {
+                    await prisma.conversation.update({
+                        where: { id: conv.id },
+                        data: { lastBotMessageAt: conv.messages[0].createdAt }
+                    });
+                } catch (e) { /* non-critical */ }
+            }
+        }
+
+        // Merge both sets (deduplicate by id)
+        const seenIds = new Set();
+        const conversations = [];
+        for (const c of [...conversationsWithBotTime, ...conversationsWithoutBotTime]) {
+            if (!seenIds.has(c.id)) {
+                seenIds.add(c.id);
+                conversations.push(c);
+            }
+        }
+
+        // Always log count for debugging
+        console.log(`📅 [Follow-up] Daily reminder check: ${conversations.length} candidates (withBotTime: ${conversationsWithBotTime.length}, backfilled: ${conversationsWithoutBotTime.length})`);
 
         // Process in batches to avoid rate limiting (max 30 per cycle for daily reminders)
         const BATCH_SIZE = 30;
@@ -183,6 +249,7 @@ export const processDailyReminders = async () => {
         }
 
         let processedCount = 0;
+        let skippedNoBot = 0, skippedDisabled = 0, skippedTimeNotElapsed = 0, skippedCustomerResponded = 0;
         for (const conversation of conversationsBatch) {
             // Get bot from conversation, page, or email channel
             let bot = conversation.assignedBot;
@@ -196,7 +263,8 @@ export const processDailyReminders = async () => {
                 bot = conversation.whatsappPhoneNumber.assignedBot;
             }
 
-            if (!bot || !bot.dailyReminderEnabled) continue;
+            if (!bot) { skippedNoBot++; continue; }
+            if (!bot.dailyReminderEnabled) { skippedDisabled++; continue; }
 
             const reminderHours = bot.dailyReminderHours || 24;
             const reminderThreshold = new Date(now.getTime() - reminderHours * 60 * 60 * 1000);
@@ -227,15 +295,22 @@ export const processDailyReminders = async () => {
                     if (updated.count > 0) {
                         const message = bot.dailyReminderMessage || DEFAULT_REMINDER_MESSAGE;
                         await sendFollowUpMessage(conversation, message, 'reminder');
-                        console.log(`📅 [Follow-up] Daily reminder sent to conversation ${conversation.id}`);
+                        console.log(`📅 [Follow-up] Daily reminder sent to conversation ${conversation.id} (bot: ${bot.name}, hours: ${reminderHours}, contact: ${conversation.contact?.name || 'N/A'})`);
                         processedCount++;
 
                         // Add delay between API calls to avoid rate limiting (200ms)
                         await new Promise(resolve => setTimeout(resolve, 200));
                     }
+                } else {
+                    skippedCustomerResponded++;
                 }
+            } else {
+                skippedTimeNotElapsed++;
             }
         }
+
+        // Summary log
+        console.log(`📅 [Follow-up] Daily reminder summary: sent=${processedCount}, noBot=${skippedNoBot}, disabled=${skippedDisabled}, timeNotElapsed=${skippedTimeNotElapsed}, customerResponded=${skippedCustomerResponded}`);
 
         if (processedCount > 0) {
             console.log(`✅ [Follow-up] Sent ${processedCount} daily reminders`);
@@ -378,8 +453,8 @@ export const resetFollowUpFlags = async (conversationId) => {
         await prisma.conversation.update({
             where: { id: conversationId },
             data: {
-                inactivityWarningSent: false
-                // Don't reset reminderSentAt - it should only be sent once
+                inactivityWarningSent: false,
+                reminderSentAt: null  // Reset reminder so a new cycle can start after bot responds again
             }
         });
     } catch (error) {

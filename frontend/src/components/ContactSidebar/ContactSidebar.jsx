@@ -145,6 +145,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [dealsLoading, setDealsLoading] = useState(false);
     const [contactConversations, setContactConversations] = useState([]);
     const [localConvOverride, setLocalConvOverride] = useState(null);
+
+    // Sync localConvOverride when conversationData prop changes from parent (e.g. assignment from Inbox header)
+    useEffect(() => {
+        if (conversationData && localConvOverride) {
+            const changed =
+                conversationData.assignedToId !== localConvOverride.assignedToId ||
+                conversationData.teamIds !== localConvOverride.teamIds;
+            if (changed) {
+                setLocalConvOverride(prev => ({
+                    ...prev,
+                    assignedToId: conversationData.assignedToId,
+                    assignedTo: conversationData.assignedTo,
+                    teamIds: conversationData.teamIds
+                }));
+            }
+        }
+    }, [conversationData?.assignedToId, conversationData?.teamIds]);
+
     const [newNote, setNewNote] = useState('');
     const [savingNote, setSavingNote] = useState(false);
     const [notesExpanded, setNotesExpanded] = useState(false);
@@ -207,6 +225,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [completeResult, setCompleteResult] = useState('');
     const [activityFunnels, setActivityFunnels] = useState([]); // stage seçici için
     const [popupConversationId, setPopupConversationId] = useState(null); // Chat popup state
+    const [callCompleted, setCallCompleted] = useState(true); // Arama tamamlandı mı? checkbox
+    const [postNoteAction, setPostNoteAction] = useState(null); // { funnelStageId, teamId, assignedToId } — not sonrası aksiyon
 
     // Inline Quote Form State
     const [showQuoteForm, setShowQuoteForm] = useState(false);
@@ -487,6 +507,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             teamId: defaultTeamId,
             funnelStageId: ''
         });
+        setCallCompleted(true); // Reset checkbox
         setShowActivityModal(true);
     };
 
@@ -507,17 +528,19 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
         setActivitySaving(true);
         try {
-            // NOTE tipi → Arama Notu: tamamlanmış CALL aktivitesi olarak kaydet
-            const isCallNote = activityForm.type === 'NOTE';
+            // NOTE tipi → callCompleted true ise Arama Notu (CALL+COMPLETED), false ise Dahili Not (NOTE+COMPLETED)
+            const isNoteType = activityForm.type === 'NOTE';
+            const isCallNote = isNoteType && callCompleted;
+            const isInternalNote = isNoteType && !callCompleted;
             const dataToSave = {
                 workspaceId: currentWorkspace.id,
-                type: isCallNote ? 'CALL' : activityForm.type,
-                title: isCallNote ? 'Telefon Görüşmesi' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite')),
+                type: isCallNote ? 'CALL' : (isInternalNote ? 'NOTE' : activityForm.type),
+                title: isCallNote ? 'Telefon Görüşmesi' : (isInternalNote ? 'Dahili Not' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite'))),
                 description: activityForm.description,
-                dueDate: isCallNote ? new Date().toISOString() : (activityForm.dueDate || null),
+                dueDate: isNoteType ? new Date().toISOString() : (activityForm.dueDate || null),
                 assignedToId: activityForm.assignedToId || null,
                 teamId: activityForm.teamId || null,
-                ...(isCallNote && { status: 'COMPLETED', completedAt: new Date().toISOString() })
+                ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() })
             };
 
             let activityResponse = null;
@@ -569,18 +592,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             fetchTimeline(profile.id);
             // Inbox list'teki badge'leri hemen güncelle
             if (onActivitySaved) {
-                const isCallNote = activityForm.type === 'NOTE';
+                const wasCallNote = isCallNote;
                 onActivitySaved({
-                    type: isCallNote ? 'CALL' : activityForm.type,
-                    status: isCallNote ? 'COMPLETED' : 'PLANNED',
+                    type: wasCallNote ? 'CALL' : (isInternalNote ? 'NOTE' : activityForm.type),
+                    status: isNoteType ? 'COMPLETED' : 'PLANNED',
                     contactId: profile.id,
                     dueDate: activityForm.dueDate
                 });
             }
 
-            // Not kaydedildi — konuşma kimseye atanmamışsa üstlenme sorusu sor
-            if (activityForm.type === 'NOTE' && conversationData && !conversationData.assignedToId && onTakeOver) {
+            // Not kaydedildi — Akış/Takım/Üstlen panelini göster
+            if (activityForm.type === 'NOTE') {
+                // Funnelleri yükle (akış seçici için)
+                loadActivityFunnels();
                 setTimeout(() => {
+                    setPostNoteAction({ funnelStageId: '', teamId: '', assignedToId: '' });
                     setShowTakeoverModal(true);
                 }, 300);
             }
@@ -736,30 +762,32 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (!activeConv) return;
         setAssignMegaMenuOpen(false);
         try {
-            if (userId !== undefined) {
-                if (onAssignUser) {
-                    await onAssignUser(activeConv.id, userId);
-                } else {
-                    await conversationAPI.assign(currentWorkspace.id, activeConv.id, { userId: userId || null });
-                }
-                // Update local state in contactConversations AND local override
-                const updatedAssign = { assignedToId: userId || null, assignedTo: userId ? members.find(m => m.id === userId) : null };
-                setLocalConvOverride(prev => ({ ...(prev || activeConv), ...updatedAssign }));
-                setContactConversations(prev => prev.map(c =>
-                    c.id === activeConv.id ? { ...c, ...updatedAssign } : c
-                ));
+            // Her zaman teamId + userId birlikte gönder
+            const payload = {};
+            if (teamId !== undefined) payload.teamId = teamId || null;
+            if (userId !== undefined) payload.userId = userId || null;
+
+            if (userId !== undefined && onAssignUser) {
+                await onAssignUser(activeConv.id, userId);
+            } else if (userId === undefined && onAssignTeam) {
+                await onAssignTeam(activeConv.id, teamId);
             } else {
-                if (onAssignTeam) {
-                    await onAssignTeam(activeConv.id, teamId);
-                } else {
-                    await conversationAPI.assign(currentWorkspace.id, activeConv.id, { teamId: teamId || null });
-                }
-                const newTeamIds = teamId ? JSON.stringify([teamId]) : '[]';
-                setLocalConvOverride(prev => ({ ...(prev || activeConv), teamIds: newTeamIds }));
-                setContactConversations(prev => prev.map(c =>
-                    c.id === activeConv.id ? { ...c, teamIds: newTeamIds } : c
-                ));
+                await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
             }
+
+            // Local state güncelle - sidebar anında yansıtsın
+            const newTeamIds = teamId ? JSON.stringify([teamId]) : (activeConv.teamIds || '[]');
+            const updatedData = {
+                teamIds: teamId !== undefined ? (teamId ? JSON.stringify([teamId]) : '[]') : (activeConv.teamIds || '[]'),
+                assignedTeamId: teamId !== undefined ? (teamId || null) : activeConv.assignedTeamId,
+                assignedToId: userId !== undefined ? (userId || null) : activeConv.assignedToId,
+                assignedTo: userId !== undefined ? (userId ? members.find(m => m.id === userId) : null) : activeConv.assignedTo
+            };
+
+            setLocalConvOverride(prev => ({ ...(prev || activeConv), ...updatedData }));
+            setContactConversations(prev => prev.map(c =>
+                c.id === activeConv.id ? { ...c, ...updatedData } : c
+            ));
         } catch (err) {
             console.error('Assign error:', err);
             alert('Atama işlemi gerçekleştirilemedi: ' + (err?.response?.data?.error || err.message));
@@ -1696,9 +1724,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* ACTION BUTTONS — Row 1: Aktiviteler */}
                             <div style={{ display: 'flex', gap: '4px', padding: '8px 16px 4px', justifyContent: 'center' }}>
                                 <button className="activity-btn" style={{ flex: 1, padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
-                                    <span style={{ position: 'relative', display: 'inline-flex' }}>
-                                        <PhoneCall size={18} />
-                                        <Check size={10} strokeWidth={3} style={{ position: 'absolute', bottom: -2, right: -4, color: '#10b981' }} />
+                                    <span style={{ position: 'relative', display: 'inline-flex', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                        <PhoneCall size={17} style={{ color: '#374151' }} />
+                                        <span style={{
+                                            position: 'absolute', bottom: -3, right: -2,
+                                            width: 14, height: 14, borderRadius: '50%',
+                                            background: '#10b981', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 0 0 2px #fff'
+                                        }}>
+                                            <Check size={9} strokeWidth={3} style={{ color: '#fff' }} />
+                                        </span>
+                                        <StickyNote size={10} style={{
+                                            position: 'absolute', top: -3, left: -2,
+                                            color: '#f59e0b'
+                                        }} />
                                     </span>
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
                                 </button>
@@ -2076,7 +2116,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <h3>
                                                 {editingActivityId ? 'Düzenle: ' : ''}
                                                 {({
-                                                    'NOTE': editingActivityId ? 'Arama Notu' : 'Arama Notu Ekle',
+                                                    'NOTE': editingActivityId ? 'Görüşme Notu' : 'Görüşme Notu Ekle',
                                                     'CALL': editingActivityId ? 'Arama' : 'Arama Planla',
                                                     'MEETING': editingActivityId ? 'Görüşme' : 'Görüşme Planla',
                                                     'TASK': editingActivityId ? 'Görev' : 'Yeni Görev Ekle',
@@ -2091,6 +2131,31 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </button>
                                         </div>
                                         <div className="reminder-modal-body">
+                                            {/* Arama tamamlandı mı? checkbox — sadece NOTE tipi için */}
+                                            {activityForm.type === 'NOTE' && (
+                                                <label style={{
+                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                    padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                                                    background: callCompleted ? '#f0fdf4' : '#fefce8',
+                                                    border: `1px solid ${callCompleted ? '#bbf7d0' : '#fde68a'}`,
+                                                    marginBottom: 12, fontSize: '0.85rem', fontWeight: 600,
+                                                    color: callCompleted ? '#166534' : '#92400e',
+                                                    transition: 'all 0.2s'
+                                                }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={callCompleted}
+                                                        onChange={e => setCallCompleted(e.target.checked)}
+                                                        style={{ width: 18, height: 18, accentColor: callCompleted ? '#16a34a' : '#f59e0b', cursor: 'pointer' }}
+                                                    />
+                                                    <div>
+                                                        <div>{callCompleted ? '✅ Arama tamamlandı' : '📝 Dahili not olarak kaydet'}</div>
+                                                        <div style={{ fontSize: '0.72rem', fontWeight: 400, color: '#6b7280', marginTop: 2 }}>
+                                                            {callCompleted ? 'Tamamlanmış arama notu olarak kaydedilir' : 'Sadece ekip görebilir, arama kaydı oluşmaz'}
+                                                        </div>
+                                                    </div>
+                                                </label>
+                                            )}
                                             {activityForm.type !== 'NOTE' && (
                                                 <div className="reminder-form-group">
                                                     <label><FileText size={14} /> Başlık</label>
@@ -2176,8 +2241,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <textarea
                                                     value={activityForm.description}
                                                     onChange={e => setActivityForm(prev => ({ ...prev, description: e.target.value }))}
-                                                    placeholder={activityForm.type === 'NOTE' ? 'Görüşme notunu yazın... (Bu kayıt tamamlanmış arama olarak işlenir)' : 'Aktivite detaylarını buraya yazın...'}
+                                                    placeholder={activityForm.type === 'NOTE'
+                                                        ? (callCompleted ? 'Görüşme notunu yazın...' : 'Dahili notu yazın...')
+                                                        : 'Aktivite detaylarını buraya yazın...'}
                                                     rows={4}
+                                                    autoFocus
                                                 />
                                             </div>
                                         </div>
@@ -2884,25 +2952,153 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 </div>
                 );
             })()}
-            {/* Takeover Confirmation Popup */}
+            {/* Not Sonrası Aksiyon Paneli — Akış/Takım/Üstlen */}
             {showTakeoverModal && (
                 <div className="chat-popup-overlay" onClick={() => setShowTakeoverModal(false)} style={{ zIndex: 10001 }}>
                     <div onClick={e => e.stopPropagation()} style={{
-                        background: '#fff', borderRadius: 16, padding: '28px 32px', maxWidth: 420, width: '90vw',
-                        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', textAlign: 'center', position: 'relative'
+                        background: '#fff', borderRadius: 16, padding: '24px 28px', maxWidth: 440, width: '92vw',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', position: 'relative'
                     }}>
-                        <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                            <UserPlus size={26} style={{ color: '#ef4444' }} />
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <StickyNote size={20} style={{ color: '#f59e0b' }} />
+                            </div>
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#1f2937', margin: 0 }}>Not Kaydedildi ✓</h3>
+                                <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: 0 }}>Akış veya atamayı güncellemek ister misin?</p>
+                            </div>
+                            <button onClick={() => setShowTakeoverModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1.2rem' }}>✕</button>
                         </div>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1f2937', marginBottom: 8 }}>Konuşmayı Üstlen</h3>
-                        <p style={{ fontSize: '0.875rem', color: '#6b7280', lineHeight: 1.6, marginBottom: 24 }}>
-                            Bu konuşma henüz kimseye atanmamış.<br />Bu konuşmayı üstlenmek istiyor musunuz?
-                        </p>
-                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                            <button onClick={() => setShowTakeoverModal(false)}
-                                style={{ padding: '10px 24px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', fontSize: '0.88rem', fontWeight: 600, color: '#64748b', cursor: 'pointer', transition: 'all 0.15s' }}>Hayır</button>
-                            <button onClick={() => { setShowTakeoverModal(false); onTakeOver && onTakeOver(); }}
-                                style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: '#ef4444', fontSize: '0.88rem', fontWeight: 600, color: '#fff', cursor: 'pointer', transition: 'all 0.15s', boxShadow: '0 2px 8px rgba(239,68,68,0.25)' }}>Evet, Üstlen</button>
+
+                        {/* Akış / Aşama */}
+                        <div style={{ marginBottom: 14 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                <TrendingUp size={14} /> Akış / Aşama
+                            </label>
+                            <select
+                                value={postNoteAction?.funnelStageId || ''}
+                                onChange={async (e) => {
+                                    const stageId = e.target.value;
+                                    setPostNoteAction(prev => ({ ...prev, funnelStageId: stageId }));
+                                    if (stageId && conversationId && currentWorkspace?.id) {
+                                        try {
+                                            await conversationAPI.updateFunnel(currentWorkspace.id, conversationId, { funnelStageId: stageId });
+                                            // Find stage name for UI feedback
+                                            let stageName = '';
+                                            for (const f of activityFunnels) {
+                                                const s = (f.stages || []).find(s => s.id === stageId);
+                                                if (s) { stageName = s.name; break; }
+                                            }
+                                            if (stageName) setFunnelStage(prev => ({ ...prev, id: stageId, name: stageName }));
+                                        } catch { }
+                                    }
+                                }}
+                                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.85rem', background: '#f8fafc' }}
+                            >
+                                <option value="">Değiştirme</option>
+                                {activityFunnels.map(funnel => (
+                                    <optgroup key={funnel.id} label={`${funnel.icon || '📁'} ${funnel.name}`}>
+                                        {(funnel.stages || []).map(stage => (
+                                            <option key={stage.id} value={stage.id}>{stage.name}</option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Takım / Kişi */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                            <div>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                    <Users size={14} /> Takım
+                                </label>
+                                <select
+                                    value={postNoteAction?.teamId || ''}
+                                    onChange={async (e) => {
+                                        const teamId = e.target.value;
+                                        setPostNoteAction(prev => ({ ...prev, teamId, assignedToId: '' }));
+                                        if (teamId && activeConv?.id) {
+                                            try { await handleAssign(teamId, undefined); } catch { }
+                                        }
+                                    }}
+                                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', background: '#f8fafc' }}
+                                >
+                                    <option value="">Değiştirme</option>
+                                    {(() => {
+                                        const renderOpts = (list, depth = 0) => list.flatMap(t => [
+                                            <option key={t.id} value={t.id}>{'\u00a0\u00a0'.repeat(depth)}{t.name}</option>,
+                                            ...(t.children ? renderOpts(t.children, depth + 1) : [])
+                                        ]);
+                                        return renderOpts(teams || []);
+                                    })()}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                    <User size={14} /> Kişi
+                                </label>
+                                <select
+                                    value={postNoteAction?.assignedToId || ''}
+                                    onChange={async (e) => {
+                                        const userId = e.target.value;
+                                        setPostNoteAction(prev => ({ ...prev, assignedToId: userId }));
+                                        if (userId && activeConv?.id) {
+                                            try { await handleAssign(undefined, userId); } catch { }
+                                        }
+                                    }}
+                                    style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', background: '#f8fafc' }}
+                                >
+                                    <option value="">Değiştirme</option>
+                                    {(() => {
+                                        const selectedTeamId = postNoteAction?.teamId;
+                                        const findTeam = (list, id) => {
+                                            for (const t of list) {
+                                                if (t.id === id) return t;
+                                                if (t.children) { const f = findTeam(t.children, id); if (f) return f; }
+                                            }
+                                            return null;
+                                        };
+                                        let filteredMembers = members;
+                                        if (selectedTeamId && teams) {
+                                            const team = findTeam(teams, selectedTeamId);
+                                            const memberIds = new Set((team?.members || []).map(m => m.userId));
+                                            filteredMembers = members.filter(m => memberIds.has(m.user?.id || m.id));
+                                        }
+                                        return filteredMembers.map(member => (
+                                            <option key={member.user?.id || member.id} value={member.user?.id || member.id}>
+                                                {(onlineUsers.get(member.user?.id || member.id)?.isOnline || member.user?.isOnline) ? '🟢' : '⚪'} {member.user?.name || member.name}
+                                            </option>
+                                        ));
+                                    })()}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Üstlen butonu */}
+                        {!conversationData?.assignedToId && onTakeOver && (
+                            <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginBottom: 4 }}>
+                                <button
+                                    onClick={() => { setShowTakeoverModal(false); onTakeOver && onTakeOver(); }}
+                                    style={{
+                                        width: '100%', padding: '10px', borderRadius: 10, border: '1px solid #e2e8f0',
+                                        background: '#fff', fontSize: '0.85rem', fontWeight: 600, color: '#374151',
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                        transition: 'all 0.15s'
+                                    }}
+                                >
+                                    <UserPlus size={16} style={{ color: '#ef4444' }} />
+                                    Konuşmayı Üstlen
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Kapat */}
+                        <div style={{ textAlign: 'center', marginTop: 10 }}>
+                            <button
+                                onClick={() => setShowTakeoverModal(false)}
+                                style={{ padding: '8px 28px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.82rem', fontWeight: 500, color: '#6b7280', cursor: 'pointer' }}
+                            >Kapat</button>
                         </div>
                     </div>
                 </div>

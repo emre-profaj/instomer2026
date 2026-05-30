@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -52,10 +52,10 @@ const Sidebar = () => {
         { path: '/channels', icon: Radio, label: t('channels.title') },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/assistants', icon: Bot, label: t('nav.assistants') },
+        { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
         { path: '/automations', icon: Zap, label: t('nav.automations') },
-        { path: '/functions', icon: Wrench, label: 'Fonksiyonlar (API)' },
-        { path: '/funnels', icon: Kanban, label: 'Akışlar' }
+        { path: '/functions', icon: Wrench, label: 'Fonksiyonlar (API)' }
     ];
 
     const salesSubItems = [
@@ -259,6 +259,7 @@ const Sidebar = () => {
                                                 <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
                                                     {[
                                                         { label: 'Hepsi', tab: 'all', icon: Inbox },
+                                                        { label: 'Havuzum', tab: 'pool', icon: Users },
                                                         { label: 'Bana Atananlar', tab: 'mine', icon: UserCheck },
                                                         { label: 'Atanmamışlar', tab: 'unassigned', icon: Clock },
                                                     ].map(sub => (

@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import prisma from '../lib/prisma.js';
+import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
 
 
 // Helper function to decode HTML entities
@@ -503,6 +504,7 @@ export const syncEmailsInternal = async (channelId) => {
                         assignedBotId: channel.assignedBotId
                     }
                 });
+                assignDefaultFunnel(channel.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Email error:', e.message));
             } else if (conversation.status === 'RESOLVED') {
                 conversation = await prisma.conversation.update({
                     where: { id: conversation.id },
@@ -737,6 +739,7 @@ export const sendNewEmail = async (req, res) => {
                     status: 'OPEN'
                 }
             });
+            assignDefaultFunnel(channel.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Email error:', e.message));
         }
 
         // Create sent message
@@ -964,6 +967,7 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                             assignedBotId: channel.assignedBotId
                         }
                     });
+                    assignDefaultFunnel(channel.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Email error:', e.message));
                 } else if (conversation.status === 'RESOLVED') {
                     // Reopen if resolved
                     conversation = await prisma.conversation.update({
@@ -1409,6 +1413,7 @@ export const syncEmailsImap = async (channelId) => {
                                                     assignedBotId: channel.assignedBotId
                                                 }
                                             });
+                                            assignDefaultFunnel(channel.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Email error:', e.message));
                                         } else if (conversation.status === 'RESOLVED') {
                                             await prisma.conversation.update({
                                                 where: { id: conversation.id },

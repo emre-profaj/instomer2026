@@ -3,7 +3,107 @@ import { getIO, emitToWorkspace } from '../socket.js';
 
 
 /**
+ * Varsayılan akışı ata ve akışın takımını uygula
+ * Bu fonksiyon TÜM kanallar için merkezi olarak çalışır
+ * 
+ * İKİ İŞ YAPAR:
+ * 1) funnelType boşsa → varsayılan akışı atar
+ * 2) Akışın takımı varsa → konuşmanın takımını OVERRIDE eder (her zaman)
+ */
+export async function assignDefaultFunnel(workspaceId, conversationId) {
+    try {
+        const conv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { funnelType: true }
+        });
+        if (!conv) return null;
+
+        let funnelId = conv.funnelType;
+
+        // 1) Akış atanmamışsa → varsayılan akışı bul ve ata
+        if (!funnelId) {
+            let defaultFunnel = await prisma.funnel.findFirst({
+                where: { workspaceId, name: { in: ['Genel', 'Genel CRM', 'Genel CRM (Otomatik İşlem)'] } }
+            });
+            if (!defaultFunnel) {
+                defaultFunnel = await prisma.funnel.findFirst({
+                    where: { workspaceId },
+                    orderBy: { order: 'asc' }
+                });
+            }
+            if (!defaultFunnel) return null;
+
+            funnelId = defaultFunnel.id;
+
+            // İlk aşamayı bul
+            let firstStage = null;
+            try {
+                firstStage = await prisma.funnelStage.findFirst({
+                    where: { funnelId: funnelId },
+                    orderBy: { order: 'asc' }
+                });
+            } catch {}
+
+            const updateData = {
+                funnelType: funnelId,
+                ...(firstStage && { funnelStageId: firstStage.id })
+            };
+
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: updateData
+            });
+
+            console.log(`✅ [AutoFunnel] "${defaultFunnel.name}" → conversation ${conversationId}`);
+        }
+
+        // 2) Akışın takımını OVERRIDE et (her zaman çalışır)
+        const funnel = await prisma.funnel.findUnique({
+            where: { id: funnelId },
+            select: { assignedTeamId: true, name: true }
+        });
+
+        // Aşama seviyesinde takım var mı?
+        let funnelTeamId = null;
+        const currentConv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { funnelStageId: true }
+        });
+        if (currentConv?.funnelStageId) {
+            const stage = await prisma.funnelStage.findUnique({
+                where: { id: currentConv.funnelStageId },
+                select: { assignedTeamId: true }
+            });
+            funnelTeamId = stage?.assignedTeamId || null;
+        }
+
+        // Aşamada yoksa akış seviyesinden al
+        if (!funnelTeamId) {
+            funnelTeamId = funnel?.assignedTeamId || null;
+        }
+
+        if (funnelTeamId) {
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: {
+                    assignedTeamId: funnelTeamId,
+                    teamIds: JSON.stringify([funnelTeamId])
+                }
+            });
+            console.log(`✅ [AutoFunnel] Team override: ${funnelTeamId} for "${funnel?.name}" → conversation ${conversationId}`);
+        }
+
+        return { funnelId, funnelTeamId };
+    } catch (err) {
+        console.error('❌ [AutoFunnel] Error:', err.message);
+        return null;
+    }
+}
+
+
+/**
  * Kanal yönlendirmesine göre konuşmayı ekibe ata ve bot gecikmesini ayarla
+ * + Varsayılan akışı ata (akışın takımı kanal yönlendirmesini ezer)
  * @param {string} workspaceId - Workspace ID
  * @param {string} conversationId - Conversation ID
  * @param {string} channel - Kanal (INSTAGRAM, FACEBOOK, WHATSAPP, etc.)
@@ -60,13 +160,12 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
             }
         });
 
-        if (!routing) {
-            console.log(`📡 [Routing] No routing found for channel ${channel}`);
-            return null;
-        }
-
-        if (!routing.isActive) {
-            console.log(`📡 [Routing] Routing for ${channel} is inactive`);
+        if (!routing || !routing.isActive) {
+            console.log(`📡 [Routing] No active routing for channel ${channel}`);
+            // Kanal yönlendirmesi yoksa bile varsayılan akışı ata
+            if (isNewConversation) {
+                await assignDefaultFunnel(workspaceId, conversationId);
+            }
             return null;
         }
 
@@ -111,6 +210,15 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
 
         console.log(`📡 [Routing] ✅ Channel ${channel} → Team "${routing.team?.name}" (Bot delay: ${isNewConversation ? botDelaySeconds + 's' : 'SKIPPED'}, Bot: ${routing.botEnabled ? 'Active' : 'Disabled'})`);
 
+        // ── Varsayılan akış ataması (akışın takımı kanal yönlendirmesini ezer) ──
+        if (isNewConversation) {
+            const funnelResult = await assignDefaultFunnel(workspaceId, conversationId);
+            if (funnelResult?.funnelTeamId) {
+                // Akışın takımı varsa, son durumu güncelle
+                updatedConversation.assignedTeamId = funnelResult.funnelTeamId;
+            }
+        }
+
         // Socket ile ekip üyelerine bildirim gönder
         const io = getIO();
         if (io && routing.team?.members) {
@@ -121,7 +229,7 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
                     io.to(`user:${member.userId}`).emit('new_conversation_assigned', {
                         conversationId,
                         conversation: updatedConversation,
-                        teamId: routing.teamId,
+                        teamId: updatedConversation.assignedTeamId, // Funnel override sonrası
                         teamName: routing.team.name,
                         channel,
                         botDelayedUntil: botDelayedUntil?.toISOString() || null,
@@ -133,7 +241,7 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
             // Workspace'e de genel bildirim
             emitToWorkspace(workspaceId, 'conversation_routing_applied', {
                 conversationId,
-                teamId: routing.teamId,
+                teamId: updatedConversation.assignedTeamId,
                 teamName: routing.team.name,
                 channel,
                 botDelayedUntil: botDelayedUntil?.toISOString() || null,
@@ -144,7 +252,7 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
         return {
             routing,
             botDelayedUntil,
-            teamId: routing.teamId,
+            teamId: updatedConversation.assignedTeamId,
             teamName: routing.team?.name,
             botEnabled: routing.botEnabled
         };

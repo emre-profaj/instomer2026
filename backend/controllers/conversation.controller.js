@@ -2036,10 +2036,9 @@ export const updateFunnel = async (req, res) => {
                     });
                 } catch {}
             }
-            const isGenelFunnel = !funnelType || funnelType === '' ||
-                (targetFunnel && /^genel/i.test(targetFunnel.name));
             
-            if (isGenelFunnel) {
+            if (!funnelType || funnelType === '') {
+                // Akış kaldırıldı — takım önerisi yok
                 isGenel = true;
             } else if (targetFunnel) {
                 suggestedTeamId = targetFunnel.assignedTeamId || null;
@@ -2154,22 +2153,17 @@ export const updateFunnel = async (req, res) => {
                     });
                 } catch {}
             }
-            const isGenelFunnel = !funnelType || funnelType === '' ||
-                (targetFunnel && /^genel/i.test(targetFunnel.name));
 
-            if (isGenelFunnel) {
-                updateData.assignedTeamId = null;
-                updateData.teamIds = '[]';
-                updateData.assignedToId = null;
-                updateData.assignedBotId = null;
-                updateData.botEnabled = false;
-                console.log('📂 [FunnelSwitch] Genel akışa dönüldü — atamalar temizlendi');
+            if (!funnelType || funnelType === '') {
+                // Akış kaldırıldı (Genel'e döndü, funnelType null)
+                // Sadece funnel referansını temizle, takım atamasına dokunma
+                console.log('📂 [FunnelSwitch] Funnel cleared (no funnelType) — keeping team assignments');
             } else if (targetFunnel) {
-                // Takım atamasını HER ZAMAN güncelle
+                // Takım atamasını HER ZAMAN güncelle (Genel akış dahil)
                 if (targetFunnel.assignedTeamId) {
                     updateData.assignedTeamId = targetFunnel.assignedTeamId;
                     updateData.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
-                    console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId}`);
+                    console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId} (funnel: "${targetFunnel.name}")`);
                 }
                 // Kişi ataması: confirm true ise veya henüz atanmamışsa
                 if (!isAlreadyAssigned || confirmAssignmentUpdate === true) {

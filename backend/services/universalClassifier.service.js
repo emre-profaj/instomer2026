@@ -269,6 +269,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         }
 
         // --- GUARD: Zaten atanmış konuşmaların akışını/takımını DEĞİŞTİRME ---
+        let skipFunnelAssignment = false;
         // Eğer konuşma zaten bir akışta (Genel hariç) VE birine atanmışsa,
         // sadece contact data güncellendi, akış/takım ataması yapma.
         const existingConv = await prisma.conversation.findUnique({
@@ -287,13 +288,13 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             } catch (_) {}
 
             if (!isGenel) {
-                console.log(`🛡️ [Classifier] Konuşma zaten akışta (${existingConv.funnelType}) ve atanmış (user: ${existingConv.assignedToId}, team: ${existingConv.assignedTeamId}) — akış/takım değişikliği yapılmıyor`);
-                return; // Sadece contact data güncellendi, geri kalan atlanıyor
+                console.log(`🛡️ [Classifier] Konuşma zaten akışta ve atanmış — akış/takım değişikliği yapılmıyor, aktivite kontrolü devam edecek`);
+                skipFunnelAssignment = true;
             }
         }
 
-        // --- Akış atama ---
-        let targetFunnelId = matchedFunnelId;
+        // --- Akış atama (skipFunnelAssignment false ise) ---
+        let targetFunnelId = skipFunnelAssignment ? null : matchedFunnelId;
         let targetStageId = null;
 
         // matchedFunnelId varsa, sınıflandırma türüyle uyumlu mu kontrol et
@@ -331,7 +332,8 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     where: { id: conversationId },
                     data: { classification: classification }
                 }).catch(() => {}); // classification column yoksa sessizce geç
-                return; // Akış/takım ataması yapma
+                // Akış ataması yapma ama fonksiyondan ÇIKMA — aşağıda aktivite oluşturma devam etsin
+                targetFunnelId = null;
             }
 
             const targetFunnelName = funnelMap[classification];
@@ -545,9 +547,12 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // --- Kalifiye Lead ise → Otomatik aktivite oluştur ---
+        // --- Telefon numarası varsa → Otomatik arama aktivitesi oluştur ---
+        const contactPhone = extractedData?.phone || (await prisma.contact.findUnique({ where: { id: contactId }, select: { phone: true } }))?.phone;
+        const hasPhoneForActivity = !!contactPhone;
+
         if (isQualifiedLead) {
-            // Contact'ı OPPORTUNITY olarak işaretle
+            // Kalifiye Lead → Contact'ı OPPORTUNITY olarak işaretle
             await prisma.contact.update({
                 where: { id: contactId },
                 data: {
@@ -635,6 +640,61 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     }
                 });
                 console.log(`✅ [Classifier] Otomatik ${activityType} aktivitesi oluşturuldu: ${activity.id} | ${title}`);
+            }
+        }
+
+        // --- Telefon varsa ama Lead değilse de arama planla ---
+        if (!isQualifiedLead && hasPhoneForActivity) {
+            const todayStart2 = new Date();
+            todayStart2.setHours(0, 0, 0, 0);
+            const todayEnd2 = new Date();
+            todayEnd2.setHours(23, 59, 59, 999);
+
+            const existingCall = await prisma.contactActivity.findFirst({
+                where: {
+                    contactId,
+                    type: 'CALL',
+                    status: 'PLANNED',
+                    dueDate: { gte: todayStart2, lte: todayEnd2 }
+                }
+            });
+
+            if (!existingCall) {
+                const callTitle = `${extractedData?.name || 'Müşteri'} - ${extractedData?.topic || classification || 'Geri Arama'}`;
+                const callDueDate = smartScheduleCall();
+
+                // Konuşmanın atandığı takım/kişiyi kullan
+                let callAssignedToId = null;
+                let callTeamId = null;
+                try {
+                    const convInfo = await prisma.conversation.findUnique({
+                        where: { id: conversationId },
+                        select: { assignedToId: true, assignedTeamId: true }
+                    });
+                    callAssignedToId = convInfo?.assignedToId || null;
+                    callTeamId = convInfo?.assignedTeamId || null;
+                } catch (_) {}
+
+                await prisma.contactActivity.create({
+                    data: {
+                        type: 'CALL',
+                        status: 'PLANNED',
+                        priority: 'NORMAL',
+                        title: callTitle,
+                        description: [
+                            extractedData?.topic ? `📌 Konu: ${extractedData.topic}` : null,
+                            `📱 Numara: ${contactPhone}`,
+                            `Kaynak: ${channel || 'UNKNOWN'}`,
+                        ].filter(Boolean).join('\n'),
+                        dueDate: callDueDate,
+                        contactId,
+                        workspaceId,
+                        assignedToId: callAssignedToId,
+                        teamId: callTeamId,
+                        source: 'AUTOMATION'
+                    }
+                });
+                console.log(`✅ [Classifier] Telefon mevcut → Otomatik CALL aktivitesi oluşturuldu: ${callTitle}`);
             }
         }
 
