@@ -401,6 +401,8 @@ model Conversation {
   // Smart Reminder System
   reminderCount         Int                    @default(0) // Which reminder step was last sent (0-5)
   lastReminderAt        DateTime? // When last reminder was sent
+  // Active Flow tracking
+  activeFlowId          String? // Which flow is currently processing this conversation
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   transfers             ConversationTransfer[]
@@ -905,11 +907,22 @@ model Flow {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Hierarchy: Ana Akış → Alt Akışlar (max 3 seviye)
+  parentId    String?
+  parent      Flow?    @relation("FlowHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Flow[]   @relation("FlowHierarchy")
+  flowType    String   @default("SUB") // MAIN (triyaj/ana akış), SUB (alt akış)
+  order       Int      @default(0)     // Sıralama
+  icon        String?  // Emoji: 📊, 🛒, 🎧
+  color       String?  // Renk: #3b82f6
+  description String?  // Kısa açıklama
+
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([isActive])
   @@index([trigger])
+  @@index([parentId])
   @@map("flows")
 }
 

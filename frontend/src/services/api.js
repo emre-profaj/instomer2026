@@ -666,7 +666,9 @@ export const flowAPI = {
     create: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/flows`, data),
     update: (workspaceId, flowId, data) => api.put(`/workspaces/${workspaceId}/flows/${flowId}`, data),
     delete: (workspaceId, flowId) => api.delete(`/workspaces/${workspaceId}/flows/${flowId}`),
-    toggle: (workspaceId, flowId, isActive) => api.patch(`/workspaces/${workspaceId}/flows/${flowId}/toggle`, { isActive })
+    toggle: (workspaceId, flowId, isActive) => api.patch(`/workspaces/${workspaceId}/flows/${flowId}/toggle`, { isActive }),
+    ensureMainFlow: (workspaceId) => api.post(`/workspaces/${workspaceId}/flows/ensure-main`),
+    reorder: (workspaceId, updates) => api.put(`/workspaces/${workspaceId}/flows/reorder`, { updates })
 };
 
 // Router Rules API (Yönlendiriciler)

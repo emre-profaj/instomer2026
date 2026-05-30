@@ -10,7 +10,17 @@ export const getFlows = async (req, res) => {
         const { workspaceId } = req.params;
         const flows = await prisma.flow.findMany({
             where: { workspaceId },
-            orderBy: { createdAt: 'desc' }
+            orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+            include: {
+                children: {
+                    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+                    include: {
+                        children: {
+                            orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
+                        }
+                    }
+                }
+            }
         });
         res.json({ flows });
     } catch (error) {
@@ -22,10 +32,22 @@ export const getFlows = async (req, res) => {
 export const createFlow = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, steps, trigger, isActive } = req.body;
+        const { name, steps, trigger, isActive, parentId, flowType, icon, color, description } = req.body;
 
         if (!name) {
             return res.status(400).json({ error: 'Akış adı gereklidir' });
+        }
+
+        // Validate parent hierarchy (max 3 levels)
+        if (parentId) {
+            const parent = await prisma.flow.findUnique({ where: { id: parentId } });
+            if (!parent) return res.status(400).json({ error: 'Üst akış bulunamadı' });
+            if (parent.parentId) {
+                const grandparent = await prisma.flow.findUnique({ where: { id: parent.parentId } });
+                if (grandparent?.parentId) {
+                    return res.status(400).json({ error: 'Maksimum 3 seviye hiyerarşi desteklenir' });
+                }
+            }
         }
 
         // Extract trigger from steps if not provided directly
@@ -37,13 +59,28 @@ export const createFlow = async (req, res) => {
             if (triggerStep) flowTrigger = triggerStep.type;
         }
 
+        // Auto-set order: next in parent's children
+        let flowOrder = 0;
+        const siblings = await prisma.flow.findMany({
+            where: { workspaceId, parentId: parentId || null },
+            orderBy: { order: 'desc' },
+            take: 1
+        });
+        if (siblings.length > 0) flowOrder = siblings[0].order + 1;
+
         const flow = await prisma.flow.create({
             data: {
                 workspaceId,
                 name,
                 steps: steps || [],
                 trigger: flowTrigger,
-                isActive: isActive || false
+                isActive: isActive || false,
+                parentId: parentId || null,
+                flowType: flowType || 'SUB',
+                order: flowOrder,
+                icon: icon || null,
+                color: color || null,
+                description: description || null
             }
         });
 
@@ -57,7 +94,7 @@ export const createFlow = async (req, res) => {
 export const updateFlow = async (req, res) => {
     try {
         const { workspaceId, flowId } = req.params;
-        const { name, steps, trigger, isActive } = req.body;
+        const { name, steps, trigger, isActive, parentId, flowType, order, icon, color, description } = req.body;
 
         const existing = await prisma.flow.findFirst({
             where: { id: flowId, workspaceId }
@@ -78,6 +115,12 @@ export const updateFlow = async (req, res) => {
         }
         if (trigger !== undefined) updateData.trigger = trigger;
         if (isActive !== undefined) updateData.isActive = isActive;
+        if (parentId !== undefined) updateData.parentId = parentId || null;
+        if (flowType !== undefined) updateData.flowType = flowType;
+        if (order !== undefined) updateData.order = order;
+        if (icon !== undefined) updateData.icon = icon;
+        if (color !== undefined) updateData.color = color;
+        if (description !== undefined) updateData.description = description;
 
         const flow = await prisma.flow.update({
             where: { id: flowId },
@@ -134,6 +177,121 @@ export const toggleFlow = async (req, res) => {
     }
 };
 
+/**
+ * Ensure a MAIN (Triyaj) flow exists for the workspace.
+ * If not, create it and link all existing orphan flows as children.
+ * Called from frontend on first load.
+ */
+export const ensureMainFlow = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        // Check if MAIN flow already exists
+        let mainFlow = await prisma.flow.findFirst({
+            where: { workspaceId, flowType: 'MAIN' },
+            include: {
+                children: {
+                    orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+                    include: {
+                        children: { orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] }
+                    }
+                }
+            }
+        });
+
+        if (!mainFlow) {
+            // Create the main Triyaj flow
+            mainFlow = await prisma.flow.create({
+                data: {
+                    workspaceId,
+                    name: 'Genel Akış (Triyaj)',
+                    flowType: 'MAIN',
+                    isActive: true,
+                    icon: '🔀',
+                    color: '#6366f1',
+                    description: 'Tüm müşterilerin ilk girdiği ana akış. Sınıflandırma ve yönlendirme burada yapılır.',
+                    order: 0,
+                    steps: [
+                        {
+                            id: Date.now(),
+                            type: 'FIRST_MSG',
+                            config: {}
+                        }
+                    ],
+                    trigger: 'FIRST_MSG'
+                }
+            });
+
+            // Link all existing orphan flows (no parent) as children of MAIN
+            const orphanFlows = await prisma.flow.findMany({
+                where: {
+                    workspaceId,
+                    parentId: null,
+                    id: { not: mainFlow.id }
+                }
+            });
+
+            for (let i = 0; i < orphanFlows.length; i++) {
+                await prisma.flow.update({
+                    where: { id: orphanFlows[i].id },
+                    data: {
+                        parentId: mainFlow.id,
+                        order: i + 1
+                    }
+                });
+            }
+
+            // Re-fetch with children
+            mainFlow = await prisma.flow.findUnique({
+                where: { id: mainFlow.id },
+                include: {
+                    children: {
+                        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+                        include: {
+                            children: { orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] }
+                        }
+                    }
+                }
+            });
+
+            console.log(`🔀 [FLOW] Created MAIN flow for workspace ${workspaceId}, linked ${orphanFlows.length} orphan flows`);
+        }
+
+        res.json({ flow: mainFlow });
+    } catch (error) {
+        console.error('Ensure main flow error:', error);
+        res.status(500).json({ error: 'Ana akış oluşturulurken hata oluştu' });
+    }
+};
+
+/**
+ * Reorder flows (drag-drop support)
+ */
+export const reorderFlows = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { updates } = req.body; // [{ id, order, parentId }]
+
+        if (!Array.isArray(updates)) {
+            return res.status(400).json({ error: 'updates dizisi gereklidir' });
+        }
+
+        for (const update of updates) {
+            await prisma.flow.updateMany({
+                where: { id: update.id, workspaceId },
+                data: {
+                    order: update.order,
+                    ...(update.parentId !== undefined && { parentId: update.parentId || null })
+                }
+            });
+        }
+
+        res.json({ message: 'Sıralama güncellendi' });
+    } catch (error) {
+        console.error('Reorder flows error:', error);
+        res.status(500).json({ error: 'Sıralama güncellenirken hata oluştu' });
+    }
+};
 
 // ============================================
 // FLOW EXECUTION ENGINE

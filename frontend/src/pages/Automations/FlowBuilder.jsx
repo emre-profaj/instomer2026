@@ -791,6 +791,8 @@ export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImp
     const [members, setMembers] = useState([]);
     const [teams, setTeams] = useState([]);
     const [bots, setBots] = useState([]);
+    const [mainFlow, setMainFlow] = useState(null);
+    const [expandedFlows, setExpandedFlows] = useState({});
 
     // Load flows from API
     useEffect(() => {
@@ -801,21 +803,48 @@ export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImp
         
         fetchFlows
             .then(res => {
-                // Handle both array and object responses
                 const raw = res.data;
                 const list = Array.isArray(raw) ? raw
-                    : Array.isArray(raw?.templates) ? raw.templates // for template mode
+                    : Array.isArray(raw?.templates) ? raw.templates
                     : Array.isArray(raw?.flows) ? raw.flows
                     : Array.isArray(raw?.data) ? raw.data
                     : [];
                 const parsedList = list.map(f => ({
                     ...f,
-                    steps: typeof f.steps === 'string' ? JSON.parse(f.steps) : (f.steps || [])
+                    steps: typeof f.steps === 'string' ? JSON.parse(f.steps) : (f.steps || []),
+                    children: (f.children || []).map(c => ({
+                        ...c,
+                        steps: typeof c.steps === 'string' ? JSON.parse(c.steps) : (c.steps || []),
+                        children: (c.children || []).map(gc => ({
+                            ...gc,
+                            steps: typeof gc.steps === 'string' ? JSON.parse(gc.steps) : (gc.steps || [])
+                        }))
+                    }))
                 }));
                 setFlows(parsedList);
             })
             .catch(err => console.error('Failed to load flows:', err))
             .finally(() => setLoading(false));
+
+        // Ensure MAIN (Triyaj) flow exists
+        if (!isTemplateMode && workspaceId) {
+            flowAPI.ensureMainFlow(workspaceId)
+                .then(res => {
+                    if (res.data?.flow) {
+                        const mf = res.data.flow;
+                        mf.steps = typeof mf.steps === 'string' ? JSON.parse(mf.steps) : (mf.steps || []);
+                        (mf.children || []).forEach(c => {
+                            c.steps = typeof c.steps === 'string' ? JSON.parse(c.steps) : (c.steps || []);
+                            (c.children || []).forEach(gc => {
+                                gc.steps = typeof gc.steps === 'string' ? JSON.parse(gc.steps) : (gc.steps || []);
+                            });
+                        });
+                        setMainFlow(mf);
+                        setExpandedFlows(prev => ({ ...prev, [mf.id]: true }));
+                    }
+                })
+                .catch(err => console.error('Failed to ensure main flow:', err));
+        }
 
         if (!isTemplateMode && workspaceId) {
             // Load CRM funnels (pipelines) for SWITCH_FLOW
@@ -989,7 +1018,9 @@ export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImp
                 const res = await flowAPI.create(workspaceId, {
                     name: newFlowName.trim(),
                     steps: [],
-                    isActive: false
+                    isActive: false,
+                    parentId: mainFlow?.id || null,
+                    flowType: 'SUB'
                 });
                 flow = res.data.flow;
             }
@@ -1053,19 +1084,61 @@ export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImp
                     {!loading && flows.length === 0 && !showNewFlow && (
                         <div className="fb-no-flows">Henüz akış yok.<br />New oluşturun.</div>
                     )}
-                    {Array.isArray(flows) && flows.map(f => (
-                        <div
-                            key={f.id}
-                            className={`fb-flow-item ${currentFlow?.id === f.id ? 'fb-flow-active' : ''}`}
-                            onClick={() => setCurrentFlow(f)}
-                        >
-                            <span className={`fb-flow-dot ${f.isActive ? 'fb-dot-active' : 'fb-dot-draft'}`} title={f.isActive ? 'Aktif' : 'Taslak'} />
-                            <span className="fb-flow-name">{f.name}</span>
-                            <button className="fb-flow-delete" onClick={e => { e.stopPropagation(); deleteFlow(f.id); }}>
-                                <Trash2 size={12} />
-                            </button>
-                        </div>
-                    ))}
+                    {/* Tree View: Main Flow + Children */}
+                    {(() => {
+                        // Build tree: show main flow first, then its children indented
+                        const mainF = flows.find(f => f.flowType === 'MAIN') || mainFlow;
+                        const topLevel = mainF
+                            ? [mainF, ...flows.filter(f => f.parentId === mainF.id && f.id !== mainF.id)]
+                            : flows.filter(f => !f.parentId);
+                        const renderFlowItem = (f, depth = 0) => {
+                            const isMain = f.flowType === 'MAIN';
+                            const children = f.children || flows.filter(c => c.parentId === f.id);
+                            const hasChildren = children.length > 0;
+                            const isExpanded = expandedFlows[f.id];
+                            return (
+                                <React.Fragment key={f.id}>
+                                    <div
+                                        className={`fb-flow-item ${currentFlow?.id === f.id ? 'fb-flow-active' : ''}`}
+                                        style={{ paddingLeft: `${12 + depth * 16}px` }}
+                                        onClick={() => setCurrentFlow(f)}
+                                    >
+                                        {hasChildren && (
+                                            <button
+                                                className="fb-flow-expand"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setExpandedFlows(prev => ({ ...prev, [f.id]: !prev[f.id] }));
+                                                }}
+                                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', marginRight: 4, lineHeight: 1 }}
+                                            >
+                                                {isExpanded ? <ChevronDown size={12} /> : <ChevronUp size={12} style={{ transform: 'rotate(90deg)' }} />}
+                                            </button>
+                                        )}
+                                        {!hasChildren && <span style={{ width: 16 }} />}
+                                        <span className={`fb-flow-dot ${f.isActive ? 'fb-dot-active' : 'fb-dot-draft'}`} title={f.isActive ? 'Aktif' : 'Taslak'} />
+                                        {f.icon && <span style={{ fontSize: 13, marginRight: 4 }}>{f.icon}</span>}
+                                        <span className="fb-flow-name" style={{ fontWeight: isMain ? 600 : 400, color: isMain ? '#6366f1' : undefined }}>
+                                            {f.name}
+                                        </span>
+                                        {isMain && <span style={{ fontSize: 9, color: '#6366f1', marginLeft: 'auto', opacity: 0.7 }}>ANA</span>}
+                                        {!isMain && (
+                                            <button className="fb-flow-delete" onClick={e => { e.stopPropagation(); deleteFlow(f.id); }}>
+                                                <Trash2 size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {hasChildren && isExpanded && children.map(child => renderFlowItem(child, depth + 1))}
+                                </React.Fragment>
+                            );
+                        };
+
+                        // Render main flow + orphans
+                        if (mainF) {
+                            return renderFlowItem(mainF, 0);
+                        }
+                        return topLevel.map(f => renderFlowItem(f, 0));
+                    })()}
                 </div>
 
                 {/* Palette */}
