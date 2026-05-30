@@ -211,15 +211,19 @@ model AIBot {
   autoReplyDelaySeconds Int     @default(30)
   autoReplyDelayMessage String? // Custom message to send after delay
 
-  // Follow-up: Inactivity warning (e.g., 40 seconds)
+  // Follow-up: Inactivity warning (LEGACY — kept for backward compat)
   inactivityWarningEnabled Boolean @default(false)
   inactivityWarningSeconds Int     @default(40)
   inactivityWarningMessage String? // Message to send after X seconds of customer inactivity
 
-  // Follow-up: Daily reminder (1 day later, max 1 time)
+  // Follow-up: Daily reminder (LEGACY — kept for backward compat)
   dailyReminderEnabled Boolean @default(false)
   dailyReminderHours   Int     @default(24) // Hours after last bot message
   dailyReminderMessage String? // Reminder message (sent only once)
+
+  // 5-Step Smart Reminder System (replaces legacy inactivity + daily)
+  // JSON: [{enabled: bool, delayMinutes: int}] — up to 5 steps
+  reminderSteps String?
 
   documents             AIBotDocument[]
   conversations         Conversation[]
@@ -392,8 +396,11 @@ model Conversation {
   isQualifiedLead       Boolean  @default(false) // Hızlı filtreleme: İsim+Telefon+Konu tamam mı
   // Follow-up tracking
   lastBotMessageAt      DateTime? // When bot last sent a message
-  inactivityWarningSent Boolean                @default(false) // 40s inactivity warning sent?
-  reminderSentAt        DateTime? // 1-day reminder sent? (null = not sent)
+  inactivityWarningSent Boolean                @default(false) // LEGACY: 40s inactivity warning sent?
+  reminderSentAt        DateTime? // LEGACY: 1-day reminder sent? (null = not sent)
+  // Smart Reminder System
+  reminderCount         Int                    @default(0) // Which reminder step was last sent (0-5)
+  lastReminderAt        DateTime? // When last reminder was sent
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   transfers             ConversationTransfer[]

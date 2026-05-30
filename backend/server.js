@@ -306,34 +306,22 @@ setTimeout(() => {
   }, BOT_DELAY_CHECK_INTERVAL);
 }, 35000); // Email polling'den 5 saniye sonra başla
 
-// Follow-up Processor - 40s inactivity warning + 24h daily reminder
-import { processInactivityWarnings, processDailyReminders } from './services/followUp.service.js';
+// Smart Reminder System — 5-step cascading follow-up (replaces old 2-cron system)
+import { processSmartReminders, resetFollowUpFlags } from './services/followUp.service.js';
 
-const INACTIVITY_CHECK_INTERVAL = 30000; // 30 saniyede bir kontrol (CPU optimizasyonu: 10s → 30s)
-const REMINDER_CHECK_INTERVAL = 10 * 60 * 1000; // 10 dakikada bir kontrol (kısa hatırlatıcılar için)
+const SMART_REMINDER_INTERVAL = 60000; // 60 saniyede bir kontrol
 
 setTimeout(() => {
-  console.log('⏰ [Follow-up] Starting inactivity warning processor (every 10 seconds)');
+  console.log('📩 [SmartReminder] Starting 5-step smart reminder processor (every 60 seconds)');
+  processSmartReminders(); // İlk çalıştırmayı hemen yap
   setInterval(async () => {
     try {
-      await processInactivityWarnings();
+      await processSmartReminders();
     } catch (error) {
-      console.error('❌ [Follow-up] Inactivity warning error:', error.message);
+      console.error('❌ [SmartReminder] Processor error:', error.message);
     }
-  }, INACTIVITY_CHECK_INTERVAL);
+  }, SMART_REMINDER_INTERVAL);
 }, 40000);
-
-setTimeout(() => {
-  console.log('📅 [Follow-up] Starting daily reminder processor (every 10 minutes)');
-  processDailyReminders(); // İlk çalıştırmayı hemen yap
-  setInterval(async () => {
-    try {
-      await processDailyReminders();
-    } catch (error) {
-      console.error('❌ [Follow-up] Daily reminder error:', error.message);
-    }
-  }, REMINDER_CHECK_INTERVAL);
-}, 45000);
 
 // Appointment Reminder Notification Processor
 // Checks every 60 seconds for due appointments and creates notifications

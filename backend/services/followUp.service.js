@@ -1,33 +1,248 @@
 /**
- * Conversation Follow-up Processor
+ * Smart Reminder System — 5-Step Cascading Follow-up
  * 
- * Handles:
- * 1. Inactivity Warning (40s) - Bot sends warning if customer doesn't respond
- * 2. Daily Reminder (24h) - Bot sends reminder once if customer doesn't respond
+ * Replaces the old 2-step system (inactivity warning + daily reminder).
  * 
- * Only for WhatsApp, Facebook, Instagram channels
+ * How it works:
+ * 1. Bot sends a message to a customer
+ * 2. If customer doesn't respond, the system sends up to 5 reminders
+ *    at configurable intervals (default: 6min, 60min, 180min, 300min, 1200min)
+ * 3. Each reminder message is AI-generated based on conversation context
+ * 4. Smart guard checks prevent unnecessary reminders:
+ *    - Customer already responded → skip
+ *    - Bot's goal already achieved (isQualifiedLead) → skip
+ *    - Planned activity/appointment exists → skip
+ *    - Conversation not OPEN → skip
+ * 5. Each step can be individually enabled/disabled
+ * 
+ * Cron: Runs every 60 seconds
  */
 
 import prisma from '../lib/prisma.js';
 
-
-// Default messages
-const DEFAULT_INACTIVITY_MESSAGE = "Merhaba, yanıtınızı bekliyorum. Size nasıl yardımcı olabilirim? 😊";
-const DEFAULT_REMINDER_MESSAGE = "Merhaba! Geçen görüşmemizden bu yana size ulaşamadık. Hala yardıma ihtiyacınız var mı? 🙋‍♂️";
+// Default 5-step reminder configuration
+const DEFAULT_REMINDER_STEPS = [
+    { enabled: true, delayMinutes: 6 },
+    { enabled: true, delayMinutes: 60 },
+    { enabled: false, delayMinutes: 180 },
+    { enabled: false, delayMinutes: 300 },
+    { enabled: false, delayMinutes: 1200 }
+];
 
 /**
- * Process inactivity warnings (40s check)
- * Called every 10 seconds
+ * Parse reminder steps from bot config (JSON string or default)
  */
-export const processInactivityWarnings = async () => {
+function parseReminderSteps(bot) {
+    // New system: reminderSteps JSON
+    if (bot.reminderSteps) {
+        try {
+            const steps = JSON.parse(bot.reminderSteps);
+            if (Array.isArray(steps) && steps.length > 0) return steps;
+        } catch (e) { /* fall through to legacy */ }
+    }
+    
+    // Legacy migration: Convert old fields to new format
+    if (bot.inactivityWarningEnabled || bot.dailyReminderEnabled) {
+        const steps = [];
+        if (bot.inactivityWarningEnabled) {
+            steps.push({
+                enabled: true,
+                delayMinutes: Math.round((bot.inactivityWarningSeconds || 40) / 60) || 1
+            });
+        }
+        if (bot.dailyReminderEnabled) {
+            steps.push({
+                enabled: true,
+                delayMinutes: (bot.dailyReminderHours || 24) * 60
+            });
+        }
+        return steps;
+    }
+    
+    return DEFAULT_REMINDER_STEPS;
+}
+
+/**
+ * Find the next enabled reminder step for a conversation
+ * Returns { stepIndex, delayMinutes } or null if no more steps
+ */
+function findNextStep(steps, currentCount) {
+    for (let i = currentCount; i < steps.length; i++) {
+        if (steps[i].enabled) {
+            return { stepIndex: i, delayMinutes: steps[i].delayMinutes };
+        }
+    }
+    return null; // No more enabled steps
+}
+
+/**
+ * Generate a reminder message using AI (Gemini)
+ */
+async function generateReminderMessage(conversation, bot, stepNumber, delayMinutes) {
+    try {
+        // Get last 10 messages for context
+        const recentMessages = await prisma.message.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+            select: { content: true, isFromContact: true, createdAt: true }
+        });
+
+        const messageHistory = recentMessages.reverse().map(m => 
+            `${m.isFromContact ? 'Müşteri' : 'Bot'}: ${m.content?.substring(0, 200) || ''}`
+        ).join('\n');
+
+        const topic = conversation.aiTopic || conversation.aiSummary || '';
+        const contactName = conversation.contact?.name || conversation.contact?.fullName || 'Müşteri';
+        
+        // Build time description
+        let timeDesc;
+        if (delayMinutes < 60) {
+            timeDesc = `${delayMinutes} dakika`;
+        } else if (delayMinutes < 1440) {
+            timeDesc = `${Math.round(delayMinutes / 60)} saat`;
+        } else {
+            timeDesc = `${Math.round(delayMinutes / 1440)} gün`;
+        }
+
+        const prompt = `Sen "${bot.name}" adında bir asistansın. 
+Bot Talimatları: ${(bot.prompt || '').substring(0, 500)}
+
+Görevin: Müşteriye ${stepNumber}. hatırlatma mesajı yazmak.
+Müşteri ${timeDesc}dır yanıt vermedi.
+${topic ? `Konuşma konusu: ${topic}` : ''}
+Müşteri adı: ${contactName}
+
+Son mesajlar:
+${messageHistory}
+
+Kurallar:
+- Kısa ve doğal bir mesaj yaz (1-2 cümle max)
+- ${stepNumber === 1 ? 'Nazik ve kısa bir hatırlatma yap' : ''}
+- ${stepNumber === 2 ? 'Biraz daha ilgili bir hatırlatma yap, yardımcı olmak istediğini belirt' : ''}
+- ${stepNumber >= 3 ? 'Kibarca son bir hatırlatma yap, ihtiyacı olursa her zaman yazabileceğini belirt' : ''}
+- Emoji kullanabilirsin ama abartma
+- Bot talimatlarındaki amacına uygun davran (numara alma, randevu, bilgi verme vs.)
+- Selamlaşma tekrarı yapma, direkt konuya gir
+- Sadece mesaj metnini yaz, başka hiçbir şey ekleme`;
+
+        // Use Gemini API
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        
+        // Get API key from workspace or global
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: conversation.workspaceId },
+            select: { aiApiKey: true }
+        });
+        
+        let apiKey = workspace?.aiApiKey;
+        if (!apiKey) {
+            const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
+            apiKey = globalSettings?.globalAiApiKey;
+        }
+        
+        if (!apiKey) {
+            // Fallback: simple generic message
+            return getGenericMessage(stepNumber);
+        }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        
+        const result = await model.generateContent(prompt);
+        const text = result.response?.text()?.trim();
+        
+        if (text && text.length > 5 && text.length < 500) {
+            return text;
+        }
+        
+        return getGenericMessage(stepNumber);
+    } catch (error) {
+        console.error('⚠️ [SmartReminder] AI message generation failed:', error.message);
+        return getGenericMessage(stepNumber);
+    }
+}
+
+/**
+ * Fallback generic messages if AI fails
+ */
+function getGenericMessage(stepNumber) {
+    const messages = [
+        'Merhaba, size yardımcı olabileceğim bir konu var mı? 😊',
+        'Tekrar merhaba! Herhangi bir sorunuz varsa buradayım 🙋‍♂️',
+        'Merhaba, geçen görüşmemizle ilgili bilgi almak ister misiniz?',
+        'Yardıma ihtiyacınız olursa her zaman yazabilirsiniz 😊',
+        'Son bir hatırlatma — herhangi bir konuda destek olmaktan mutluluk duyarız!'
+    ];
+    return messages[Math.min(stepNumber - 1, messages.length - 1)];
+}
+
+/**
+ * Check if a reminder should be skipped (smart guard checks)
+ */
+async function shouldSkipReminder(conversation) {
+    // Guard 1: Is the customer a qualified lead? (goal achieved)
+    if (conversation.isQualifiedLead) {
+        return 'qualified_lead';
+    }
+    
+    // Guard 2: Has customer responded after bot's last message?
+    if (conversation.lastBotMessageAt) {
+        const customerMessage = await prisma.message.findFirst({
+            where: {
+                conversationId: conversation.id,
+                isFromContact: true,
+                createdAt: { gt: conversation.lastBotMessageAt }
+            }
+        });
+        if (customerMessage) {
+            return 'customer_responded';
+        }
+    }
+    
+    // Guard 3: Is there a planned activity/appointment for this contact?
+    if (conversation.contactId) {
+        const now = new Date();
+        const plannedActivity = await prisma.contactActivity.findFirst({
+            where: {
+                contactId: conversation.contactId,
+                status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                dueDate: { gte: now }
+            }
+        });
+        if (plannedActivity) {
+            return 'planned_activity';
+        }
+        
+        // Also check appointments
+        const plannedAppointment = await prisma.appointment.findFirst({
+            where: {
+                contactId: conversation.contactId,
+                status: 'SCHEDULED',
+                startTime: { gte: now }
+            }
+        });
+        if (plannedAppointment) {
+            return 'planned_appointment';
+        }
+    }
+    
+    return null; // No skip — send the reminder
+}
+
+/**
+ * Main processor: Process all smart reminders
+ * Called every 60 seconds
+ */
+export const processSmartReminders = async () => {
     try {
         const now = new Date();
-
-        // Pre-filter: Only fetch conversations where lastBotMessageAt is old enough
-        // Max possible warning threshold is 300s (5 min), use that as upper bound
-        // This dramatically reduces result set (989 → only actionable ones)
-        const maxThreshold = new Date(now.getTime() - 30 * 1000); // Min 30s old (most bots use 40s)
-
+        
+        // Fetch conversations that might need reminders:
+        // - Status OPEN
+        // - Has a bot assigned (directly or via channel)
+        // - reminderCount < 5
+        // - Has lastBotMessageAt (bot has interacted)
         const conversations = await prisma.conversation.findMany({
             where: {
                 OR: [
@@ -36,11 +251,8 @@ export const processInactivityWarnings = async () => {
                     { emailChannel: { assignedBotId: { not: null } } },
                     { whatsappPhoneNumber: { assignedBotId: { not: null } } }
                 ],
-                lastBotMessageAt: {
-                    not: null,
-                    lte: maxThreshold  // Only conversations where bot message is old enough
-                },
-                inactivityWarningSent: false,
+                lastBotMessageAt: { not: null },
+                reminderCount: { lt: 5 },
                 status: 'OPEN',
                 channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
             },
@@ -51,272 +263,73 @@ export const processInactivityWarnings = async () => {
                 whatsappPhoneNumber: { include: { assignedBot: true } },
                 emailChannel: { include: { assignedBot: true } }
             },
-            take: 100  // Hard limit to prevent memory spikes
+            take: 50 // Batch limit
         });
 
-        // Summary log (only if conversations found)
-        if (conversations.length > 0) {
-            const botNames = [...new Set(conversations.map(c => c.assignedBot?.name || 'No Bot'))];
-            console.log(`🔍 [Follow-up] Processing ${conversations.length} conversations (bots: ${botNames.join(', ')})`);
-        }
+        if (conversations.length === 0) return;
 
-        // Process in batches to avoid rate limiting (max 50 per cycle)
-        const BATCH_SIZE = 50;
-        const conversationsBatch = conversations.slice(0, BATCH_SIZE);
+        let sent = 0, skipped = { qualified_lead: 0, customer_responded: 0, planned_activity: 0, planned_appointment: 0, no_bot: 0, no_step: 0, time_not_elapsed: 0 };
 
-        if (conversations.length > BATCH_SIZE) {
-            console.log(`⚠️ [Follow-up] Rate limit protection: Processing ${BATCH_SIZE} of ${conversations.length} conversations`);
-        }
-
-        let processedCount = 0;
-        for (const conversation of conversationsBatch) {
-            // Get bot from conversation, page, or email channel
+        for (const conversation of conversations) {
+            // Get bot from conversation or channel
             let bot = conversation.assignedBot;
-            if (!bot && conversation.facebookPage?.assignedBot) {
-                bot = conversation.facebookPage.assignedBot;
-            }
-            if (!bot && conversation.emailChannel?.assignedBot) {
-                bot = conversation.emailChannel.assignedBot;
-            }
-            if (!bot && conversation.whatsappPhoneNumber?.assignedBot) {
-                bot = conversation.whatsappPhoneNumber.assignedBot;
-            }
+            if (!bot && conversation.facebookPage?.assignedBot) bot = conversation.facebookPage.assignedBot;
+            if (!bot && conversation.emailChannel?.assignedBot) bot = conversation.emailChannel.assignedBot;
+            if (!bot && conversation.whatsappPhoneNumber?.assignedBot) bot = conversation.whatsappPhoneNumber.assignedBot;
 
-            if (!bot) {
-                continue; // No bot assigned anywhere
-            }
-            if (!bot.inactivityWarningEnabled) {
-                continue;
-            }
+            if (!bot) { skipped.no_bot++; continue; }
 
-            // Removed verbose logging - only log when actually sending
-            const warningSeconds = bot.inactivityWarningSeconds || 40;
-            const warningThreshold = new Date(now.getTime() - warningSeconds * 1000);
+            // Parse reminder config
+            const steps = parseReminderSteps(bot);
+            
+            // Find next enabled step
+            const nextStep = findNextStep(steps, conversation.reminderCount);
+            if (!nextStep) { skipped.no_step++; continue; }
 
-            if (conversation.lastBotMessageAt && conversation.lastBotMessageAt < warningThreshold) {
-                // Check if customer has responded after bot's message
-                const customerMessage = await prisma.message.findFirst({
-                    where: {
-                        conversationId: conversation.id,
-                        isFromContact: true,
-                        createdAt: { gt: conversation.lastBotMessageAt }
-                    }
-                });
+            // Check if enough time has elapsed
+            const delayMs = nextStep.delayMinutes * 60 * 1000;
+            const referenceTime = conversation.lastBotMessageAt;
+            const threshold = new Date(referenceTime.getTime() + delayMs);
+            
+            if (now < threshold) { skipped.time_not_elapsed++; continue; }
 
-                if (customerMessage) {
-                    // Customer responded, skip (no log to reduce spam)
-                } else {
-                    // Use transaction to prevent race condition - mark as sent BEFORE sending
-                    const updated = await prisma.conversation.updateMany({
-                        where: {
-                            id: conversation.id,
-                            inactivityWarningSent: false // Only update if still false
-                        },
-                        data: { inactivityWarningSent: true }
-                    });
+            // Smart guard checks
+            const skipReason = await shouldSkipReminder(conversation);
+            if (skipReason) { skipped[skipReason] = (skipped[skipReason] || 0) + 1; continue; }
 
-                    // Only send if we successfully marked it (prevents duplicates)
-                    if (updated.count > 0) {
-                        const message = bot.inactivityWarningMessage || DEFAULT_INACTIVITY_MESSAGE;
-                        await sendFollowUpMessage(conversation, message, 'inactivity');
-                        processedCount++;
+            // Generate AI message
+            const stepNumber = nextStep.stepIndex + 1;
+            const message = await generateReminderMessage(conversation, bot, stepNumber, nextStep.delayMinutes);
 
-                        // Add delay between API calls to avoid rate limiting (200ms)
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                    }
-                }
-            }
-        }
-
-        if (processedCount > 0) {
-            console.log(`✅ [Follow-up] Sent ${processedCount} inactivity warnings`);
-        }
-    } catch (error) {
-        console.error('❌ [Follow-up] Inactivity warning error:', error.message);
-    }
-};
-
-/**
- * Process daily reminders (configurable hours check)
- * Called every 30 minutes
- * 
- * FIX: Also handles conversations where lastBotMessageAt is null
- * by falling back to the last bot message timestamp from messages table.
- */
-export const processDailyReminders = async () => {
-    try {
-        const now = new Date();
-
-        // Query 1: Conversations WITH lastBotMessageAt (normal path)
-        const conversationsWithBotTime = await prisma.conversation.findMany({
-            where: {
-                OR: [
-                    { assignedBotId: { not: null } },
-                    { facebookPage: { assignedBotId: { not: null } } },
-                    { emailChannel: { assignedBotId: { not: null } } },
-                    { whatsappPhoneNumber: { assignedBotId: { not: null } } }
-                ],
-                lastBotMessageAt: {
-                    not: null
+            // Atomic update to prevent duplicates
+            const updated = await prisma.conversation.updateMany({
+                where: {
+                    id: conversation.id,
+                    reminderCount: conversation.reminderCount // Optimistic lock
                 },
-                reminderSentAt: null,
-                status: 'OPEN',
-                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
-            },
-            include: {
-                assignedBot: true,
-                contact: true,
-                facebookPage: { include: { assignedBot: true } },
-                whatsappPhoneNumber: { include: { assignedBot: true } },
-                emailChannel: { include: { assignedBot: true } }
-            },
-            take: 50
-        });
-
-        // Query 2: Conversations WITHOUT lastBotMessageAt but WITH bot messages
-        // This catches conversations where updateLastBotMessageTime was never called
-        const conversationsWithoutBotTime = await prisma.conversation.findMany({
-            where: {
-                OR: [
-                    { assignedBotId: { not: null } },
-                    { facebookPage: { assignedBotId: { not: null } } },
-                    { emailChannel: { assignedBotId: { not: null } } },
-                    { whatsappPhoneNumber: { assignedBotId: { not: null } } }
-                ],
-                lastBotMessageAt: null,
-                reminderSentAt: null,
-                status: 'OPEN',
-                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] },
-                // Must have at least some messages (bot sent)
-                messages: {
-                    some: {
-                        isFromContact: false,
-                        createdAt: {
-                            lte: new Date(now.getTime() - 1 * 60 * 60 * 1000) // at least 1h old
-                        }
-                    }
+                data: {
+                    reminderCount: nextStep.stepIndex + 1,
+                    lastReminderAt: now
                 }
-            },
-            include: {
-                assignedBot: true,
-                contact: true,
-                facebookPage: { include: { assignedBot: true } },
-                whatsappPhoneNumber: { include: { assignedBot: true } },
-                emailChannel: { include: { assignedBot: true } },
-                messages: {
-                    where: { isFromContact: false },
-                    orderBy: { createdAt: 'desc' },
-                    take: 1,
-                    select: { createdAt: true }
-                }
-            },
-            take: 30
-        });
+            });
 
-        // For Query 2 results, backfill lastBotMessageAt from the last bot message
-        for (const conv of conversationsWithoutBotTime) {
-            if (conv.messages && conv.messages.length > 0) {
-                conv.lastBotMessageAt = conv.messages[0].createdAt;
-                // Also fix the database for future runs
-                try {
-                    await prisma.conversation.update({
-                        where: { id: conv.id },
-                        data: { lastBotMessageAt: conv.messages[0].createdAt }
-                    });
-                } catch (e) { /* non-critical */ }
+            if (updated.count > 0) {
+                await sendFollowUpMessage(conversation, message, `reminder-${stepNumber}`);
+                console.log(`📩 [SmartReminder] Step ${stepNumber} sent → conv ${conversation.id} (bot: ${bot.name}, delay: ${nextStep.delayMinutes}m, contact: ${conversation.contact?.name || 'N/A'})`);
+                sent++;
+
+                // Rate limit: 200ms between sends
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
         }
 
-        // Merge both sets (deduplicate by id)
-        const seenIds = new Set();
-        const conversations = [];
-        for (const c of [...conversationsWithBotTime, ...conversationsWithoutBotTime]) {
-            if (!seenIds.has(c.id)) {
-                seenIds.add(c.id);
-                conversations.push(c);
-            }
-        }
-
-        // Always log count for debugging
-        console.log(`📅 [Follow-up] Daily reminder check: ${conversations.length} candidates (withBotTime: ${conversationsWithBotTime.length}, backfilled: ${conversationsWithoutBotTime.length})`);
-
-        // Process in batches to avoid rate limiting (max 30 per cycle for daily reminders)
-        const BATCH_SIZE = 30;
-        const conversationsBatch = conversations.slice(0, BATCH_SIZE);
-
-        if (conversations.length > BATCH_SIZE) {
-            console.log(`⚠️ [Follow-up] Rate limit protection: Processing ${BATCH_SIZE} of ${conversations.length} daily reminders`);
-        }
-
-        let processedCount = 0;
-        let skippedNoBot = 0, skippedDisabled = 0, skippedTimeNotElapsed = 0, skippedCustomerResponded = 0;
-        for (const conversation of conversationsBatch) {
-            // Get bot from conversation, page, or email channel
-            let bot = conversation.assignedBot;
-            if (!bot && conversation.facebookPage?.assignedBot) {
-                bot = conversation.facebookPage.assignedBot;
-            }
-            if (!bot && conversation.emailChannel?.assignedBot) {
-                bot = conversation.emailChannel.assignedBot;
-            }
-            if (!bot && conversation.whatsappPhoneNumber?.assignedBot) {
-                bot = conversation.whatsappPhoneNumber.assignedBot;
-            }
-
-            if (!bot) { skippedNoBot++; continue; }
-            if (!bot.dailyReminderEnabled) { skippedDisabled++; continue; }
-
-            const reminderHours = bot.dailyReminderHours || 24;
-            const reminderThreshold = new Date(now.getTime() - reminderHours * 60 * 60 * 1000);
-
-            // Check if enough time has passed since bot's last message
-            if (conversation.lastBotMessageAt && conversation.lastBotMessageAt < reminderThreshold) {
-                // Check if customer has responded after bot's message
-                const customerMessage = await prisma.message.findFirst({
-                    where: {
-                        conversationId: conversation.id,
-                        isFromContact: true,
-                        createdAt: { gt: conversation.lastBotMessageAt }
-                    }
-                });
-
-                // If customer hasn't responded, send reminder (only once)
-                if (!customerMessage) {
-                    // Use transaction to prevent race condition - mark as sent BEFORE sending
-                    const updated = await prisma.conversation.updateMany({
-                        where: {
-                            id: conversation.id,
-                            reminderSentAt: null // Only update if still null
-                        },
-                        data: { reminderSentAt: now }
-                    });
-
-                    // Only send if we successfully marked it (prevents duplicates)
-                    if (updated.count > 0) {
-                        const message = bot.dailyReminderMessage || DEFAULT_REMINDER_MESSAGE;
-                        await sendFollowUpMessage(conversation, message, 'reminder');
-                        console.log(`📅 [Follow-up] Daily reminder sent to conversation ${conversation.id} (bot: ${bot.name}, hours: ${reminderHours}, contact: ${conversation.contact?.name || 'N/A'})`);
-                        processedCount++;
-
-                        // Add delay between API calls to avoid rate limiting (200ms)
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                    }
-                } else {
-                    skippedCustomerResponded++;
-                }
-            } else {
-                skippedTimeNotElapsed++;
-            }
-        }
-
-        // Summary log
-        console.log(`📅 [Follow-up] Daily reminder summary: sent=${processedCount}, noBot=${skippedNoBot}, disabled=${skippedDisabled}, timeNotElapsed=${skippedTimeNotElapsed}, customerResponded=${skippedCustomerResponded}`);
-
-        if (processedCount > 0) {
-            console.log(`✅ [Follow-up] Sent ${processedCount} daily reminders`);
+        // Summary log (only if any activity)
+        if (sent > 0 || Object.values(skipped).some(v => v > 0)) {
+            const skipSummary = Object.entries(skipped).filter(([_, v]) => v > 0).map(([k, v]) => `${k}=${v}`).join(', ');
+            console.log(`📩 [SmartReminder] sent=${sent}, candidates=${conversations.length}${skipSummary ? ', skipped: ' + skipSummary : ''}`);
         }
     } catch (error) {
-        console.error('❌ [Follow-up] Daily reminder error:', error.message);
+        console.error('❌ [SmartReminder] Error:', error.message);
     }
 };
 
@@ -328,16 +341,11 @@ const sendFollowUpMessage = async (conversation, message, type) => {
     let messageSent = false;
     let waMessageId = null;
 
-    // WhatsApp ID can be in whatsappId or phone field
     const whatsappId = contact?.whatsappId || contact?.phone;
-
-    // Removed verbose channel logging to reduce spam
 
     try {
         if (channel === 'WHATSAPP' && whatsappPhoneNumber && whatsappId) {
-            // Send via WhatsApp
             const axios = (await import('axios')).default;
-            console.log(`📤 [Follow-up] Sending WhatsApp ${type} to ${whatsappId}...`);
 
             const response = await axios.post(
                 `https://graph.facebook.com/v21.0/${whatsappPhoneNumber.phoneNumberId}/messages`,
@@ -356,22 +364,15 @@ const sendFollowUpMessage = async (conversation, message, type) => {
             );
 
             waMessageId = response.data?.messages?.[0]?.id;
-            console.log(`✅ [Follow-up] WhatsApp sent! ID: ${waMessageId}`);
             messageSent = true;
 
         } else if ((channel === 'FACEBOOK' || channel === 'INSTAGRAM') && facebookPage) {
-            // Send via Facebook/Instagram
             const axios = (await import('axios')).default;
             const recipientId = channel === 'INSTAGRAM' ? contact.instagramId : contact.facebookId;
 
-            // Skip silently if no token (old/deleted pages)
-            if (!facebookPage.pageAccessToken) {
-                return; // Don't log, don't send
-            }
+            if (!facebookPage.pageAccessToken) return;
 
             if (recipientId && facebookPage.pageAccessToken) {
-                console.log(`📤 [Follow-up] Sending ${channel} ${type} to ${recipientId}...`);
-
                 await axios.post(
                     `https://graph.facebook.com/v21.0/me/messages`,
                     {
@@ -385,23 +386,16 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                         }
                     }
                 );
-
-                console.log(`✅ [Follow-up] ${channel} message sent!`);
                 messageSent = true;
             }
         } else if (channel === 'EMAIL' && emailChannel && contact?.email) {
-            // Send via Email
             const { sendEmailViaChannel } = await import('./emailSender.service.js');
-            console.log(`📤 [Follow-up] Sending Email ${type} to ${contact.email}...`);
-
-            const subject = type === 'reminder' ? 'Hatırlatma: Mesajınızı Bekliyoruz' : 'Yanıtınızı Bekliyoruz';
+            const subject = 'Hatırlatma';
             await sendEmailViaChannel(emailChannel.id, contact.email, subject, message);
-
-            console.log(`✅ [Follow-up] Email sent!`);
             messageSent = true;
         }
 
-        // Only save message to database if actually sent
+        // Save message to DB if sent
         if (messageSent) {
             await prisma.message.create({
                 data: {
@@ -412,7 +406,6 @@ const sendFollowUpMessage = async (conversation, message, type) => {
                 }
             });
 
-            // Update conversation
             await prisma.conversation.update({
                 where: { id: conversation.id },
                 data: {
@@ -424,28 +417,20 @@ const sendFollowUpMessage = async (conversation, message, type) => {
 
         return messageSent;
     } catch (error) {
-        // Silently skip Facebook 24-hour policy errors (code 10, subcode 2018278)
-        // and unreachable user errors (code 551, subcode 1545041)
         const errorCode = error.response?.data?.error?.code;
         const errorSubcode = error.response?.data?.error?.error_subcode;
 
-        if (errorCode === 10 && errorSubcode === 2018278) {
-            // 24-hour messaging window expired - this is expected, don't log
-            return false;
-        }
-        if (errorCode === 551 && errorSubcode === 1545041) {
-            // User unreachable - this is expected, don't log
-            return false;
-        }
+        // Silently skip known Facebook/WhatsApp errors
+        if (errorCode === 10 && errorSubcode === 2018278) return false; // 24h window expired
+        if (errorCode === 551 && errorSubcode === 1545041) return false; // User unreachable
 
-        // Log other unexpected errors
-        console.error(`❌ [Follow-up] Failed to send ${type} message:`, error.response?.data || error.message);
+        console.error(`❌ [SmartReminder] Failed to send ${type}:`, error.response?.data || error.message);
         return false;
     }
 };
 
 /**
- * Reset follow-up flags when customer responds
+ * Reset reminder flags when customer responds
  * Call this when a new customer message arrives
  */
 export const resetFollowUpFlags = async (conversationId) => {
@@ -454,11 +439,13 @@ export const resetFollowUpFlags = async (conversationId) => {
             where: { id: conversationId },
             data: {
                 inactivityWarningSent: false,
-                reminderSentAt: null  // Reset reminder so a new cycle can start after bot responds again
+                reminderSentAt: null,
+                reminderCount: 0,
+                lastReminderAt: null
             }
         });
     } catch (error) {
-        console.error('❌ [Follow-up] Reset flags error:', error.message);
+        console.error('❌ [SmartReminder] Reset flags error:', error.message);
     }
 };
 
@@ -472,10 +459,16 @@ export const updateLastBotMessageTime = async (conversationId) => {
             where: { id: conversationId },
             data: {
                 lastBotMessageAt: new Date(),
-                inactivityWarningSent: false // Reset warning flag for new bot message
+                inactivityWarningSent: false,
+                reminderCount: 0,
+                lastReminderAt: null
             }
         });
     } catch (error) {
-        console.error('❌ [Follow-up] Update bot message time error:', error.message);
+        console.error('❌ [SmartReminder] Update bot message time error:', error.message);
     }
 };
+
+// Legacy exports for backward compatibility (server.js imports)
+export const processInactivityWarnings = processSmartReminders;
+export const processDailyReminders = async () => { /* no-op, handled by processSmartReminders */ };

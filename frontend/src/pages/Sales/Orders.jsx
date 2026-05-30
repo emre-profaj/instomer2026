@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
 import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User } from 'lucide-react';
+import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import './Sales.css';
 
 const Orders = () => {
@@ -236,239 +237,274 @@ const Orders = () => {
 
     const orderStats = stats?.stageStats?.find(s => s.stage === 'ORDER') || { count: 0, totalAmount: 0 };
 
+    // Build externalProfile for ContactSidebar
+    const sidebarProfile = selectedDeal?.contact ? {
+        id: selectedDeal.contact.id,
+        name: selectedDeal.contact.name || selectedDeal.contact.fullName,
+        email: selectedDeal.contact.email,
+        phone: selectedDeal.contact.phone,
+        company: selectedDeal.contact.company,
+        tags: selectedDeal.contact.tags || [],
+    } : null;
+
     return (
-        <div className="sales-page">
-            {/* Header */}
-            <div className="sales-header">
-                <div className="sales-header-left">
-                    <h1>{t('sales.orders')}</h1>
-                    <span className="sales-count">{orderStats.count} sipariş</span>
-                </div>
-                <div className="sales-header-right">
-                    <button className="btn-primary" onClick={() => setShowForm(true)}>
-                        <Plus size={18} />
-                        Yeni Sipariş
-                    </button>
-                </div>
-            </div>
+        <div className="sales-inbox-layout">
+            {/* ── LEFT PANEL: Order List ── */}
+            <div className="sales-list-panel">
+                <div className="sales-list-panel-header">
+                    <div className="sales-list-panel-header-row">
+                        <h2>Siparişler <span className="sales-count">{orderStats.count}</span></h2>
+                        <button className="btn-primary btn-sm" onClick={() => setShowForm(true)}>
+                            <Plus size={15} /> Yeni
+                        </button>
+                    </div>
 
-            {/* Stats Cards */}
-            <div className="sales-stats">
-                <div className="stat-card">
-                    <div className="stat-icon quote" style={{ background: 'rgba(249, 115, 22, 0.1)', color: '#f97316' }}>
-                        <ShoppingCart size={20} />
+                    {/* Search */}
+                    <div className="sales-list-panel-search">
+                        <Search size={15} />
+                        <input
+                            type="text"
+                            placeholder="Sipariş ara..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
                     </div>
-                    <div className="stat-info">
-                        <span className="stat-value">{orderStats.count}</span>
-                        <span className="stat-label">{t('analytics.totalOrders')}</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-icon amount"><TrendingUp size={20} /></div>
-                    <div className="stat-info">
-                        <span className="stat-value">{formatCurrency(orderStats.totalAmount)}</span>
-                        <span className="stat-label">Toplam Tutar</span>
-                    </div>
-                </div>
-                <div className="stat-card">
-                    <div className="stat-icon conversion"><ArrowRight size={20} /></div>
-                    <div className="stat-info">
-                        <span className="stat-value">{stats?.conversionRates?.orderToInvoice || 0}%</span>
-                        <span className="stat-label">{t('sales.invoiceConversion')}</span>
-                    </div>
-                </div>
-            </div>
 
-            {/* Search & Filters */}
-            <div className="sales-toolbar">
-                <div className="search-box">
-                    <Search size={18} />
-                    <input
-                        type="text"
-                        placeholder="Sipariş ara..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                    {/* Filters */}
+                    <div className="sales-list-panel-filters">
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                        >
+                            <option value="ALL">Tüm Durumlar</option>
+                            <option value="OPEN">Açık</option>
+                            <option value="WON">Tamamlandı</option>
+                            <option value="LOST">İptal</option>
+                        </select>
+                        <select
+                            value={agentFilter}
+                            onChange={(e) => setAgentFilter(e.target.value)}
+                        >
+                            <option value="ALL">Tüm Temsilciler</option>
+                            {users.map(u => (
+                                <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
+                                    {u.user?.name || u.name}
+                                </option>
+                            ))}
+                        </select>
+                        <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                        />
+                        <span className="sales-list-panel-date-sep">—</span>
+                        <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                        />
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', background: '#fff', cursor: 'pointer' }}
-                    >
-                        <option value="ALL">Tüm Durumlar</option>
-                        <option value="OPEN">Açık</option>
-                        <option value="WON">Tamamlandı</option>
-                        <option value="LOST">İptal</option>
-                    </select>
-                    <select
-                        value={agentFilter}
-                        onChange={(e) => setAgentFilter(e.target.value)}
-                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', background: '#fff', cursor: 'pointer' }}
-                    >
-                        <option value="ALL">Tüm Temsilciler</option>
-                        {users.map(u => (
-                            <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
-                                {u.user?.name || u.name}
-                            </option>
-                        ))}
-                    </select>
-                    <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', cursor: 'pointer' }}
-                    />
-                    <span style={{ color: '#9ca3af' }}>—</span>
-                    <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.82rem', cursor: 'pointer' }}
-                    />
-                </div>
-            </div>
 
-            {/* Content */}
-            <div className="sales-content">
-                {/* Deals List */}
-                <div className="deals-list">
+                {/* Card List */}
+                <div className="sales-list-panel-body">
                     {loading ? (
                         <div className="loading-state">Yükleniyor...</div>
                     ) : filteredDeals.length === 0 ? (
                         <div className="empty-state">
-                            <ShoppingCart size={48} />
+                            <ShoppingCart size={40} />
                             <h3>{t('sales.noOrders')}</h3>
-                            <p>"Yeni Sipariş" butonuna tıklayarak oluşturabilirsiniz</p>
+                            <p>"Yeni" butonuna tıklayarak sipariş oluşturabilirsiniz</p>
                         </div>
                     ) : (
                         filteredDeals.map(deal => (
                             <div
                                 key={deal.id}
-                                className={`deal-card ${selectedDeal?.id === deal.id ? 'selected' : ''} ${deal.status.toLowerCase()}`}
+                                className={`sales-list-card ${selectedDeal?.id === deal.id ? 'selected' : ''}`}
                                 onClick={() => setSelectedDeal(deal)}
                             >
-                                <div className="deal-card-header">
-                                    <span className="deal-number">{deal.orderNumber}</span>
-                                    <span className={`deal-status ${deal.status.toLowerCase()}`}>
+                                <div className="sales-list-card-top">
+                                    <span className="sales-list-card-number">{deal.orderNumber}</span>
+                                    <span className={`sales-list-card-badge ${deal.status.toLowerCase()}`}>
                                         {deal.status === 'OPEN' ? 'Açık' : deal.status === 'WON' ? 'Tamamlandı' : 'İptal'}
                                     </span>
                                 </div>
-                                <h3 className="deal-title">{deal.title}</h3>
-                                <p className="deal-contact">{deal.contact?.name || deal.contact?.fullName}</p>
+                                <p className="sales-list-card-title">{deal.title}</p>
+                                <p className="sales-list-card-customer">{deal.contact?.name || deal.contact?.fullName}</p>
                                 {deal.assignedTo && (
-                                    <p style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 500, margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <p className="sales-list-card-agent">
                                         <User size={11} /> {deal.assignedTo.name}
                                     </p>
                                 )}
-                                <div className="deal-footer">
-                                    <span className="deal-amount">{formatCurrency(deal.amount, deal.currency)}</span>
-                                    <span className="deal-date">{new Date(deal.orderCreatedAt || deal.createdAt).toLocaleDateString('tr-TR')}</span>
+                                <div className="sales-list-card-bottom">
+                                    <span className="sales-list-card-amount">{formatCurrency(deal.amount, deal.currency)}</span>
+                                    <span className="sales-list-card-date">{new Date(deal.orderCreatedAt || deal.createdAt).toLocaleDateString('tr-TR')}</span>
                                 </div>
                             </div>
                         ))
                     )}
                 </div>
+            </div>
 
-                {/* Detail Panel */}
-                {selectedDeal && (
-                    <div className="deal-detail-panel">
-                        <div className="detail-header">
-                            <h2>{selectedDeal.title}</h2>
-                            <button className="btn-icon" onClick={() => setSelectedDeal(null)}>
-                                <X size={20} />
-                            </button>
+            {/* ── MIDDLE PANEL: Detail ── */}
+            <div className="sales-detail-panel">
+                {/* Stats */}
+                <div className="sales-stats">
+                    <div className="stat-card">
+                        <div className="stat-icon quote" style={{ background: 'rgba(249, 115, 22, 0.1)', color: '#f97316' }}>
+                            <ShoppingCart size={20} />
                         </div>
+                        <div className="stat-info">
+                            <span className="stat-value">{orderStats.count}</span>
+                            <span className="stat-label">{t('analytics.totalOrders')}</span>
+                        </div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-icon amount"><TrendingUp size={20} /></div>
+                        <div className="stat-info">
+                            <span className="stat-value">{formatCurrency(orderStats.totalAmount)}</span>
+                            <span className="stat-label">Toplam Tutar</span>
+                        </div>
+                    </div>
+                    <div className="stat-card">
+                        <div className="stat-icon conversion"><ArrowRight size={20} /></div>
+                        <div className="stat-info">
+                            <span className="stat-value">{stats?.conversionRates?.orderToInvoice || 0}%</span>
+                            <span className="stat-label">{t('sales.invoiceConversion')}</span>
+                        </div>
+                    </div>
+                </div>
 
-                        <div className="detail-info">
-                            <div className="info-row">
-                                <span className="label">{t('sales.orderNo')}</span>
-                                <span className="value">{selectedDeal.orderNumber}</span>
+                {/* Detail content or empty state */}
+                {!selectedDeal ? (
+                    <div className="sales-detail-empty">
+                        <ShoppingCart size={56} />
+                        <h3>Sipariş Seçin</h3>
+                        <p>Detayları görüntülemek için soldan bir sipariş seçin</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* Order Header Card */}
+                        <div className="sales-detail-card">
+                            <div className="detail-header">
+                                <h2>{selectedDeal.title}</h2>
+                                <button className="btn-icon" onClick={() => setSelectedDeal(null)}>
+                                    <X size={20} />
+                                </button>
                             </div>
-                            {selectedDeal.quoteNumber && (
+
+                            <div className="detail-info">
                                 <div className="info-row">
-                                    <span className="label">Teklif No:</span>
-                                    <span className="value">{selectedDeal.quoteNumber}</span>
+                                    <span className="label">{t('sales.orderNo')}</span>
+                                    <span className="value">{selectedDeal.orderNumber}</span>
                                 </div>
-                            )}
-                            <div className="info-row">
-                                <span className="label">{t('sales.customer')}</span>
-                                <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName}</span>
-                            </div>
-                            <div className="info-row">
-                                <span className="label">Temsilci:</span>
-                                <span className="value">{selectedDeal.assignedTo?.name || '—'}</span>
-                            </div>
-                            <div className="info-row">
-                                <span className="label">Tutar:</span>
-                                <span className="value amount">{formatCurrency(selectedDeal.amount, selectedDeal.currency)}</span>
-                            </div>
-                            <div className="info-row">
-                                <span className="label">Durum:</span>
-                                <select
-                                    value={selectedDeal.status}
-                                    onChange={(e) => handleStatusChange(selectedDeal.id, e.target.value)}
-                                    className="status-select"
-                                >
-                                    <option value="OPEN">Açık</option>
-                                    <option value="WON">Tamamlandı</option>
-                                    <option value="LOST">İptal</option>
-                                </select>
-                            </div>
-                            <div className="info-row">
-                                <span className="label">Tarih:</span>
-                                <span className="value">{new Date(selectedDeal.orderCreatedAt || selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
-                            </div>
-                        </div>
-
-                        {/* Products */}
-                        <div className="detail-products">
-                            <h4>{t('sales.products')}</h4>
-                            <div className="products-table">
-                                {selectedDeal.products?.map((product, i) => (
-                                    <div key={i} className="product-row">
-                                        <span className="product-name">{product.name}</span>
-                                        <span className="product-qty">{product.quantity} adet</span>
-                                        <span className="product-price">{formatCurrency(product.total, selectedDeal.currency)}</span>
+                                {selectedDeal.quoteNumber && (
+                                    <div className="info-row">
+                                        <span className="label">Teklif No:</span>
+                                        <span className="value">{selectedDeal.quoteNumber}</span>
                                     </div>
-                                ))}
+                                )}
+                                <div className="info-row">
+                                    <span className="label">{t('sales.customer')}</span>
+                                    <span className="value">{selectedDeal.contact?.name || selectedDeal.contact?.fullName}</span>
+                                </div>
+                                <div className="info-row">
+                                    <span className="label">Temsilci:</span>
+                                    <span className="value">{selectedDeal.assignedTo?.name || '—'}</span>
+                                </div>
+                                <div className="info-row">
+                                    <span className="label">Tutar:</span>
+                                    <span className="value amount">{formatCurrency(selectedDeal.amount, selectedDeal.currency)}</span>
+                                </div>
+                                <div className="info-row">
+                                    <span className="label">Durum:</span>
+                                    <select
+                                        value={selectedDeal.status}
+                                        onChange={(e) => handleStatusChange(selectedDeal.id, e.target.value)}
+                                        className="status-select"
+                                    >
+                                        <option value="OPEN">Açık</option>
+                                        <option value="WON">Tamamlandı</option>
+                                        <option value="LOST">İptal</option>
+                                    </select>
+                                </div>
+                                <div className="info-row">
+                                    <span className="label">Tarih:</span>
+                                    <span className="value">{new Date(selectedDeal.orderCreatedAt || selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Notes */}
+                        {/* Products Card */}
+                        <div className="sales-detail-card">
+                            <div className="detail-products">
+                                <h4>{t('sales.products')}</h4>
+                                <div className="products-table">
+                                    {selectedDeal.products?.map((product, i) => (
+                                        <div key={i} className="product-row">
+                                            <span className="product-name">{product.name}</span>
+                                            <span className="product-qty">{product.quantity} adet</span>
+                                            <span className="product-price">{formatCurrency(product.total, selectedDeal.currency)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Notes Card */}
                         {selectedDeal.notes && (
-                            <div className="detail-notes">
-                                <h4>Notlar</h4>
-                                <p>{selectedDeal.notes}</p>
+                            <div className="sales-detail-card">
+                                <div className="detail-notes">
+                                    <h4>Notlar</h4>
+                                    <p>{selectedDeal.notes}</p>
+                                </div>
                             </div>
                         )}
 
-                        {/* Actions */}
-                        <div className="detail-actions">
-                            <button
-                                className="btn-secondary"
-                                onClick={() => openEditForm(selectedDeal)}
-                            >
-                                <Edit2 size={16} />
-                                Düzenle
-                            </button>
-                            {selectedDeal.status === 'OPEN' && (
+                        {/* Actions Card */}
+                        <div className="sales-detail-card">
+                            <div className="detail-actions">
                                 <button
-                                    className="btn-primary"
-                                    onClick={() => handleConvertToInvoice(selectedDeal.id)}
+                                    className="btn-secondary"
+                                    onClick={() => openEditForm(selectedDeal)}
                                 >
-                                    <ArrowRight size={16} />
-                                    Faturaya Dönüştür
+                                    <Edit2 size={16} />
+                                    Düzenle
                                 </button>
-                            )}
-                            <button
-                                className="btn-danger"
-                                onClick={() => handleDeleteDeal(selectedDeal.id)}
-                            >
-                                <Trash2 size={16} />
-                                Sil
-                            </button>
+                                {selectedDeal.status === 'OPEN' && (
+                                    <button
+                                        className="btn-primary"
+                                        onClick={() => handleConvertToInvoice(selectedDeal.id)}
+                                    >
+                                        <ArrowRight size={16} />
+                                        Faturaya Dönüştür
+                                    </button>
+                                )}
+                                <button
+                                    className="btn-danger"
+                                    onClick={() => handleDeleteDeal(selectedDeal.id)}
+                                >
+                                    <Trash2 size={16} />
+                                    Sil
+                                </button>
+                            </div>
                         </div>
+                    </>
+                )}
+            </div>
+
+            {/* ── RIGHT PANEL: Contact Sidebar ── */}
+            <div className="sales-sidebar-panel">
+                {sidebarProfile ? (
+                    <ContactSidebar
+                        externalProfile={sidebarProfile}
+                        isOpen={true}
+                        readOnly={true}
+                    />
+                ) : (
+                    <div className="sales-detail-empty" style={{ padding: '40px 20px' }}>
+                        <User size={40} />
+                        <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Müşteri bilgisi görüntülemek için bir sipariş seçin</p>
                     </div>
                 )}
             </div>

@@ -174,15 +174,29 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
     const [autoReplyDelaySeconds, setAutoReplyDelaySeconds] = useState(bot.autoReplyDelaySeconds || 30);
     const [autoReplyDelayMessage, setAutoReplyDelayMessage] = useState(bot.autoReplyDelayMessage || '');
 
-    // Follow-up: Inactivity warning (40s)
-    const [inactivityWarningEnabled, setInactivityWarningEnabled] = useState(bot.inactivityWarningEnabled || false);
-    const [inactivityWarningSeconds, setInactivityWarningSeconds] = useState(bot.inactivityWarningSeconds || 40);
-    const [inactivityWarningMessage, setInactivityWarningMessage] = useState(bot.inactivityWarningMessage || '');
-
-    // Follow-up: Daily reminder (24h, max 1 time)
-    const [dailyReminderEnabled, setDailyReminderEnabled] = useState(bot.dailyReminderEnabled || false);
-    const [dailyReminderHours, setDailyReminderHours] = useState(bot.dailyReminderHours || 24);
-    const [dailyReminderMessage, setDailyReminderMessage] = useState(bot.dailyReminderMessage || '');
+    // 5-Step Smart Reminder System
+    const [reminderSteps, setReminderSteps] = useState(() => {
+        try {
+            if (bot.reminderSteps) return JSON.parse(bot.reminderSteps);
+        } catch (e) {}
+        // Legacy migration: convert old fields
+        if (bot.inactivityWarningEnabled || bot.dailyReminderEnabled) {
+            return [
+                { enabled: bot.inactivityWarningEnabled || false, delayMinutes: Math.round((bot.inactivityWarningSeconds || 40) / 60) || 1 },
+                { enabled: bot.dailyReminderEnabled || false, delayMinutes: (bot.dailyReminderHours || 24) * 60 },
+                { enabled: false, delayMinutes: 180 },
+                { enabled: false, delayMinutes: 300 },
+                { enabled: false, delayMinutes: 1200 }
+            ];
+        }
+        return [
+            { enabled: true, delayMinutes: 6 },
+            { enabled: true, delayMinutes: 60 },
+            { enabled: false, delayMinutes: 180 },
+            { enabled: false, delayMinutes: 300 },
+            { enabled: false, delayMinutes: 1200 }
+        ];
+    });
 
     // Routing configuration
     const [routingConfig, setRoutingConfig] = useState(() => {
@@ -217,12 +231,18 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         setAutoReplyDelayEnabled(bot.autoReplyDelayEnabled || false);
         setAutoReplyDelaySeconds(bot.autoReplyDelaySeconds || 30);
         setAutoReplyDelayMessage(bot.autoReplyDelayMessage || '');
-        setInactivityWarningEnabled(bot.inactivityWarningEnabled || false);
-        setInactivityWarningSeconds(bot.inactivityWarningSeconds || 40);
-        setInactivityWarningMessage(bot.inactivityWarningMessage || '');
-        setDailyReminderEnabled(bot.dailyReminderEnabled || false);
-        setDailyReminderHours(bot.dailyReminderHours || 24);
-        setDailyReminderMessage(bot.dailyReminderMessage || '');
+        try {
+            if (bot.reminderSteps) setReminderSteps(JSON.parse(bot.reminderSteps));
+            else if (bot.inactivityWarningEnabled || bot.dailyReminderEnabled) {
+                setReminderSteps([
+                    { enabled: bot.inactivityWarningEnabled || false, delayMinutes: Math.round((bot.inactivityWarningSeconds || 40) / 60) || 1 },
+                    { enabled: bot.dailyReminderEnabled || false, delayMinutes: (bot.dailyReminderHours || 24) * 60 },
+                    { enabled: false, delayMinutes: 180 },
+                    { enabled: false, delayMinutes: 300 },
+                    { enabled: false, delayMinutes: 1200 }
+                ]);
+            }
+        } catch (e) {}
 
         let questions = [];
         let rules = [];
@@ -280,14 +300,8 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 autoReplyDelayEnabled,
                 autoReplyDelaySeconds: autoReplyDelayEnabled ? autoReplyDelaySeconds : 30,
                 autoReplyDelayMessage: autoReplyDelayEnabled ? autoReplyDelayMessage : null,
-                // Inactivity warning
-                inactivityWarningEnabled,
-                inactivityWarningSeconds: inactivityWarningEnabled ? inactivityWarningSeconds : 40,
-                inactivityWarningMessage: inactivityWarningEnabled ? inactivityWarningMessage : null,
-                // Daily reminder
-                dailyReminderEnabled,
-                dailyReminderHours: dailyReminderEnabled ? dailyReminderHours : 24,
-                dailyReminderMessage: dailyReminderEnabled ? dailyReminderMessage : null,
+                // Smart Reminder Steps (5-step system)
+                reminderSteps: JSON.stringify(reminderSteps),
                 // Routing Config
                 routingEnabled: routingConfig.routingEnabled,
                 routingQuestions: routingConfig.routingEnabled ? JSON.stringify(routingConfig.routingQuestions) : null,
@@ -572,98 +586,76 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 )}
             </div>
 
-            {/* Inactivity Warning Section (40s) */}
+            {/* 5-Step Smart Reminder System */}
             <div className="bot-settings-section">
                 <div className="section-header-toggle">
                     <div className="section-title-group">
                         <AlertCircle size={18} />
-                        <span>Müşteri Cevap Vermezse Uyarı</span>
+                        <span>Akıllı Hatırlatma Kademeleri</span>
                     </div>
-                    <label className="toggle-switch">
-                        <input
-                            type="checkbox"
-                            checked={inactivityWarningEnabled}
-                            onChange={(e) => setInactivityWarningEnabled(e.target.checked)}
-                        />
-                        <span className="toggle-slider"></span>
-                    </label>
                 </div>
-                {inactivityWarningEnabled && (
-                    <div className="section-content">
-                        <p className="section-description">Bot mesaj gönderdikten sonra müşteri belirlenen süre içinde yanıt vermezse uyarı mesajı gönderilir.</p>
+                <div className="section-content">
+                    <p className="section-description" style={{ marginBottom: '12px' }}>
+                        Müşteri yanıt vermezse, bot otomatik olarak <strong>konuşma bağlamına uygun</strong> hatırlatma mesajları üretir.
+                        Amacını gerçekleştirmiş veya planlanmış görüşmesi olan kişilere mesaj gönderilmez.
+                    </p>
 
-                        <div className="form-group">
-                            <label className="form-label-sm">Bekleme Süresi (Saniye)</label>
-                            <input
-                                type="number"
-                                className="input-modern input-sm"
-                                min="10"
-                                max="300"
-                                value={inactivityWarningSeconds}
-                                onChange={(e) => setInactivityWarningSeconds(parseInt(e.target.value) || 40)}
-                                style={{ width: '120px' }}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label-sm">Uyarı Mesajı</label>
-                            <textarea
-                                className="input-modern"
-                                rows="2"
-                                value={inactivityWarningMessage}
-                                onChange={(e) => setInactivityWarningMessage(e.target.value)}
-                                placeholder="Örn: Merhaba, yanıtınızı bekliyorum. Size nasıl yardımcı olabilirim? 😊"
-                            />
-                        </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {reminderSteps.map((step, idx) => (
+                            <div key={idx} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '10px 14px',
+                                borderRadius: '10px',
+                                border: `1px solid ${step.enabled ? '#c7d2fe' : '#e2e8f0'}`,
+                                background: step.enabled ? '#eef2ff' : '#f8fafc',
+                                transition: 'all 0.2s'
+                            }}>
+                                <label className="toggle-switch" style={{ flexShrink: 0 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={step.enabled}
+                                        onChange={(e) => {
+                                            const updated = [...reminderSteps];
+                                            updated[idx] = { ...updated[idx], enabled: e.target.checked };
+                                            setReminderSteps(updated);
+                                        }}
+                                    />
+                                    <span className="toggle-slider"></span>
+                                </label>
+                                <span style={{ fontSize: '13px', fontWeight: 600, color: step.enabled ? '#4338ca' : '#94a3b8', minWidth: '80px' }}>
+                                    Kademe {idx + 1}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <input
+                                        type="number"
+                                        className="input-modern input-sm"
+                                        min="1"
+                                        max="10000"
+                                        value={step.delayMinutes}
+                                        onChange={(e) => {
+                                            const updated = [...reminderSteps];
+                                            updated[idx] = { ...updated[idx], delayMinutes: parseInt(e.target.value) || 1 };
+                                            setReminderSteps(updated);
+                                        }}
+                                        style={{ width: '75px', textAlign: 'center' }}
+                                    />
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>dakika</span>
+                                </div>
+                                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 'auto' }}>
+                                    {step.delayMinutes < 60 ? `${step.delayMinutes} dk` :
+                                     step.delayMinutes < 1440 ? `${(step.delayMinutes / 60).toFixed(1)} saat` :
+                                     `${(step.delayMinutes / 1440).toFixed(1)} gün`}
+                                </span>
+                            </div>
+                        ))}
                     </div>
-                )}
-            </div>
 
-            {/* Daily Reminder Section (24h, max 1 time) */}
-            <div className="bot-settings-section">
-                <div className="section-header-toggle">
-                    <div className="section-title-group">
-                        <Clock size={18} />
-                        <span>Hatırlatma Mesajı (1 Kez)</span>
+                    <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: '12px', color: '#15803d', lineHeight: '1.5' }}>
+                        <strong>✨ AI Otomatik Mesaj:</strong> Her hatırlatmada bot, konuşma geçmişine ve talimatlarına göre farklı, doğal mesajlar üretir. Sabit mesaj yazmanıza gerek yoktur.
                     </div>
-                    <label className="toggle-switch">
-                        <input
-                            type="checkbox"
-                            checked={dailyReminderEnabled}
-                            onChange={(e) => setDailyReminderEnabled(e.target.checked)}
-                        />
-                        <span className="toggle-slider"></span>
-                    </label>
                 </div>
-                {dailyReminderEnabled && (
-                    <div className="section-content">
-                        <p className="section-description">Müşteri uzun süre yanıt vermezse hatırlatma mesajı gönderilir. <strong>Her sohbette sadece 1 kez</strong> gönderilir.</p>
-
-                        <div className="form-group">
-                            <label className="form-label-sm">Bekleme Süresi (Saat)</label>
-                            <input
-                                type="number"
-                                className="input-modern input-sm"
-                                min="1"
-                                max="168"
-                                value={dailyReminderHours}
-                                onChange={(e) => setDailyReminderHours(parseInt(e.target.value) || 24)}
-                                style={{ width: '120px' }}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label-sm">Hatırlatma Mesajı</label>
-                            <textarea
-                                className="input-modern"
-                                rows="2"
-                                value={dailyReminderMessage}
-                                onChange={(e) => setDailyReminderMessage(e.target.value)}
-                                placeholder="Örn: Merhaba! Geçen görüşmemizden bu yana size ulaşamadık. Hala yardıma ihtiyacınız var mı? 🙋‍♂️"
-                            />
-                        </div>
-                    </div>
-                )}
             </div>
 
 
