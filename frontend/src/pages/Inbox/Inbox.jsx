@@ -869,8 +869,8 @@ const Inbox = () => {
                     startDate: pastDate.toISOString(), // Include past appointments
                     endDate: futureDate.toISOString()
                 });
-                // Filter out completed appointments
-                const activeAppointments = (response.data.appointments || []).filter(apt => apt.status !== 'COMPLETED');
+                // Filter out completed and cancelled appointments
+                const activeAppointments = (response.data.appointments || []).filter(apt => apt.status === 'SCHEDULED');
                 setAppointments(activeAppointments);
             } catch (err) {
                 console.error('Load appointments error:', err);
@@ -2702,14 +2702,15 @@ const Inbox = () => {
     };
 
     const hasReminder = (item) => {
-        if (!item.contact) return false;
-        const contactName = item.contact.name;
-        const contactPhone = item.contact.phone;
+        if (!item.contact?.id && !item.contactId) return false;
+        const cid = item.contact?.id || item.contactId;
 
         return appointments.some(apt => {
-            const nameMatch = apt.contactName && contactName && apt.contactName.trim() === contactName.trim();
-            const phoneMatch = apt.contactPhone && contactPhone && apt.contactPhone.trim() === contactPhone.trim();
-            return nameMatch || phoneMatch;
+            // Primary: match by contactId (exact)
+            if (apt.contactId && apt.contactId === cid) return true;
+            // Fallback: match by phone only (name matching causes false positives with generic names)
+            if (apt.contactPhone && item.contact?.phone && apt.contactPhone.trim() === item.contact.phone.trim()) return true;
+            return false;
         });
     };
 
