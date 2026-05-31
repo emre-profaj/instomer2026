@@ -514,7 +514,7 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 contactId: contact.id,
                 type: 'CALL',
                 title: 'Arama Planlandı (Otomatik)',
-                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${conversation.subject || conversation.topic || '-'}\nNumara: ${contact.phone || messageContent.match(phoneRegex)?.[0] || '-'}\nKaynak: ${conversation.channel || '-'}`,
+                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${conversation.aiTopic || '-'}\nNumara: ${contact.phone || messageContent.match(phoneRegex)?.[0] || '-'}\nKaynak: ${conversation.channel || '-'}`,
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
@@ -570,7 +570,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         const latestConversation = await prisma.conversation.findFirst({
             where: { workspaceId, contactId },
             orderBy: { updatedAt: 'desc' },
-            select: { subject: true, topic: true, channel: true }
+            select: { aiTopic: true, channel: true }
         });
 
         // 3. Check if there's already a PLANNED call activity for this contact (avoid duplicates)
@@ -687,7 +687,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 contactId,
                 type: 'CALL',
                 title: 'Arama Planlandı (Otomatik)',
-                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${latestConversation?.subject || latestConversation?.topic || '-'}\nNumara: ${contact.phone}\nKaynak: ${source}${latestConversation?.channel ? ' (' + latestConversation.channel + ')' : ''}`,
+                description: `Telefon numarası tespit edildi. Otomatik arama planlandı.\nKişi: ${contact.name || contact.fullName || '-'}\nKonu: ${latestConversation?.aiTopic || '-'}\nNumara: ${contact.phone}\nKaynak: ${source}${latestConversation?.channel ? ' (' + latestConversation.channel + ')' : ''}`,
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
