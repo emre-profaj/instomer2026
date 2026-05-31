@@ -405,7 +405,7 @@ export const getContacts = async (req, res) => {
             let lastNoteType = null;
 
             // 1) Check for planned activities (upcoming calls, meetings)
-            const plannedActivity = contact.contactActivities?.find(a => a.status === 'PLANNED');
+            const plannedActivity = contact.activities?.find(a => a.status === 'PLANNED');
             if (plannedActivity) {
                 const typeLabels = { CALL: '📞 Arama', MEETING: '🤝 Toplantı', VISIT: '📍 Ziyaret', TASK: '📋 Görev', REMINDER: '⏰ Hatırlatıcı' };
                 const typeLabel = typeLabels[plannedActivity.type] || '📌 Planlı';
@@ -416,7 +416,7 @@ export const getContacts = async (req, res) => {
 
             // 2) If no planned, get last completed activity
             if (!lastNote) {
-                const completedActivity = contact.contactActivities?.find(a => a.status !== 'PLANNED');
+                const completedActivity = contact.activities?.find(a => a.status !== 'PLANNED');
                 if (completedActivity) {
                     const typeLabels = { CALL: '📞', MEETING: '🤝', VISIT: '📍', NOTE: '📝', TASK: '✅', REMINDER: '⏰' };
                     const icon = typeLabels[completedActivity.type] || '📌';
@@ -485,7 +485,7 @@ export const getContacts = async (req, res) => {
                         },
                         orderBy: { createdAt: 'asc' }
                     },
-                    contactActivities: {
+                    activities: {
                         where: { workspaceId: workspaceId },
                         orderBy: { createdAt: 'desc' },
                         take: 3,
@@ -565,7 +565,7 @@ export const getContacts = async (req, res) => {
                         },
                         orderBy: { createdAt: 'asc' }
                     },
-                    contactActivities: {
+                    activities: {
                         where: { workspaceId: workspaceId },
                         orderBy: { createdAt: 'desc' },
                         take: 3,
