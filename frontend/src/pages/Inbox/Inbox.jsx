@@ -158,28 +158,43 @@ const renderLeadMessage = (msg, onSchedule, schedulingId) => {
     let leadDate = '';
     let inExtra = false;
 
+    // Helper: strip WhatsApp bold markers (*text* → text)
+    const stripBold = (s) => s.replace(/\*/g, '').trim();
+
     for (const raw of lines) {
         const line = raw.trim();
         // Skip separator lines
         if (/^[━─]{4,}/.test(line) || line === '') continue;
         // Header — skip (we render our own)
-        if (line.includes('YENİ LEAD FORMU') || line.includes('YENİ LEAD')) continue;
+        if (line.includes('YENİ LEAD FORMU') || line.includes('YENİ LEAD') || line.includes('Manuel Kayıt')) continue;
         // Form name
-        if (line.startsWith('📋')) { formName = line.replace(/^📋\s*/, '').trim(); continue; }
+        if (line.startsWith('📋')) { formName = stripBold(line.replace(/^📋\s*/, '')); continue; }
         // Primary fields
         if (line.startsWith('👤')) {
-            const val = line.replace(/^👤\s*/, '').replace(/^İsim:\s*/, '').trim();
+            const val = stripBold(line.replace(/^👤\s*/, '').replace(/^(\*?)(İsim|Ad Soyad):\s*(\*?)/i, ''));
             primaryFields.push({ icon: '👤', label: 'İsim', value: val });
             continue;
         }
         if (line.startsWith('📧')) {
-            const val = line.replace(/^📧\s*/, '').replace(/^E-posta:\s*/, '').trim();
+            const val = stripBold(line.replace(/^📧\s*/, '').replace(/^(\*?)(E-posta):\s*(\*?)/i, ''));
             primaryFields.push({ icon: '✉️', label: 'E-posta', value: val });
             continue;
         }
         if (line.startsWith('📞')) {
-            const val = line.replace(/^📞\s*/, '').replace(/^Telefon:\s*/, '').trim();
+            const val = stripBold(line.replace(/^📞\s*/, '').replace(/^(\*?)(Telefon):\s*(\*?)/i, ''));
             primaryFields.push({ icon: '📞', label: 'Telefon', value: val });
+            continue;
+        }
+        // Topic / Subject field (Manuel Kayıt)
+        if (line.startsWith('🏷️') || line.startsWith('🏷')) {
+            const val = stripBold(line.replace(/^🏷️?\s*/, '').replace(/^(\*?)(Konu):\s*(\*?)/i, ''));
+            primaryFields.push({ icon: '🏷️', label: 'Konu', value: val });
+            continue;
+        }
+        // Message field (Manuel Kayıt)
+        if (line.startsWith('💬')) {
+            const val = stripBold(line.replace(/^💬\s*/, '').replace(/^(\*?)(Mesaj):\s*(\*?)/i, ''));
+            extraFields.push({ label: 'Mesaj', value: val });
             continue;
         }
         // Ek Bilgiler header
@@ -195,16 +210,16 @@ const renderLeadMessage = (msg, onSchedule, schedulingId) => {
             }
             continue;
         }
-        // Timestamp
-        if (line.startsWith('🕐')) { leadDate = line.replace(/^🕐\s*/, '').trim(); continue; }
+        // Timestamp (both 🕐 and 📅 formats)
+        if (line.startsWith('🕐') || line.startsWith('📅')) { leadDate = stripBold(line.replace(/^[🕐📅]\s*/, '')); continue; }
     }
 
     return (
         <div className="lead-card-modern">
             {/* Header */}
             <div className="lead-card-header">
-                <span className="lead-card-header-icon">📋</span>
-                <span className="lead-card-header-label">New Lead Form</span>
+                <span className="lead-card-header-icon">{msg.content?.includes('Manuel Kayıt') ? '📝' : '📋'}</span>
+                <span className="lead-card-header-label">{msg.content?.includes('Manuel Kayıt') ? 'Manuel Kayıt' : 'New Lead Form'}</span>
             </div>
 
             {/* Form name */}
@@ -4330,7 +4345,7 @@ const Inbox = () => {
                                         }
 
                                         // Check if this is a lead form message
-                                        const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead');
+                                        const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead') || msg.content?.includes('Manuel Kayıt');
                                         const isImportedLead = msg.content?.includes('İçe aktarılan lead bilgileri:');
 
                                         // Check for handoff messages
