@@ -20,6 +20,7 @@ const Sidebar = () => {
     const [isSalesOpen, setIsSalesOpen] = useState(false);
     const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
     const [isInboxOpen, setIsInboxOpen] = useState(true);  // Inbox alt menü
+    const [isContactsOpen, setIsContactsOpen] = useState(true); // Kişiler alt menü
     const [inboxSubTeams, setInboxSubTeams] = useState([]); // Kullanıcının takımları
 
     const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -75,7 +76,8 @@ const Sidebar = () => {
         const fetchWorkspaces = async () => {
             try {
                 const response = await workspaceAPI.getAll();
-                setWorkspaces(response.data.workspaces || []);
+                const ws = response.data.workspaces || response.data || [];
+                setWorkspaces(Array.isArray(ws) ? ws : []);
             } catch (error) {
                 console.error('Error fetching workspaces:', error);
             }
@@ -159,8 +161,8 @@ const Sidebar = () => {
                     {currentWorkspace ? (
                         <div
                             className={`business-selector clickable ${isDropdownOpen ? 'active' : ''}`}
-                            onClick={() => workspaces.length > 1 && setIsDropdownOpen(!isDropdownOpen)}
-                            style={{ cursor: workspaces.length > 1 ? 'pointer' : 'default' }}
+                            onClick={() => (workspaces.length > 1 || user?.role === 'SUPER_ADMIN') && setIsDropdownOpen(!isDropdownOpen)}
+                            style={{ cursor: (workspaces.length > 1 || user?.role === 'SUPER_ADMIN') ? 'pointer' : 'default' }}
                         >
                             <div className="business-avatar-box">
                                 <span className="business-initials">{getInitials(currentWorkspace.name)}</span>
@@ -171,7 +173,7 @@ const Sidebar = () => {
                                     {user?.role === 'SUPER_ADMIN' ? 'Gözlem Modu' : `Business ID: ${currentWorkspace.id?.slice(0, 8) || '88273192'}`}
                                 </span>
                             </div>
-                            {workspaces.length > 1 && (
+                            {(workspaces.length > 1 || user?.role === 'SUPER_ADMIN') && (
                                 <ChevronDown size={16} className={`dropdown-arrow ${isDropdownOpen ? 'rotated' : ''}`} />
                             )}
                         </div>
@@ -183,7 +185,7 @@ const Sidebar = () => {
                         </div>
                     )}
 
-                    {isDropdownOpen && workspaces.length > 1 && (
+                    {isDropdownOpen && (workspaces.length > 1 || user?.role === 'SUPER_ADMIN') && (
                         <div className="workspace-dropdown">
                             {user?.role === 'SUPER_ADMIN' && (
                                 <>
@@ -293,6 +295,54 @@ const Sidebar = () => {
                                                             ))}
                                                         </>
                                                     )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+
+                                // Kişiler — expandable sub-menu
+                                const isContacts = item.path === '/customers';
+                                if (isContacts) {
+                                    const contactTab = new URLSearchParams(location.search).get('tab') || 'all';
+                                    const isContactsActive = location.pathname === '/customers';
+                                    return (
+                                        <div key={item.path}>
+                                            <div
+                                                className={`sidebar-nav-item ${isContactsActive && !isContactsOpen ? 'active' : ''}`}
+                                                style={{ cursor: 'pointer' }}
+                                                onClick={() => {
+                                                    if (isCollapsed) { navigate('/customers'); return; }
+                                                    setIsContactsOpen(v => !v);
+                                                    navigate('/customers');
+                                                }}
+                                                title={item.label}
+                                            >
+                                                <item.icon size={20} className="nav-icon" />
+                                                {!isCollapsed && <span>{item.label}</span>}
+                                                {!isCollapsed && <ChevronDown size={14} style={{ marginLeft: 'auto', transition: '0.2s', transform: isContactsOpen ? 'rotate(180deg)' : 'none', color: '#9ca3af' }} />}
+                                            </div>
+                                            {isContactsOpen && !isCollapsed && (
+                                                <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
+                                                    {[
+                                                        { label: 'Hepsi', tab: 'all', icon: Contact },
+                                                        { label: 'Havuzum', tab: 'pool', icon: Users },
+                                                        { label: 'Bana Atananlar', tab: 'mine', icon: UserCheck },
+                                                        { label: 'Atanmamışlar', tab: 'unassigned', icon: Clock },
+                                                    ].map(sub => (
+                                                        <Link
+                                                            key={sub.tab}
+                                                            to={`/customers${sub.tab === 'all' ? '' : `?tab=${sub.tab}`}`}
+                                                            className={`sidebar-nav-item submenu-item ${
+                                                                (isContactsActive && contactTab === sub.tab) ||
+                                                                (sub.tab === 'all' && isContactsActive && contactTab === 'all') ? 'active' : ''
+                                                            }`}
+                                                            style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
+                                                        >
+                                                            <sub.icon size={14} className="nav-icon" style={{ flexShrink: 0 }} />
+                                                            <span>{sub.label}</span>
+                                                        </Link>
+                                                    ))}
                                                 </div>
                                             )}
                                         </div>

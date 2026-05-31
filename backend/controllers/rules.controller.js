@@ -362,7 +362,16 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
         if (!phoneRegex.test(messageContent)) return;
 
-        // 3. Detect call intent in recent conversation messages (last 10)
+        // 3. Get conversation + contact EARLY (needed for status check)
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: { contact: true }
+        });
+        if (!conversation || !conversation.contact) return;
+
+        // 4. Detect call intent in recent conversation messages (last 10)
+        //    OR if contact is already an OPPORTUNITY → phone number alone is enough
+        const isOpportunity = ['OPPORTUNITY', 'HOT_OPPORTUNITY'].includes(conversation.contact.status);
         const CALL_INTENT_KEYWORDS = [
             'arayalım', 'arayacağız', 'sizi arayalım', 'sizi arayacağız',
             'numaranızı', 'aranacaksınız', 'beni arayın', 'arar mısınız',
@@ -381,14 +390,12 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             const lower = (msg.content || '').toLowerCase();
             return CALL_INTENT_KEYWORDS.some(kw => lower.includes(kw));
         });
-        if (!hasCallIntent) return;
+        // Pass if: explicit call intent in messages OR contact is already an opportunity
+        if (!hasCallIntent && !isOpportunity) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] No call intent and contact status is ${conversation.contact.status}, skipping`);
+            return;
+        }
 
-        // 4. Get conversation + contact
-        const conversation = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            include: { contact: true }
-        });
-        if (!conversation || !conversation.contact) return;
 
         // 5. Already in sales funnel? → skip to avoid duplicate
         if (conversation.funnelStageId) {

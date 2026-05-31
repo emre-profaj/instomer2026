@@ -544,6 +544,28 @@ export const syncEmailsInternal = async (channelId) => {
                 channel: 'EMAIL'
             });
 
+            // --- AUTOMATION RULES (same as WhatsApp/Facebook/Instagram/Widget) ---
+            try {
+                const cleanBody = cleanEmailBody(emailBody.text || body || '');
+                if (cleanBody) {
+                    const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+                    await executePhoneCaptureRule(channel.workspaceId, conversation.id, cleanBody);
+                    executeHotKeywordRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
+                        console.error('❌ [RULE:HOT_KEYWORD] Email async error:', e.message)
+                    );
+                    executeSalesPhoneCallRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
+                        console.error('❌ [RULE:SALES_PHONE_CALL] Email async error:', e.message)
+                    );
+                    if (contact?.id) {
+                        executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                            console.error('❌ [RULE:AUTO_CALL] Email async error:', e.message)
+                        );
+                    }
+                }
+            } catch (ruleErr) {
+                console.error('❌ [RULES] Email error:', ruleErr.message);
+            }
+
             // Auto extract
             try {
                 const { autoExtractFromConversation } = await import('./ai.controller.js');
@@ -997,6 +1019,28 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                 });
 
                 console.log(`✅ New email synced: ${subject}`);
+
+                // --- AUTOMATION RULES (same as polling sync path) ---
+                try {
+                    const cleanBody = cleanEmailBody(body || '');
+                    if (cleanBody && conversation?.id) {
+                        const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+                        await executePhoneCaptureRule(channel.workspaceId, conversation.id, cleanBody);
+                        executeHotKeywordRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
+                            console.error('❌ [RULE:HOT_KEYWORD] Email history error:', e.message)
+                        );
+                        executeSalesPhoneCallRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
+                            console.error('❌ [RULE:SALES_PHONE_CALL] Email history error:', e.message)
+                        );
+                        if (contact?.id) {
+                            executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                                console.error('❌ [RULE:AUTO_CALL] Email history error:', e.message)
+                            );
+                        }
+                    }
+                } catch (ruleErr) {
+                    console.error('❌ [RULES] Email history error:', ruleErr.message);
+                }
             }
         }
 
@@ -1450,6 +1494,28 @@ export const syncEmailsImap = async (channelId) => {
                                             contact: contact,
                                             channel: 'EMAIL'
                                         });
+
+                                        // --- AUTOMATION RULES (same as other channels) ---
+                                        try {
+                                            const cleanBody = cleanEmailBody(body || '');
+                                            if (cleanBody && conversation?.id) {
+                                                const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+                                                await executePhoneCaptureRule(channel.workspaceId, conversation.id, cleanBody);
+                                                executeHotKeywordRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
+                                                    console.error('❌ [RULE:HOT_KEYWORD] IMAP error:', e.message)
+                                                );
+                                                executeSalesPhoneCallRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
+                                                    console.error('❌ [RULE:SALES_PHONE_CALL] IMAP error:', e.message)
+                                                );
+                                                if (contact?.id) {
+                                                    executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                                                        console.error('❌ [RULE:AUTO_CALL] IMAP error:', e.message)
+                                                    );
+                                                }
+                                            }
+                                        } catch (ruleErr) {
+                                            console.error('❌ [RULES] IMAP error:', ruleErr.message);
+                                        }
 
                                         resolveEmail(newMessage);
                                     } catch (parseError) {

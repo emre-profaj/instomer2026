@@ -454,6 +454,31 @@ export const getFunnels = async (req, res) => {
             funnels = funnels.map(f => ({ ...f, stages: [] }));
         }
 
+        // ── 9) Hiyerarşi: "Genel" akışını MAIN yap, diğerlerini SUB olarak bağla ──
+        const genelFunnel = funnels.find(f => normalizeTR(f.name) === 'genel');
+        if (genelFunnel) {
+            // Genel'i MAIN yap (henüz değilse)
+            if (genelFunnel.funnelType !== 'MAIN') {
+                await prisma.funnel.update({
+                    where: { id: genelFunnel.id },
+                    data: { funnelType: 'MAIN', parentId: null }
+                });
+                genelFunnel.funnelType = 'MAIN';
+                genelFunnel.parentId = null;
+            }
+            // Diğer akışları Genel'in altına bağla (parentId yoksa)
+            for (const f of funnels) {
+                if (f.id !== genelFunnel.id && !f.parentId) {
+                    await prisma.funnel.update({
+                        where: { id: f.id },
+                        data: { parentId: genelFunnel.id, funnelType: 'SUB' }
+                    });
+                    f.parentId = genelFunnel.id;
+                    f.funnelType = 'SUB';
+                }
+            }
+        }
+
         res.json({ funnels });
     } catch (error) {
         console.error('Get funnels error:', error);

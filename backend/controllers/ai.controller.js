@@ -2706,6 +2706,8 @@ export const updateBot = async (req, res) => {
             // Follow-up fields
             inactivityWarningEnabled, inactivityWarningSeconds, inactivityWarningMessage,
             dailyReminderEnabled, dailyReminderHours, dailyReminderMessage,
+            // Smart Reminder Steps (5-step cascading follow-up)
+            reminderSteps,
             // Routing fields
             routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
             routingConditionalEnabled, routingRules,
@@ -2749,6 +2751,10 @@ export const updateBot = async (req, res) => {
                 dailyReminderEnabled: !!dailyReminderEnabled,
                 dailyReminderHours: dailyReminderHours !== undefined ? parseInt(dailyReminderHours) || 24 : 24,
                 dailyReminderMessage: dailyReminderMessage || null,
+                // Smart Reminder Steps (5-step cascading follow-up JSON)
+                ...(reminderSteps !== undefined && {
+                    reminderSteps: typeof reminderSteps === 'string' ? reminderSteps : JSON.stringify(reminderSteps)
+                }),
                 // Routing
                 routingEnabled: !!routingEnabled,
                 routingQuestions: routingQuestions || null,
@@ -3089,6 +3095,16 @@ export const autoGenerateTopic = async (workspaceId, conversationId, firstMessag
             console.log(`🔄 [AutoTopic] Re-generating at milestone ${totalCustomerMsgs} customer msgs`);
         } else {
             if (totalCustomerMsgs < 1) return;
+            // 🆕 Immediate fallback: set first customer message as topic right away
+            const firstCustomerMsg = customerMessages[0]?.content?.trim();
+            if (firstCustomerMsg) {
+                const fallbackTopic = firstCustomerMsg.substring(0, 80);
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { aiTopic: fallbackTopic }
+                });
+                console.log(`📝 [AutoTopic] Fallback set from first message: "${fallbackTopic}"`);
+            }
             console.log(`🆕 [AutoTopic] First generation (${totalCustomerMsgs} customer msgs in DB)`);
         }
 

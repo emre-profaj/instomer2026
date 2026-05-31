@@ -200,21 +200,10 @@ async function shouldSkipReminder(conversation) {
         }
     }
     
-    // Guard 3: Is there a planned activity/appointment for this contact?
+    // Guard 3: Is there a scheduled appointment for this contact?
+    // (Planned CALL/VISIT activities should NOT block reminders — those are for sales team, not bot)
     if (conversation.contactId) {
         const now = new Date();
-        const plannedActivity = await prisma.contactActivity.findFirst({
-            where: {
-                contactId: conversation.contactId,
-                status: { in: ['PLANNED', 'IN_PROGRESS'] },
-                dueDate: { gte: now }
-            }
-        });
-        if (plannedActivity) {
-            return 'planned_activity';
-        }
-        
-        // Also check appointments
         const plannedAppointment = await prisma.appointment.findFirst({
             where: {
                 contactId: conversation.contactId,
@@ -240,6 +229,7 @@ export const processSmartReminders = async () => {
         
         // Fetch conversations that might need reminders:
         // - Status OPEN
+        // - Bot is enabled (botEnabled: true)
         // - Has a bot assigned (directly or via channel)
         // - reminderCount < 5
         // - Has lastBotMessageAt (bot has interacted)
@@ -249,12 +239,14 @@ export const processSmartReminders = async () => {
                     { assignedBotId: { not: null } },
                     { facebookPage: { assignedBotId: { not: null } } },
                     { emailChannel: { assignedBotId: { not: null } } },
-                    { whatsappPhoneNumber: { assignedBotId: { not: null } } }
+                    { whatsappPhoneNumber: { assignedBotId: { not: null } } },
+                    { botEnabled: true } // Also catch conversations where botEnabled is set directly
                 ],
+                botEnabled: true, // CRITICAL: Only send reminders if bot is active
                 lastBotMessageAt: { not: null },
                 reminderCount: { lt: 5 },
                 status: 'OPEN',
-                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL'] }
+                channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL', 'WIDGET'] }
             },
             include: {
                 assignedBot: true,

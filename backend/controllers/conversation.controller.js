@@ -260,20 +260,32 @@ export const getConversations = async (req, res) => {
         // Mask sensitive info in preview messages
         // + Planlanan aktivite bilgisini ekle
         const contactIds = conversations.map(c => c.contactId).filter(Boolean);
-        const plannedActivities = contactIds.length > 0 ? await prisma.contactActivity.findMany({
+
+        // Fetch ALL planned activities (including overdue) for activity icons
+        const allPlannedActivities = contactIds.length > 0 ? await prisma.contactActivity.findMany({
             where: {
                 contactId: { in: contactIds },
-                status: 'PLANNED',
-                dueDate: { gte: new Date() }
+                status: 'PLANNED'
             },
-            select: { contactId: true, type: true }
+            select: { contactId: true, type: true, dueDate: true, status: true }
         }) : [];
 
-        // ContactId → aktivite tipleri map
+        // ContactId → aktivite tipleri map (with overdue info)
         const activityMap = {};
-        for (const act of plannedActivities) {
-            if (!activityMap[act.contactId]) activityMap[act.contactId] = [];
-            activityMap[act.contactId].push(act.type);
+        const now = new Date();
+        for (const act of allPlannedActivities) {
+            if (!activityMap[act.contactId]) activityMap[act.contactId] = { types: [], overdue: false, nextDueDate: null };
+            activityMap[act.contactId].types.push(act.type);
+            if (act.dueDate && new Date(act.dueDate) < now) {
+                activityMap[act.contactId].overdue = true;
+            }
+            // Track nearest due date
+            if (act.dueDate) {
+                const d = new Date(act.dueDate);
+                if (!activityMap[act.contactId].nextDueDate || d < activityMap[act.contactId].nextDueDate) {
+                    activityMap[act.contactId].nextDueDate = d;
+                }
+            }
         }
 
         const maskedConversations = conversations.map(c => {
@@ -281,9 +293,11 @@ export const getConversations = async (req, res) => {
                 c.messages[0].content = maskSensitiveInfo(c.messages[0].content);
             }
             // Planlanan aktivite bilgisi
-            const acts = activityMap[c.contactId] || [];
-            c.hasPlannedCall = acts.includes('CALL');
-            c.hasPlannedMeeting = acts.includes('MEETING') || acts.includes('VISIT');
+            const acts = activityMap[c.contactId] || { types: [], overdue: false, nextDueDate: null };
+            c.hasPlannedCall = acts.types.includes('CALL');
+            c.hasPlannedMeeting = acts.types.includes('MEETING') || acts.types.includes('VISIT');
+            c.activityOverdue = acts.overdue;
+            c.nextActivityDate = acts.nextDueDate;
             return c;
         });
 
@@ -710,8 +724,11 @@ export const sendMessage = async (req, res) => {
 
         // --- AUTO EXTRACT START ---
         try {
-            const { autoExtractFromConversation } = await import('./ai.controller.js');
+            const { autoExtractFromConversation, autoGenerateTopic } = await import('./ai.controller.js');
             autoExtractFromConversation(conversation.workspaceId, conversationId);
+            autoGenerateTopic(conversation.workspaceId, conversationId, content).catch(e =>
+                console.error('❌ [AutoTopic] Dashboard error:', e.message)
+            );
         } catch (extractError) {
             console.error('❌ AI Auto-Extract (Dashboard) failed:', extractError);
         }
@@ -1861,19 +1878,51 @@ export const createManualConversation = async (req, res) => {
             });
         }
 
-        // Add description as first message if provided
-        if (description?.trim()) {
-            await prisma.message.create({
-                data: {
-                    conversationId: conversation.id,
-                    content: description.trim(),
-                    senderId: req.user.id,
-                    isFromContact: false,
-                    messageType: 'TEXT',
-                    ...(date && { createdAt: new Date(date) })
-                }
-            });
-            console.log(`📝 [Manual Conversation] Added initial message`);
+        // Add structured lead-form-style message (like auto-captured leads)
+        const contactName = name?.trim() || 'Bilinmeyen';
+        const contactPhone = phone?.trim() || '';
+        const contactEmail = email?.trim() || '';
+        const topic = aiTopic || description?.trim()?.substring(0, 100) || '';
+        
+        // Build structured message content like a lead form
+        const lines = [];
+        lines.push(`📋 *Manuel Kayıt*`);
+        lines.push('');
+        if (contactName) lines.push(`👤 *Ad Soyad:* ${contactName}`);
+        if (contactPhone) lines.push(`📞 *Telefon:* ${contactPhone}`);
+        if (contactEmail) lines.push(`📧 *E-posta:* ${contactEmail}`);
+        if (topic) lines.push(`🏷️ *Konu:* ${topic}`);
+        if (description?.trim() && description.trim() !== topic) {
+            lines.push(`💬 *Mesaj:* ${description.trim()}`);
+        }
+        lines.push('');
+        lines.push(`📅 ${new Date(date || Date.now()).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
+        
+        const structuredContent = lines.join('\n');
+
+        await prisma.message.create({
+            data: {
+                conversationId: conversation.id,
+                content: structuredContent,
+                senderId: req.user.id,
+                isFromContact: true, // Show as incoming (like lead form)
+                messageType: 'TEXT',
+                ...(date && { createdAt: new Date(date) })
+            }
+        });
+        console.log(`📝 [Manual Conversation] Added structured lead-form message`);
+
+        // --- AUTOMATION RULES: Treat as lead capture ---
+        try {
+            const { executePhoneCaptureRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+            if (contactPhone) {
+                await executePhoneCaptureRule(workspaceId, conversation.id, structuredContent);
+                executeAutoCallPlanning(workspaceId, contact.id, 'MANUEL').catch(e =>
+                    console.error('❌ [RULE:AUTO_CALL] Manual error:', e.message)
+                );
+            }
+        } catch (ruleErr) {
+            console.error('❌ [RULES] Manual conversation error:', ruleErr.message);
         }
 
         console.log(`✅ [Manual Conversation] Created successfully - ID: ${conversation.id}`);

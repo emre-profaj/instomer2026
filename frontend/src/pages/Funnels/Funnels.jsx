@@ -253,11 +253,22 @@ const Funnels = () => {
                         <p>{t('funnels.empty')}</p>
                     </div>
                 ) : (
-                    funnels.map(funnel => {
+                    (() => {
+                        // Build tree: main funnel first, then children
+                        const mainFunnel = funnels.find(f => f.funnelType === 'MAIN');
+                        const subFunnels = mainFunnel 
+                            ? funnels.filter(f => f.id !== mainFunnel.id)
+                            : funnels;
+                        const orderedList = mainFunnel ? [mainFunnel, ...subFunnels] : subFunnels;
+
+                        return orderedList.map(funnel => {
                         const isExpanded = expandedFunnel === funnel.id;
                         const stages = funnel.stages || [];
+                        const isMain = funnel.funnelType === 'MAIN';
+                        const isSub = funnel.parentId && funnel.parentId === mainFunnel?.id;
                         return (
-                            <div key={funnel.id} className={`funnels-funnel-block${isExpanded ? ' funnels-funnel-block--open' : ''}`}>
+                            <div key={funnel.id} className={`funnels-funnel-block${isExpanded ? ' funnels-funnel-block--open' : ''}${isMain ? ' funnels-funnel-block--main' : ''}`}
+                                 style={isSub ? { marginLeft: 24, borderLeft: '2px solid #e0e7ff' } : undefined}>
                                 {/* Funnel header row */}
                                 <div className="funnels-row">
                                     <button
@@ -318,6 +329,22 @@ const Funnels = () => {
                                         <>
                                             <span className="funnels-name">
                                                 {funnel.name}
+                                                {isMain && (
+                                                    <span style={{ 
+                                                        fontSize: '10px', fontWeight: 700, color: '#6366f1', 
+                                                        background: '#eef2ff', padding: '2px 8px', borderRadius: '10px',
+                                                        marginLeft: '8px', letterSpacing: '0.5px'
+                                                    }}>
+                                                        ANA AKIŞ
+                                                    </span>
+                                                )}
+                                                {isSub && (
+                                                    <span style={{
+                                                        fontSize: '10px', color: '#94a3b8', marginLeft: '6px'
+                                                    }}>
+                                                        ↳ alt akış
+                                                    </span>
+                                                )}
                                                 {(funnel.assignedTeamId || funnel.assignedUserId) && (
                                                     <span className="funnels-assigned-info" style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '6px' }}>
                                                         ({funnel.assignedTeamId ? teams.find(t => t.id === funnel.assignedTeamId)?.name : ''}
@@ -340,9 +367,11 @@ const Funnels = () => {
                                             }} title={t('common.edit')}>
                                                 <Edit2 size={15} />
                                             </button>
-                                            <button className="funnels-icon-btn funnels-icon-btn-danger" onClick={() => handleDelete(funnel.id)} title={t('common.delete')}>
-                                                <Trash2 size={15} />
-                                            </button>
+                                            {!isMain && (
+                                                <button className="funnels-icon-btn funnels-icon-btn-danger" onClick={() => handleDelete(funnel.id)} title={t('common.delete')}>
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -524,6 +553,7 @@ const Funnels = () => {
                             </div>
                         );
                     })
+                    })()
                 )}
             </div>
         </div>

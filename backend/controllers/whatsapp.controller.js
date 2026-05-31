@@ -1383,20 +1383,22 @@ export const webhookHandler = async (req, res) => {
                     // --- AUTO EXTRACT END ---
 
                     // --- AUTOMATION RULES START ---
-                    if (msg_body && message.type === 'text') {
+                    // Run for ALL message types with text content (text, image captions, doc captions, etc.)
+                    if (msg_body && msg_body.trim()) {
                         try {
                             const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
-                            // Run rules async (non-blocking)
-                            executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
-                                console.error('❌ [RULE:PHONE_CAPTURE] async error:', e.message)
+                            // Phone capture MUST run first and be awaited (auto-call checks contact.phone)
+                            await executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
+                                console.error('❌ [RULE:PHONE_CAPTURE] error:', e.message)
                             );
+                            // Other rules can run async
                             executeHotKeywordRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:HOT_KEYWORD] async error:', e.message)
                             );
                             executeSalesPhoneCallRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:SALES_PHONE_CALL] async error:', e.message)
                             );
-                            // Also trigger simplified auto call planning (no intent check needed)
+                            // Auto call planning runs AFTER phone capture to avoid race condition
                             executeAutoCallPlanning(waNumber.workspaceId, contact.id, 'WHATSAPP').catch(e =>
                                 console.error('❌ [RULE:AUTO_CALL] WA async error:', e.message)
                             );

@@ -1161,6 +1161,10 @@ model Funnel {
   color          String        @default("#3b82f6")
   icon           String        @default("📁")
   order          Int           @default(0)
+  funnelType     String        @default("SUB") // MAIN = Ana (Triyaj), SUB = Alt akış
+  parentId       String?
+  parent         Funnel?       @relation("FunnelHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children       Funnel[]      @relation("FunnelHierarchy")
   assignedUserId String?
   assignedTeamId String?
   classificationCriteria String? @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
@@ -1169,6 +1173,7 @@ model Funnel {
   stages         FunnelStage[]
 
   @@index([workspaceId])
+  @@index([parentId])
   @@map("funnels")
 }
 

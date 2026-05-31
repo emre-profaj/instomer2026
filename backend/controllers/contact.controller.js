@@ -8,7 +8,7 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, limit = 50, offset = 0, dateFilter, dateFrom, dateTo } = req.query;
+        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -207,6 +207,74 @@ export const getContacts = async (req, res) => {
             }
         }
 
+        // Assignment filter (pool/mine/unassigned) — filters by conversation assignment
+        if (assignmentFilter && assignmentFilter !== 'all') {
+            // Get user's team IDs for pool filter
+            const userTeams = await prisma.teamMember.findMany({
+                where: { userId: req.user.id },
+                select: { teamId: true }
+            });
+            const myTeamIds = userTeams.map(t => t.teamId);
+
+            if (assignmentFilter === 'mine') {
+                // Contacts with conversations assigned to me
+                where = {
+                    AND: [
+                        where,
+                        {
+                            conversations: {
+                                some: {
+                                    workspaceId,
+                                    assignedToId: req.user.id
+                                }
+                            }
+                        }
+                    ]
+                };
+                console.log(`   AssignmentFilter: MINE (userId: ${req.user.id})`);
+            } else if (assignmentFilter === 'unassigned') {
+                // Contacts with conversations that have no assignedToId
+                where = {
+                    AND: [
+                        where,
+                        {
+                            conversations: {
+                                some: {
+                                    workspaceId,
+                                    assignedToId: null
+                                }
+                            }
+                        }
+                    ]
+                };
+                console.log(`   AssignmentFilter: UNASSIGNED`);
+            } else if (assignmentFilter === 'pool') {
+                // Contacts in my teams + unassigned + assigned to me
+                const teamConditions = myTeamIds.map(tid => ({
+                    teamIds: { contains: `"${tid}"` }
+                }));
+
+                where = {
+                    AND: [
+                        where,
+                        {
+                            conversations: {
+                                some: {
+                                    workspaceId,
+                                    OR: [
+                                        { assignedToId: req.user.id },
+                                        { assignedToId: null },
+                                        ...teamConditions
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                };
+                console.log(`   AssignmentFilter: POOL (teams: ${myTeamIds.length})`);
+            }
+        }
+
         // Add search filter if provided
         if (search) {
             where = {
@@ -332,13 +400,55 @@ export const getContacts = async (req, res) => {
                 ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt))
                 ?.[0]?.aiTopic || null;
 
+            // Build lastNote from: 1) Planned activity, 2) Last completed activity, 3) Last manual note
+            let lastNote = null;
+            let lastNoteType = null;
+
+            // 1) Check for planned activities (upcoming calls, meetings)
+            const plannedActivity = contact.contactActivities?.find(a => a.status === 'PLANNED');
+            if (plannedActivity) {
+                const typeLabels = { CALL: '📞 Arama', MEETING: '🤝 Toplantı', VISIT: '📍 Ziyaret', TASK: '📋 Görev', REMINDER: '⏰ Hatırlatıcı' };
+                const typeLabel = typeLabels[plannedActivity.type] || '📌 Planlı';
+                const dateStr = plannedActivity.dueDate ? new Date(plannedActivity.dueDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) : '';
+                lastNote = `${typeLabel}: ${plannedActivity.title || plannedActivity.description || ''} ${dateStr}`.trim();
+                lastNoteType = 'planned';
+            }
+
+            // 2) If no planned, get last completed activity
+            if (!lastNote) {
+                const completedActivity = contact.contactActivities?.find(a => a.status !== 'PLANNED');
+                if (completedActivity) {
+                    const typeLabels = { CALL: '📞', MEETING: '🤝', VISIT: '📍', NOTE: '📝', TASK: '✅', REMINDER: '⏰' };
+                    const icon = typeLabels[completedActivity.type] || '📌';
+                    lastNote = `${icon} ${completedActivity.result || completedActivity.title || completedActivity.description || ''}`.trim();
+                    lastNoteType = 'activity';
+                }
+            }
+
+            // 3) If no activity, fall back to manual notes
+            if (!lastNote && contact.notes) {
+                try {
+                    const notesArray = JSON.parse(contact.notes);
+                    if (Array.isArray(notesArray) && notesArray.length > 0) {
+                        const latest = notesArray[notesArray.length - 1];
+                        lastNote = `📝 ${latest.title ? latest.title + ': ' : ''}${latest.content || ''}`;
+                        lastNoteType = 'note';
+                    }
+                } catch {
+                    lastNote = `📝 ${contact.notes}`;
+                    lastNoteType = 'note';
+                }
+            }
+
             return {
                 ...contact,
                 source: contactSource,
                 channels: [...new Set(channels)],
                 firstMessageAt,
                 lastMessageAt,
-                aiTopic
+                aiTopic,
+                lastNote: lastNote ? (lastNote.length > 80 ? lastNote.substring(0, 80) + '...' : lastNote) : null,
+                lastNoteType
             };
         };
 
@@ -374,9 +484,25 @@ export const getContacts = async (req, res) => {
                             }
                         },
                         orderBy: { createdAt: 'asc' }
+                    },
+                    contactActivities: {
+                        where: { workspaceId: workspaceId },
+                        orderBy: { createdAt: 'desc' },
+                        take: 3,
+                        select: {
+                            type: true,
+                            title: true,
+                            description: true,
+                            result: true,
+                            status: true,
+                            dueDate: true,
+                            createdAt: true
+                        }
                     }
                 },
-                orderBy: { createdAt: 'desc' }
+                orderBy: ['name', 'company', 'status', 'createdAt'].includes(sortField)
+                    ? { [sortField]: sortDir }
+                    : { createdAt: 'desc' }
                 // NO take/skip here - we get all and paginate after filtering
             });
 
@@ -393,6 +519,15 @@ export const getContacts = async (req, res) => {
                 filteredContacts = allContactsWithSource.filter(c =>
                     c.source === source
                 );
+            }
+
+            // Sort by computed fields if needed
+            if (['firstMessageAt', 'lastMessageAt'].includes(sortField)) {
+                filteredContacts.sort((a, b) => {
+                    const aVal = a[sortField] ? new Date(a[sortField]).getTime() : 0;
+                    const bVal = b[sortField] ? new Date(b[sortField]).getTime() : 0;
+                    return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+                });
             }
 
             // Get total BEFORE pagination
@@ -429,15 +564,46 @@ export const getContacts = async (req, res) => {
                             }
                         },
                         orderBy: { createdAt: 'asc' }
+                    },
+                    contactActivities: {
+                        where: { workspaceId: workspaceId },
+                        orderBy: { createdAt: 'desc' },
+                        take: 3,
+                        select: {
+                            type: true,
+                            title: true,
+                            description: true,
+                            result: true,
+                            status: true,
+                            dueDate: true,
+                            createdAt: true
+                        }
                     }
                 },
-                orderBy: { createdAt: 'desc' },
-                take: parseInt(limit),
-                skip: parseInt(offset)
+                orderBy: ['name', 'company', 'status', 'createdAt'].includes(sortField)
+                    ? { [sortField]: sortDir }
+                    : { createdAt: 'desc' },
+                take: ['firstMessageAt', 'lastMessageAt'].includes(sortField) ? undefined : parseInt(limit),
+                skip: ['firstMessageAt', 'lastMessageAt'].includes(sortField) ? undefined : parseInt(offset)
             });
 
             finalContacts = contacts.map(enrichContactWithSource);
-            totalCount = await prisma.contact.count({ where });
+
+            // Sort by computed fields if needed (firstMessageAt / lastMessageAt)
+            if (['firstMessageAt', 'lastMessageAt'].includes(sortField)) {
+                finalContacts.sort((a, b) => {
+                    const aVal = a[sortField] ? new Date(a[sortField]).getTime() : 0;
+                    const bVal = b[sortField] ? new Date(b[sortField]).getTime() : 0;
+                    return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+                });
+                // Manual pagination since we fetched all
+                totalCount = finalContacts.length;
+                const parsedLimit = parseInt(limit);
+                const parsedOffset = parseInt(offset);
+                finalContacts = finalContacts.slice(parsedOffset, parsedOffset + parsedLimit);
+            } else {
+                totalCount = await prisma.contact.count({ where });
+            }
 
             console.log(`✅ [Get Contacts] No source filter -> ${totalCount} total, showing ${finalContacts.length}`);
         }

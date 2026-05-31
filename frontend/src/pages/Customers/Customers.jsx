@@ -46,7 +46,7 @@ import {
     Eye,
     EyeOff
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import './Customers.css';
 import '../../components/ContactSidebar/ContactSidebar.css';
@@ -56,7 +56,11 @@ import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 const Customers = () => {
     const { currentWorkspace, user } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const { t } = useTranslation();
+
+    // Read assignment tab from URL (?tab=pool|mine|unassigned)
+    const assignmentFilter = new URLSearchParams(location.search).get('tab') || 'all';
 
     // Status options
 
@@ -122,6 +126,10 @@ const Customers = () => {
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [limit, setLimit] = useState(20);
+
+    // Column sorting
+    const [sortField, setSortField] = useState('createdAt');
+    const [sortDir, setSortDir] = useState('desc');
 
     // Analytics panel
     const [showAnalytics, setShowAnalytics] = useState(false);
@@ -279,7 +287,7 @@ const Customers = () => {
         if (currentWorkspace) {
             loadContacts();
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds, limit, dateFilter, dateFrom, dateTo]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -316,6 +324,9 @@ const Customers = () => {
                 funnelTypes: mergedFunnelIds ? mergedFunnelIds.join(',') : undefined,
                 funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
+                assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
+                sortField,
+                sortDir,
                 limit,
                 offset: (page - 1) * limit,
                 dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
@@ -412,6 +423,9 @@ const Customers = () => {
                 funnelTypes: mergedFunnelIds ? mergedFunnelIds.join(',') : undefined,
                 funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
+                assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
+                sortField,
+                sortDir,
                 limit,
                 offset: (page - 1) * limit,
                 // Date filter
@@ -1555,18 +1569,46 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                             />
                                         </th>
-                                        <th style={{ minWidth: '140px' }}>İSİM</th>
-                                        <th style={{ minWidth: '80px', maxWidth: '120px' }}>FİRMA</th>
-                                        <th style={{ minWidth: '100px', maxWidth: '130px' }}>TELEFON</th>
-                                        <th style={{ minWidth: '80px', maxWidth: '140px' }}>KONU</th>
-                                        <th style={{ minWidth: '120px', maxWidth: '200px' }}>DURUM</th>
-                                        <th style={{ minWidth: '80px', maxWidth: '140px' }}>ATANAN</th>
-                                        <th style={{ minWidth: '70px', maxWidth: '100px' }}>KAYNAK</th>
-                                        <th style={{ minWidth: '80px', maxWidth: '140px' }}>ETİKETLER</th>
-                                        <th style={{ minWidth: '50px', maxWidth: '70px', textAlign: 'center' }}>SOHBETLER</th>
-                                        <th style={{ minWidth: '75px', maxWidth: '90px' }}>İLK YAZMA</th>
-                                        <th style={{ minWidth: '75px', maxWidth: '90px' }}>SON YAZMA</th>
-                                        <th style={{ minWidth: '100px', maxWidth: '160px' }}>SON NOT</th>
+                                        {[
+                                            { key: 'name', label: 'İSİM', style: { minWidth: '140px' } },
+                                            { key: 'company', label: 'FİRMA', style: { minWidth: '80px', maxWidth: '120px' } },
+                                            { key: null, label: 'TELEFON', style: { minWidth: '100px', maxWidth: '130px' } },
+                                            { key: null, label: 'KONU', style: { minWidth: '80px', maxWidth: '140px' } },
+                                            { key: 'status', label: 'DURUM', style: { minWidth: '120px', maxWidth: '200px' } },
+                                            { key: null, label: 'ATANAN', style: { minWidth: '80px', maxWidth: '140px' } },
+                                            { key: 'source', label: 'KAYNAK', style: { minWidth: '70px', maxWidth: '100px' } },
+                                            { key: null, label: 'ETİKETLER', style: { minWidth: '80px', maxWidth: '140px' } },
+                                            { key: null, label: 'SOHBETLER', style: { minWidth: '50px', maxWidth: '70px', textAlign: 'center' } },
+                                            { key: 'firstMessageAt', label: 'İLK YAZMA', style: { minWidth: '75px', maxWidth: '90px' } },
+                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '75px', maxWidth: '90px' } },
+                                            { key: 'createdAt', label: 'KAYIT', style: { minWidth: '75px', maxWidth: '90px' } },
+                                            { key: null, label: 'SON NOT', style: { minWidth: '100px', maxWidth: '160px' } },
+                                        ].map(col => (
+                                            <th
+                                                key={col.label}
+                                                style={{ ...col.style, cursor: col.key ? 'pointer' : 'default', userSelect: 'none' }}
+                                                onClick={() => {
+                                                    if (!col.key) return;
+                                                    if (sortField === col.key) {
+                                                        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                                    } else {
+                                                        setSortField(col.key);
+                                                        setSortDir('desc');
+                                                    }
+                                                    setPage(1);
+                                                }}
+                                            >
+                                                {col.label}
+                                                {col.key && sortField === col.key && (
+                                                    <span style={{ marginLeft: '4px', fontSize: '0.7rem', opacity: 0.7 }}>
+                                                        {sortDir === 'asc' ? '▲' : '▼'}
+                                                    </span>
+                                                )}
+                                                {col.key && sortField !== col.key && (
+                                                    <span style={{ marginLeft: '4px', fontSize: '0.6rem', opacity: 0.3 }}>⇅</span>
+                                                )}
+                                            </th>
+                                        ))}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1749,32 +1791,16 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 <td className="contact-last-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
                                                     {formatDate(contact.lastMessageAt)}
                                                 </td>
+                                                {/* KAYIT TARİHİ */}
+                                                <td className="contact-created" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
+                                                    {formatDate(contact.createdAt)}
+                                                </td>
                                                 {/* SON NOT */}
-                                                <td className="contact-last-note" style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
-                                                    {(() => {
-                                                        if (!contact.notes) return '---';
-                                                        try {
-                                                            const notesArray = JSON.parse(contact.notes);
-                                                            if (Array.isArray(notesArray) && notesArray.length > 0) {
-                                                                const lastNote = notesArray[notesArray.length - 1].content || '';
-                                                                return lastNote.length > 50 ? lastNote.substring(0, 50) + '...' : lastNote;
-                                                            }
-                                                        } catch (e) {
-                                                            // Notes are stored as string with format: [timestamp]\ncontent
-                                                            const notes = contact.notes;
-                                                            // Split by separator and get first note
-                                                            const firstNote = notes.split('\n\n---\n\n')[0];
-                                                            // Remove timestamp line [timestamp]
-                                                            const contentMatch = firstNote.match(/\[.*?\]\n([\s\S]*)/);
-                                                            if (contentMatch && contentMatch[1]) {
-                                                                const content = contentMatch[1].trim();
-                                                                return content.length > 50 ? content.substring(0, 50) + '...' : content;
-                                                            }
-                                                            // Fallback: show as is if format doesn't match
-                                                            return notes.length > 50 ? notes.substring(0, 50) + '...' : notes;
-                                                        }
-                                                        return '---';
-                                                    })()}
+                                                <td className="contact-last-note" style={{
+                                                    maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem',
+                                                    color: contact.lastNoteType === 'planned' ? '#f59e0b' : contact.lastNoteType === 'activity' ? '#3b82f6' : '#6b7280'
+                                                }}>
+                                                    {contact.lastNote || '---'}
                                                 </td>
                                             </tr>
                                         );
