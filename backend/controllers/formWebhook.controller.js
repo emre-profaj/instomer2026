@@ -248,6 +248,8 @@ export const handleFormSubmission = async (req, res) => {
                 const updateData = {};
                 if (name && !contact.name) updateData.name = name;
                 if (company && !contact.company) updateData.company = company;
+                if (phone && phone.trim() && !contact.phone) updateData.phone = phone;
+                if (email && !contact.email) updateData.email = email;
 
                 // Telefon varsa ve status NEW ise OPPORTUNITY yap
                 if (phone && phone.trim() && contact.status === 'NEW') {
@@ -496,13 +498,13 @@ export const handleFormSubmission = async (req, res) => {
         }
 
         // --- AUTO CALL TRIGGER ---
-        if (phone) {
+        if (phone && contact?.id) {
             try {
-                const { triggerAutoCall } = await import('./retell.controller.js');
-                // IMPORTANT: Pass null — form messages are system-generated, not customer time requests
-                triggerAutoCall(webhook.workspaceId, phone, contact?.id, name || 'Form Gönderen', 'FORM', null);
+                const { executeAutoCallPlanning } = await import('./rules.controller.js');
+                await executeAutoCallPlanning(webhook.workspaceId, contact.id, 'WEB_FORM');
+                console.log(`📞 [FormWebhook] Auto call planned for contact ${contact.id}`);
             } catch (autoCallErr) {
-                console.error('⚠️ [FormWebhook] AutoCall trigger error:', autoCallErr.message);
+                console.error('⚠️ [FormWebhook] AutoCall planning error:', autoCallErr.message);
             }
         }
 
