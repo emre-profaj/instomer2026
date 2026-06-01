@@ -1310,6 +1310,29 @@ const Inbox = () => {
             }
         });
 
+        // Listen for backend-created activities (auto call planning, etc.)
+        // Updates the inbox badge icons in real-time without page refresh
+        socket.on('activity_created', (data) => {
+            const { contactId, type, status, dueDate } = data;
+            if (!contactId || !type) return;
+            setPlannedActivityMap(prev => {
+                const existing = prev[contactId] || [];
+                const alreadyExists = existing.find(e => e.type === type);
+                if (alreadyExists) {
+                    return {
+                        ...prev,
+                        [contactId]: existing.map(e =>
+                            e.type === type ? { ...e, status: status || 'PLANNED', dueDate: dueDate || e.dueDate } : e
+                        )
+                    };
+                }
+                return {
+                    ...prev,
+                    [contactId]: [...existing, { type, status: status || 'PLANNED', dueDate }]
+                };
+            });
+        });
+
         return () => {
             socket.disconnect();
         };
