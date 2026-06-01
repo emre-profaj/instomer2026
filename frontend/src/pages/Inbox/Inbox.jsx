@@ -1647,6 +1647,27 @@ const Inbox = () => {
         try {
             if (showLoading) setLoading(true);
 
+            // Refresh activity badges on every inbox load (real-time icon updates)
+            activityAPI.getPlannedActivities(currentWorkspace.id)
+                .then(data => {
+                    const acts = Array.isArray(data) ? data : (data?.data || []);
+                    const map = {};
+                    acts.forEach(act => {
+                        if (!act.contact?.id) return;
+                        const cid = act.contact.id;
+                        if (!map[cid]) map[cid] = [];
+                        const exists = map[cid].find(e => e.type === act.type);
+                        if (!exists) {
+                            map[cid].push({ type: act.type, status: act.status, dueDate: act.dueDate });
+                        } else if (act.status === 'PLANNED' && exists.status !== 'PLANNED') {
+                            exists.status = 'PLANNED';
+                            exists.dueDate = act.dueDate;
+                        }
+                    });
+                    setPlannedActivityMap(map);
+                })
+                .catch(() => {});
+
             let items = [];
 
             // Load based on active filters (if all are selected = show all, unchecked = hide)
