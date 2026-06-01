@@ -1202,8 +1202,11 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 });
 
                 // Son 30 dk içinde sınıflandırılmışsa tekrar yapma
+                // AMA mesajda telefon numarası varsa cooldown'u bypass et (numara geldiğinde arama planla tetiklenmeli)
                 const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
-                const shouldClassify = !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
+                const phoneRegex = /(?:\+?90|0)?[\s.-]?[5][0-9]{2}[\s.-]?[0-9]{3}[\s.-]?[0-9]{2}[\s.-]?[0-9]{2}/;
+                const hasPhoneInMessage = phoneRegex.test(userMessage);
+                const shouldClassify = hasPhoneInMessage || !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
 
                 if (shouldClassify) {
                     const { classifyAndExtract, executeClassificationActions } = await import('../services/universalClassifier.service.js');

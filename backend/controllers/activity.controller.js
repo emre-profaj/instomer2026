@@ -24,7 +24,12 @@ export const createActivity = async (req, res) => {
         }
 
         // Status belirleme: frontend gönderiyorsa onu kullan, yoksa oto-belirle
-        const resolvedStatus = explicitStatus || (type === 'NOTE' ? 'COMPLETED' : (dueDate ? 'PLANNED' : 'COMPLETED'));
+        // CALL ve MEETING her zaman PLANNED başlar (tarih girilmese bile), sadece NOTE COMPLETED
+        const resolvedStatus = explicitStatus || (
+            type === 'NOTE' ? 'COMPLETED' :
+            (type === 'CALL' || type === 'MEETING') ? 'PLANNED' :
+            (dueDate ? 'PLANNED' : 'COMPLETED')
+        );
         const resolvedIsCompleted = resolvedStatus === 'COMPLETED';
         const resolvedCompletedAt = resolvedIsCompleted
             ? (explicitCompletedAt ? new Date(explicitCompletedAt) : new Date())

@@ -546,14 +546,6 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
  */
 export const executeAutoCallPlanning = async (workspaceId, contactId, source = 'AUTOMATION') => {
     try {
-        // 1. Auto-call planning: workspace ayarından kontrol et
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { retellAutoCallEnabled: true }
-        });
-        // retellAutoCallEnabled açıkça false ise atla
-        if (workspace?.retellAutoCallEnabled === false) return;
-
         // SALES_PHONE_CALL config'inden team/funnel bilgisi al (varsa)
         const rule = await prisma.workspaceRule.findUnique({
             where: { workspaceId_ruleType: { workspaceId, ruleType: 'SALES_PHONE_CALL' } }
