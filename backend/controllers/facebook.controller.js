@@ -3387,6 +3387,18 @@ async function handleLeadgenEvent(leadValue, entryId) {
             } catch (autoCallErr) {
                 console.error('⚠️ [LEADGEN] AutoCall trigger error:', autoCallErr.message);
             }
+
+            // Ayrıca insan takibi için ContactActivity/PLANNED oluştur (Retell kapalı olsa bile çalışır)
+            if (contact?.id) {
+                try {
+                    const { executeAutoCallPlanning } = await import('./rules.controller.js');
+                    executeAutoCallPlanning(facebookPage.workspaceId, contact.id, 'LEAD_FORM').catch(e =>
+                        console.error('❌ [RULE:AUTO_CALL] Leadgen async error:', e.message)
+                    );
+                } catch (planErr) {
+                    console.error('⚠️ [LEADGEN] AutoCallPlanning error:', planErr.message);
+                }
+            }
         }
 
         // --- AUTO TOPIC GENERATION (Lead Form: dogrudan form alanlarından üret) ---
