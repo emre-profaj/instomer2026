@@ -45,4 +45,47 @@ prisma.$use(async (params, next) => {
     return result;
 });
 
+// ─── UNIVERSAL AUTO-CALL PLANNING ──────────────────────────────
+// Contact'a telefon numarası eklendiğinde (create veya update) otomatik arama planla.
+// Bu middleware sayesinde hangi kanaldan gelirse gelsin (Facebook, WhatsApp, Widget,
+// Email, Lead Form, Manuel, vs.) tek bir noktadan arama planlanır.
+prisma.$use(async (params, next) => {
+    const result = await next(params);
+
+    if (params.model !== 'Contact') return result;
+    if (params.action !== 'create' && params.action !== 'update') return result;
+
+    try {
+        const newPhone = result?.phone?.trim();
+        if (!newPhone) return result;
+
+        // UPDATE ise: eski telefon var mıydı kontrol et (sadece yeni eklenen numaralar için tetikle)
+        if (params.action === 'update') {
+            // Prisma update args'ta `where` ile contact id gelir
+            // Eğer phone alanı değişmediyse (args.data.phone yoksa) skip
+            if (!params.args?.data?.phone) return result;
+        }
+
+        const contactId = result.id;
+        const workspaceId = result.workspaceId;
+        if (!contactId || !workspaceId) return result;
+
+        // Async fire-and-forget: arama planla (mevcut dedup kontrolleri fonksiyon içinde var)
+        setImmediate(async () => {
+            try {
+                const { executeAutoCallPlanning } = await import('../controllers/rules.controller.js');
+                await executeAutoCallPlanning(workspaceId, contactId, 'AUTO_HOOK');
+            } catch (err) {
+                // Non-fatal — don't block contact operations
+                console.error('⚠️ [AutoCallHook] Error:', err.message);
+            }
+        });
+    } catch (err) {
+        // Non-fatal
+        console.error('⚠️ [AutoCallHook] Middleware error:', err.message);
+    }
+
+    return result;
+});
+
 export default prisma;
