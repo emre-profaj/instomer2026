@@ -44,7 +44,8 @@ import {
     TrendingUp,
     PhoneOff,
     Eye,
-    EyeOff
+    EyeOff,
+    ArrowUpDown
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -1371,7 +1372,31 @@ const Customers = () => {
                                 })()}
                             </div>
 
-
+                            {/* Sort Dropdown */}
+                            <div className="filter-dropdown-item">
+                                <label><ArrowUpDown size={12} /> Sıralama</label>
+                                <select
+                                    value={`${sortField}:${sortDir}`}
+                                    onChange={(e) => {
+                                        const [field, dir] = e.target.value.split(':');
+                                        setSortField(field);
+                                        setSortDir(dir);
+                                        setPage(1);
+                                    }}
+                                    className="filter-select"
+                                >
+                                    <option value="createdAt:desc">Kayıt Tarihi (Yeni → Eski)</option>
+                                    <option value="createdAt:asc">Kayıt Tarihi (Eski → Yeni)</option>
+                                    <option value="lastMessageAt:desc">Son Yazışma (Yeni → Eski)</option>
+                                    <option value="lastMessageAt:asc">Son Yazışma (Eski → Yeni)</option>
+                                    <option value="firstMessageAt:desc">İlk Yazışma (Yeni → Eski)</option>
+                                    <option value="firstMessageAt:asc">İlk Yazışma (Eski → Yeni)</option>
+                                    <option value="name:asc">İsim (A → Z)</option>
+                                    <option value="name:desc">İsim (Z → A)</option>
+                                    <option value="company:asc">Firma (A → Z)</option>
+                                    <option value="company:desc">Firma (Z → A)</option>
+                                </select>
+                            </div>
 
                         </div>
                     </div>
@@ -1578,10 +1603,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             { key: null, label: 'ATANAN', style: { minWidth: '80px', maxWidth: '140px' } },
                                             { key: 'source', label: 'KAYNAK', style: { minWidth: '70px', maxWidth: '100px' } },
                                             { key: null, label: 'ETİKETLER', style: { minWidth: '80px', maxWidth: '140px' } },
-                                            { key: null, label: 'SOHBETLER', style: { minWidth: '50px', maxWidth: '70px', textAlign: 'center' } },
-                                            { key: 'firstMessageAt', label: 'İLK YAZMA', style: { minWidth: '75px', maxWidth: '90px' } },
-                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '75px', maxWidth: '90px' } },
-                                            { key: 'createdAt', label: 'KAYIT', style: { minWidth: '75px', maxWidth: '90px' } },
+                                            { key: null, label: 'SOHBET', style: { minWidth: '55px', maxWidth: '65px', textAlign: 'center' } },
+                                            { key: 'firstMessageAt', label: 'İLK YAZMA', style: { minWidth: '90px', maxWidth: '105px' } },
+                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '90px', maxWidth: '105px' } },
+                                            { key: 'createdAt', label: 'KAYIT', style: { minWidth: '80px', maxWidth: '95px' } },
                                             { key: null, label: 'SON NOT', style: { minWidth: '100px', maxWidth: '160px' } },
                                         ].map(col => (
                                             <th
