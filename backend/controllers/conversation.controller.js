@@ -1183,9 +1183,8 @@ export const deleteConversation = async (req, res) => {
             }
         }
 
-        // 5. Soft-delete contact: kişi bilgilerini temizle + gizle
+        // 5. Contact: başka sohbeti yoksa tamamen sil, varsa sadece notları temizle
         if (conversation.contactId) {
-            // Bu kişinin başka aktif sohbeti var mı kontrol et
             const otherConversations = await prisma.conversation.count({
                 where: {
                     contactId: conversation.contactId,
@@ -1194,32 +1193,39 @@ export const deleteConversation = async (req, res) => {
             });
 
             if (otherConversations === 0) {
-                // Başka sohbeti yok → kişiyi soft-delete yap ve bilgileri temizle
-                await prisma.contact.update({
-                    where: { id: conversation.contactId },
-                    data: {
-                        isDeleted: true,
-                        deletedAt: new Date(),
-                        name: null,
-                        phone: null,
-                        email: null,
-                        notes: null,
-                        tags: '[]',
-                        status: 'NEW',
-                        category: 'NEW',
-                        source: 'MANUAL',
-                        funnelType: null,
-                        funnelStageId: null,
-                        company: null,
-                        language: null,
-                        country: null,
-                        city: null,
-                        lastContactedAt: null
-                    }
+                // Başka sohbeti yok → kişiyi ve bağlı tüm verileri tamamen sil
+                // Önce bağımlı kayıtları sil (FK constraint)
+                const activitiesDeleted = await prisma.contactActivity.deleteMany({
+                    where: { contactId: conversation.contactId }
                 });
-                console.log(` - Contact soft-deleted and info cleared: ${conversation.contactId}`);
+                console.log(` - Deleted ${activitiesDeleted.count} activities`);
+
+                const retellDeleted = await prisma.retellCall.deleteMany({
+                    where: { contactId: conversation.contactId }
+                });
+                console.log(` - Deleted ${retellDeleted.count} retell calls`);
+
+                const formsDeleted = await prisma.formSubmission.deleteMany({
+                    where: { contactId: conversation.contactId }
+                });
+                console.log(` - Deleted ${formsDeleted.count} form submissions`);
+
+                const dealsDeleted = await prisma.deal.deleteMany({
+                    where: { contactId: conversation.contactId }
+                });
+                console.log(` - Deleted ${dealsDeleted.count} deals`);
+
+                const scheduledDeleted = await prisma.scheduledCall.deleteMany({
+                    where: { contactId: conversation.contactId }
+                });
+                console.log(` - Deleted ${scheduledDeleted.count} scheduled calls`);
+
+                // Kişiyi tamamen sil
+                await prisma.contact.delete({
+                    where: { id: conversation.contactId }
+                });
+                console.log(` - Contact HARD DELETED: ${conversation.contactId}`);
             } else {
-                // Başka sohbetleri var → sadece notları temizle
                 await prisma.contact.update({
                     where: { id: conversation.contactId },
                     data: { notes: null }
