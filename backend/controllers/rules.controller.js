@@ -612,9 +612,11 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             return;
         }
 
-        // 4. Find sales team
+        // 4. Find team: SALES_PHONE_CALL config → sohbetin takımı → ChannelRouting → varsayılan takım
         const salesFunnelName = config.funnelName || 'Satış Akışı';
         let salesTeamId = config.teamId;
+
+        // 4a. SALES_PHONE_CALL config'den takım
         if (!salesTeamId) {
             const salesFunnel = await prisma.funnel.findFirst({
                 where: { workspaceId, name: { contains: salesFunnelName.split(' ')[0], mode: 'insensitive' } }
@@ -626,6 +628,47 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 where: { workspaceId, name: { contains: 'satış', mode: 'insensitive' } }
             });
             salesTeamId = namedTeam?.id;
+        }
+
+        // 4b. Sohbetin assignedTeamId'sinden takım
+        if (!salesTeamId && latestConversation) {
+            const convWithTeam = await prisma.conversation.findFirst({
+                where: { workspaceId, contactId },
+                orderBy: { updatedAt: 'desc' },
+                select: { assignedTeamId: true, channel: true }
+            });
+            if (convWithTeam?.assignedTeamId) {
+                salesTeamId = convWithTeam.assignedTeamId;
+                console.log(`📋 [RULE:AUTO_CALL] Takım sohbetten bulundu: ${salesTeamId}`);
+            }
+        }
+
+        // 4c. ChannelRouting'den takım (kanal → takım eşleşmesi)
+        if (!salesTeamId) {
+            const channel = latestConversation?.channel || source;
+            if (channel) {
+                const channelRouting = await prisma.channelRouting.findFirst({
+                    where: { workspaceId, channel, isActive: true },
+                    select: { teamId: true, team: { select: { name: true } } }
+                });
+                if (channelRouting?.teamId) {
+                    salesTeamId = channelRouting.teamId;
+                    console.log(`📋 [RULE:AUTO_CALL] Takım ChannelRouting'den bulundu: ${channelRouting.team?.name} (kanal: ${channel})`);
+                }
+            }
+        }
+
+        // 4d. Varsayılan takım (workspace'teki ilk takım)
+        if (!salesTeamId) {
+            const defaultTeam = await prisma.team.findFirst({
+                where: { workspaceId },
+                orderBy: { createdAt: 'asc' },
+                select: { id: true, name: true }
+            });
+            if (defaultTeam) {
+                salesTeamId = defaultTeam.id;
+                console.log(`📋 [RULE:AUTO_CALL] Varsayılan takım: ${defaultTeam.name} (${defaultTeam.id})`);
+            }
         }
 
         // 5. Round-robin agent selection
@@ -673,6 +716,8 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         }
 
         // 7. Create CALL activity
+        const teamLabel = salesTeamId ? salesTeamId : 'YOK';
+        const userLabel = assignedUserId ? assignedUserId : 'YOK';
         await prisma.contactActivity.create({
             data: {
                 workspaceId,
@@ -683,11 +728,13 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
-                assignedToId: (config.assignDirectly === true && assignedUserId) ? assignedUserId : null,
-                source: 'AUTOMATION'
+                assignedToId: assignedUserId || null,
+                source: 'AUTOMATION',
+                fallbackToAi: true,
+                aiFallbackTriggered: false
             }
         });
-        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source})`);
+        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, team: ${teamLabel}, user: ${userLabel})`);
 
         // 8. Emit socket events
         emitToWorkspace(workspaceId, 'activity_created', {
