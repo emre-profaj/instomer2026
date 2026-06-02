@@ -233,6 +233,10 @@ export const processSmartReminders = async () => {
         // - Has a bot assigned (directly or via channel)
         // - reminderCount < 5
         // - Has lastBotMessageAt (bot has interacted)
+        // Time window: Only consider conversations where bot messaged within last 48h
+        // This prevents ancient stale conversations from filling the batch limit
+        const cutoffDate = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+        
         const conversations = await prisma.conversation.findMany({
             where: {
                 OR: [
@@ -243,7 +247,7 @@ export const processSmartReminders = async () => {
                     { botEnabled: true } // Also catch conversations where botEnabled is set directly
                 ],
                 botEnabled: true, // CRITICAL: Only send reminders if bot is active
-                lastBotMessageAt: { not: null },
+                lastBotMessageAt: { not: null, gte: cutoffDate },
                 reminderCount: { lt: 5 },
                 status: 'OPEN',
                 channel: { in: ['WHATSAPP', 'FACEBOOK', 'INSTAGRAM', 'EMAIL', 'WIDGET'] }
@@ -255,7 +259,8 @@ export const processSmartReminders = async () => {
                 whatsappPhoneNumber: { include: { assignedBot: true } },
                 emailChannel: { include: { assignedBot: true } }
             },
-            take: 50 // Batch limit
+            orderBy: { lastBotMessageAt: 'desc' }, // Process most recent first
+            take: 200 // Increased batch limit
         });
 
         if (conversations.length === 0) return;
