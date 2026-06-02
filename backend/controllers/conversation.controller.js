@@ -1183,13 +1183,49 @@ export const deleteConversation = async (req, res) => {
             }
         }
 
-        // 5. Clear contact notes and AI analysis
+        // 5. Soft-delete contact: kişi bilgilerini temizle + gizle
         if (conversation.contactId) {
-            await prisma.contact.update({
-                where: { id: conversation.contactId },
-                data: { notes: null }
+            // Bu kişinin başka aktif sohbeti var mı kontrol et
+            const otherConversations = await prisma.conversation.count({
+                where: {
+                    contactId: conversation.contactId,
+                    id: { not: conversationId }
+                }
             });
-            console.log(` - Cleared contact notes`);
+
+            if (otherConversations === 0) {
+                // Başka sohbeti yok → kişiyi soft-delete yap ve bilgileri temizle
+                await prisma.contact.update({
+                    where: { id: conversation.contactId },
+                    data: {
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        name: null,
+                        phone: null,
+                        email: null,
+                        notes: null,
+                        tags: '[]',
+                        status: 'NEW',
+                        category: 'NEW',
+                        source: 'MANUAL',
+                        funnelType: null,
+                        funnelStageId: null,
+                        company: null,
+                        language: null,
+                        country: null,
+                        city: null,
+                        lastContactedAt: null
+                    }
+                });
+                console.log(` - Contact soft-deleted and info cleared: ${conversation.contactId}`);
+            } else {
+                // Başka sohbetleri var → sadece notları temizle
+                await prisma.contact.update({
+                    where: { id: conversation.contactId },
+                    data: { notes: null }
+                });
+                console.log(` - Contact has ${otherConversations} other conversations, only notes cleared`);
+            }
         }
 
         // 6. Delete the conversation
