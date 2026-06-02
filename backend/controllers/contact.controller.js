@@ -1867,9 +1867,9 @@ export const deleteContact = async (req, res) => {
             return res.status(403).json({ error: 'Sadece SuperAdmin kişi silebilir.' });
         }
 
-        console.log(`🗑️ [Delete Contact] START (soft delete) - ID: ${id}`);
+        console.log(`🗑️ [Delete Contact] START (hard delete) - ID: ${id}`);
 
-        // Verify contact belongs to this workspace (either directly or via conversation)
+        // Verify contact belongs to this workspace
         const existing = await prisma.contact.findFirst({
             where: {
                 id,
@@ -1877,31 +1877,81 @@ export const deleteContact = async (req, res) => {
                     { workspaceId: workspaceId },
                     { conversations: { some: { workspaceId: workspaceId } } }
                 ]
+            },
+            include: {
+                conversations: { select: { id: true } }
             }
         });
         if (!existing) {
             return res.status(404).json({ error: 'Contact not found' });
         }
 
-        // 1. Soft delete: mark the contact as deleted
-        await prisma.contact.update({
-            where: { id },
-            data: {
-                isDeleted: true,
-                deletedAt: new Date()
-            }
-        });
+        // 1. Tüm sohbetlerin mesajlarını, notlarını ve transferlerini sil
+        const convIds = existing.conversations.map(c => c.id);
+        if (convIds.length > 0) {
+            const msgDeleted = await prisma.message.deleteMany({
+                where: { conversationId: { in: convIds } }
+            });
+            console.log(` - Deleted ${msgDeleted.count} messages`);
 
-        // 2. Close all open conversations for this contact in this workspace
-        await prisma.conversation.updateMany({
-            where: {
-                contactId: id,
-                workspaceId: workspaceId,
-                status: { not: 'CLOSED' }
-            },
-            data: {
-                status: 'CLOSED'
-            }
+            const notesDeleted = await prisma.internalNote.deleteMany({
+                where: { conversationId: { in: convIds } }
+            });
+            console.log(` - Deleted ${notesDeleted.count} internal notes`);
+
+            const transfersDeleted = await prisma.conversationTransfer.deleteMany({
+                where: { conversationId: { in: convIds } }
+            });
+            console.log(` - Deleted ${transfersDeleted.count} transfers`);
+
+            // RetellCall conversationId temizle
+            await prisma.retellCall.updateMany({
+                where: { conversationId: { in: convIds } },
+                data: { conversationId: null }
+            });
+        }
+
+        // 2. Sohbetleri sil
+        const convDeleted = await prisma.conversation.deleteMany({
+            where: { contactId: id }
+        });
+        console.log(` - Deleted ${convDeleted.count} conversations`);
+
+        // 3. Bağlı kayıtları sil
+        const activitiesDeleted = await prisma.contactActivity.deleteMany({
+            where: { contactId: id }
+        });
+        console.log(` - Deleted ${activitiesDeleted.count} activities`);
+
+        const retellDeleted = await prisma.retellCall.deleteMany({
+            where: { contactId: id }
+        });
+        console.log(` - Deleted ${retellDeleted.count} retell calls`);
+
+        const formsDeleted = await prisma.formSubmission.deleteMany({
+            where: { contactId: id }
+        });
+        console.log(` - Deleted ${formsDeleted.count} form submissions`);
+
+        const dealsDeleted = await prisma.deal.deleteMany({
+            where: { contactId: id }
+        });
+        console.log(` - Deleted ${dealsDeleted.count} deals`);
+
+        const scheduledDeleted = await prisma.scheduledCall.deleteMany({
+            where: { contactId: id }
+        });
+        console.log(` - Deleted ${scheduledDeleted.count} scheduled calls`);
+
+        // 4. Lead kaydını sil (varsa)
+        if (existing.facebookId?.startsWith('lead_')) {
+            const leadId = existing.facebookId.replace('lead_', '');
+            await prisma.facebookLead.deleteMany({ where: { leadId } }).catch(() => {});
+        }
+
+        // 5. Kişiyi tamamen sil
+        await prisma.contact.delete({
+            where: { id }
         });
 
         // Emit socket event so UI updates in real-time
@@ -1910,8 +1960,8 @@ export const deleteContact = async (req, res) => {
             isDeleted: true
         });
 
-        console.log(`✅ [Delete Contact] SUCCESS (soft delete) - ID: ${id}`);
-        res.json({ message: 'Contact deleted successfully (soft delete)' });
+        console.log(`✅ [Delete Contact] SUCCESS (hard delete) - ID: ${id}`);
+        res.json({ message: 'Kişi ve tüm verileri tamamen silindi.' });
     } catch (error) {
         console.error('Delete contact error:', error);
         res.status(500).json({ error: 'Failed to delete contact' });
