@@ -1603,10 +1603,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             { key: null, label: 'ATANAN', style: { minWidth: '80px', maxWidth: '140px' } },
                                             { key: 'source', label: 'KAYNAK', style: { minWidth: '70px', maxWidth: '100px' } },
                                             { key: null, label: 'ETİKETLER', style: { minWidth: '80px', maxWidth: '140px' } },
-                                            { key: null, label: 'SOHBET', style: { minWidth: '55px', maxWidth: '65px', textAlign: 'center' } },
-                                            { key: 'firstMessageAt', label: 'İLK YAZMA', style: { minWidth: '90px', maxWidth: '105px' } },
-                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '90px', maxWidth: '105px' } },
-                                            { key: 'createdAt', label: 'KAYIT', style: { minWidth: '80px', maxWidth: '95px' } },
+                                            { key: null, label: '#', style: { minWidth: '40px', maxWidth: '50px', textAlign: 'center' } },
+                                            { key: 'firstMessageAt', label: 'İLK YAZMA', style: { minWidth: '100px', maxWidth: '120px' } },
+                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '100px', maxWidth: '120px' } },
+                                            { key: 'createdAt', label: 'KAYIT', style: { minWidth: '90px', maxWidth: '110px' } },
                                             { key: null, label: 'SON NOT', style: { minWidth: '100px', maxWidth: '160px' } },
                                         ].map(col => (
                                             <th
