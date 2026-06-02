@@ -2,6 +2,105 @@ import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 
+// ────────────────────────────────────────────────────────────────────────────
+// SMART TIMING PARSER — Müşteri mesajlarından zamanlama tercihini algıla
+// "yarın arar mısınız", "pazartesi", "haftaya", "2 gün sonra" gibi ifadeler
+// ────────────────────────────────────────────────────────────────────────────
+function parseCallTimingFromMessages(messagesText) {
+    if (!messagesText) return null;
+    const text = messagesText.toLowerCase().replace(/[?!.,]/g, ' ');
+
+    const now = new Date();
+    const TR_OFFSET_H = 3; // Turkey UTC+3
+
+    // Helper: Turkey local hour right now
+    const turkeyNow = new Date(now.getTime() + TR_OFFSET_H * 3600000);
+    const turkeyHour = turkeyNow.getUTCHours();
+    const turkeyDay = turkeyNow.getUTCDay(); // 0=Sun
+
+    // Helper: create UTC date from Turkey-local day offset + hour
+    const makeDate = (daysFromNow, hour, minute = 0) => {
+        const d = new Date(now);
+        d.setDate(d.getDate() + daysFromNow);
+        d.setUTCHours(hour - TR_OFFSET_H, minute, 0, 0);
+        // Ensure we don't schedule in the past
+        if (d <= now) d.setDate(d.getDate() + 1);
+        return d;
+    };
+
+    // ── "yarın" (tomorrow) ──
+    if (/yarın/.test(text)) {
+        if (/sabah/.test(text)) return makeDate(1, 9, 30);
+        if (/öğleden\s*sonra/.test(text)) return makeDate(1, 14, 0);
+        if (/akşam/.test(text)) return makeDate(1, 18, 0);
+        if (/öğle/.test(text)) return makeDate(1, 12, 0);
+        return makeDate(1, 10, 0); // Default: yarın 10:00
+    }
+
+    // ── "bugün" + time of day ──
+    if (/bugün/.test(text)) {
+        if (/akşam/.test(text)) return makeDate(0, 18, 0);
+        if (/öğleden\s*sonra/.test(text)) return makeDate(0, 14, 0);
+        if (/öğle/.test(text)) return makeDate(0, 12, 0);
+        return makeDate(0, turkeyHour + 1, 0); // +1 saat
+    }
+
+    // ── Specific day names ──
+    const dayNames = {
+        'pazartesi': 1, 'salı': 2, 'çarşamba': 3, 'perşembe': 4,
+        'cuma': 5, 'cumartesi': 6, 'pazar': 0
+    };
+    for (const [name, dayNum] of Object.entries(dayNames)) {
+        if (text.includes(name)) {
+            let daysUntil = dayNum - turkeyDay;
+            if (daysUntil <= 0) daysUntil += 7;
+            return makeDate(daysUntil, 10, 0);
+        }
+    }
+
+    // ── "hafta sonu" (weekend) ──
+    if (/hafta\s*sonu/.test(text)) {
+        let daysUntil = 6 - turkeyDay; // Saturday
+        if (daysUntil <= 0) daysUntil += 7;
+        return makeDate(daysUntil, 10, 0);
+    }
+
+    // ── "haftaya" / "gelecek hafta" (next week) ──
+    if (/haftaya|gelecek\s*hafta/.test(text)) {
+        let daysUntilMon = 1 - turkeyDay;
+        if (daysUntilMon <= 0) daysUntilMon += 7;
+        return makeDate(daysUntilMon, 10, 0);
+    }
+
+    // ── "X gün sonra" ──
+    const gunSonra = text.match(/(\d+)\s*gün\s*sonra/);
+    if (gunSonra) {
+        const days = parseInt(gunSonra[1]);
+        if (days > 0 && days <= 30) return makeDate(days, 10, 0);
+    }
+
+    // ── "bir kaç gün" / "birkaç gün" ──
+    if (/birka[cç]\s*gün/.test(text)) return makeDate(2, 10, 0);
+
+    // ── "X saat sonra" ──
+    const saatSonra = text.match(/(\d+)\s*saat\s*sonra/);
+    if (saatSonra) {
+        const hours = parseInt(saatSonra[1]);
+        if (hours > 0 && hours <= 48) return new Date(now.getTime() + hours * 3600000);
+    }
+
+    // ── "bir saat sonra" / "birkaç saat sonra" ──
+    if (/bir\s*saat\s*sonra/.test(text)) return new Date(now.getTime() + 3600000);
+    if (/birka[cç]\s*saat/.test(text)) return new Date(now.getTime() + 3 * 3600000);
+
+    // ── "sonra" / "daha sonra" (generic later — give 2 hours) ──
+    if (/daha\s*sonra|sonra\s*arayın|sonra\s*ara/.test(text)) {
+        return new Date(now.getTime() + 2 * 3600000);
+    }
+
+    return null; // No timing preference found
+}
+
 // Default keyword list for HOT_KEYWORD rule
 const DEFAULT_HOT_KEYWORDS = [
     'randevu planla',
@@ -700,20 +799,46 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             }
         }
 
-        // 6. Calculate due date (business hours aware)
+        // 6. Calculate due date — first check customer messages for timing preference
         let dueDate;
         const now = new Date();
-        const turkeyOffset = 3 * 60;
-        const localMs = now.getTime() + (turkeyOffset - now.getTimezoneOffset()) * 60000;
-        const localNow = new Date(localMs);
-        const hour = localNow.getHours();
-        if (hour >= 9 && hour < 18) {
-            const delayMin = config.callDelayMinutes || 15;
-            dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
-        } else {
-            dueDate = new Date(now);
-            dueDate.setDate(dueDate.getDate() + (hour >= 18 ? 1 : 0));
-            dueDate.setHours(9, 15, 0, 0);
+        let timingSource = 'DEFAULT';
+
+        try {
+            const recentMsgs = await prisma.message.findMany({
+                where: {
+                    conversation: { workspaceId, contactId },
+                    isFromContact: true,
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+                select: { content: true }
+            });
+            const combinedText = recentMsgs.map(m => m.content || '').join(' ');
+            const customerTiming = parseCallTimingFromMessages(combinedText);
+            if (customerTiming) {
+                dueDate = customerTiming;
+                timingSource = 'CUSTOMER_PREFERENCE';
+                console.log(`🕐 [RULE:AUTO_CALL] Müşteri zamanlama tercihi algılandı: ${dueDate.toISOString()} (metin: "${combinedText.substring(0, 100)}")`);
+            }
+        } catch (err) {
+            console.error('⚠️ [RULE:AUTO_CALL] Timing parse error (non-blocking):', err.message);
+        }
+
+        // Fallback: default business hours delay
+        if (!dueDate) {
+            const turkeyOffset = 3 * 60;
+            const localMs = now.getTime() + (turkeyOffset - now.getTimezoneOffset()) * 60000;
+            const localNow = new Date(localMs);
+            const hour = localNow.getHours();
+            if (hour >= 9 && hour < 18) {
+                const delayMin = config.callDelayMinutes || 15;
+                dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
+            } else {
+                dueDate = new Date(now);
+                dueDate.setDate(dueDate.getDate() + (hour >= 18 ? 1 : 0));
+                dueDate.setHours(9, 15, 0, 0);
+            }
         }
 
         // 7. Create CALL activity
@@ -736,7 +861,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 aiFallbackTriggered: false
             }
         });
-        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, team: ${teamLabel}, user: ${userLabel})`);
+        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, timing: ${timingSource}, team: ${teamLabel}, user: ${userLabel})`);
 
         // 8. Emit socket events
         emitToWorkspace(workspaceId, 'activity_created', {
