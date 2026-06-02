@@ -38,7 +38,7 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                 const lastConv = await prisma.conversation.findFirst({
                     where: { 
                         workspaceId,
-                        teamIds: { string_contains: team.id },
+                        teamIds: { contains: team.id },
                         assignedToId: { not: null } 
                     },
                     orderBy: { updatedAt: 'desc' },
