@@ -194,51 +194,50 @@ const Funnels = () => {
             {/* Create form */}
             <div className="funnels-create-card">
                 <h2>Yeni Akış Ekle</h2>
-                <div className="funnels-create-row">
-                    <input
-                        className="funnels-input"
-                        type="text"
-                        placeholder={t('funnels.createPlaceholder')}
-                        value={newName}
-                        onChange={e => setNewName(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleCreate()}
-                    />
-                    <button
-                        className="funnels-btn-primary"
-                        onClick={handleCreate}
-                        disabled={saving || !newName.trim()}
-                    >
-                        {saving ? <Loader size={15} className="spin" /> : <Plus size={15} />}
-                        Oluştur
-                    </button>
-                </div>
-                <div className="funnels-create-row" style={{ marginTop: '10px' }}>
-                    <select
-                        className="funnels-input"
-                        value={newTeamId}
-                        onChange={e => setNewTeamId(e.target.value)}
-                    >
-                        <option value="">Takım Ata (İsteğe Bağlı)</option>
-                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                <div className="funnels-create-form">
+                    <div className="funnels-create-row">
+                        <input
+                            className="funnels-input"
+                            type="text"
+                            placeholder={t('funnels.createPlaceholder')}
+                            value={newName}
+                            onChange={e => setNewName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+                        />
+                        <button
+                            className="funnels-btn-primary"
+                            onClick={handleCreate}
+                            disabled={saving || !newName.trim()}
+                        >
+                            {saving ? <Loader size={15} className="spin" /> : <Plus size={15} />}
+                            Oluştur
+                        </button>
+                    </div>
+                    <div className="funnels-create-row">
+                        <select
+                            className="funnels-input"
+                            value={newTeamId}
+                            onChange={e => setNewTeamId(e.target.value)}
+                        >
+                            <option value="">Takım Ata (İsteğe Bağlı)</option>
+                            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
 
-                    <select
-                        className="funnels-input"
-                        value={newUserId}
-                        onChange={e => setNewUserId(e.target.value)}
-                    >
-                        <option value="">Kişi Ata (İsteğe Bağlı)</option>
-                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
-                </div>
-                <div style={{ marginTop: '10px' }}>
+                        <select
+                            className="funnels-input"
+                            value={newUserId}
+                            onChange={e => setNewUserId(e.target.value)}
+                        >
+                            <option value="">Kişi Ata (İsteğe Bağlı)</option>
+                            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                    </div>
                     <textarea
-                        className="funnels-input"
+                        className="funnels-input funnels-criteria-textarea"
                         placeholder="🤖 AI Giriş Kriterleri — Bu akışa hangi konuşmalar atanmalı? Örn: 'Estetik cerrahi, check-up, doğum paketi, poliklinik soruları bu akışa girer'"
                         value={newClassificationCriteria}
                         onChange={e => setNewClassificationCriteria(e.target.value)}
                         rows={2}
-                        style={{ width: '100%', resize: 'vertical', fontSize: '13px' }}
                     />
                 </div>
             </div>
