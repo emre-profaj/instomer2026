@@ -798,20 +798,56 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
         let assignedTeamId = null;
         let assignedToId = null;
         let conversationId = null;
+        let conversationChannel = null;
 
         if (contactId) {
             try {
                 const latestConv = await prisma.conversation.findFirst({
                     where: { contactId, workspaceId },
                     orderBy: { lastMessageAt: 'desc' },
-                    select: { id: true, assignedTeamId: true, assignedToId: true }
+                    select: { id: true, assignedTeamId: true, assignedToId: true, channel: true }
                 });
                 if (latestConv) {
                     conversationId = latestConv.id;
                     assignedTeamId = latestConv.assignedTeamId || null;
                     assignedToId = latestConv.assignedToId || null;
+                    conversationChannel = latestConv.channel || null;
                 }
             } catch (e) { console.warn('⚠️ [AutoCall] Failed to find conversation:', e.message); }
+        }
+
+        // ─── FALLBACK: Sohbette takım/kişi yoksa kanal routing'den veya varsayılan takımdan bul ───
+        if (!assignedTeamId && !assignedToId) {
+            try {
+                // 1. Kanal routing'den takım bul (ChannelRouting tablosu)
+                if (conversationChannel) {
+                    const channelRouting = await prisma.channelRouting.findFirst({
+                        where: {
+                            workspaceId,
+                            channel: conversationChannel,
+                            isActive: true
+                        },
+                        select: { teamId: true }
+                    });
+                    if (channelRouting?.teamId) {
+                        assignedTeamId = channelRouting.teamId;
+                        console.log(`📋 [AutoCall] Takım ChannelRouting'den bulundu: ${assignedTeamId} (kanal: ${conversationChannel})`);
+                    }
+                }
+
+                // 2. Hâlâ takım yoksa, workspace'teki ilk takımı kullan
+                if (!assignedTeamId) {
+                    const defaultTeam = await prisma.team.findFirst({
+                        where: { workspaceId },
+                        orderBy: { createdAt: 'asc' },
+                        select: { id: true, name: true }
+                    });
+                    if (defaultTeam) {
+                        assignedTeamId = defaultTeam.id;
+                        console.log(`📋 [AutoCall] Varsayılan takım kullanıldı: ${defaultTeam.name} (${defaultTeam.id})`);
+                    }
+                }
+            } catch (e) { console.warn('⚠️ [AutoCall] Fallback team resolution error:', e.message); }
         }
 
         // Workspace/Team fallback delay ayarı
