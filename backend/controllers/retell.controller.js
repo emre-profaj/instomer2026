@@ -763,33 +763,110 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
         console.log(`🏷️ [AutoCall] Dynamic variables:`, JSON.stringify(dynamicVars, null, 2));
         // ────────────────────────────────────────────────────────────────────────────
 
-        const delayMs = scheduledAt.getTime() - Date.now();
-        if (delayMs > 2 * 60 * 1000) {
-            await prisma.scheduledCall.create({
-                data: {
-                    workspaceId,
-                    contactId: contactId || null,
-                    contactName: contactName || null,
-                    toNumber: formattedPhone,
-                    agentId: ruleAgentId || null,
-                    scheduledAt: scheduledAt,
-                    status: 'PENDING',
-                    createdById: 'auto',
-                    dynamicVariables: dynamicVarsJson
-                }
-            });
-            console.log(`📅 [AutoCall] Saved ScheduledCall to DB for ${scheduledAt.toLocaleString('tr-TR')}`);
-
-
-        } else {
-            setTimeout(async () => {
-                try {
-                    await executeScheduledCall(workspaceId, formattedPhone, ruleAgentId, contactId, contactName, triggerSource, '', dynamicVars);
-                } catch (callErr) {
-                    console.error(`❌ [AutoCall] Failed to call ${formattedPhone}:`, callErr.message);
-                }
-            }, Math.max(0, delayMs));
+        // ─── CHAT_REQUEST: Müşteri "beni arayın" dedi → Direkt AI arar ──────────
+        if (triggerSource === 'CHAT_REQUEST') {
+            const delayMs = scheduledAt.getTime() - Date.now();
+            if (delayMs > 2 * 60 * 1000) {
+                await prisma.scheduledCall.create({
+                    data: {
+                        workspaceId,
+                        contactId: contactId || null,
+                        contactName: contactName || null,
+                        toNumber: formattedPhone,
+                        agentId: ruleAgentId || null,
+                        scheduledAt: scheduledAt,
+                        status: 'PENDING',
+                        createdById: 'auto_chat_request',
+                        dynamicVariables: dynamicVarsJson
+                    }
+                });
+                console.log(`📅 [AutoCall] CHAT_REQUEST → ScheduledCall at ${scheduledAt.toLocaleString('tr-TR')}`);
+            } else {
+                setTimeout(async () => {
+                    try {
+                        await executeScheduledCall(workspaceId, formattedPhone, ruleAgentId, contactId, contactName, triggerSource, '', dynamicVars);
+                    } catch (callErr) {
+                        console.error(`❌ [AutoCall] CHAT_REQUEST call failed ${formattedPhone}:`, callErr.message);
+                    }
+                }, Math.max(0, delayMs));
+            }
+            return;
         }
+
+        // ─── DİĞER TRİGGER'LAR: Takım/Kişiye görev ata → Sürede yapılmazsa AI devralır ──
+        // Sohbetin atandığı takım/kişiyi bul
+        let assignedTeamId = null;
+        let assignedToId = null;
+        let conversationId = null;
+
+        if (contactId) {
+            try {
+                const latestConv = await prisma.conversation.findFirst({
+                    where: { contactId, workspaceId },
+                    orderBy: { lastMessageAt: 'desc' },
+                    select: { id: true, assignedTeamId: true, assignedToId: true }
+                });
+                if (latestConv) {
+                    conversationId = latestConv.id;
+                    assignedTeamId = latestConv.assignedTeamId || null;
+                    assignedToId = latestConv.assignedToId || null;
+                }
+            } catch (e) { console.warn('⚠️ [AutoCall] Failed to find conversation:', e.message); }
+        }
+
+        // Workspace/Team fallback delay ayarı
+        let fallbackDelayMinutes = 60; // default
+        if (assignedTeamId) {
+            try {
+                const team = await prisma.team.findUnique({
+                    where: { id: assignedTeamId },
+                    select: { aiFallbackDelayMinutes: true }
+                });
+                if (team?.aiFallbackDelayMinutes) fallbackDelayMinutes = team.aiFallbackDelayMinutes;
+            } catch (_) {}
+        }
+
+        // Mevcut PLANNED arama aktivitesi var mı kontrol et (dedup)
+        const existingActivity = await prisma.contactActivity.findFirst({
+            where: {
+                contactId: contactId,
+                workspaceId,
+                type: 'CALL',
+                status: 'PLANNED',
+                aiFallbackTriggered: false
+            }
+        });
+        if (existingActivity) {
+            console.log(`⏭️ [AutoCall] Skipping: PLANNED call activity already exists for contact ${contactId} (activity: ${existingActivity.id})`);
+            return;
+        }
+
+        // ContactActivity oluştur — takım/kişiye görev olarak ata
+        const activity = await prisma.contactActivity.create({
+            data: {
+                contactId: contactId,
+                workspaceId,
+                type: 'CALL',
+                title: `Arama: ${contactName || formattedPhone}`,
+                description: dynamicVars.interest_topic
+                    ? `Konu: ${dynamicVars.interest_topic}\nKaynak: ${triggerSource}\nNumara: ${formattedPhone}`
+                    : `Kaynak: ${triggerSource}\nNumara: ${formattedPhone}`,
+                dueDate: scheduledAt,
+                status: 'PLANNED',
+                source: 'AUTOMATION',
+                priority: 'NORMAL',
+                assignedToId: assignedToId,
+                teamId: assignedTeamId,
+                callTopic: dynamicVars.interest_topic || null,
+                aiAgentId: (!assignedToId && !assignedTeamId) ? ruleAgentId : null, // Kimseye atanmadıysa direkt AI
+                fallbackToAi: true,
+                fallbackDelayMinutes: fallbackDelayMinutes,
+                aiFallbackTriggered: false
+            }
+        });
+
+        const assignLabel = assignedToId ? `Kişi: ${assignedToId}` : assignedTeamId ? `Takım: ${assignedTeamId}` : 'Direkt AI (sahipsiz)';
+        console.log(`📋 [AutoCall] ContactActivity oluşturuldu: ${activity.id} → ${assignLabel} | Due: ${scheduledAt.toLocaleString('tr-TR')} | Fallback: ${fallbackDelayMinutes}dk`);
 
     } catch (error) {
         console.error('❌ [AutoCall] triggerAutoCall error:', error.message);
@@ -1124,15 +1201,38 @@ export const processScheduledCalls = async () => {
                     console.log(`📅 [ScheduledCall] Auto-cancelled overdue call for ${sc.toNumber}`);
                     continue;
                 }
-                // Dedup: skip if already called this number in last 24h
-                const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-                const recentCall = await prisma.retellCall.findFirst({
-                    where: { workspaceId: sc.workspaceId, toNumber: sc.toNumber, createdAt: { gte: since24h } }
-                });
-                if (recentCall) {
-                    await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Dedup: already called in last 24h' } });
-                    console.log(`📅 [ScheduledCall] Cancelled (dedup) for ${sc.toNumber} — already called`);
-                    continue;
+                // ─── BAŞARILI GEÇMİŞ KONUŞMA KONTROLÜ ───────────────────────────
+                // Bu numara ile daha önce başarılı AI konuşması olmuş mu?
+                if (sc.contactId) {
+                    const successfulPastCall = await prisma.retellCall.findFirst({
+                        where: {
+                            workspaceId: sc.workspaceId,
+                            toNumber: sc.toNumber,
+                            callSuccessful: true,
+                            duration: { gte: 30 } // 30 saniyeden uzun = gerçek konuşma
+                        }
+                    });
+                    if (successfulPastCall) {
+                        await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Daha önce başarılı AI konuşması yapılmış' } });
+                        console.log(`📅 [ScheduledCall] Cancelled for ${sc.toNumber} — başarılı geçmiş konuşma mevcut (${successfulPastCall.callId})`);
+                        continue;
+                    }
+                }
+
+                // ─── DEDUP: Retry zinciri hariç, 24h içinde aranmışsa atla ────────
+                if (!sc.parentCallId) {
+                    // İlk çağrı (retry değil) → standart dedup uygula
+                    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+                    const recentCall = await prisma.retellCall.findFirst({
+                        where: { workspaceId: sc.workspaceId, toNumber: sc.toNumber, createdAt: { gte: since24h } }
+                    });
+                    if (recentCall) {
+                        await prisma.scheduledCall.update({ where: { id: sc.id }, data: { status: 'CANCELLED', errorMessage: 'Dedup: already called in last 24h' } });
+                        console.log(`📅 [ScheduledCall] Cancelled (dedup) for ${sc.toNumber} — already called`);
+                        continue;
+                    }
+                } else {
+                    console.log(`🔄 [ScheduledCall] Retry ${sc.attemptNumber}/${sc.maxAttempts} for ${sc.toNumber} — dedup bypassed`);
                 }
                 // If it is an activity-bound call, check if the activity is still valid for calling
                 if (sc.createdById && sc.createdById.startsWith('activity_')) {
@@ -2064,8 +2164,78 @@ async function handleCallEnded(call) {
                 });
             }
 
-            // If this call was initiated from an agent's overdue call activity, auto-complete it
-            if (callRecord.createdById && callRecord.createdById.startsWith('activity_')) {
+            // ─── BAŞARISIZ ÇAĞRI RETRY MANTİĞİ ──────────────────────────────────
+            // Açılmayan, meşgul, sesli mesaj veya çok kısa (<10sn) çağrılar başarısız sayılır
+            const failedReasons = ['no_answer', 'busy', 'voicemail_reached', 'machine_detected', 'dial_failed', 'dial_no_answer'];
+            const disconnectReason = call.disconnection_reason || '';
+            const isFailedCall = failedReasons.some(r => disconnectReason.toLowerCase().includes(r)) || (duration !== null && duration < 10);
+
+            if (isFailedCall && callRecord.createdById) {
+                // Bu çağrının ScheduledCall kaydını bul (retry bilgisi için)
+                const scheduledCall = await prisma.scheduledCall.findFirst({
+                    where: { retellCallId: call.call_id }
+                });
+
+                if (scheduledCall && scheduledCall.attemptNumber < scheduledCall.maxAttempts) {
+                    // +retryDelayMin dakika sonra yeni deneme planla
+                    const retryDelay = scheduledCall.retryDelayMin || 60;
+                    const nextAttemptAt = new Date(Date.now() + retryDelay * 60 * 1000);
+                    const nextAttempt = scheduledCall.attemptNumber + 1;
+
+                    await prisma.scheduledCall.create({
+                        data: {
+                            workspaceId: scheduledCall.workspaceId,
+                            contactId: scheduledCall.contactId,
+                            contactName: scheduledCall.contactName,
+                            toNumber: scheduledCall.toNumber,
+                            agentId: scheduledCall.agentId,
+                            scheduledAt: nextAttemptAt,
+                            status: 'PENDING',
+                            createdById: scheduledCall.createdById,
+                            dynamicVariables: scheduledCall.dynamicVariables,
+                            attemptNumber: nextAttempt,
+                            maxAttempts: scheduledCall.maxAttempts,
+                            retryDelayMin: retryDelay,
+                            parentCallId: scheduledCall.parentCallId || scheduledCall.id,
+                            conversationId: scheduledCall.conversationId
+                        }
+                    });
+                    console.log(`🔄 [Retry] Deneme ${nextAttempt}/${scheduledCall.maxAttempts} planlandı: ${nextAttemptAt.toLocaleString('tr-TR')} (+${retryDelay}dk) | Numara: ${scheduledCall.toNumber}`);
+
+                    // Activity'yi güncelle — henüz tamamlanmadı, retry bekliyor
+                    if (scheduledCall.createdById?.startsWith('activity_')) {
+                        const activityId = scheduledCall.createdById.replace('activity_', '');
+                        try {
+                            await prisma.contactActivity.update({
+                                where: { id: activityId },
+                                data: {
+                                    result: `AI araması başarısız (${disconnectReason}). Deneme ${nextAttempt}/${scheduledCall.maxAttempts} → ${nextAttemptAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`,
+                                    status: 'PLANNED' // Tekrar deneme planlandığı için PLANNED kalır
+                                }
+                            });
+                        } catch (_) {}
+                    }
+                } else if (scheduledCall && scheduledCall.attemptNumber >= scheduledCall.maxAttempts) {
+                    // Tüm denemeler tükendi
+                    console.log(`❌ [Retry] Tüm denemeler tükendi (${scheduledCall.attemptNumber}/${scheduledCall.maxAttempts}) | Numara: ${scheduledCall.toNumber}`);
+                    if (scheduledCall.createdById?.startsWith('activity_')) {
+                        const activityId = scheduledCall.createdById.replace('activity_', '');
+                        try {
+                            await prisma.contactActivity.update({
+                                where: { id: activityId },
+                                data: {
+                                    status: 'CANCELLED',
+                                    result: `AI araması ${scheduledCall.maxAttempts} denemede de başarısız oldu. Son sebep: ${disconnectReason}`,
+                                    source: 'AI_CALL'
+                                }
+                            });
+                        } catch (_) {}
+                    }
+                }
+            }
+
+            // Başarılı çağrı → Activity'yi tamamla (sadece failed retry mantığına girmediyse)
+            if (!isFailedCall && callRecord.createdById && callRecord.createdById.startsWith('activity_')) {
                 const activityId = callRecord.createdById.replace('activity_', '');
                 try {
                     const durationText = duration ? `${duration} saniye` : 'Bilinmiyor';
@@ -2086,7 +2256,7 @@ async function handleCallEnded(call) {
             }
         }
 
-        console.log(`📞 [Retell] Call ended: ${call.call_id}, duration: ${duration}s, hasTranscript: ${!!call.transcript}`);
+        console.log(`📞 [Retell] Call ended: ${call.call_id}, duration: ${duration}s, reason: ${call.disconnection_reason || 'N/A'}, hasTranscript: ${!!call.transcript}`);
     } catch (err) {
         console.error('❌ [Retell] handleCallEnded error:', err.message);
     }

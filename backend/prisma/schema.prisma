@@ -1142,6 +1142,11 @@ model ScheduledCall {
   errorMessage     String?
   createdById      String
   dynamicVariables String?  @db.Text // JSON: { customer_name, interest_topic, source, custom_instruction, ... }
+  attemptNumber    Int      @default(1)    // 1., 2., 3. deneme
+  maxAttempts      Int      @default(3)    // Maksimum deneme sayısı
+  retryDelayMin    Int      @default(60)   // Tekrar arama arası (dakika)
+  parentCallId     String?                 // İlk planlamanın ID'si (retry zinciri)
+  conversationId   String?                 // İlgili sohbet
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
