@@ -731,6 +731,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 assignedToId: assignedUserId || null,
                 source: 'AUTOMATION',
                 fallbackToAi: true,
+                fallbackDelayMinutes: 0, // Planlanan saat geldiğinde agent aramadıysa Retell HEMEN arar
                 aiFallbackTriggered: false
             }
         });

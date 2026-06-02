@@ -1061,9 +1061,9 @@ async function checkOverdueAgentCalls() {
 
             // Delay: activity.fallbackDelayMinutes > team.aiFallbackDelayMinutes > workspace.aiFallbackDelayMinutes
             let delayMinutes;
-            if (activity.fallbackDelayMinutes && activity.fallbackDelayMinutes !== 60) {
-                delayMinutes = activity.fallbackDelayMinutes;
-            } else if (team?.aiFallbackDelayMinutes) {
+            if (activity.fallbackDelayMinutes !== null && activity.fallbackDelayMinutes !== undefined) {
+                delayMinutes = activity.fallbackDelayMinutes; // 0 da geçerli — planlanan saatte hemen arar
+            } else if (team?.aiFallbackDelayMinutes != null) {
                 delayMinutes = team.aiFallbackDelayMinutes;
             } else {
                 delayMinutes = ws?.aiFallbackDelayMinutes || 60;
