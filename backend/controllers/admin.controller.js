@@ -1155,7 +1155,9 @@ export const checkFacebookPagesHealth = async (req, res) => {
 // Get global settings
 export const getGlobalSettings = async (req, res) => {
     try {
-        const settings = await prisma.globalSettings.findFirst();
+        const settings = await prisma.globalSettings.findUnique({
+            where: { id: 'singleton' }
+        });
         res.json({ settings: settings || {} });
     } catch (error) {
         console.error('Get global settings error:', error);
@@ -1168,20 +1170,12 @@ export const updateGlobalSettings = async (req, res) => {
     try {
         const { globalAiApiKey } = req.body;
 
-        // Check if settings exist
-        const existing = await prisma.globalSettings.findFirst();
-
-        let settings;
-        if (existing) {
-            settings = await prisma.globalSettings.update({
-                where: { id: existing.id },
-                data: { globalAiApiKey }
-            });
-        } else {
-            settings = await prisma.globalSettings.create({
-                data: { globalAiApiKey }
-            });
-        }
+        // Always use 'singleton' as the ID to match getAiApiKey lookups
+        const settings = await prisma.globalSettings.upsert({
+            where: { id: 'singleton' },
+            update: { globalAiApiKey },
+            create: { id: 'singleton', globalAiApiKey }
+        });
 
         await logAdminActivity(req, 'UPDATE_SETTINGS', 'SETTINGS', 'global', 'Global Ayarlar');
 
