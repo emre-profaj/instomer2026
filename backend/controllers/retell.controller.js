@@ -818,20 +818,24 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 
         // ─── FALLBACK: Sohbette takım/kişi yoksa kanal routing'den veya varsayılan takımdan bul ───
         if (!assignedTeamId && !assignedToId) {
+            console.log(`📋 [AutoCall] Sohbette takım/kişi yok. Fallback aranıyor... (channel: ${conversationChannel}, trigger: ${triggerSource})`);
             try {
                 // 1. Kanal routing'den takım bul (ChannelRouting tablosu)
-                if (conversationChannel) {
+                // Hem conversation.channel hem de triggerSource ile dene
+                const channelsToTry = [conversationChannel, triggerSource].filter(Boolean);
+                for (const ch of channelsToTry) {
+                    if (assignedTeamId) break;
                     const channelRouting = await prisma.channelRouting.findFirst({
                         where: {
                             workspaceId,
-                            channel: conversationChannel,
+                            channel: ch,
                             isActive: true
                         },
-                        select: { teamId: true }
+                        select: { teamId: true, team: { select: { name: true } } }
                     });
                     if (channelRouting?.teamId) {
                         assignedTeamId = channelRouting.teamId;
-                        console.log(`📋 [AutoCall] Takım ChannelRouting'den bulundu: ${assignedTeamId} (kanal: ${conversationChannel})`);
+                        console.log(`📋 [AutoCall] Takım ChannelRouting'den bulundu: ${channelRouting.team?.name} (${assignedTeamId}) (kanal: ${ch})`);
                     }
                 }
 
@@ -845,9 +849,13 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                     if (defaultTeam) {
                         assignedTeamId = defaultTeam.id;
                         console.log(`📋 [AutoCall] Varsayılan takım kullanıldı: ${defaultTeam.name} (${defaultTeam.id})`);
+                    } else {
+                        console.log(`⚠️ [AutoCall] Workspace'te hiç takım bulunamadı`);
                     }
                 }
             } catch (e) { console.warn('⚠️ [AutoCall] Fallback team resolution error:', e.message); }
+        } else {
+            console.log(`📋 [AutoCall] Sohbetten takım bulundu: teamId=${assignedTeamId}, assignedToId=${assignedToId}`);
         }
 
         // Workspace/Team fallback delay ayarı
