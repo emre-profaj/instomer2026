@@ -531,6 +531,7 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             contactId: contact.id,
             type: 'CALL',
             status: 'PLANNED',
+            dueDate: dueDate.toISOString(),
         });
 
     } catch (error) {
@@ -742,6 +743,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             contactId,
             type: 'CALL',
             status: 'PLANNED',
+            dueDate: dueDate.toISOString(),
         });
 
     } catch (error) {
