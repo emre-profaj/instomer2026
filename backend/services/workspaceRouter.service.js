@@ -49,7 +49,7 @@ async function aiIntentMatch(message, aiDescription, workspaceId) {
         if (!apiKey) return false;
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
         const prompt = `Kullanıcı mesajı: "${message}"
 Hedef niyet açıklaması: "${aiDescription}"
