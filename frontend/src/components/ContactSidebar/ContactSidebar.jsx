@@ -1148,7 +1148,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setIsDeleting(true);
             await contactAPI.delete(currentWorkspace.id, profile.id);
             setShowDeleteConfirm(false);
-            navigate('/inbox');
+            // Socket event (contact_deleted) will handle removing from inbox list
+            // Close sidebar and deselect conversation
+            if (onClose) {
+                onClose();
+            } else {
+                navigate('/inbox');
+            }
         } catch (err) {
             console.error('Delete contact error:', err);
             alert('Kişi silinemedi: ' + (err.response?.data?.error || err.message));

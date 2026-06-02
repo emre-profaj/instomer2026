@@ -1333,6 +1333,29 @@ const Inbox = () => {
             });
         });
 
+        // Listen for contact deletion - remove from inbox immediately (no page refresh needed)
+        socket.on('contact_deleted', (data) => {
+            const { contactId } = data;
+            if (!contactId) return;
+            console.log('🗑️ contact_deleted event received:', contactId);
+
+            // Remove all inbox items for this contact
+            setInboxItems(prev => prev.filter(item => item.contactId !== contactId));
+
+            // If the deleted contact's conversation is currently selected, deselect it
+            if (selectedItemRef.current?.contactId === contactId) {
+                setSelectedItem(null);
+                setMessages([]);
+            }
+
+            // Clean up activity badges
+            setPlannedActivityMap(prev => {
+                const next = { ...prev };
+                delete next[contactId];
+                return next;
+            });
+        });
+
         return () => {
             socket.disconnect();
         };
