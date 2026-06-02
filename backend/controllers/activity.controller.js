@@ -599,7 +599,7 @@ export const getWorkspaceCallQueue = async (req, res) => {
             where: {
                 workspaceId,
                 type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
-                status: { in: ['PLANNED', 'COMPLETED'] },
+                status: 'PLANNED',
             },
             include: {
                 contact: {
@@ -617,11 +617,10 @@ export const getWorkspaceCallQueue = async (req, res) => {
                 assignee: { select: { name: true } },
             },
             orderBy: [
-                { isCompleted: 'asc' },
                 { dueDate: 'asc' },
                 { createdAt: 'desc' }
             ],
-            take: 100,
+            take: 500,
         });
 
         res.json(activities);
