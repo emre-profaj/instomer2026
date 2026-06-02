@@ -537,7 +537,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 type: isCallNote ? 'CALL' : (isInternalNote ? 'NOTE' : activityForm.type),
                 title: isCallNote ? 'Telefon Görüşmesi' : (isInternalNote ? 'Dahili Not' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite'))),
                 description: activityForm.description,
-                dueDate: isNoteType ? new Date().toISOString() : (activityForm.dueDate || null),
+                dueDate: isNoteType ? new Date().toISOString() : (activityForm.dueDate ? new Date(activityForm.dueDate).toISOString() : null),
                 assignedToId: activityForm.assignedToId || null,
                 teamId: activityForm.teamId || null,
                 ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() })
@@ -1894,7 +1894,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                         type: item.type || 'CALL',
                                                                                         title: item.title || '',
                                                                                         description: item.content || item.description || '',
-                                                                                        dueDate: item.dueDate ? new Date(item.dueDate).toISOString().slice(0, 16) : '',
+                                                                                        dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
                                                                                         assignedToId: item.assignedToId || '',
                                                                                         teamId: item.teamId || '',
                                                                                         funnelStageId: ''
