@@ -5316,8 +5316,9 @@
 .quick-reply-dropdown-menu {
     position: absolute;
     bottom: 100%;
-    left: 0;
-    min-width: 280px;
+    right: 0;
+    min-width: 320px;
+    max-width: 400px;
     max-height: 320px;
     overflow-y: auto;
     background: #fff;
