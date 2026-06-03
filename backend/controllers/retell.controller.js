@@ -902,7 +902,7 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                 assignedToId: assignedToId,
                 teamId: assignedTeamId,
                 callTopic: dynamicVars.interest_topic || null,
-                aiAgentId: (!assignedToId && !assignedTeamId) ? ruleAgentId : null, // Kimseye atanmadıysa direkt AI
+                aiAgentId: ruleAgentId, // Her zaman AI agent ata — dueDate geldiğinde otomatik arar
                 fallbackToAi: true,
                 fallbackDelayMinutes: fallbackDelayMinutes,
                 aiFallbackTriggered: false
@@ -1106,9 +1106,9 @@ async function checkOverdueAgentCalls() {
             include: { contact: true }
         });
 
-        // ─── SCENARIO 3: Human Timeout Fallback (YENİ — OPT-IN) ───────────
-        // İnsana atanmış ama süresinde yapılmamış → AI devralır
-        // Bu SADECE parametrik ayarlar açıksa çalışır (activity > team > workspace)
+        // ─── SCENARIO 3: Human Timeout Fallback ───────────
+        // İnsana atanmış, aiAgentId yok, süresinde yapılmamış → AI devralır
+        // NOT: aiAgentId varsa Scenario 1 zaten hallediyor, burada tekrar işleme alınmasın
         const humanFallbackCandidates = await prisma.contactActivity.findMany({
             where: {
                 workspaceId: { in: workspaceIds },
@@ -1116,6 +1116,7 @@ async function checkOverdueAgentCalls() {
                 status: 'PLANNED',
                 aiFallbackTriggered: false,
                 assignedToId: { not: null },
+                aiAgentId: null, // aiAgentId varsa Scenario 1 halleder — duplicate önlenir
                 dueDate: { not: null },
                 contact: { phone: { not: null } }
             },
@@ -1284,17 +1285,36 @@ export const processScheduledCalls = async () => {
                     const activity = await prisma.contactActivity.findUnique({
                         where: { id: activityId }
                     });
-                    // If activity is claimed (assignedToId is not null), completed, cancelled, or deleted, do NOT dial
-                    if (!activity || activity.status === 'COMPLETED' || activity.status === 'CANCELLED' || activity.assignedToId) {
+                    // If activity is deleted, completed, or cancelled → do NOT dial
+                    // If assignedToId is set BUT aiFallbackTriggered is true → this is a HUMAN_TIMEOUT
+                    // scenario where AI intentionally took over, so ALLOW the call to proceed
+                    if (!activity || activity.status === 'COMPLETED' || activity.status === 'CANCELLED') {
                         await prisma.scheduledCall.update({
                             where: { id: sc.id },
                             data: {
                                 status: 'CANCELLED',
-                                errorMessage: !activity ? 'Activity deleted' : (activity.assignedToId ? 'Claimed by agent' : `Activity status: ${activity.status}`)
+                                errorMessage: !activity ? 'Activity deleted' : `Activity status: ${activity.status}`
                             }
                         });
-                        console.log(`📅 [ScheduledCall] Cancelled scheduled call ${sc.id} — activity is claimed/completed/cancelled`);
+                        console.log(`📅 [ScheduledCall] Cancelled scheduled call ${sc.id} — activity ${!activity ? 'deleted' : activity.status}`);
                         continue;
+                    }
+                    // If a human agent claimed this task AFTER AI fallback was triggered,
+                    // and the activity was NOT yet marked as AI-triggered, cancel the AI call
+                    if (activity.assignedToId && !activity.aiFallbackTriggered) {
+                        await prisma.scheduledCall.update({
+                            where: { id: sc.id },
+                            data: {
+                                status: 'CANCELLED',
+                                errorMessage: 'Claimed by agent before AI fallback'
+                            }
+                        });
+                        console.log(`📅 [ScheduledCall] Cancelled scheduled call ${sc.id} — claimed by agent (no AI fallback)`);
+                        continue;
+                    }
+                    // aiFallbackTriggered=true + assignedToId set → HUMAN_TIMEOUT, AI takes over → proceed
+                    if (activity.assignedToId && activity.aiFallbackTriggered) {
+                        console.log(`📅 [ScheduledCall] Proceeding with call ${sc.id} — AI fallback triggered (human timeout)`);
                     }
                 }
 
