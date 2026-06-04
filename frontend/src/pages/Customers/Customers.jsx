@@ -1596,6 +1596,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         </th>
                                         {[
                                             { key: 'name', label: 'İSİM', style: { minWidth: '140px' } },
+                                            { key: null, label: '', style: { minWidth: '50px', maxWidth: '90px', textAlign: 'center' } },
                                             { key: 'company', label: 'FİRMA', style: { minWidth: '80px', maxWidth: '120px' } },
                                             { key: null, label: 'TELEFON', style: { minWidth: '100px', maxWidth: '130px' } },
                                             { key: null, label: 'KONU', style: { minWidth: '80px', maxWidth: '140px' } },
@@ -1676,6 +1677,49 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             <span className="contact-email">{contact.email || '---'}</span>
                                                         </div>
                                                     </div>
+                                                </td>
+                                                {/* AKTİVİTELER */}
+                                                <td style={{ maxWidth: '90px', textAlign: 'center', padding: '4px 2px' }}>
+                                                    {(() => {
+                                                        const acts = contact.activities || [];
+                                                        if (acts.length === 0) return null;
+                                                        return (
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                                                {acts.map((e, idx) => {
+                                                                    const done = e.status === 'COMPLETED';
+                                                                    const isCall = e.type === 'CALL';
+                                                                    const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
+                                                                    const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
+                                                                    const brd = done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5');
+                                                                    const color = done ? '#10b981' : (isCall && isOverdue ? '#f97316' : '#ef4444');
+                                                                    const dateStr = e.dueDate ? new Date(e.dueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+                                                                    const typeLabels = { CALL: 'Arama', MEETING: 'Toplantı', VISIT: 'Ziyaret', TASK: 'Görev', REMINDER: 'Hatırlatıcı', NOTE: 'Not' };
+                                                                    const statusLabel = done ? 'Tamamlandı' : (isOverdue ? 'Gecikmiş' : 'Planlandı');
+                                                                    const iconEl = {
+                                                                        NOTE: <StickyNote size={12} color={color} />,
+                                                                        CALL: <PhoneCall size={12} color={color} />,
+                                                                        MEETING: <Calendar size={12} color={color} />,
+                                                                        REMINDER: <Bell size={12} color={color} />,
+                                                                        TASK: <CheckCircle2 size={12} color={color} />,
+                                                                        VISIT: <MapPin size={12} color={color} />,
+                                                                    };
+                                                                    return (
+                                                                        <span key={idx}
+                                                                            title={`${typeLabels[e.type] || e.type} - ${statusLabel}${dateStr ? ' (' + dateStr + ')' : ''}`}
+                                                                            style={{
+                                                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                                                                width: 22, height: 22, borderRadius: '50%',
+                                                                                background: bg, border: `1px solid ${brd}`,
+                                                                                cursor: 'pointer'
+                                                                            }}
+                                                                        >
+                                                                            {iconEl[e.type] || <Bell size={12} color={color} />}
+                                                                        </span>
+                                                                    );
+                                                                })}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 {/* FİRMA */}
                                                 <td className="contact-company" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
