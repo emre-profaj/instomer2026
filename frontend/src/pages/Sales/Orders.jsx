@@ -272,37 +272,41 @@ const Orders = () => {
 
                     {/* Filters */}
                     <div className="sales-list-panel-filters">
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
-                            <option value="ALL">Tüm Durumlar</option>
-                            <option value="OPEN">Açık</option>
-                            <option value="WON">Tamamlandı</option>
-                            <option value="LOST">İptal</option>
-                        </select>
-                        <select
-                            value={agentFilter}
-                            onChange={(e) => setAgentFilter(e.target.value)}
-                        >
-                            <option value="ALL">Tüm Temsilciler</option>
-                            {users.map(u => (
-                                <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
-                                    {u.user?.name || u.name}
-                                </option>
-                            ))}
-                        </select>
-                        <input
-                            type="date"
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                        />
-                        <span className="sales-list-panel-date-sep">—</span>
-                        <input
-                            type="date"
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                        />
+                        <div className="sales-list-panel-filter-row">
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                            >
+                                <option value="ALL">Tüm Durumlar</option>
+                                <option value="OPEN">Açık</option>
+                                <option value="WON">Tamamlandı</option>
+                                <option value="LOST">İptal</option>
+                            </select>
+                            <select
+                                value={agentFilter}
+                                onChange={(e) => setAgentFilter(e.target.value)}
+                            >
+                                <option value="ALL">Tüm Temsilciler</option>
+                                {users.map(u => (
+                                    <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
+                                        {u.user?.name || u.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="sales-list-panel-filter-row">
+                            <input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                            />
+                            <span className="sales-list-panel-date-sep">—</span>
+                            <input
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </div>
 
