@@ -1734,42 +1734,40 @@ const Assistants = () => {
                                     <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0' }}>API Key kaydedip agent oluşturun.</p>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
                                     {retellAgents.map(agent => (
                                         <div key={agent.agent_id} className="bot-card" style={{ borderLeft: '3px solid #0d9488', marginBottom: 0 }}>
-                                            <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                                            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                                 <div style={{
-                                                    width: 42, height: 42, borderRadius: 10,
+                                                    width: 40, height: 40, borderRadius: 10,
                                                     background: 'linear-gradient(135deg, #ccfbf1, #99f6e4)',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    flexShrink: 0
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
                                                 }}>
-                                                    <Phone size={20} color="#0f766e" />
+                                                    <Phone size={18} color="#0f766e" />
                                                 </div>
-                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                                        <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#111827' }}>
+                                                <div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#111827' }}>
                                                             {agent.agent_name || 'İsimsiz Agent'}
                                                         </span>
-                                                        {retellSettings.retellAgentId === agent.agent_id && (
-                                                            <span style={{
-                                                                fontSize: '10px', fontWeight: 600, padding: '2px 8px',
-                                                                borderRadius: 20, background: '#ecfdf5', color: '#059669',
-                                                                border: '1px solid #a7f3d0'
-                                                            }}>VARSAYILAN</span>
-                                                        )}
                                                     </div>
-                                                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: 3, fontFamily: 'monospace' }}>
+                                                    <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: 4, fontFamily: 'monospace', wordBreak: 'break-all' }}>
                                                         {agent.agent_id}
                                                     </div>
                                                 </div>
-                                                <div style={{
-                                                    padding: '4px 10px', borderRadius: 6,
-                                                    background: '#f0f9ff', border: '1px solid #bae6fd',
-                                                    fontSize: '11px', fontWeight: 600, color: '#0369a1',
-                                                    flexShrink: 0
-                                                }}>
-                                                    Ses Agent
+                                                <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                                                    <span style={{
+                                                        padding: '3px 8px', borderRadius: 6,
+                                                        background: '#f0f9ff', border: '1px solid #bae6fd',
+                                                        fontSize: '10px', fontWeight: 600, color: '#0369a1'
+                                                    }}>Ses Agent</span>
+                                                    {retellSettings.retellAgentId === agent.agent_id && (
+                                                        <span style={{
+                                                            fontSize: '10px', fontWeight: 600, padding: '3px 8px',
+                                                            borderRadius: 6, background: '#ecfdf5', color: '#059669',
+                                                            border: '1px solid #a7f3d0'
+                                                        }}>VARSAYILAN</span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
