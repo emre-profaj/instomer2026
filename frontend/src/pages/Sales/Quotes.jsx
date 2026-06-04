@@ -266,7 +266,7 @@ const Quotes = () => {
                         <h2>Teklifler</h2>
                         <span className="sales-count">{quoteStats.count} teklif</span>
                     </div>
-                    <button className="btn-primary btn-sm" onClick={() => setShowForm(true)}>
+                    <button className="btn-primary btn-sm" onClick={() => { resetForm(); setShowForm(true); }}>
                         <Plus size={16} />
                         Yeni Teklif
                     </button>

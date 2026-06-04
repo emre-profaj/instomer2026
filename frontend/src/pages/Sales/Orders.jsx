@@ -259,7 +259,7 @@ const Orders = () => {
                 <div className="sales-list-panel-header">
                     <div className="sales-list-panel-header-row">
                         <h2>Siparişler <span className="sales-count">{orderStats.count}</span></h2>
-                        <button className="btn-primary btn-sm" onClick={() => setShowForm(true)}>
+                        <button className="btn-primary btn-sm" onClick={() => { resetForm(); setShowForm(true); }}>
                             <Plus size={15} /> Yeni
                         </button>
                     </div>
