@@ -1966,17 +1966,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         >
                                                             {/* Row 1: Icon + Title + Status | Date + Actions */}
                                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 0', overflow: 'hidden' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 0' }}>
                                                                     <div className={`timeline-icon type-${item.type.toLowerCase()}`}>{renderTimelineIcon(item.type)}</div>
-                                                                    <span className="timeline-type-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', minWidth: 0 }}>
+                                                                    <span className="timeline-type-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
                                                                         {item.title || renderTimelineTypeName(item.type)}
                                                                     </span>
-                                                                    {sc && (
-                                                                        <span style={{ fontSize: '0.58rem', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: '999px', padding: '1px 6px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                                                            {sc.emoji} {sc.label}
-                                                                        </span>
-                                                                    )}
                                                                 </div>
+                                                                {sc && (
+                                                                    <span style={{ fontSize: '0.58rem', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: '999px', padding: '1px 6px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                                        {sc.emoji} {sc.label}
+                                                                    </span>
+                                                                )}
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                                                                     <span className="timeline-time" style={{ whiteSpace: 'nowrap' }}>
                                                                         {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
