@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
-import api, { contactAPI, retellAPI } from '../../services/api';
+import api, { contactAPI, retellAPI, funnelAPI } from '../../services/api';
 import './AramaAnalizi.css';
 
 const AramaAnalizi = () => {
@@ -17,6 +17,8 @@ const AramaAnalizi = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [analytics, setAnalytics] = useState(null);
     const [scheduledCalls, setScheduledCalls] = useState([]);
+    const [funnels, setFunnels] = useState([]);
+    const [bottomTab, setBottomTab] = useState('calls'); // calls | uncalled
     
     // Date filter states
     const [dateFilter, setDateFilter] = useState('7d'); // 24h | 7d | 30d | custom
@@ -68,13 +70,15 @@ const AramaAnalizi = () => {
 
             const dateParams = getDateRange();
             
-            const [analyticsRes, scheduledRes] = await Promise.all([
+            const [analyticsRes, scheduledRes, funnelsRes] = await Promise.all([
                 contactAPI.getAnalytics(currentWorkspace.id, dateParams),
-                retellAPI.getScheduledCalls(currentWorkspace.id)
+                retellAPI.getScheduledCalls(currentWorkspace.id),
+                funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: [] }))
             ]);
 
             setAnalytics(analyticsRes.data);
             setScheduledCalls(scheduledRes.data.scheduledCalls || []);
+            setFunnels(funnelsRes.data?.funnels || funnelsRes.data || []);
         } catch (error) {
             console.error('Failed to load call analytics data:', error);
             showError('Arama analizi verileri yüklenirken bir hata oluştu.');
@@ -422,112 +426,230 @@ const AramaAnalizi = () => {
                 </div>
             </div>
 
-            {/* Bottom Table Section */}
+            {/* Bottom Tables — Arama Listesi & Aranmayanlar */}
             <div className="bottom-section">
                 <div className="bottom-section-header">
-                    <div className="section-card-title">
-                        <div className="section-card-title-icon" style={{ color: '#6366f1' }}>
-                            <Phone size={20} />
-                        </div>
-                        <h2>Müşteri Arama Detayları</h2>
-                    </div>
-
-                    <div className="bottom-section-actions">
-                        <div className="bottom-section-filters">
-                            <input 
-                                type="text"
-                                className="input-search-contacts"
-                                placeholder="İsim veya numara ara..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-
-                            <select
-                                className="premium-select"
-                                value={tableFilter}
-                                onChange={(e) => setTableFilter(e.target.value)}
-                                style={{ padding: '8px 12px', fontSize: '0.8125rem' }}
-                            >
-                                <option value="all">Tüm Aramalar</option>
-                                <option value="called">Arananlar</option>
-                                <option value="notCalled">Aranmayanlar</option>
-                                <option value="completed">Tamamlananlar</option>
-                                <option value="planned">Planlananlar</option>
-                            </select>
-                        </div>
-
-                        <button 
-                            className="btn-open-list"
-                            onClick={() => setShowPhoneModal(true)}
+                    <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', padding: 4, borderRadius: 12 }}>
+                        <button
+                            className={`preset-btn ${bottomTab === 'calls' ? 'active' : ''}`}
+                            onClick={() => setBottomTab('calls')}
                         >
-                            <Users size={14} />
-                            Numaralı Kişiler Listesi
+                            <PhoneCall size={14} style={{ marginRight: 4 }} />
+                            Arama Listesi ({(stats.activities || []).length})
+                        </button>
+                        <button
+                            className={`preset-btn ${bottomTab === 'uncalled' ? 'active' : ''}`}
+                            onClick={() => setBottomTab('uncalled')}
+                        >
+                            <PhoneOff size={14} style={{ marginRight: 4 }} />
+                            Aranmayanlar ({(stats.phoneContactsList || []).filter(c => !c.wasCalled).length})
                         </button>
                     </div>
+
+                    <div className="bottom-section-filters">
+                        <input
+                            type="text"
+                            className="input-search-contacts"
+                            placeholder="İsim, numara veya temsilci ara..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
                 </div>
 
-                <div className="table-responsive">
-                    <table className="modern-table" style={{ fontSize: '0.82rem' }}>
-                        <thead>
-                            <tr>
-                                <th>Müşteri</th>
-                                <th>Telefon Numarası</th>
-                                <th style={{ textAlign: 'center' }}>Toplam Arama</th>
-                                <th style={{ textAlign: 'center' }}>Tamamlanan</th>
-                                <th style={{ textAlign: 'center' }}>Planlanan</th>
-                                <th>Son Arama Zamanı</th>
-                                <th>Temsilci</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredDetails.length > 0 ? (
-                                filteredDetails.map(d => (
-                                    <tr key={d.contactId}>
-                                        <td>
-                                            <div style={{ fontWeight: 700, color: '#0f172a' }}>{d.contactName}</div>
-                                        </td>
-                                        <td style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.78rem' }}>
-                                            {d.phone}
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <span style={{ fontWeight: 700, color: '#6366f1' }}>{d.totalCalls}</span>
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <span style={{ fontWeight: 700, color: d.completedCalls > 0 ? '#10b981' : '#94a3b8' }}>
-                                                {d.completedCalls}
-                                            </span>
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <span style={{ fontWeight: 700, color: d.plannedCalls > 0 ? '#f59e0b' : '#94a3b8' }}>
-                                                {d.plannedCalls}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
-                                                {formatDateTime(d.lastCallDate)}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            {d.assigneeName ? (
-                                                <span style={{ fontSize: '0.7rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                                                    {d.assigneeName}
-                                                </span>
-                                            ) : (
-                                                <span style={{ color: '#cbd5e1' }}>—</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
+                {/* TAB 1: Arama Listesi */}
+                {bottomTab === 'calls' && (
+                    <div className="table-responsive">
+                        <table className="modern-table" style={{ fontSize: '0.82rem' }}>
+                            <thead>
                                 <tr>
-                                    <td colSpan="7" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
-                                        Eşleşen sonuç bulunamadı.
-                                    </td>
+                                    <th>Kişi Adı</th>
+                                    <th>Temsilci</th>
+                                    <th>Aşama / Durum</th>
+                                    <th>Arama Tarihi</th>
+                                    <th style={{ textAlign: 'center' }}>Sonuç</th>
+                                    <th>Arama Notu</th>
                                 </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                {(() => {
+                                    const callList = (stats.activities || [])
+                                        .filter(a => {
+                                            if (!searchTerm) return true;
+                                            const q = searchTerm.toLowerCase();
+                                            return (
+                                                (a.contact?.name || '').toLowerCase().includes(q) ||
+                                                (a.contact?.phone || '').includes(q) ||
+                                                (a.assignee?.name || '').toLowerCase().includes(q)
+                                            );
+                                        })
+                                        .sort((a, b) => new Date(b.dueDate || b.createdAt) - new Date(a.dueDate || a.createdAt));
+
+                                    if (callList.length === 0) {
+                                        return (
+                                            <tr>
+                                                <td colSpan="6" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
+                                                    Eşleşen sonuç bulunamadı.
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+                                    return callList.map(a => {
+                                        const isCompleted = a.status === 'COMPLETED';
+                                        const isPlanned = a.status === 'PLANNED';
+                                        // Resolve funnel stage
+                                        let stageName = '';
+                                        let stageColor = '#6b7280';
+                                        if (a.contact?.funnelStageId && funnels.length > 0) {
+                                            for (const f of funnels) {
+                                                const s = f.stages?.find(x => x.id === a.contact.funnelStageId);
+                                                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; break; }
+                                            }
+                                        }
+                                        if (!stageName && a.contact?.status) {
+                                            const statusLabels = { NEW: 'Yeni', OPPORTUNITY: 'Fırsat', CUSTOMER: 'Müşteri', LOST: 'Kayıp' };
+                                            stageName = statusLabels[a.contact.status] || a.contact.status;
+                                        }
+                                        return (
+                                            <tr key={a.id}>
+                                                <td>
+                                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{a.contact?.name || 'Bilinmiyor'}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{a.contact?.phone || ''}</div>
+                                                </td>
+                                                <td>
+                                                    {a.assignee ? (
+                                                        <span style={{ fontSize: '0.72rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                                                            {a.assignee.name}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>Atanmamış</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {stageName ? (
+                                                        <span style={{ fontSize: '0.72rem', background: `${stageColor}1a`, color: stageColor, padding: '2px 8px', borderRadius: '8px', fontWeight: 600, border: `1px solid ${stageColor}33` }}>
+                                                            {stageName}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                                        {formatDateTime(a.completedAt || a.dueDate || a.createdAt)}
+                                                    </span>
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {isCompleted ? (
+                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ✓ Başarılı
+                                                        </span>
+                                                    ) : isPlanned ? (
+                                                        <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ⏳ Bekliyor
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                                                            ✗ Başarısız
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {a.result ? (
+                                                        <span style={{ fontSize: '0.76rem', color: '#334155', fontStyle: 'italic' }} title={a.result}>
+                                                            "{a.result.length > 40 ? a.result.substring(0, 40) + '...' : a.result}"
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1' }}>—</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    });
+                                })()}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* TAB 2: Aranmayanlar Listesi */}
+                {bottomTab === 'uncalled' && (
+                    <div className="table-responsive">
+                        <table className="modern-table" style={{ fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr>
+                                    <th>Kişi Adı</th>
+                                    <th>Telefon</th>
+                                    <th>Firma</th>
+                                    <th>Aşama / Durum</th>
+                                    <th>Kayıt Tarihi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(() => {
+                                    const uncalledList = (stats.phoneContactsList || [])
+                                        .filter(c => !c.wasCalled)
+                                        .filter(c => {
+                                            if (!searchTerm) return true;
+                                            const q = searchTerm.toLowerCase();
+                                            return c.name.toLowerCase().includes(q) || (c.phone || '').includes(q);
+                                        });
+
+                                    if (uncalledList.length === 0) {
+                                        return (
+                                            <tr>
+                                                <td colSpan="5" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
+                                                    Tüm numaralı kişiler aranmış! 🎉
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+                                    return uncalledList.map(c => {
+                                        let stageName = '';
+                                        let stageColor = '#6b7280';
+                                        if (c.funnelStageId && funnels.length > 0) {
+                                            for (const f of funnels) {
+                                                const s = f.stages?.find(x => x.id === c.funnelStageId);
+                                                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; break; }
+                                            }
+                                        }
+                                        if (!stageName && c.status) {
+                                            const statusLabels = { NEW: 'Yeni', OPPORTUNITY: 'Fırsat', CUSTOMER: 'Müşteri', LOST: 'Kayıp' };
+                                            stageName = statusLabels[c.status] || c.status;
+                                        }
+                                        return (
+                                            <tr key={c.contactId}>
+                                                <td>
+                                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{c.name}</div>
+                                                </td>
+                                                <td style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.78rem' }}>
+                                                    {c.phone}
+                                                </td>
+                                                <td style={{ color: '#475569', fontSize: '0.78rem' }}>
+                                                    {c.company || '—'}
+                                                </td>
+                                                <td>
+                                                    {stageName ? (
+                                                        <span style={{ fontSize: '0.72rem', background: `${stageColor}1a`, color: stageColor, padding: '2px 8px', borderRadius: '8px', fontWeight: 600, border: `1px solid ${stageColor}33` }}>
+                                                            {stageName}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                                        {formatDateTime(c.createdAt)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    });
+                                })()}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
 
             {/* Modal - Numaralı Kişiler Listesi */}
