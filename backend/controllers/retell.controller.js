@@ -890,6 +890,26 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             } catch (_) {}
         }
 
+        // ─── AGENT SCOPE KONTROLÜ (triggerAutoCall) ──────────────────────
+        // Agent kartındaki checkbox'lara göre bu arama türünde çalışıp çalışmayacağını kontrol et
+        if (triggerSource !== 'CHAT_REQUEST' && agentCfg) {
+            if (!assignedTeamId && !assignedToId) {
+                // Kimseye atanmamış → handleUnassigned kontrolü
+                if (!agentCfg.handleUnassigned) {
+                    console.log(`⏭️ [AutoCall] Agent ${ruleAgentId} handleUnassigned kapalı — atanmamış sohbet atlanıyor`);
+                    return;
+                }
+            } else if (assignedTeamId && !assignedToId) {
+                // Takım havuzunda → handlePool kontrolü
+                if (!agentCfg.handlePool) {
+                    console.log(`⏭️ [AutoCall] Agent ${ruleAgentId} handlePool kapalı — havuzdaki sohbet atlanıyor`);
+                    return;
+                }
+            }
+            // assignedToId varsa → zaten birine atanmış, handleTeamFallback checkOverdueAgentCalls'da kontrol edilir
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         // Mevcut PLANNED arama aktivitesi var mı kontrol et (dedup)
         const existingActivity = await prisma.contactActivity.findFirst({
             where: {
@@ -1057,7 +1077,8 @@ async function checkOverdueAgentCalls() {
                 retellAgentId: true,
                 aiFallbackEnabled: true,
                 aiFallbackDelayMinutes: true,
-                aiFallbackPoolEnabled: true
+                aiFallbackPoolEnabled: true,
+                retellAutoCallTriggers: true
             }
         });
 
@@ -1202,6 +1223,33 @@ async function checkOverdueAgentCalls() {
                 console.log(`⏭️ [CallRouter] No AI agent found for activity ${activity.id}, skipping`);
                 continue;
             }
+
+            // ─── AGENT SCOPE KONTROLÜ ────────────────────────────────────────
+            // Agent kartındaki checkbox'lara göre bu senaryoda çalışıp çalışmayacağını kontrol et
+            const wsConfig = workspaces.find(w => w.id === activity.workspaceId);
+            const agentConfigs = wsConfig?.retellAutoCallTriggers?.agentConfigs || {};
+            const agentCfg = agentConfigs[agentId];
+
+            if (agentCfg && activity._scenario !== 'DIRECT_AI') {
+                if (activity._scenario === 'POOL') {
+                    // Havuzdaki/atanmamış sohbetler
+                    const hasTeam = !!activity.teamId;
+                    if (hasTeam && !agentCfg.handlePool) {
+                        console.log(`⏭️ [CallRouter] Agent ${agentId} handlePool kapalı — havuzdaki görev atlanıyor (activity: ${activity.id})`);
+                        continue;
+                    }
+                    if (!hasTeam && !agentCfg.handleUnassigned) {
+                        console.log(`⏭️ [CallRouter] Agent ${agentId} handleUnassigned kapalı — atanmamış görev atlanıyor (activity: ${activity.id})`);
+                        continue;
+                    }
+                }
+
+                if (activity._scenario === 'HUMAN_TIMEOUT' && !agentCfg.handleTeamFallback) {
+                    console.log(`⏭️ [CallRouter] Agent ${agentId} handleTeamFallback kapalı — timeout görev atlanıyor (activity: ${activity.id})`);
+                    continue;
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
 
             // Build dynamic variables with call topic
             const dynVars = {
