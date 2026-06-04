@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, ArrowRightLeft, UserCheck, MessageSquare, BellOff, Check, Trash2 } from 'lucide-react';
+import { Bell, ArrowRightLeft, UserCheck, MessageSquare, BellOff, Check, Trash2, PhoneCall } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { notificationAPI } from '../../services/api';
@@ -96,11 +96,14 @@ const NotificationPanel = ({ isCollapsed }) => {
             }
         }
 
-        // Navigate to conversation if available
+        // Navigate to conversation or contact page
         try {
             const data = notif.data ? JSON.parse(notif.data) : null;
             if (data?.conversationId) {
                 navigate(`/inbox?conversation=${data.conversationId}`);
+                setIsOpen(false);
+            } else if (data?.contactId) {
+                navigate(`/contacts`);
                 setIsOpen(false);
             }
         } catch (e) { /* ignore */ }
@@ -136,6 +139,8 @@ const NotificationPanel = ({ isCollapsed }) => {
                 return <UserCheck size={16} />;
             case 'NEW_MESSAGE':
                 return <MessageSquare size={16} />;
+            case 'CALL':
+                return <PhoneCall size={16} />;
             default:
                 return <Bell size={16} />;
         }
@@ -146,6 +151,7 @@ const NotificationPanel = ({ isCollapsed }) => {
             case 'BOT_ROUTING': return 'routing';
             case 'CONVERSATION_ASSIGNED': return 'assignment';
             case 'NEW_MESSAGE': return 'message';
+            case 'CALL': return 'call';
             default: return '';
         }
     };

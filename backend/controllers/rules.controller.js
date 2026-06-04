@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { createTeamNotifications, createNotification } from './notification.controller.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // SMART TIMING PARSER — Müşteri mesajlarından zamanlama tercihini algıla
@@ -630,6 +631,19 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             dueDate: dueDate.toISOString(),
         });
 
+        // 13. Send notification to team members
+        const dueDateTR = dueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        if (salesTeamId) {
+            await createTeamNotifications(
+                workspaceId,
+                salesTeamId,
+                'CALL',
+                '📞 Yeni arama planlandı',
+                `${contact.name || contact.phone || 'Müşteri'} için ${dueDateTR} tarihinde arama planlandı.`,
+                { contactId: contact.id, conversationId, dueDate: dueDate.toISOString() }
+            );
+        }
+
     } catch (error) {
         console.error('❌ [RULE:SALES_PHONE_CALL] Error:', error.message);
     }
@@ -897,6 +911,19 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             status: 'PLANNED',
             dueDate: dueDate.toISOString(),
         });
+
+        // 9. Send notification to team members
+        const dueDateTR = dueDate.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        if (salesTeamId) {
+            await createTeamNotifications(
+                workspaceId,
+                salesTeamId,
+                'CALL',
+                '📞 Yeni arama planlandı',
+                `${contact.name || contact.phone || 'Müşteri'} için ${dueDateTR} tarihinde arama planlandı.`,
+                { contactId, dueDate: dueDate.toISOString() }
+            );
+        }
 
     } catch (error) {
         console.error('❌ [RULE:AUTO_CALL] Error:', error.message);

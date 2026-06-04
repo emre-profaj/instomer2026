@@ -228,6 +228,11 @@
     color: #2563eb;
 }
 
+.notification-icon-wrapper.call {
+    background: linear-gradient(135deg, #d1fae5, #6ee7b7);
+    color: #047857;
+}
+
 .notification-content {
     flex: 1;
     min-width: 0;
