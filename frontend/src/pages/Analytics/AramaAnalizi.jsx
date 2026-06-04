@@ -347,7 +347,7 @@ const AramaAnalizi = () => {
                                         </button>
                                         <button 
                                             className="btn-action-cancel"
-                                            style={{ fontSize: '0.7rem', padding: '5px 14px', opacity: 0.8 }}
+                                            style={{ fontSize: '0.75rem', padding: '7px 14px' }}
                                             onClick={async () => {
                                                 if (!window.confirm('Bu gecikmiş aramayı iptal etmek istediğinize emin misiniz?')) return;
                                                 try {
