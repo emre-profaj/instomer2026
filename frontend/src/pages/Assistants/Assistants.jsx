@@ -1739,64 +1739,6 @@ const Assistants = () => {
                                     {retellSettings.retellAutoCallEnabled && (
                                         <div className="section-content" style={{ marginTop: 12 }}>
                                             <p className="section-description">Belirli kanallardan numara geldiğinde otomatik arama başlatır.</p>
-
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-                                                {retellRules.map((rule, index) => (
-                                                    <div key={index} style={{ border: '1px solid #e5e7eb', background: '#f9fafb', borderRadius: 8, padding: '12px 16px' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                                                            <span style={{ background: '#eef2ff', color: '#4338ca', padding: '4px 10px', borderRadius: 6, fontSize: '12px', fontWeight: 600 }}>Eğer</span>
-                                                            <span style={{ fontSize: '12px', color: '#6b7280' }}>kaynak =</span>
-                                                            <select className="input-modern" style={{ width: 'auto', minWidth: 150 }} value={rule.source} onChange={(e) => updateRetellRuleField(index, 'source', e.target.value)}>
-                                                                {getAvailableChannels(rule.source).map(ch => (
-                                                                    <option key={ch} value={ch}>{channelLabels[ch] || ch}</option>
-                                                                ))}
-                                                            </select>
-                                                            <span style={{ color: '#9ca3af' }}>→</span>
-                                                            <span style={{ background: '#ecfdf5', color: '#059669', padding: '4px 10px', borderRadius: 6, fontSize: '12px', fontWeight: 600 }}>Otomatik Ara</span>
-                                                            <div style={{ flex: 1 }} />
-                                                            <button onClick={() => removeRetellRule(index)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}>
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                <Clock size={14} color="#6b7280" />
-                                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Gecikme:</span>
-                                                                <input type="number" className="input-modern" min="0" max="3600" value={rule.delay}
-                                                                    onChange={(e) => updateRetellRuleField(index, 'delay', e.target.value)}
-                                                                    style={{ width: 70, textAlign: 'center' }} />
-                                                                <span style={{ fontSize: '12px', color: '#6b7280' }}>sn</span>
-                                                            </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                <Bot size={14} color="#6b7280" />
-                                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Agent:</span>
-                                                                <select className="input-modern" style={{ width: 'auto', minWidth: 150 }} value={rule.agentId || ''} onChange={(e) => updateRetellRuleField(index, 'agentId', e.target.value)}>
-                                                                    <option value="">Varsayılan</option>
-                                                                    {retellAgents.map(a => <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>)}
-                                                                </select>
-                                                            </div>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                                <span style={{ fontSize: '12px', fontWeight: 500 }}>Durum:</span>
-                                                                <select className="input-modern" style={{ width: 'auto', minWidth: 150 }} value={rule.status || ''} onChange={(e) => updateRetellRuleField(index, 'status', e.target.value)}>
-                                                                    {statusOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, paddingTop: 10, borderTop: '1px dashed #e5e7eb', flexWrap: 'wrap' }}>
-                                                            <Calendar size={14} color="#6b7280" />
-                                                            <span style={{ fontSize: '12px', fontWeight: 500 }}>Arama Saatleri:</span>
-                                                            <input type="time" className="input-modern" value={rule.callStart || '09:00'} onChange={(e) => updateRetellRuleField(index, 'callStart', e.target.value)} style={{ width: 110 }} />
-                                                            <span style={{ color: '#9ca3af' }}>—</span>
-                                                            <input type="time" className="input-modern" value={rule.callEnd || '18:00'} onChange={(e) => updateRetellRuleField(index, 'callEnd', e.target.value)} style={{ width: 110 }} />
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-
-                                            <button onClick={addRetellRule}
-                                                style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px dashed #d1d5db', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', color: '#6b7280', fontSize: '12px', fontWeight: 500, marginTop: 12 }}>
-                                                <Plus size={14} /> Kural Ekle
-                                            </button>
                                         </div>
                                     )}
                                 </div>
