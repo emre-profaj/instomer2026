@@ -5,6 +5,19 @@ import { useNavigate } from 'react-router-dom';
 import { notificationAPI } from '../../services/api';
 import './NotificationPanel.css';
 
+const NOTIF_CATEGORIES = {
+    all: { label: 'Tümü', types: null },
+    assignment: { label: 'Atama', types: ['CONVERSATION_ASSIGNED', 'TEAM_ASSIGNED', 'CONTACT_ASSIGNED'] },
+    call: { label: 'Arama', types: ['CALL', 'CALL_SCHEDULED', 'CALL_MISSED'] },
+    general: { label: 'Genel', types: ['BOT_ROUTING', 'NEW_MESSAGE', 'APPOINTMENT', 'TASK', 'OTHER'] },
+};
+
+const getCategory = (type) => {
+    if (NOTIF_CATEGORIES.assignment.types.includes(type)) return 'assignment';
+    if (NOTIF_CATEGORIES.call.types.includes(type)) return 'call';
+    return 'general';
+};
+
 const NotificationPanel = ({ isCollapsed }) => {
     const { currentWorkspace, user } = useAuth();
     const navigate = useNavigate();
@@ -12,6 +25,7 @@ const NotificationPanel = ({ isCollapsed }) => {
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [notifTab, setNotifTab] = useState('all');
     const panelRef = useRef(null);
 
     const workspaceId = currentWorkspace?.id;
@@ -52,7 +66,6 @@ const NotificationPanel = ({ isCollapsed }) => {
     useEffect(() => {
         const handleNewNotification = (event) => {
             const data = event.detail;
-            // Only show notifications targeted to this user
             if (data?.notification && data?.targetUserId === user?.id) {
                 setNotifications(prev => [data.notification, ...prev]);
                 setUnreadCount(prev => prev + 1);
@@ -136,10 +149,14 @@ const NotificationPanel = ({ isCollapsed }) => {
             case 'BOT_ROUTING':
                 return <ArrowRightLeft size={16} />;
             case 'CONVERSATION_ASSIGNED':
+            case 'TEAM_ASSIGNED':
+            case 'CONTACT_ASSIGNED':
                 return <UserCheck size={16} />;
             case 'NEW_MESSAGE':
                 return <MessageSquare size={16} />;
             case 'CALL':
+            case 'CALL_SCHEDULED':
+            case 'CALL_MISSED':
                 return <PhoneCall size={16} />;
             default:
                 return <Bell size={16} />;
@@ -149,9 +166,13 @@ const NotificationPanel = ({ isCollapsed }) => {
     const getIconClass = (type) => {
         switch (type) {
             case 'BOT_ROUTING': return 'routing';
-            case 'CONVERSATION_ASSIGNED': return 'assignment';
+            case 'CONVERSATION_ASSIGNED':
+            case 'TEAM_ASSIGNED':
+            case 'CONTACT_ASSIGNED': return 'assignment';
             case 'NEW_MESSAGE': return 'message';
-            case 'CALL': return 'call';
+            case 'CALL':
+            case 'CALL_SCHEDULED':
+            case 'CALL_MISSED': return 'call';
             default: return '';
         }
     };
@@ -169,6 +190,19 @@ const NotificationPanel = ({ isCollapsed }) => {
         if (hours < 24) return `${hours} saat önce`;
         if (days < 7) return `${days} gün önce`;
         return date.toLocaleDateString('tr-TR');
+    };
+
+    // Filter notifications by category tab
+    const filteredNotifications = notifTab === 'all'
+        ? notifications
+        : notifications.filter(n => getCategory(n.type) === notifTab);
+
+    // Count unread per category
+    const unreadCounts = {
+        all: notifications.filter(n => !n.isRead).length,
+        assignment: notifications.filter(n => !n.isRead && getCategory(n.type) === 'assignment').length,
+        call: notifications.filter(n => !n.isRead && getCategory(n.type) === 'call').length,
+        general: notifications.filter(n => !n.isRead && getCategory(n.type) === 'general').length,
     };
 
     return (
@@ -207,16 +241,32 @@ const NotificationPanel = ({ isCollapsed }) => {
                         </div>
                     </div>
 
+                    {/* Category tabs */}
+                    <div className="notif-category-tabs">
+                        {Object.entries(NOTIF_CATEGORIES).map(([key, cat]) => (
+                            <button
+                                key={key}
+                                className={`notif-cat-btn ${notifTab === key ? 'active' : ''}`}
+                                onClick={() => setNotifTab(key)}
+                            >
+                                {cat.label}
+                                {unreadCounts[key] > 0 && (
+                                    <span className="notif-cat-badge">{unreadCounts[key]}</span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="notification-list">
                         {loading ? (
                             <div className="notification-loading">Yükleniyor...</div>
-                        ) : notifications.length === 0 ? (
+                        ) : filteredNotifications.length === 0 ? (
                             <div className="notification-empty">
                                 <BellOff size={32} className="notification-empty-icon" />
-                                <p>Henüz bildirim yok</p>
+                                <p>{notifTab === 'all' ? 'Henüz bildirim yok' : 'Bu kategoride bildirim yok'}</p>
                             </div>
                         ) : (
-                            notifications.map(notif => (
+                            filteredNotifications.map(notif => (
                                 <div
                                     key={notif.id}
                                     className={`notification-item ${!notif.isRead ? 'unread' : ''}`}
