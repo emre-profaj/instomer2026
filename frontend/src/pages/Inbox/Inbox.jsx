@@ -2875,7 +2875,7 @@ const Inbox = () => {
                                 }}
                                 title="Yeni Görüşme Başlat"
                             >
-                                <Plus size={16} />
+                                <Plus size={14} />
                                 <span>{t('inbox.newConversation')}</span>
                             </button>
                             <button

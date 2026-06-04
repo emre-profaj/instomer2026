@@ -4216,8 +4216,8 @@
 .inbox-header-left {
     display: flex;
     align-items: center;
-    gap: 8px;
-    overflow: hidden;
+    gap: 6px;
+    min-width: 0;
 }
 
 .inbox-header-left h2 {
