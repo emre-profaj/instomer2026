@@ -1928,21 +1928,15 @@ const Assistants = () => {
                                                 {/* Gecikme Süresi */}
                                                 <div>
                                                     <label style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Gecikme Süresi</label>
-                                                    <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 6px 0' }}>Planlanan saatten kaç dk sonra otomatik arasın?</p>
-                                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                    <select className="input-modern"
+                                                        value={cfg.fallbackDelayMinutes || 1}
+                                                        onChange={e => updateCfg('fallbackDelayMinutes', Number(e.target.value))}
+                                                        style={{ fontSize: '12px', padding: '6px 10px', width: '100%' }}
+                                                    >
                                                         {[1, 3, 5, 10, 15, 30, 60].map(min => (
-                                                            <button key={min} type="button"
-                                                                onClick={() => updateCfg('fallbackDelayMinutes', min)}
-                                                                style={{
-                                                                    padding: '4px 10px', borderRadius: 6, fontSize: '11px', fontWeight: 600,
-                                                                    border: (cfg.fallbackDelayMinutes || 1) === min ? '1.5px solid #8b5cf6' : '1px solid #e5e7eb',
-                                                                    background: (cfg.fallbackDelayMinutes || 1) === min ? '#ede9fe' : '#fff',
-                                                                    color: (cfg.fallbackDelayMinutes || 1) === min ? '#6d28d9' : '#6b7280',
-                                                                    cursor: 'pointer', transition: 'all 0.15s'
-                                                                }}
-                                                            >{min} dk</button>
+                                                            <option key={min} value={min}>{min} dakika sonra otomatik ara</option>
                                                         ))}
-                                                    </div>
+                                                    </select>
                                                 </div>
                                             </div>
                                         </div>
