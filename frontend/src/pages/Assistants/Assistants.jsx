@@ -1210,6 +1210,7 @@ const Assistants = () => {
     const [connectedChannels, setConnectedChannels] = useState([]);
     const [teams, setTeams] = useState([]);
     const [agentConfigs, setAgentConfigs] = useState({});
+    const [promptModal, setPromptModal] = useState({ open: false, agentName: '', prompt: '', loading: false });
 
     useEffect(() => {
         if (workspaceId) {
@@ -1808,6 +1809,31 @@ const Assistants = () => {
                                                     )}
                                                 </div>
 
+                                                {/* Prompt Göster Button */}
+                                                <button
+                                                    onClick={async () => {
+                                                        setPromptModal({ open: true, agentName: agent.agent_name || agent.agent_id, prompt: '', loading: true });
+                                                        try {
+                                                            const res = await retellAPI.getAgent(workspaceId, agent.agent_id);
+                                                            const llmPrompt = res.data?.llm?.general_prompt || res.data?.agent?.response_engine?.system_prompt || 'Prompt bulunamadı.';
+                                                            setPromptModal(prev => ({ ...prev, prompt: llmPrompt, loading: false }));
+                                                        } catch (err) {
+                                                            setPromptModal(prev => ({ ...prev, prompt: 'Prompt yüklenirken hata oluştu: ' + (err.message || ''), loading: false }));
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 5,
+                                                        background: 'none', border: '1px solid #e5e7eb', borderRadius: 6,
+                                                        padding: '4px 10px', cursor: 'pointer',
+                                                        fontSize: '11px', fontWeight: 500, color: '#6b7280',
+                                                        transition: 'all 0.15s', width: '100%', justifyContent: 'center'
+                                                    }}
+                                                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.color = '#7c3aed'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#6b7280'; }}
+                                                >
+                                                    <Eye size={13} /> Prompt Göster
+                                                </button>
+
                                                 {/* Divider */}
                                                 <div style={{ height: 1, background: '#f0f0f0', margin: '2px 0' }} />
 
@@ -1989,6 +2015,61 @@ const Assistants = () => {
                     }
                 }}
             />
+
+            {/* Prompt Modal */}
+            {promptModal.open && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 9999, backdropFilter: 'blur(4px)'
+                }} onClick={() => setPromptModal({ open: false, agentName: '', prompt: '', loading: false })}>
+                    <div style={{
+                        background: '#fff', borderRadius: 16, width: '90%', maxWidth: 620,
+                        maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+                        boxShadow: '0 25px 50px rgba(0,0,0,0.15)', overflow: 'hidden'
+                    }} onClick={e => e.stopPropagation()}>
+                        <div style={{
+                            padding: '16px 20px', borderBottom: '1px solid #f0f0f0',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{
+                                    width: 32, height: 32, borderRadius: 8,
+                                    background: 'linear-gradient(135deg, #ede9fe, #ddd6fe)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    <Eye size={16} color="#7c3aed" />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111827' }}>{promptModal.agentName}</div>
+                                    <div style={{ fontSize: '11px', color: '#9ca3af' }}>Agent Prompt</div>
+                                </div>
+                            </div>
+                            <button onClick={() => setPromptModal({ open: false, agentName: '', prompt: '', loading: false })}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                                <X size={20} color="#9ca3af" />
+                            </button>
+                        </div>
+                        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                            {promptModal.loading ? (
+                                <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
+                                    <Loader size={24} className="spin" style={{ marginBottom: 10 }} />
+                                    <p style={{ margin: 0, fontSize: '13px' }}>Prompt yükleniyor...</p>
+                                </div>
+                            ) : (
+                                <pre style={{
+                                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                                    fontSize: '13px', lineHeight: 1.7, color: '#374151',
+                                    background: '#f9fafb', border: '1px solid #e5e7eb',
+                                    borderRadius: 10, padding: '16px', margin: 0,
+                                    fontFamily: "'Inter', -apple-system, sans-serif",
+                                    maxHeight: '55vh', overflowY: 'auto'
+                                }}>{promptModal.prompt}</pre>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
