@@ -551,6 +551,19 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
             return;
         }
 
+        // ─── AGENT CONFIG KONTROLÜ (triggerAutoCall) ─────────────────────────
+        const agentConfigs = workspace.retellAutoCallTriggers?.agentConfigs || {};
+        const agentCfg = agentConfigs[ruleAgentId];
+        if (agentCfg) {
+            // Agent pasifse arama yapma
+            if (agentCfg.active === false) {
+                console.log(`⏸️ [AutoCall] Agent ${ruleAgentId} pasif — arama planlanmayacak`);
+                return;
+            }
+        }
+        // Agent config'den takım bilgisi (triggerAutoCall'un alt kısmında kullanılacak)
+        const agentTeamId = agentCfg?.teamId || null;
+
         // 🛡️ SAFETY: System-generated triggers (LEAD, FORM, FLOW) should NEVER have their
         // message content parsed for time preferences — they contain auto-formatted strings
         // like dates ("23.03.2026") that can be misinterpreted as times ("23:03").
@@ -818,6 +831,12 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
 
         // ─── FALLBACK: Sohbette takım/kişi yoksa kanal routing'den veya varsayılan takımdan bul ───
         if (!assignedTeamId && !assignedToId) {
+            // 0. Agent config'den takım varsa önce onu kullan
+            if (agentTeamId) {
+                assignedTeamId = agentTeamId;
+                console.log(`📋 [AutoCall] Takım agent config'den alındı: ${agentTeamId}`);
+            }
+            if (!assignedTeamId) {
             console.log(`📋 [AutoCall] Sohbette takım/kişi yok. Fallback aranıyor... (channel: ${conversationChannel}, trigger: ${triggerSource})`);
             try {
                 // 1. Kanal routing'den takım bul (ChannelRouting tablosu)
@@ -854,6 +873,7 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                     }
                 }
             } catch (e) { console.warn('⚠️ [AutoCall] Fallback team resolution error:', e.message); }
+            } // end if(!assignedTeamId)
         } else {
             console.log(`📋 [AutoCall] Sohbetten takım bulundu: teamId=${assignedTeamId}, assignedToId=${assignedToId}`);
         }
@@ -1346,13 +1366,63 @@ export const processScheduledCalls = async () => {
                     console.log(`⏭️ [ScheduledCall] Skipping ${sc.id} — already picked up by another runner`);
                     continue;
                 }
-                const ws = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true } });
+                const ws = await prisma.workspace.findUnique({ where: { id: sc.workspaceId }, select: { retellAgentId: true, retellAutoCallTriggers: true } });
+                const effectiveAgentId = sc.agentId || ws?.retellAgentId;
+
+                // ─── AGENT CONFIG KONTROLÜ ───────────────────────────────────────
+                // Agent bazlı aktif/pasif, çalışma saatleri ve günleri kontrolü
+                const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
+                const agentCfg = agentConfigs[effectiveAgentId];
+                if (agentCfg) {
+                    // Aktif/Pasif kontrolü
+                    if (agentCfg.active === false) {
+                        // Agent pasif — PENDING bırak, sonra tekrar denensin
+                        await prisma.scheduledCall.updateMany({
+                            where: { id: sc.id, status: 'COMPLETED' },
+                            data: { status: 'PENDING' }
+                        });
+                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} pasif — call ${sc.id} PENDING bırakıldı`);
+                        continue;
+                    }
+
+                    // Çalışma günü kontrolü
+                    const nowTRAgent = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                    const currentDay = nowTRAgent.getDay();
+                    const agentDays = agentCfg.days || [0,1,2,3,4,5,6];
+                    if (!agentDays.includes(currentDay)) {
+                        await prisma.scheduledCall.updateMany({
+                            where: { id: sc.id, status: 'COMPLETED' },
+                            data: { status: 'PENDING' }
+                        });
+                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} bugün çalışmıyor (gün: ${currentDay}) — call ${sc.id} PENDING bırakıldı`);
+                        continue;
+                    }
+
+                    // Çalışma saati kontrolü
+                    const agentStart = agentCfg.callStart || '10:00';
+                    const agentEnd = agentCfg.callEnd || '21:00';
+                    const [startH, startM] = agentStart.split(':').map(Number);
+                    const [endH, endM] = agentEnd.split(':').map(Number);
+                    const currentMinutes = nowTRAgent.getHours() * 60 + nowTRAgent.getMinutes();
+                    const startMinutes = startH * 60 + startM;
+                    const endMinutes = endH * 60 + endM;
+                    if (currentMinutes < startMinutes || currentMinutes >= endMinutes) {
+                        await prisma.scheduledCall.updateMany({
+                            where: { id: sc.id, status: 'COMPLETED' },
+                            data: { status: 'PENDING' }
+                        });
+                        console.log(`⏸️ [ScheduledCall] Agent ${effectiveAgentId} mesai dışı (${agentStart}-${agentEnd}, şimdi: ${nowTRAgent.getHours()}:${String(nowTRAgent.getMinutes()).padStart(2,'0')}) — call ${sc.id} PENDING bırakıldı`);
+                        continue;
+                    }
+                }
+                // ─────────────────────────────────────────────────────────────────
+
                 // Parse dynamic variables from DB if available
                 let scDynVars = null;
                 if (sc.dynamicVariables) {
                     try { scDynVars = JSON.parse(sc.dynamicVariables); } catch (_) {}
                 }
-                const callResponse = await executeScheduledCall(sc.workspaceId, sc.toNumber, sc.agentId || ws?.retellAgentId, sc.contactId, sc.contactName, 'SCHEDULED', sc.createdById, scDynVars);
+                const callResponse = await executeScheduledCall(sc.workspaceId, sc.toNumber, effectiveAgentId, sc.contactId, sc.contactName, 'SCHEDULED', sc.createdById, scDynVars);
                 
                 if (callResponse?.call_id) {
                     await prisma.scheduledCall.update({

@@ -1779,7 +1779,7 @@ const Assistants = () => {
                                         ];
                                         const activeDays = cfg.days || [0,1,2,3,4,5,6];
                                         return (
-                                        <div key={agent.agent_id} className="bot-card" style={{ borderLeft: '3px solid #0d9488', marginBottom: 0 }}>
+                                        <div key={agent.agent_id} className="bot-card" style={{ borderLeft: `3px solid ${cfg.active !== false ? '#0d9488' : '#d1d5db'}`, marginBottom: 0, opacity: cfg.active !== false ? 1 : 0.6 }}>
                                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                                                 {/* Header */}
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1799,6 +1799,11 @@ const Assistants = () => {
                                                             {agent.agent_id}
                                                         </div>
                                                     </div>
+                                                    <label className="toggle-switch" style={{ flexShrink: 0 }}>
+                                                        <input type="checkbox" checked={cfg.active !== false}
+                                                            onChange={e => updateCfg('active', e.target.checked)} />
+                                                        <span className="toggle-slider"></span>
+                                                    </label>
                                                 </div>
 
                                                 {/* Badges */}
