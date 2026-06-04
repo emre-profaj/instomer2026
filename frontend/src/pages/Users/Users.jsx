@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, teamAPI, aiAPI } from '../../services/api';
+import { workspaceAPI, teamAPI, aiAPI, retellAPI } from '../../services/api';
 import AddMemberModal from '../../components/AddMemberModal';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import {
@@ -21,7 +21,8 @@ import {
     Layers,
     Shield,
     CheckCircle2,
-    Bot
+    Bot,
+    Phone
 } from 'lucide-react';
 import './Users.css';
 
@@ -323,12 +324,13 @@ const UsersTeams = () => {
 
     // Bots (AI Assistants)
     const [bots, setBots] = useState([]);
+    const [retellAgents, setRetellAgents] = useState([]);
     const [expandedTeams, setExpandedTeams] = useState({});
 
     // Drag & drop — user onto team
     const dragUser = useRef(null);
-    // Drag & drop — bot onto team
     const dragBot = useRef(null);
+    const dragRetellAgent = useRef(null);
     const [dragOverTeamId, setDragOverTeamId] = useState(null);
     const [dropSuccess, setDropSuccess] = useState(null);
 
@@ -340,7 +342,7 @@ const UsersTeams = () => {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
     useEffect(() => {
-        if (currentWorkspace) { loadMembers(); loadTeams(); loadBots(); }
+        if (currentWorkspace) { loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); }
     }, [currentWorkspace]);
 
     // ── Loaders ──────────────────────────────────────────────
@@ -367,9 +369,21 @@ const UsersTeams = () => {
         } catch { }
     };
 
+    const loadRetellAgents = async () => {
+        try {
+            const res = await retellAPI.getAgents(currentWorkspace.id);
+            setRetellAgents(res.data.agents || []);
+        } catch { setRetellAgents([]); }
+    };
+
     const handleRemoveBotFromTeam = async (teamId, botId) => {
         try { await teamAPI.removeMember(currentWorkspace.id, teamId, botId, 'bot'); loadTeams(); }
         catch (err) { alert('Bot çıkarılamadı: ' + (err.response?.data?.error || err.message)); }
+    };
+
+    const handleRemoveRetellAgentFromTeam = async (teamId, agentId) => {
+        try { await teamAPI.removeMember(currentWorkspace.id, teamId, agentId, 'retellAgent'); loadTeams(); }
+        catch (err) { alert('Arama asistanı çıkarılamadı: ' + (err.response?.data?.error || err.message)); }
     };
 
     // ── Member actions ────────────────────────────────────────
@@ -446,9 +460,19 @@ const UsersTeams = () => {
     const handleBotDragStart = (e, bot) => {
         dragBot.current = bot;
         dragUser.current = null;
+        dragRetellAgent.current = null;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('type', 'bot');
         e.dataTransfer.setData('botId', bot.id);
+    };
+
+    const handleRetellAgentDragStart = (e, agent) => {
+        dragRetellAgent.current = agent;
+        dragUser.current = null;
+        dragBot.current = null;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('type', 'retellAgent');
+        e.dataTransfer.setData('retellAgentId', agent.agent_id);
     };
 
     const handleTeamDragOver = (e, teamId) => {
@@ -486,6 +510,23 @@ const UsersTeams = () => {
                 loadTeams();
             } catch (err) {
                 alert('Bot eklenemedi: ' + (err.response?.data?.error || err.message));
+            }
+            return;
+        }
+
+        // Retell Agent drop
+        if ((type === 'retellAgent' || dragRetellAgent.current) && dragRetellAgent.current) {
+            const agent = dragRetellAgent.current;
+            dragRetellAgent.current = null;
+            const alreadyIn = team.members?.some(m => m.retellAgentId === agent.agent_id);
+            if (alreadyIn) return;
+            try {
+                await teamAPI.addMember(currentWorkspace.id, team.id, { retellAgentId: agent.agent_id });
+                setDropSuccess(team.id);
+                setTimeout(() => setDropSuccess(null), 1500);
+                loadTeams();
+            } catch (err) {
+                alert('Arama asistanı eklenemedi: ' + (err.response?.data?.error || err.message));
             }
             return;
         }
@@ -549,6 +590,7 @@ const UsersTeams = () => {
         const visibleMembers = team.members?.filter(m => m.userId && m.user?.role !== 'SUPER_ADMIN') || [];
         // Bot members
         const botMembers = team.members?.filter(m => m.botId) || [];
+        const retellMembers = team.members?.filter(m => m.retellAgentId) || [];
         const memberCount = visibleMembers.length;
 
         return (
@@ -610,6 +652,26 @@ const UsersTeams = () => {
                                     </button>
                                 </div>
                             ))}
+                        </div>
+                    )}
+
+                    {/* Retell Agent Assignment */}
+                    {retellMembers.length > 0 && (
+                        <div className="ut-team-bot-chips" style={{ borderColor: '#ccfbf1' }}>
+                            <Phone size={11} className="ut-team-bot-icon" style={{ color: '#0d9488' }} />
+                            {retellMembers.map(m => {
+                                const agent = retellAgents.find(a => a.agent_id === m.retellAgentId);
+                                return (
+                                    <div key={m.id} className="ut-bot-chip" style={{ background: '#f0fdfa', borderColor: '#99f6e4' }}>
+                                        <Phone size={10} style={{ color: '#0d9488' }} />
+                                        <span className="ut-bot-chip-name" style={{ color: '#0d9488' }}>{agent?.agent_name || m.retellAgentId}</span>
+                                        <button className="ut-chip-remove" title="Kaldır"
+                                            onClick={() => handleRemoveRetellAgentFromTeam(team.id, m.retellAgentId)}>
+                                            <X size={9} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
 
@@ -767,6 +829,35 @@ const UsersTeams = () => {
                                         </div>
                                         <div className="ut-user-actions">
                                             <span className="ut-role-badge" style={{ background: '#ede9fe', color: '#6d28d9' }}>AI Bot</span>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* ── AI Call Agents ── */}
+                                {retellAgents.length > 0 && (
+                                    <div className="ut-panel-section-label" style={{ color: '#0d9488', borderColor: '#ccfbf1' }}><Phone size={12} /> AI Call Agents</div>
+                                )}
+                                {retellAgents.map(agent => (
+                                    <div
+                                        key={agent.agent_id}
+                                        className="ut-user-card ut-bot-card"
+                                        draggable
+                                        onDragStart={e => handleRetellAgentDragStart(e, agent)}
+                                        title="Takıma eklemek için sürükle"
+                                        style={{ borderLeftColor: '#0d9488' }}
+                                    >
+                                        <div className="ut-user-drag-handle"><GripVertical size={14} /></div>
+                                        <div className="ut-user-avatar-wrap">
+                                            <div className="ut-user-avatar" style={{ background: 'linear-gradient(135deg, #ccfbf1, #99f6e4)', color: '#0f766e' }}>
+                                                <Phone size={16} />
+                                            </div>
+                                        </div>
+                                        <div className="ut-user-info">
+                                            <span className="ut-user-name">{agent.agent_name || 'İsimsiz Agent'}</span>
+                                            <span className="ut-user-email">Ses Arama Asistanı</span>
+                                        </div>
+                                        <div className="ut-user-actions">
+                                            <span className="ut-role-badge" style={{ background: '#f0fdfa', color: '#0d9488' }}>Call Agent</span>
                                         </div>
                                     </div>
                                 ))}
