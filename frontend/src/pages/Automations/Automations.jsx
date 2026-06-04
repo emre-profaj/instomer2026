@@ -747,34 +747,51 @@ const Automations = () => {
                             ) : (
                                 automations.map(automation => (
                                     <div key={automation.id} className={`automation-card ${!automation.isActive ? 'inactive' : ''}`}>
-                                        <div className="automation-header">
-                                            <h3 className="automation-name">{automation.name}</h3>
-                                            <div
-                                                className={`automation-toggle ${automation.isActive ? 'active' : ''}`}
-                                                onClick={() => handleToggleAutomation(automation)}
-                                            />
+                                        {/* Top color stripe */}
+                                        <div className="auto-card-stripe" />
+                                        
+                                        {/* Card body */}
+                                        <div className="auto-card-body">
+                                            {/* Header: name + toggle */}
+                                            <div className="auto-card-header">
+                                                <div className="auto-card-title-row">
+                                                    <h3 className="automation-name">{automation.name}</h3>
+                                                    <span className={`auto-status-pill ${automation.isActive ? 'active' : ''}`}>
+                                                        {automation.isActive ? 'Aktif' : 'Pasif'}
+                                                    </span>
+                                                </div>
+                                                <div
+                                                    className={`automation-toggle ${automation.isActive ? 'active' : ''}`}
+                                                    onClick={() => handleToggleAutomation(automation)}
+                                                />
+                                            </div>
+
+                                            {/* Flow: trigger → action */}
+                                            <div className="auto-card-flow">
+                                                <div className="auto-flow-step trigger">
+                                                    <span className="auto-flow-label">Tetikleyici</span>
+                                                    <span className="auto-flow-value">{getTriggerLabel(automation.trigger)}</span>
+                                                </div>
+                                                <div className="auto-flow-arrow">→</div>
+                                                <div className="auto-flow-step action">
+                                                    <span className="auto-flow-label">Aksiyon</span>
+                                                    <span className="auto-flow-value">{getActionLabel(automation.action)}</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Description */}
+                                            {automation.description && (
+                                                <p className="automation-description">{automation.description}</p>
+                                            )}
                                         </div>
 
-                                        <div className="automation-flow">
-                                            <span className="flow-item trigger">
-                                                {getTriggerLabel(automation.trigger)}
-                                            </span>
-                                            <ArrowRight className="flow-arrow" size={20} />
-                                            <span className="flow-item action">
-                                                {getActionLabel(automation.action)}
-                                            </span>
-                                        </div>
-
-                                        {automation.description && (
-                                            <p className="automation-description">{automation.description}</p>
-                                        )}
-
-                                        <div className="automation-actions">
+                                        {/* Footer actions */}
+                                        <div className="auto-card-footer">
                                             <button className="btn btn-secondary btn-sm" onClick={() => openEditAutomation(automation)}>
-                                                <Edit2 size={14} /> Düzenle
+                                                <Edit2 size={13} /> Düzenle
                                             </button>
                                             <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteAutomation(automation.id)}>
-                                                <Trash2 size={14} />
+                                                <Trash2 size={13} />
                                             </button>
                                         </div>
                                     </div>
