@@ -1894,6 +1894,36 @@ const Assistants = () => {
                                                         ))}
                                                     </div>
                                                 </div>
+
+                                                {/* Görev Kapsamı */}
+                                                <div>
+                                                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Görev Kapsamı</label>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                                        {[
+                                                            { key: 'handleUnassigned', label: 'Atanmamış Sohbetler', desc: 'Kimseye atanmamış yeni sohbetler için ara' },
+                                                            { key: 'handlePool', label: 'Havuzdaki Sohbetler', desc: 'Takım havuzunda bekleyen sohbetler için ara' },
+                                                            { key: 'handleTeamFallback', label: 'Aynı takımdaki kişilerin yerine çalış', desc: 'Takım üyesi cevap vermezse AI devreye girsin' },
+                                                        ].map(opt => (
+                                                            <label key={opt.key} style={{
+                                                                display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer',
+                                                                padding: '8px 10px', borderRadius: 8,
+                                                                background: cfg[opt.key] ? '#f0fdf4' : '#fafafa',
+                                                                border: `1px solid ${cfg[opt.key] ? '#bbf7d0' : '#f3f4f6'}`,
+                                                                transition: 'all 0.15s'
+                                                            }}>
+                                                                <input type="checkbox"
+                                                                    checked={cfg[opt.key] || false}
+                                                                    onChange={e => updateCfg(opt.key, e.target.checked)}
+                                                                    style={{ marginTop: 2, accentColor: '#10b981', width: 14, height: 14, flexShrink: 0 }}
+                                                                />
+                                                                <div>
+                                                                    <div style={{ fontWeight: 600, fontSize: '11px', color: cfg[opt.key] ? '#065f46' : '#374151' }}>{opt.label}</div>
+                                                                    <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: 1 }}>{opt.desc}</div>
+                                                                </div>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                         );
