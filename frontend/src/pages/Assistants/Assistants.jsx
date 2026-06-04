@@ -1722,6 +1722,11 @@ const Assistants = () => {
                             </div>
 
                             {/* Retell Agent Kartları */}
+                            <div style={{ marginTop: 24, marginBottom: 24 }}>
+                                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#1e1b4b', margin: '0 0 14px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <PhoneCall size={16} style={{ color: '#6366f1' }} />
+                                    Arama Agentları
+                                </h3>
                             {retellLoading ? (
                                 <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280' }}>
                                     <Loader size={20} className="spin" style={{ marginBottom: 8 }} />
@@ -1774,6 +1779,7 @@ const Assistants = () => {
                                     ))}
                                 </div>
                             )}
+                            </div>
 
                             {/* AI Arama Devralma Card */}
                             {retellSettings.retellAutoCallEnabled && (
