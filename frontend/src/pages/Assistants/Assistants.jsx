@@ -1938,6 +1938,58 @@ const Assistants = () => {
                                                         ))}
                                                     </select>
                                                 </div>
+
+                                                {/* Akıllı Arama Kademeleri */}
+                                                <div>
+                                                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Akıllı Arama Kademeleri</label>
+                                                    <p style={{ fontSize: '10px', color: '#9ca3af', margin: '0 0 6px 0' }}>Arama başarısız olursa tekrar ne zaman arasın?</p>
+                                                    {(cfg.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }]).map((step, idx) => (
+                                                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#6366f1', minWidth: 18 }}>{idx + 1}.</span>
+                                                            <select className="input-modern"
+                                                                value={step.delay}
+                                                                onChange={e => {
+                                                                    const steps = [...(cfg.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }])];
+                                                                    steps[idx] = { delay: Number(e.target.value) };
+                                                                    updateCfg('retrySteps', steps);
+                                                                }}
+                                                                style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }}
+                                                            >
+                                                                <option value={1}>1 dakika sonra</option>
+                                                                <option value={3}>3 dakika sonra</option>
+                                                                <option value={5}>5 dakika sonra</option>
+                                                                <option value={10}>10 dakika sonra</option>
+                                                                <option value={15}>15 dakika sonra</option>
+                                                                <option value={30}>30 dakika sonra</option>
+                                                                <option value={60}>1 saat sonra</option>
+                                                                <option value={120}>2 saat sonra</option>
+                                                                <option value={240}>4 saat sonra</option>
+                                                                <option value={480}>8 saat sonra</option>
+                                                                <option value={1440}>1 gün sonra</option>
+                                                                <option value={2880}>2 gün sonra</option>
+                                                            </select>
+                                                            {(cfg.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }]).length > 1 && (
+                                                                <button type="button" onClick={() => {
+                                                                    const steps = [...(cfg.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }])];
+                                                                    steps.splice(idx, 1);
+                                                                    updateCfg('retrySteps', steps);
+                                                                }}
+                                                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {(cfg.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }]).length < 5 && (
+                                                        <button type="button" onClick={() => {
+                                                            const steps = [...(cfg.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }])];
+                                                            steps.push({ delay: 60 });
+                                                            updateCfg('retrySteps', steps);
+                                                        }}
+                                                        style={{
+                                                            fontSize: '10px', color: '#6366f1', background: 'none', border: '1px dashed #c7d2fe',
+                                                            borderRadius: 6, padding: '3px 10px', cursor: 'pointer', width: '100%', marginTop: 2
+                                                        }}>+ Kademe Ekle</button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                         );

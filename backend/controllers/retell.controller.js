@@ -1268,6 +1268,11 @@ async function checkOverdueAgentCalls() {
             if (activity.description) dynVars.call_description = activity.description.substring(0, 500);
 
             try {
+                // retrySteps'tan maxAttempts ve ilk gecikmeyi belirle
+                const retrySteps = agentCfg?.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }];
+                const maxAttempts = retrySteps.length + 1; // 1 asıl + N retry
+                const firstRetryDelay = retrySteps[0]?.delay || 10;
+
                 await prisma.scheduledCall.create({
                     data: {
                         workspaceId: activity.workspaceId,
@@ -1278,7 +1283,10 @@ async function checkOverdueAgentCalls() {
                         scheduledAt: now,
                         status: 'PENDING',
                         createdById: `activity_${activity.id}`,
-                        dynamicVariables: JSON.stringify(dynVars)
+                        dynamicVariables: JSON.stringify(dynVars),
+                        maxAttempts: maxAttempts,
+                        retryDelayMin: firstRetryDelay,
+                        attemptNumber: 1
                     }
                 });
 
@@ -2384,8 +2392,28 @@ async function handleCallEnded(call) {
                 });
 
                 if (scheduledCall && scheduledCall.attemptNumber < scheduledCall.maxAttempts) {
-                    // +retryDelayMin dakika sonra yeni deneme planla
-                    const retryDelay = scheduledCall.retryDelayMin || 60;
+                    // ─── AKILLI KADEME: Agent config'den retrySteps al ──────────
+                    let retryDelay = scheduledCall.retryDelayMin || 60;
+                    const currentAttempt = scheduledCall.attemptNumber; // 0-indexed for steps array
+
+                    // Agent config'den kademeli gecikme sürelerini oku
+                    try {
+                        const ws = await prisma.workspace.findUnique({
+                            where: { id: scheduledCall.workspaceId },
+                            select: { retellAutoCallTriggers: true }
+                        });
+                        const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
+                        const agentCfg = agentConfigs[scheduledCall.agentId];
+                        const retrySteps = agentCfg?.retrySteps;
+
+                        if (retrySteps && retrySteps.length > 0) {
+                            // currentAttempt: 1 = ilk başarısız → retrySteps[0], 2 → retrySteps[1], ...
+                            const stepIdx = Math.min(currentAttempt - 1, retrySteps.length - 1);
+                            retryDelay = retrySteps[stepIdx]?.delay || retryDelay;
+                            console.log(`🔄 [Retry] Kademe ${currentAttempt}/${retrySteps.length}: ${retryDelay}dk sonra tekrar aranacak`);
+                        }
+                    } catch (_) {}
+
                     const nextAttemptAt = new Date(Date.now() + retryDelay * 60 * 1000);
                     const nextAttempt = scheduledCall.attemptNumber + 1;
 
