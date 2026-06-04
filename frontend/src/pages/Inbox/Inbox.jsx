@@ -366,7 +366,25 @@ const Inbox = () => {
     const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
     const [activeChannel, setActiveChannel] = useState(null); // null, 'WHATSAPP', 'FACEBOOK', 'INSTAGRAM'
     const [searchTerm, setSearchTerm] = useState('');
-    const [assignmentTab, setAssignmentTab] = useState('ALL'); // 'ALL', 'MINE_OR_UNASSIGNED', 'MINE', 'PENDING'
+    // Map sidebar URL ?tab= param to assignmentTab values
+    const mapTabToAssignment = (tab) => {
+        if (!tab || tab === 'all') return 'ALL';
+        if (tab === 'pool') return 'MINE_OR_UNASSIGNED';
+        if (tab === 'mine') return 'MINE';
+        if (tab === 'unassigned') return 'PENDING';
+        if (tab.startsWith('team:')) return `TEAM:${tab.split(':')[1]}`;
+        return 'ALL';
+    };
+    const [searchParams] = useSearchParams();
+    const [assignmentTab, setAssignmentTab] = useState(() => mapTabToAssignment(searchParams.get('tab'))); // 'ALL', 'MINE_OR_UNASSIGNED', 'MINE', 'PENDING'
+
+    // Sync URL ?tab= param to assignmentTab when sidebar navigation changes
+    useEffect(() => {
+        const urlTab = searchParams.get('tab');
+        const mapped = mapTabToAssignment(urlTab);
+        setAssignmentTab(mapped);
+    }, [searchParams]);
+
     const [showResolved, setShowResolved] = useState(() => {
         try {
             return localStorage.getItem('inbox_showResolved') === 'true';
