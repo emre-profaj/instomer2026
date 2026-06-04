@@ -4216,7 +4216,8 @@
 .inbox-header-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    overflow: hidden;
 }
 
 .inbox-header-left h2 {
@@ -4233,17 +4234,18 @@
 .inbox-header-left .new-conversation-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: 4px;
+    padding: 5px 10px;
     background: #ef4444;
     color: white;
     border: none;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .inbox-header-left .new-conversation-btn:hover {
