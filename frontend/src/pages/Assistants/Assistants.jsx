@@ -1757,7 +1757,7 @@ const Assistants = () => {
                                     <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0' }}>API Key kaydedip agent oluşturun.</p>
                                 </div>
                             ) : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 20 }}>
                                     {retellAgents.map(agent => {
                                         const cfg = { fallbackDelayMinutes: 1, ...agentConfigs[agent.agent_id] };
                                         const updateCfg = (field, value) => {
