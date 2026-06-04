@@ -326,7 +326,7 @@ const AramaAnalizi = () => {
                                             </span>
                                         )}
                                     </div>
-                                    <div className="delayed-call-right" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div className="delayed-call-right" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                                         <button 
                                             className="btn-action-cancel"
                                             style={{ background: '#10b981', fontSize: '0.75rem', padding: '7px 14px' }}
