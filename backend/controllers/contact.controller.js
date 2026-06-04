@@ -1382,26 +1382,29 @@ export const getContactAnalytics = async (req, res) => {
         const filteredClosureNotes = closureNotes.filter(a => a.result && a.result.trim() !== '');
 
         // Gecikmiş aramalar — tarih filtresi OLMADAN, dueDate geçmiş PLANNED aramalar
-        const overdueCalls = await prisma.contactActivity.findMany({
-            where: {
-                workspaceId,
-                type: 'CALL',
-                status: 'PLANNED',
-                dueDate: { lt: new Date() }
-            },
-            select: {
-                id: true,
-                contactId: true,
-                title: true,
-                dueDate: true,
-                createdAt: true,
-                assignedToId: true,
-                contact: { select: { id: true, name: true, phone: true } },
-                assignee: { select: { id: true, name: true } }
-            },
-            orderBy: { dueDate: 'asc' },
-            take: 100
-        });
+        const overdueWhere = {
+            workspaceId,
+            type: 'CALL',
+            status: 'PLANNED',
+            dueDate: { lt: new Date() }
+        };
+        const [overdueCalls, overdueCount] = await Promise.all([
+            prisma.contactActivity.findMany({
+                where: overdueWhere,
+                select: {
+                    id: true,
+                    contactId: true,
+                    title: true,
+                    dueDate: true,
+                    createdAt: true,
+                    assignedToId: true,
+                    contact: { select: { id: true, name: true, phone: true } },
+                    assignee: { select: { id: true, name: true } }
+                },
+                orderBy: { dueDate: 'asc' }
+            }),
+            prisma.contactActivity.count({ where: overdueWhere })
+        ]);
 
         const callTrackingStats = {
             totalWithPhone: contactsWithPhone,
@@ -1414,7 +1417,8 @@ export const getContactAnalytics = async (req, res) => {
             phoneContactsList,
             activities: callActivities,
             closureNotes: filteredClosureNotes,
-            overdueCalls
+            overdueCalls,
+            overdueCount
         };
 
         res.json({

@@ -301,7 +301,7 @@ const AramaAnalizi = () => {
                             <h2>Gecikmiş Aramalar</h2>
                         </div>
                         <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, background: '#fef2f2', padding: '2px 8px', borderRadius: '12px' }}>
-                            {delayedCalls.length} Bekleyen
+                            {stats.overdueCount || delayedCalls.length} Bekleyen
                         </span>
                     </div>
                     
