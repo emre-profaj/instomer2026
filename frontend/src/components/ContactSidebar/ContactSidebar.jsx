@@ -1728,8 +1728,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
 
                             {/* ACTION BUTTONS — Row 1: Aktiviteler */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 16px 4px' }}>
-                                <button className="activity-btn" style={{ padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 16px 2px' }}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
                                     <span style={{ position: 'relative', display: 'inline-flex', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' }}>
                                         <PhoneCall size={17} style={{ color: '#374151' }} />
                                         <span style={{
@@ -1748,34 +1748,34 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     </span>
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
                                     <PhoneCall size={18} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Planla</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('MEETING')}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('MEETING')}>
                                     <CalendarDays size={18} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görüşme{' '}Planla</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '10px 4px', minHeight: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('REMINDER')}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('REMINDER')}>
                                     <Bell size={18} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görev{' '}Hatırlatıcı</span>
                                 </button>
                             </div>
                             {/* ACTION BUTTONS — Row 2: Satış */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '0 16px 8px' }}>
-                                <button className="activity-btn" style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => setShowQuoteForm(true)}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 16px 8px' }}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowQuoteForm(true)}>
                                     <FileText size={18} style={{ color: '#10b981' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => setShowOrderForm(true)}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowOrderForm(true)}>
                                     <TrendingUp size={18} style={{ color: '#3b82f6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => setShowInvoiceForm(true)}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowInvoiceForm(true)}>
                                     <FileText size={18} style={{ color: '#8b5cf6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }} onClick={() => openActivityModal('PAYMENT')}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('PAYMENT')}>
                                     <Banknote size={18} style={{ color: '#f59e0b' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Tahsilat</span>
                                 </button>
