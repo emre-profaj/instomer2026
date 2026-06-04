@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
-import { aiAPI, workspaceAPI, automationAPI, retellAPI, facebookAPI, whatsappAPI, emailAPI, formWebhookAPI, webWidgetAPI } from '../../services/api';
+import { aiAPI, workspaceAPI, automationAPI, retellAPI, facebookAPI, whatsappAPI, emailAPI, formWebhookAPI, webWidgetAPI, teamAPI } from '../../services/api';
 import { Plus, Trash2, Bot, FileText, Upload, Save, X, Clock, Timer, AlertCircle, Gauge, GitBranch, Edit2, Zap, Stethoscope, Phone, Mic, Wand2, ChevronRight, ChevronLeft, Languages, MessageSquare, Shield, Eye, Sparkles, ClipboardList, Key, Loader, CheckCircle, RefreshCw, PhoneCall, Calendar, BookOpen, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -1208,6 +1208,8 @@ const Assistants = () => {
     const [retellSaving, setRetellSaving] = useState(false);
     const [retellMessage, setRetellMessage] = useState(null);
     const [connectedChannels, setConnectedChannels] = useState([]);
+    const [teams, setTeams] = useState([]);
+    const [agentConfigs, setAgentConfigs] = useState({});
 
     useEffect(() => {
         if (workspaceId) {
@@ -1217,8 +1219,19 @@ const Assistants = () => {
             loadRetellAgents();
             loadRetellSettings();
             loadConnectedChannels();
+            loadTeams();
         }
     }, [workspaceId]);
+
+    const loadTeams = async () => {
+        if (!workspaceId) return;
+        try {
+            const res = await teamAPI.getWorkspaceTeams(workspaceId);
+            setTeams(res.data.teams || res.data || []);
+        } catch (err) {
+            console.error('Error loading teams:', err);
+        }
+    };
 
     const loadRetellAgents = async () => {
         if (!workspaceId) return;
@@ -1250,6 +1263,9 @@ const Assistants = () => {
                     callEnd: typeof val === 'object' && val.callEnd ? val.callEnd : '18:00'
                 }));
             setRetellRules(existingRules);
+            // Load per-agent configs from retellAutoCallTriggers.agentConfigs
+            const savedAgentConfigs = triggers?.agentConfigs || {};
+            setAgentConfigs(savedAgentConfigs);
             setRetellSettings({
                 retellApiKey: '',
                 retellAgentId: res.data.retellAgentId || '',
@@ -1317,6 +1333,7 @@ const Assistants = () => {
                     };
                 }
             });
+            triggers.agentConfigs = agentConfigs;
             data.retellAutoCallTriggers = triggers;
             data.retellAutoCallSchedule = retellSettings.retellAutoCallSchedule;
             data.aiFallbackEnabled = retellSettings.aiFallbackEnabled;
@@ -1739,44 +1756,117 @@ const Assistants = () => {
                                     <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0' }}>API Key kaydedip agent oluşturun.</p>
                                 </div>
                             ) : (
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                                    {retellAgents.map(agent => (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
+                                    {retellAgents.map(agent => {
+                                        const cfg = agentConfigs[agent.agent_id] || {};
+                                        const updateCfg = (field, value) => {
+                                            setAgentConfigs(prev => ({
+                                                ...prev,
+                                                [agent.agent_id]: { ...prev[agent.agent_id], [field]: value }
+                                            }));
+                                        };
+                                        const toggleDay = (day) => {
+                                            const currentDays = cfg.days || [0,1,2,3,4,5,6];
+                                            const newDays = currentDays.includes(day)
+                                                ? currentDays.filter(d => d !== day)
+                                                : [...currentDays, day].sort();
+                                            updateCfg('days', newDays);
+                                        };
+                                        const dayLabels = [
+                                            { v: 1, l: 'Pzt' }, { v: 2, l: 'Sal' }, { v: 3, l: 'Çar' },
+                                            { v: 4, l: 'Per' }, { v: 5, l: 'Cum' }, { v: 6, l: 'Cmt' }, { v: 0, l: 'Pzr' }
+                                        ];
+                                        const activeDays = cfg.days || [0,1,2,3,4,5,6];
+                                        return (
                                         <div key={agent.agent_id} className="bot-card" style={{ borderLeft: '3px solid #0d9488', marginBottom: 0 }}>
                                             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                                <div style={{
-                                                    width: 40, height: 40, borderRadius: 10,
-                                                    background: 'linear-gradient(135deg, #ccfbf1, #99f6e4)',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                                }}>
-                                                    <Phone size={18} color="#0f766e" />
-                                                </div>
-                                                <div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                                        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#111827' }}>
+                                                {/* Header */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <div style={{
+                                                        width: 38, height: 38, borderRadius: 10,
+                                                        background: 'linear-gradient(135deg, #ccfbf1, #99f6e4)',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        <Phone size={17} color="#0f766e" />
+                                                    </div>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                             {agent.agent_name || 'İsimsiz Agent'}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: 4, fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                                                        {agent.agent_id}
+                                                        </div>
+                                                        <div style={{ fontSize: '9px', color: '#b0b0b0', fontFamily: 'monospace', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {agent.agent_id}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
-                                                    <span style={{
-                                                        padding: '3px 8px', borderRadius: 6,
-                                                        background: '#f0f9ff', border: '1px solid #bae6fd',
-                                                        fontSize: '10px', fontWeight: 600, color: '#0369a1'
-                                                    }}>Ses Agent</span>
+
+                                                {/* Badges */}
+                                                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                                                    <span style={{ padding: '2px 7px', borderRadius: 5, background: '#f0f9ff', border: '1px solid #bae6fd', fontSize: '10px', fontWeight: 600, color: '#0369a1' }}>Ses Agent</span>
                                                     {retellSettings.retellAgentId === agent.agent_id && (
-                                                        <span style={{
-                                                            fontSize: '10px', fontWeight: 600, padding: '3px 8px',
-                                                            borderRadius: 6, background: '#ecfdf5', color: '#059669',
-                                                            border: '1px solid #a7f3d0'
-                                                        }}>VARSAYILAN</span>
+                                                        <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: 5, background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>VARSAYILAN</span>
                                                     )}
+                                                </div>
+
+                                                {/* Divider */}
+                                                <div style={{ height: 1, background: '#f0f0f0', margin: '2px 0' }} />
+
+                                                {/* Takım Atama */}
+                                                <div>
+                                                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Takım</label>
+                                                    <select
+                                                        className="input-modern"
+                                                        style={{ width: '100%', fontSize: '12px', padding: '6px 8px' }}
+                                                        value={cfg.teamId || ''}
+                                                        onChange={e => updateCfg('teamId', e.target.value)}
+                                                    >
+                                                        <option value="">Takım seçin...</option>
+                                                        {teams.map(t => (
+                                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                {/* Çalışma Saatleri */}
+                                                <div>
+                                                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Çalışma Saatleri</label>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                        <input type="time" className="input-modern"
+                                                            value={cfg.callStart || '10:00'}
+                                                            onChange={e => updateCfg('callStart', e.target.value)}
+                                                            style={{ flex: 1, fontSize: '12px', padding: '5px 6px' }}
+                                                        />
+                                                        <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
+                                                        <input type="time" className="input-modern"
+                                                            value={cfg.callEnd || '21:00'}
+                                                            onChange={e => updateCfg('callEnd', e.target.value)}
+                                                            style={{ flex: 1, fontSize: '12px', padding: '5px 6px' }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Çalışma Günleri */}
+                                                <div>
+                                                    <label style={{ fontSize: '11px', fontWeight: 600, color: '#374151', marginBottom: 4, display: 'block' }}>Günler</label>
+                                                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                                                        {dayLabels.map(d => (
+                                                            <button key={d.v} type="button"
+                                                                onClick={() => toggleDay(d.v)}
+                                                                style={{
+                                                                    padding: '3px 7px', borderRadius: 5, fontSize: '10px', fontWeight: 600,
+                                                                    border: activeDays.includes(d.v) ? '1px solid #6366f1' : '1px solid #e5e7eb',
+                                                                    background: activeDays.includes(d.v) ? '#eef2ff' : '#fff',
+                                                                    color: activeDays.includes(d.v) ? '#4338ca' : '#9ca3af',
+                                                                    cursor: 'pointer', transition: 'all 0.15s'
+                                                                }}
+                                                            >{d.l}</button>
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                             </div>
