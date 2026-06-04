@@ -451,6 +451,7 @@ const UsersTeams = () => {
     const handleUserDragStart = (e, member) => {
         dragUser.current = member;
         dragBot.current = null;
+        dragRetellAgent.current = null;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('type', 'user');
         e.dataTransfer.setData('userId', member.userId);
@@ -559,7 +560,7 @@ const UsersTeams = () => {
         e.stopPropagation();
         setDragOverTeamParent(null);
         const type = e.dataTransfer.getData('type');
-        if (type === 'user' || type === 'bot') return handleTeamDrop(e, targetTeam);
+        if (type === 'user' || type === 'bot' || type === 'retellAgent') return handleTeamDrop(e, targetTeam);
         if (type !== 'team' || !dragTeamRef.current) return;
         const moved = dragTeamRef.current;
         dragTeamRef.current = null;
