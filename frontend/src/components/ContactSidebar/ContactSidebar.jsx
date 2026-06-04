@@ -1965,10 +1965,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             } : undefined}
                                                         >
                                                             {/* Row 1: Icon + Title + Status | Date + Actions */}
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 0', overflow: 'hidden' }}>
                                                                     <div className={`timeline-icon type-${item.type.toLowerCase()}`}>{renderTimelineIcon(item.type)}</div>
-                                                                    <span className="timeline-type-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    <span className="timeline-type-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', minWidth: 0 }}>
                                                                         {item.title || renderTimelineTypeName(item.type)}
                                                                     </span>
                                                                     {sc && (
