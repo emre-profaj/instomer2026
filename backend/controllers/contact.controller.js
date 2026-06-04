@@ -1381,6 +1381,28 @@ export const getContactAnalytics = async (req, res) => {
         // Filter out empty results
         const filteredClosureNotes = closureNotes.filter(a => a.result && a.result.trim() !== '');
 
+        // Gecikmiş aramalar — tarih filtresi OLMADAN, dueDate geçmiş PLANNED aramalar
+        const overdueCalls = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId,
+                type: 'CALL',
+                status: 'PLANNED',
+                dueDate: { lt: new Date() }
+            },
+            select: {
+                id: true,
+                contactId: true,
+                title: true,
+                dueDate: true,
+                createdAt: true,
+                assignedToId: true,
+                contact: { select: { id: true, name: true, phone: true } },
+                assignee: { select: { id: true, name: true } }
+            },
+            orderBy: { dueDate: 'asc' },
+            take: 100
+        });
+
         const callTrackingStats = {
             totalWithPhone: contactsWithPhone,
             totalCalled: calledContactIds.size,
@@ -1391,7 +1413,8 @@ export const getContactAnalytics = async (req, res) => {
             details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate)),
             phoneContactsList,
             activities: callActivities,
-            closureNotes: filteredClosureNotes
+            closureNotes: filteredClosureNotes,
+            overdueCalls
         };
 
         res.json({

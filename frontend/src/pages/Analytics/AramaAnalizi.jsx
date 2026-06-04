@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
-import { contactAPI, retellAPI } from '../../services/api';
+import api, { contactAPI, retellAPI } from '../../services/api';
 import './AramaAnalizi.css';
 
 const AramaAnalizi = () => {
@@ -118,11 +118,6 @@ const AramaAnalizi = () => {
         });
     };
 
-    // Filter calls in the past (overdue/delayed calls)
-    const delayedCalls = scheduledCalls.filter(call => {
-        return new Date(call.scheduledAt) < new Date();
-    });
-
     // Get call tracking stats
     const stats = analytics?.callTrackingStats || {
         totalWithPhone: 0,
@@ -134,6 +129,9 @@ const AramaAnalizi = () => {
         phoneContactsList: [],
         activities: []
     };
+
+    // Gecikmiş aramalar: backend'den tarih filtresi olmadan geliyor
+    const delayedCalls = stats.overdueCalls || [];
 
     // Closure notes — backend'den tarih filtresi olmadan geliyor (en son 100)
     const closureNotes = stats.closureNotes || [];
@@ -313,20 +311,35 @@ const AramaAnalizi = () => {
                                 <div key={call.id} className="delayed-call-item">
                                     <div className="delayed-call-left">
                                         <span className="delayed-call-contact-name">
-                                            {call.contactName || 'İsimsiz Müşteri'}
+                                            {call.contact?.name || 'İsimsiz Müşteri'}
                                         </span>
                                         <span className="delayed-call-phone-num">
-                                            {call.toNumber}
+                                            {call.contact?.phone || '—'}
                                         </span>
                                         <div className="delayed-call-time-badge">
                                             <Clock size={12} />
-                                            {formatDateTime(call.scheduledAt)}
+                                            {formatDateTime(call.dueDate)}
                                         </div>
+                                        {call.assignee && (
+                                            <span style={{ fontSize: '0.68rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600, marginTop: 4, alignSelf: 'flex-start' }}>
+                                                👤 {call.assignee.name}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="delayed-call-right">
                                         <button 
                                             className="btn-action-cancel"
-                                            onClick={() => handleCancelScheduledCall(call.id)}
+                                            onClick={async () => {
+                                                if (!window.confirm('Bu gecikmiş aramayı iptal etmek istediğinize emin misiniz?')) return;
+                                                try {
+                                                    await api.delete(`/activities/${call.id}`);
+                                                    showSuccess('Arama iptal edildi.');
+                                                    loadAllData(true);
+                                                } catch (err) {
+                                                    console.error('Cancel error:', err);
+                                                    showError('İptal edilirken hata oluştu.');
+                                                }
+                                            }}
                                             title="Aramayı İptal Et"
                                         >
                                             <Trash2 size={13} style={{ marginRight: 4 }} />
