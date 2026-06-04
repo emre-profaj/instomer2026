@@ -326,9 +326,28 @@ const AramaAnalizi = () => {
                                             </span>
                                         )}
                                     </div>
-                                    <div className="delayed-call-right">
+                                    <div className="delayed-call-right" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                         <button 
                                             className="btn-action-cancel"
+                                            style={{ background: '#10b981', fontSize: '0.75rem', padding: '7px 14px' }}
+                                            onClick={async () => {
+                                                try {
+                                                    await api.put(`/activities/${call.id}/complete`, { result: 'Arandı' });
+                                                    showSuccess('Arama tamamlandı olarak işaretlendi.');
+                                                    loadAllData(true);
+                                                } catch (err) {
+                                                    console.error('Complete error:', err);
+                                                    showError('İşaretlenirken hata oluştu.');
+                                                }
+                                            }}
+                                            title="Arama Yapıldı"
+                                        >
+                                            <PhoneCall size={13} style={{ marginRight: 4 }} />
+                                            Arandı ✓
+                                        </button>
+                                        <button 
+                                            className="btn-action-cancel"
+                                            style={{ fontSize: '0.7rem', padding: '5px 14px', opacity: 0.8 }}
                                             onClick={async () => {
                                                 if (!window.confirm('Bu gecikmiş aramayı iptal etmek istediğinize emin misiniz?')) return;
                                                 try {
@@ -342,7 +361,7 @@ const AramaAnalizi = () => {
                                             }}
                                             title="Aramayı İptal Et"
                                         >
-                                            <Trash2 size={13} style={{ marginRight: 4 }} />
+                                            <Trash2 size={12} style={{ marginRight: 4 }} />
                                             İptal Et
                                         </button>
                                     </div>
