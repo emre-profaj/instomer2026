@@ -8,7 +8,7 @@ import './Sales.css';
 
 const Quotes = () => {
     const { t } = useTranslation();
-    const { currentWorkspace } = useAuth();
+    const { currentWorkspace, user } = useAuth();
     const [deals, setDeals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedDeal, setSelectedDeal] = useState(null);
@@ -33,7 +33,7 @@ const Quotes = () => {
         amount: '',
         currency: 'TRY',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
-        assignedToId: '',
+        assignedToId: user?.id || '',
         notes: ''
     });
 
@@ -184,7 +184,7 @@ const Quotes = () => {
             amount: '',
             currency: 'TRY',
             products: [{ name: '', quantity: 1, unitPrice: 0 }],
-            assignedToId: '',
+            assignedToId: user?.id || '',
             notes: ''
         });
     };

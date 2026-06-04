@@ -2611,7 +2611,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         currency: quoteFormData.currency,
                                         amount: totalAmount,
                                         products: quoteFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
-                                        notes: quoteFormData.notes
+                                        notes: quoteFormData.notes,
+                                        assignedToId: user?.id || null
                                     });
                                     setShowQuoteForm(false);
                                     setQuoteFormData({ title: '', description: '', amount: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
@@ -2735,7 +2736,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         amount: totalAmount,
                                         products: orderFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
                                         notes: orderFormData.notes,
-                                        stage: 'ORDER'
+                                        stage: 'ORDER',
+                                        assignedToId: user?.id || null
                                     });
                                     setShowOrderForm(false);
                                     setOrderFormData({ title: '', description: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
@@ -2855,7 +2857,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         products: invoiceFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
                                         notes: invoiceFormData.notes,
                                         stage: 'INVOICE',
-                                        metadata: { taxRate: invoiceFormData.taxRate, subtotal: invSubtotal, tax: invTax, dueDate: invoiceFormData.dueDate }
+                                        metadata: { taxRate: invoiceFormData.taxRate, subtotal: invSubtotal, tax: invTax, dueDate: invoiceFormData.dueDate },
+                                        assignedToId: user?.id || null
                                     });
                                     setShowInvoiceForm(false);
                                     setInvoiceFormData({ title: '', currency: 'TRY', taxRate: 20, dueDate: '', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
