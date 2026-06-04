@@ -135,10 +135,8 @@ const AramaAnalizi = () => {
         activities: []
     };
 
-    // Filter closure notes (activities with result text where type === 'CALL' and status === 'COMPLETED')
-    const closureNotes = (stats.activities || [])
-        .filter(act => act.status === 'COMPLETED' && act.result && act.result.trim() !== '')
-        .sort((a, b) => new Date(b.completedAt || b.createdAt) - new Date(a.completedAt || a.createdAt));
+    // Closure notes — backend'den tarih filtresi olmadan geliyor (en son 100)
+    const closureNotes = stats.closureNotes || [];
 
     // Filter customer details table
     const filteredDetails = (stats.details || [])

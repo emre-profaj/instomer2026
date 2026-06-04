@@ -1358,6 +1358,29 @@ export const getContactAnalytics = async (req, res) => {
             };
         });
 
+        // Arama Kapatma Notları — tarih filtresi OLMADAN tüm notlar (en son 100)
+        const closureNotes = await prisma.contactActivity.findMany({
+            where: {
+                workspaceId,
+                type: 'CALL',
+                status: 'COMPLETED',
+                result: { not: null }
+            },
+            select: {
+                id: true,
+                contactId: true,
+                result: true,
+                completedAt: true,
+                createdAt: true,
+                contact: { select: { id: true, name: true } },
+                assignee: { select: { id: true, name: true } }
+            },
+            orderBy: { completedAt: 'desc' },
+            take: 100
+        });
+        // Filter out empty results
+        const filteredClosureNotes = closureNotes.filter(a => a.result && a.result.trim() !== '');
+
         const callTrackingStats = {
             totalWithPhone: contactsWithPhone,
             totalCalled: calledContactIds.size,
@@ -1367,7 +1390,8 @@ export const getContactAnalytics = async (req, res) => {
             callRate: contactsWithPhone > 0 ? ((calledContactIds.size / contactsWithPhone) * 100).toFixed(1) : 0,
             details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate)),
             phoneContactsList,
-            activities: callActivities
+            activities: callActivities,
+            closureNotes: filteredClosureNotes
         };
 
         res.json({
