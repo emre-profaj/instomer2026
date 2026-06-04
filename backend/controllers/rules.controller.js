@@ -587,21 +587,19 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             dueDate = dt;
             console.log(`⏰ [RULE:SALES_PHONE_CALL] Customer-stated time: ${h}:${m}`);
         } else {
-            // Business hours check (09:00 - 18:00 Turkey time, UTC+3)
+            // Business hours check (10:00 - 21:00 Turkey time)
             const now = new Date();
-            const turkeyOffset = 3 * 60;
-            const localMs = now.getTime() + (turkeyOffset - now.getTimezoneOffset()) * 60000;
-            const localNow = new Date(localMs);
-            const hour = localNow.getHours();
-            if (hour >= 9 && hour < 18) {
+            const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const hour = nowTR.getHours();
+            if (hour >= 10 && hour < 21) {
                 // Within business hours → 15 min from now (or dynamically from config if defined)
                 const delayMin = config.callDelayMinutes || 15;
                 dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
             } else {
-                // Outside business hours → next day 09:15
+                // Outside business hours → next day 10:15
                 dueDate = new Date(now);
-                dueDate.setDate(dueDate.getDate() + (hour >= 18 ? 1 : 0));
-                dueDate.setHours(9, 15, 0, 0);
+                dueDate.setDate(dueDate.getDate() + (hour >= 21 ? 1 : 0));
+                dueDate.setUTCHours(10 - 3, 15, 0, 0); // 10:15 TR = 07:15 UTC
             }
         }
 
@@ -804,40 +802,95 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         const now = new Date();
         let timingSource = 'DEFAULT';
 
-        try {
-            const recentMsgs = await prisma.message.findMany({
-                where: {
-                    conversation: { workspaceId, contactId },
-                    isFromContact: true,
-                },
-                orderBy: { createdAt: 'desc' },
-                take: 5,
-                select: { content: true }
-            });
-            const combinedText = recentMsgs.map(m => m.content || '').join(' ');
-            const customerTiming = parseCallTimingFromMessages(combinedText);
-            if (customerTiming) {
-                dueDate = customerTiming;
-                timingSource = 'CUSTOMER_PREFERENCE';
-                console.log(`🕐 [RULE:AUTO_CALL] Müşteri zamanlama tercihi algılandı: ${dueDate.toISOString()} (metin: "${combinedText.substring(0, 100)}")`);
+        // 6a. For LEAD_FORM source, parse preferred call window from lead form message content
+        //     e.g. "Sizi Ne Zaman Arayalım?: 15:00 - 18:00" or "15:00_-_18:00"
+        if (source === 'LEAD_FORM' || source === 'LEAD') {
+            try {
+                const recentMsgs = await prisma.message.findMany({
+                    where: {
+                        conversation: { workspaceId, contactId },
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    select: { content: true }
+                });
+                const combinedText = recentMsgs.map(m => m.content || '').join(' ');
+                // Normalize underscored Facebook Lead Ads format: "15:00_-_18:00" → "15:00 - 18:00"
+                const normalizedText = combinedText.replace(/_/g, ' ');
+                // Match time range pattern: "15:00 - 18:00", "15:00-18:00", "15.00 - 18.00"
+                const rangeMatch = normalizedText.match(/(\d{1,2})[:.:](\d{2})\s*[-–]\s*(\d{1,2})[:.:](\d{2})/);
+                if (rangeMatch) {
+                    const [, sH, sM, eH, eM] = rangeMatch.map((v, i) => i === 0 ? v : parseInt(v));
+                    if (sH >= 6 && eH > sH && eH <= 23) {
+                        // Türkiye saatine göre şu anda pencere içinde mi kontrol et
+                        const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+                        const nowMinutes = nowTR.getHours() * 60 + nowTR.getMinutes();
+                        const windowStartMin = sH * 60 + sM;
+                        const windowEndMin = eH * 60 + eM;
+
+                        if (nowMinutes < windowStartMin) {
+                            // Pencere henüz başlamadı → bugün pencere başlangıcına planla
+                            dueDate = new Date(now);
+                            // Türkiye saatini UTC'ye çevir (UTC+3)
+                            dueDate.setUTCHours(sH - 3, sM, 0, 0);
+                            timingSource = 'LEAD_FORM_WINDOW';
+                            console.log(`🕐 [RULE:AUTO_CALL] Lead form tercih penceresi: ${sH}:${String(sM).padStart(2,'0')}-${eH}:${String(eM).padStart(2,'0')} → bugün ${sH}:${String(sM).padStart(2,'0')}'e planlandı`);
+                        } else if (nowMinutes < windowEndMin) {
+                            // Pencere içindeyiz → 1 dk sonra planla
+                            dueDate = new Date(now.getTime() + 60 * 1000);
+                            timingSource = 'LEAD_FORM_WINDOW_NOW';
+                            console.log(`🕐 [RULE:AUTO_CALL] Lead form tercih penceresi içindeyiz (${sH}:${String(sM).padStart(2,'0')}-${eH}:${String(eM).padStart(2,'0')}) → hemen aranacak`);
+                        } else {
+                            // Pencere geçti → yarın pencere başlangıcına planla
+                            dueDate = new Date(now);
+                            dueDate.setDate(dueDate.getDate() + 1);
+                            dueDate.setUTCHours(sH - 3, sM, 0, 0);
+                            timingSource = 'LEAD_FORM_WINDOW_TOMORROW';
+                            console.log(`🕐 [RULE:AUTO_CALL] Lead form tercih penceresi geçti → yarın ${sH}:${String(sM).padStart(2,'0')}'e planlandı`);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('⚠️ [RULE:AUTO_CALL] Lead form window parse error (non-blocking):', err.message);
             }
-        } catch (err) {
-            console.error('⚠️ [RULE:AUTO_CALL] Timing parse error (non-blocking):', err.message);
         }
 
-        // Fallback: default business hours delay
+        // 6b. If no lead form window found, check customer messages for general timing
         if (!dueDate) {
-            const turkeyOffset = 3 * 60;
-            const localMs = now.getTime() + (turkeyOffset - now.getTimezoneOffset()) * 60000;
-            const localNow = new Date(localMs);
-            const hour = localNow.getHours();
-            if (hour >= 9 && hour < 18) {
+            try {
+                const recentMsgs = await prisma.message.findMany({
+                    where: {
+                        conversation: { workspaceId, contactId },
+                        isFromContact: true,
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5,
+                    select: { content: true }
+                });
+                const combinedText = recentMsgs.map(m => m.content || '').join(' ');
+                const customerTiming = parseCallTimingFromMessages(combinedText);
+                if (customerTiming) {
+                    dueDate = customerTiming;
+                    timingSource = 'CUSTOMER_PREFERENCE';
+                    console.log(`🕐 [RULE:AUTO_CALL] Müşteri zamanlama tercihi algılandı: ${dueDate.toISOString()} (metin: "${combinedText.substring(0, 100)}")`);
+                }
+            } catch (err) {
+                console.error('⚠️ [RULE:AUTO_CALL] Timing parse error (non-blocking):', err.message);
+            }
+        }
+
+        // 6c. Fallback: default business hours delay
+        if (!dueDate) {
+            const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+            const hour = nowTR.getHours();
+            if (hour >= 10 && hour < 21) {
                 const delayMin = config.callDelayMinutes || 15;
                 dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
             } else {
+                // Mesai dışı → yarın 10:15
                 dueDate = new Date(now);
-                dueDate.setDate(dueDate.getDate() + (hour >= 18 ? 1 : 0));
-                dueDate.setHours(9, 15, 0, 0);
+                dueDate.setDate(dueDate.getDate() + (hour >= 21 ? 1 : 0));
+                dueDate.setUTCHours(10 - 3, 15, 0, 0); // 10:15 TR = 07:15 UTC
             }
         }
 
