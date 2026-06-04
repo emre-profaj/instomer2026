@@ -2394,9 +2394,10 @@ async function handleCallEnded(call) {
                 if (scheduledCall && scheduledCall.attemptNumber < scheduledCall.maxAttempts) {
                     // ─── AKILLI KADEME: Agent config'den retrySteps al ──────────
                     let retryDelay = scheduledCall.retryDelayMin || 60;
-                    const currentAttempt = scheduledCall.attemptNumber; // 0-indexed for steps array
+                    const currentAttempt = scheduledCall.attemptNumber;
 
                     // Agent config'den kademeli gecikme sürelerini oku
+                    let retrySteps = null;
                     try {
                         const ws = await prisma.workspace.findUnique({
                             where: { id: scheduledCall.workspaceId },
@@ -2404,10 +2405,9 @@ async function handleCallEnded(call) {
                         });
                         const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
                         const agentCfg = agentConfigs[scheduledCall.agentId];
-                        const retrySteps = agentCfg?.retrySteps;
+                        retrySteps = agentCfg?.retrySteps;
 
                         if (retrySteps && retrySteps.length > 0) {
-                            // currentAttempt: 1 = ilk başarısız → retrySteps[0], 2 → retrySteps[1], ...
                             const stepIdx = Math.min(currentAttempt - 1, retrySteps.length - 1);
                             retryDelay = retrySteps[stepIdx]?.delay || retryDelay;
                             console.log(`🔄 [Retry] Kademe ${currentAttempt}/${retrySteps.length}: ${retryDelay}dk sonra tekrar aranacak`);
@@ -2416,7 +2416,71 @@ async function handleCallEnded(call) {
 
                     const nextAttemptAt = new Date(Date.now() + retryDelay * 60 * 1000);
                     const nextAttempt = scheduledCall.attemptNumber + 1;
+                    const retryDelayLabel = retryDelay >= 1440 ? `${Math.round(retryDelay / 1440)} gün` : retryDelay >= 60 ? `${Math.round(retryDelay / 60)} saat` : `${retryDelay} dk`;
 
+                    // 1. ESKİ GÖREVİ KAPAT — "Aradı, ulaşamadı" notu ile
+                    if (scheduledCall.createdById?.startsWith('activity_')) {
+                        const activityId = scheduledCall.createdById.replace('activity_', '');
+                        try {
+                            await prisma.contactActivity.update({
+                                where: { id: activityId },
+                                data: {
+                                    status: 'COMPLETED',
+                                    isCompleted: true,
+                                    completedAt: new Date(),
+                                    result: `📞 Aradı, ulaşamadı. (Sebep: ${disconnectReason || 'Bilinmiyor'}) — Deneme ${currentAttempt}/${scheduledCall.maxAttempts}`,
+                                    source: 'AI_CALL'
+                                }
+                            });
+                            console.log(`✅ [Retry] Eski görev kapatıldı: ${activityId} — "Aradı, ulaşamadı"`);
+                        } catch (_) {}
+                    }
+
+                    // 2. YENİ GÖREV AÇ — sonraki kademe zamanına planla
+                    let newActivityId = null;
+                    if (scheduledCall.contactId) {
+                        try {
+                            // Eski activity'den teamId ve diğer bilgileri al
+                            let teamId = null;
+                            let callTopic = null;
+                            let aiAgentId = scheduledCall.agentId;
+                            if (scheduledCall.createdById?.startsWith('activity_')) {
+                                const oldActivity = await prisma.contactActivity.findUnique({
+                                    where: { id: scheduledCall.createdById.replace('activity_', '') },
+                                    select: { teamId: true, callTopic: true, aiAgentId: true }
+                                });
+                                if (oldActivity) {
+                                    teamId = oldActivity.teamId;
+                                    callTopic = oldActivity.callTopic;
+                                    if (oldActivity.aiAgentId) aiAgentId = oldActivity.aiAgentId;
+                                }
+                            }
+
+                            const newActivity = await prisma.contactActivity.create({
+                                data: {
+                                    contactId: scheduledCall.contactId,
+                                    workspaceId: scheduledCall.workspaceId,
+                                    type: 'CALL',
+                                    title: `🔄 Tekrar Arama (${nextAttempt}/${scheduledCall.maxAttempts})`,
+                                    description: `Önceki arama başarısız oldu (${disconnectReason || 'Bilinmiyor'}). ${retryDelayLabel} sonra tekrar aranacak.`,
+                                    dueDate: nextAttemptAt,
+                                    status: 'PLANNED',
+                                    source: 'AI_CALL',
+                                    priority: 'HIGH',
+                                    aiAgentId: aiAgentId,
+                                    aiFallbackTriggered: true,
+                                    teamId: teamId,
+                                    callTopic: callTopic
+                                }
+                            });
+                            newActivityId = newActivity.id;
+                            console.log(`📋 [Retry] Yeni görev açıldı: ${newActivity.id} — ${nextAttemptAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`);
+                        } catch (err) {
+                            console.error(`❌ [Retry] Yeni görev oluşturulamadı:`, err.message);
+                        }
+                    }
+
+                    // 3. YENİ ScheduledCall oluştur
                     await prisma.scheduledCall.create({
                         data: {
                             workspaceId: scheduledCall.workspaceId,
@@ -2426,7 +2490,7 @@ async function handleCallEnded(call) {
                             agentId: scheduledCall.agentId,
                             scheduledAt: nextAttemptAt,
                             status: 'PENDING',
-                            createdById: scheduledCall.createdById,
+                            createdById: newActivityId ? `activity_${newActivityId}` : scheduledCall.createdById,
                             dynamicVariables: scheduledCall.dynamicVariables,
                             attemptNumber: nextAttempt,
                             maxAttempts: scheduledCall.maxAttempts,
@@ -2435,23 +2499,10 @@ async function handleCallEnded(call) {
                             conversationId: scheduledCall.conversationId
                         }
                     });
-                    console.log(`🔄 [Retry] Deneme ${nextAttempt}/${scheduledCall.maxAttempts} planlandı: ${nextAttemptAt.toLocaleString('tr-TR')} (+${retryDelay}dk) | Numara: ${scheduledCall.toNumber}`);
+                    console.log(`🔄 [Retry] Deneme ${nextAttempt}/${scheduledCall.maxAttempts} planlandı: ${nextAttemptAt.toLocaleString('tr-TR')} (+${retryDelayLabel}) | Numara: ${scheduledCall.toNumber}`);
 
-                    // Activity'yi güncelle — henüz tamamlanmadı, retry bekliyor
-                    if (scheduledCall.createdById?.startsWith('activity_')) {
-                        const activityId = scheduledCall.createdById.replace('activity_', '');
-                        try {
-                            await prisma.contactActivity.update({
-                                where: { id: activityId },
-                                data: {
-                                    result: `AI araması başarısız (${disconnectReason}). Deneme ${nextAttempt}/${scheduledCall.maxAttempts} → ${nextAttemptAt.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}`,
-                                    status: 'PLANNED' // Tekrar deneme planlandığı için PLANNED kalır
-                                }
-                            });
-                        } catch (_) {}
-                    }
                 } else if (scheduledCall && scheduledCall.attemptNumber >= scheduledCall.maxAttempts) {
-                    // Tüm denemeler tükendi
+                    // Tüm denemeler tükendi — son görevi kapat
                     console.log(`❌ [Retry] Tüm denemeler tükendi (${scheduledCall.attemptNumber}/${scheduledCall.maxAttempts}) | Numara: ${scheduledCall.toNumber}`);
                     if (scheduledCall.createdById?.startsWith('activity_')) {
                         const activityId = scheduledCall.createdById.replace('activity_', '');
@@ -2460,7 +2511,9 @@ async function handleCallEnded(call) {
                                 where: { id: activityId },
                                 data: {
                                     status: 'CANCELLED',
-                                    result: `AI araması ${scheduledCall.maxAttempts} denemede de başarısız oldu. Son sebep: ${disconnectReason}`,
+                                    isCompleted: true,
+                                    completedAt: new Date(),
+                                    result: `❌ ${scheduledCall.maxAttempts} denemede de ulaşılamadı. Son sebep: ${disconnectReason || 'Bilinmiyor'}`,
                                     source: 'AI_CALL'
                                 }
                             });
