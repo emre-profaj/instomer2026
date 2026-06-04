@@ -375,7 +375,7 @@ const Inbox = () => {
         if (tab.startsWith('team:')) return `TEAM:${tab.split(':')[1]}`;
         return 'ALL';
     };
-    const [searchParams] = useSearchParams();
+    
     const [assignmentTab, setAssignmentTab] = useState(() => mapTabToAssignment(searchParams.get('tab'))); // 'ALL', 'MINE_OR_UNASSIGNED', 'MINE', 'PENDING'
 
     // Sync URL ?tab= param to assignmentTab when sidebar navigation changes
