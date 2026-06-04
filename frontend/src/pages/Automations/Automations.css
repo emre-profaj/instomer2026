@@ -246,11 +246,11 @@
     margin-top: auto;
 }
 
-/* Automations Grid — vertical list */
+/* Automations Grid — modern card grid */
 .automations-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
 }
 
 /* Automation Card — modern list item */
@@ -752,7 +752,8 @@
         justify-content: center;
     }
 
-    .templates-grid {
+    .templates-grid,
+    .automations-grid {
         grid-template-columns: 1fr;
     }
 
