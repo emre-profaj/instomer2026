@@ -1721,28 +1721,61 @@ const Assistants = () => {
                                 </div>
                             </div>
 
-                            {/* Otomatik Arama Card */}
-                            <div className="bot-card" style={{ borderLeft: '3px solid #6366f1', marginBottom: '16px' }}>
-                                <div style={{ padding: '20px' }}>
-                                    <div className="section-header-toggle">
-                                        <div className="section-title-group">
-                                            <PhoneCall size={18} style={{ color: '#6366f1' }} />
-                                            <span>Otomatik Arama (Auto-Call)</span>
-                                        </div>
-                                        <label className="toggle-switch">
-                                            <input type="checkbox" checked={retellSettings.retellAutoCallEnabled}
-                                                onChange={(e) => setRetellSettings(prev => ({ ...prev, retellAutoCallEnabled: e.target.checked }))} />
-                                            <span className="toggle-slider"></span>
-                                        </label>
-                                    </div>
-
-                                    {retellSettings.retellAutoCallEnabled && (
-                                        <div className="section-content" style={{ marginTop: 12 }}>
-                                            <p className="section-description">Belirli kanallardan numara geldiğinde otomatik arama başlatır.</p>
-                                        </div>
-                                    )}
+                            {/* Retell Agent Kartları */}
+                            {retellLoading ? (
+                                <div style={{ textAlign: 'center', padding: '30px', color: '#6b7280' }}>
+                                    <Loader size={20} className="spin" style={{ marginBottom: 8 }} />
+                                    <p style={{ fontSize: '13px', margin: 0 }}>Agent'lar yükleniyor...</p>
                                 </div>
-                            </div>
+                            ) : retellAgents.length === 0 ? (
+                                <div style={{ textAlign: 'center', padding: '40px', background: '#f9fafb', borderRadius: 12, border: '1px dashed #d1d5db' }}>
+                                    <Phone size={32} color="#9ca3af" style={{ marginBottom: 10 }} />
+                                    <p style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500, margin: 0 }}>Henüz bağlı Retell agent yok.</p>
+                                    <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0' }}>API Key kaydedip agent oluşturun.</p>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                    {retellAgents.map(agent => (
+                                        <div key={agent.agent_id} className="bot-card" style={{ borderLeft: '3px solid #0d9488', marginBottom: 0 }}>
+                                            <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                                                <div style={{
+                                                    width: 42, height: 42, borderRadius: 10,
+                                                    background: 'linear-gradient(135deg, #ccfbf1, #99f6e4)',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    flexShrink: 0
+                                                }}>
+                                                    <Phone size={20} color="#0f766e" />
+                                                </div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                                        <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#111827' }}>
+                                                            {agent.agent_name || 'İsimsiz Agent'}
+                                                        </span>
+                                                        {retellSettings.retellAgentId === agent.agent_id && (
+                                                            <span style={{
+                                                                fontSize: '10px', fontWeight: 600, padding: '2px 8px',
+                                                                borderRadius: 20, background: '#ecfdf5', color: '#059669',
+                                                                border: '1px solid #a7f3d0'
+                                                            }}>VARSAYILAN</span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: 3, fontFamily: 'monospace' }}>
+                                                        {agent.agent_id}
+                                                    </div>
+                                                </div>
+                                                <div style={{
+                                                    padding: '4px 10px', borderRadius: 6,
+                                                    background: '#f0f9ff', border: '1px solid #bae6fd',
+                                                    fontSize: '11px', fontWeight: 600, color: '#0369a1',
+                                                    flexShrink: 0
+                                                }}>
+                                                    Ses Agent
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {/* AI Arama Devralma Card */}
                             {retellSettings.retellAutoCallEnabled && (
