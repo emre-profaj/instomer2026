@@ -241,13 +241,14 @@ const AramaAnalizi = () => {
 
             {/* Metrics cards */}
             <div className="stats-grid">
-                <div className="stat-card">
+                <div className="stat-card" onClick={() => setShowPhoneModal(true)} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-icon" style={{ background: '#eef2ff', color: '#6366f1' }}>
                         <Users size={22} />
                     </div>
                     <div className="stat-card-info">
-                        <span className="stat-card-label">Numaralı Kişiler</span>
+                        <span className="stat-card-label">Numaralı Başvurular</span>
                         <span className="stat-card-value">{stats.totalWithPhone}</span>
+                        <span className="stat-card-desc">Telefon numarası olan kişi</span>
                     </div>
                 </div>
                 <div className="stat-card">
@@ -255,17 +256,19 @@ const AramaAnalizi = () => {
                         <PhoneCall size={22} />
                     </div>
                     <div className="stat-card-info">
-                        <span className="stat-card-label">Aranan</span>
+                        <span className="stat-card-label">Kaçı Arandı</span>
                         <span className="stat-card-value">{stats.totalCalled}</span>
+                        <span className="stat-card-desc">Benzersiz kişi (5 kez aransa da 1)</span>
                     </div>
                 </div>
                 <div className="stat-card">
                     <div className="stat-card-icon" style={{ background: '#e0f2fe', color: '#0ea5e9' }}>
-                        <CheckCircle2 size={22} />
+                        <Phone size={22} />
                     </div>
                     <div className="stat-card-info">
-                        <span className="stat-card-label">Tamamlanan</span>
-                        <span className="stat-card-value">{stats.totalCompleted}</span>
+                        <span className="stat-card-label">Toplam Arama</span>
+                        <span className="stat-card-value">{stats.activities?.length || 0}</span>
+                        <span className="stat-card-desc">Toplam yapılan arama sayısı</span>
                     </div>
                 </div>
                 <div className="stat-card">
@@ -273,8 +276,9 @@ const AramaAnalizi = () => {
                         <PhoneOff size={22} />
                     </div>
                     <div className="stat-card-info">
-                        <span className="stat-card-label">Aranmayan</span>
+                        <span className="stat-card-label">Aranmayan Başvuru</span>
                         <span className="stat-card-value">{stats.totalNotCalled}</span>
+                        <span className="stat-card-desc">Henüz hiç aranmamış kişi</span>
                     </div>
                 </div>
                 <div className="stat-card">
@@ -284,6 +288,7 @@ const AramaAnalizi = () => {
                     <div className="stat-card-info">
                         <span className="stat-card-label">Arama Oranı</span>
                         <span className="stat-card-value">%{stats.callRate}</span>
+                        <span className="stat-card-desc">Aranan / Toplam numaralı</span>
                     </div>
                 </div>
             </div>

@@ -183,6 +183,13 @@
     letter-spacing: -0.02em;
 }
 
+.stat-card-desc {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    font-weight: 500;
+    margin-top: 2px;
+}
+
 /* Split Columns Grid */
 .sections-grid {
     display: grid;
