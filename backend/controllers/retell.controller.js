@@ -1093,10 +1093,14 @@ async function checkOverdueAgentCalls() {
         });
         const teamMap = new Map(teams.map(t => [t.id, t]));
 
-        // Helper: resolve effective fallback setting (activity > team > workspace)
-        const resolveSettings = (activity) => {
+        // Helper: resolve effective fallback setting (activity > agentConfig > team > workspace)
+        const resolveSettings = (activity, resolvedAgentId = null) => {
             const ws = workspaces.find(w => w.id === activity.workspaceId);
             const team = activity.teamId ? teamMap.get(activity.teamId) : null;
+
+            // Agent config delay (from UI card)
+            const agentConfigs = ws?.retellAutoCallTriggers?.agentConfigs || {};
+            const agentCfgDelay = resolvedAgentId ? agentConfigs[resolvedAgentId]?.fallbackDelayMinutes : null;
 
             // Enabled: activity.fallbackToAi > team.aiFallbackEnabled > workspace.aiFallbackEnabled
             let enabled;
@@ -1108,10 +1112,12 @@ async function checkOverdueAgentCalls() {
                 enabled = ws?.aiFallbackEnabled || false;
             }
 
-            // Delay: activity.fallbackDelayMinutes > team.aiFallbackDelayMinutes > workspace.aiFallbackDelayMinutes
+            // Delay: agentConfig > activity > team > workspace
             let delayMinutes;
-            if (activity.fallbackDelayMinutes !== null && activity.fallbackDelayMinutes !== undefined) {
-                delayMinutes = activity.fallbackDelayMinutes; // 0 da geçerli — planlanan saatte hemen arar
+            if (agentCfgDelay != null) {
+                delayMinutes = agentCfgDelay; // Agent kartındaki gecikme süresi en öncelikli
+            } else if (activity.fallbackDelayMinutes !== null && activity.fallbackDelayMinutes !== undefined) {
+                delayMinutes = activity.fallbackDelayMinutes;
             } else if (team?.aiFallbackDelayMinutes != null) {
                 delayMinutes = team.aiFallbackDelayMinutes;
             } else {
@@ -1174,7 +1180,8 @@ async function checkOverdueAgentCalls() {
 
         // Parametrik kontrol: sadece ayarı açık olanları al
         const humanTimeoutActivities = humanFallbackCandidates.filter(a => {
-            const settings = resolveSettings(a);
+            const ws = workspaces.find(w => w.id === a.workspaceId);
+            const settings = resolveSettings(a, a.aiAgentId || ws?.retellAgentId);
             if (!settings.enabled) return false; // AI devralma kapalı → atla
             const dueTime = new Date(a.dueDate).getTime();
             const fallbackMs = settings.delayMinutes * 60 * 1000;
