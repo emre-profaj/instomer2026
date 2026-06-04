@@ -267,7 +267,7 @@ const AramaAnalizi = () => {
                     </div>
                     <div className="stat-card-info">
                         <span className="stat-card-label">Toplam Arama</span>
-                        <span className="stat-card-value">{stats.activities?.length || 0}</span>
+                        <span className="stat-card-value">{stats.totalCallCount || 0}</span>
                         <span className="stat-card-desc">Toplam yapılan arama sayısı</span>
                     </div>
                 </div>

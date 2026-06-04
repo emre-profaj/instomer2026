@@ -1238,12 +1238,25 @@ export const getContactAnalytics = async (req, res) => {
             : 0;
 
         // ── Call Tracking Stats ──
+        // Build date filter for contacts (same range as activities)
+        const contactDateFilter = {};
+        if (startDate || endDate) {
+            contactDateFilter.createdAt = {};
+            if (startDate) contactDateFilter.createdAt.gte = new Date(startDate);
+            if (endDate) {
+                const endD2 = new Date(endDate);
+                endD2.setHours(23, 59, 59, 999);
+                contactDateFilter.createdAt.lte = endD2;
+            }
+        }
+
         // Telefon numarası olan kişiler (seçili tarih aralığında oluşturulanlar)
         const contactsWithPhone = await prisma.contact.count({
             where: {
                 conversations: { some: { workspaceId } },
                 phone: { not: null },
-                NOT: { phone: '' }
+                NOT: { phone: '' },
+                ...contactDateFilter
             }
         });
 
@@ -1283,6 +1296,7 @@ export const getContactAnalytics = async (req, res) => {
 
         const calledContactIds = new Set(callActivities.map(a => a.contactId));
         const completedCallContactIds = new Set(callActivities.filter(a => a.status === 'COMPLETED').map(a => a.contactId));
+        const totalCallCount = callActivities.length; // Her arama ayrı sayılır
 
         // Kişi bazlı arama detayları (tablo için)
         const callDetailMap = {};
@@ -1314,7 +1328,8 @@ export const getContactAnalytics = async (req, res) => {
             where: {
                 conversations: { some: { workspaceId } },
                 phone: { not: null },
-                NOT: { phone: '' }
+                NOT: { phone: '' },
+                ...contactDateFilter
             },
             select: {
                 id: true,
@@ -1346,6 +1361,7 @@ export const getContactAnalytics = async (req, res) => {
         const callTrackingStats = {
             totalWithPhone: contactsWithPhone,
             totalCalled: calledContactIds.size,
+            totalCallCount,
             totalCompleted: completedCallContactIds.size,
             totalNotCalled: contactsWithPhone - calledContactIds.size,
             callRate: contactsWithPhone > 0 ? ((calledContactIds.size / contactsWithPhone) * 100).toFixed(1) : 0,
