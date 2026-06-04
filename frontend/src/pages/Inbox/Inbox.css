@@ -4239,10 +4239,11 @@
     color: white;
     border: none;
     border-radius: 6px;
-    font-size: 9px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .inbox-header-left .new-conversation-btn:hover {
