@@ -18,6 +18,8 @@ const Orders = () => {
     const [contacts, setContacts] = useState([]);
     const [users, setUsers] = useState([]);
     const [editingDeal, setEditingDeal] = useState(null);
+    const [contactSearch, setContactSearch] = useState('');
+    const [showContactDropdown, setShowContactDropdown] = useState(false);
 
     // Filter states
     const [statusFilter, setStatusFilter] = useState('ALL');
@@ -166,6 +168,8 @@ const Orders = () => {
             assignedToId: deal.assignedToId || '',
             notes: deal.notes || ''
         });
+        const existingContact = contacts.find(c => c.id === deal.contactId);
+        setContactSearch(existingContact ? (existingContact.name || existingContact.fullName || existingContact.email || existingContact.phone || '') : '');
         setShowForm(true);
     };
 
@@ -185,6 +189,7 @@ const Orders = () => {
             assignedToId: user?.id || '',
             notes: ''
         });
+        setContactSearch('');
     };
 
     const addProduct = () => {
@@ -525,20 +530,79 @@ const Orders = () => {
                         </div>
 
                         <form onSubmit={handleSaveOrder}>
-                            <div className="form-group">
+                            <div className="form-group" style={{ position: 'relative' }}>
                                 <label>{t('sales.customerLabel')}</label>
-                                <select
-                                    value={formData.contactId}
-                                    onChange={(e) => setFormData({ ...formData, contactId: e.target.value })}
-                                    required
-                                >
-                                    <option value="">Müşteri Seç</option>
-                                    {contacts.map(c => (
-                                        <option key={c.id} value={c.id}>
-                                            {c.name || c.fullName || c.email || c.phone}
-                                        </option>
-                                    ))}
-                                </select>
+                                <input
+                                    type="text"
+                                    placeholder="Müşteri adı, telefon veya e-posta ile ara..."
+                                    value={contactSearch}
+                                    onChange={(e) => {
+                                        setContactSearch(e.target.value);
+                                        setShowContactDropdown(true);
+                                        if (!e.target.value) setFormData({ ...formData, contactId: '' });
+                                    }}
+                                    onFocus={() => setShowContactDropdown(true)}
+                                    autoComplete="off"
+                                    style={{ borderColor: formData.contactId ? '#10b981' : undefined }}
+                                />
+                                {formData.contactId && (
+                                    <span style={{ position: 'absolute', right: 12, top: 38, fontSize: '13px', color: '#10b981', pointerEvents: 'none' }}>✓</span>
+                                )}
+                                <input type="hidden" required value={formData.contactId} />
+                                {showContactDropdown && contactSearch.length > 0 && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                                        background: '#fff', border: '1px solid #e2e8f0', borderRadius: '0 0 10px 10px',
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto'
+                                    }}>
+                                        {contacts
+                                            .filter(c => {
+                                                const q = contactSearch.toLowerCase();
+                                                return (c.name || '').toLowerCase().includes(q) ||
+                                                    (c.fullName || '').toLowerCase().includes(q) ||
+                                                    (c.email || '').toLowerCase().includes(q) ||
+                                                    (c.phone || '').includes(q);
+                                            })
+                                            .slice(0, 20)
+                                            .map(c => (
+                                                <div
+                                                    key={c.id}
+                                                    onClick={() => {
+                                                        setFormData({ ...formData, contactId: c.id });
+                                                        setContactSearch(c.name || c.fullName || c.email || c.phone);
+                                                        setShowContactDropdown(false);
+                                                    }}
+                                                    style={{
+                                                        padding: '10px 14px', cursor: 'pointer', fontSize: '0.88rem',
+                                                        borderBottom: '1px solid #f1f5f9',
+                                                        background: formData.contactId === c.id ? '#f0fdf4' : '#fff',
+                                                        transition: 'background 0.1s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = formData.contactId === c.id ? '#f0fdf4' : '#fff'}
+                                                >
+                                                    <div style={{ fontWeight: 600, color: '#1e293b' }}>{c.name || c.fullName || '—'}</div>
+                                                    <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginTop: 2 }}>
+                                                        {c.phone && <span>{c.phone}</span>}
+                                                        {c.phone && c.email && <span> · </span>}
+                                                        {c.email && <span>{c.email}</span>}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        }
+                                        {contacts.filter(c => {
+                                            const q = contactSearch.toLowerCase();
+                                            return (c.name || '').toLowerCase().includes(q) ||
+                                                (c.fullName || '').toLowerCase().includes(q) ||
+                                                (c.email || '').toLowerCase().includes(q) ||
+                                                (c.phone || '').includes(q);
+                                        }).length === 0 && (
+                                            <div style={{ padding: '14px', textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>
+                                                Sonuç bulunamadı
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="form-group">
