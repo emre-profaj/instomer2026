@@ -1210,7 +1210,7 @@ const Assistants = () => {
     const [connectedChannels, setConnectedChannels] = useState([]);
     const [teams, setTeams] = useState([]);
     const [agentConfigs, setAgentConfigs] = useState({});
-    const [promptModal, setPromptModal] = useState({ open: false, agentName: '', prompt: '', loading: false });
+    const [promptModal, setPromptModal] = useState({ open: false, agentName: '', agentId: '', prompt: '', loading: false, saving: false });
 
     useEffect(() => {
         if (workspaceId) {
@@ -1812,7 +1812,7 @@ const Assistants = () => {
                                                 {/* Prompt Göster Button */}
                                                 <button
                                                     onClick={async () => {
-                                                        setPromptModal({ open: true, agentName: agent.agent_name || agent.agent_id, prompt: '', loading: true });
+                                                        setPromptModal({ open: true, agentName: agent.agent_name || agent.agent_id, agentId: agent.agent_id, prompt: '', loading: true, saving: false });
                                                         try {
                                                             const res = await retellAPI.getAgent(workspaceId, agent.agent_id);
                                                             const llmPrompt = res.data?.llm?.general_prompt || res.data?.agent?.response_engine?.system_prompt || 'Prompt bulunamadı.';
@@ -2050,21 +2050,64 @@ const Assistants = () => {
                                 <X size={20} color="#9ca3af" />
                             </button>
                         </div>
-                        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                        <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
                             {promptModal.loading ? (
                                 <div style={{ textAlign: 'center', padding: '40px 0', color: '#6b7280' }}>
                                     <Loader size={24} className="spin" style={{ marginBottom: 10 }} />
                                     <p style={{ margin: 0, fontSize: '13px' }}>Prompt yükleniyor...</p>
                                 </div>
                             ) : (
-                                <pre style={{
-                                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                                    fontSize: '13px', lineHeight: 1.7, color: '#374151',
-                                    background: '#f9fafb', border: '1px solid #e5e7eb',
-                                    borderRadius: 10, padding: '16px', margin: 0,
-                                    fontFamily: "'Inter', -apple-system, sans-serif",
-                                    maxHeight: '55vh', overflowY: 'auto'
-                                }}>{promptModal.prompt}</pre>
+                                <>
+                                    <textarea
+                                        value={promptModal.prompt}
+                                        onChange={e => setPromptModal(prev => ({ ...prev, prompt: e.target.value }))}
+                                        style={{
+                                            width: '100%', minHeight: '340px', resize: 'vertical',
+                                            fontSize: '13px', lineHeight: 1.7, color: '#374151',
+                                            background: '#f9fafb', border: '1px solid #e5e7eb',
+                                            borderRadius: 10, padding: '16px', margin: 0,
+                                            fontFamily: "'Inter', -apple-system, sans-serif",
+                                            outline: 'none', boxSizing: 'border-box'
+                                        }}
+                                        onFocus={e => e.target.style.borderColor = '#8b5cf6'}
+                                        onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+                                    />
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                        <button
+                                            onClick={() => setPromptModal({ open: false, agentName: '', agentId: '', prompt: '', loading: false, saving: false })}
+                                            style={{
+                                                padding: '8px 18px', borderRadius: 8, fontSize: '13px', fontWeight: 500,
+                                                border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer'
+                                            }}
+                                        >İptal</button>
+                                        <button
+                                            disabled={promptModal.saving}
+                                            onClick={async () => {
+                                                setPromptModal(prev => ({ ...prev, saving: true }));
+                                                try {
+                                                    await retellAPI.updateAgentPrompt(workspaceId, promptModal.agentId, {
+                                                        generalPrompt: promptModal.prompt
+                                                    });
+                                                    setPromptModal(prev => ({ ...prev, saving: false, open: false }));
+                                                    setRetellMessage({ type: 'success', text: 'Prompt başarıyla güncellendi!' });
+                                                } catch (err) {
+                                                    setPromptModal(prev => ({ ...prev, saving: false }));
+                                                    setRetellMessage({ type: 'error', text: 'Prompt kaydedilemedi: ' + (err.response?.data?.error || err.message) });
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '8px 22px', borderRadius: 8, fontSize: '13px', fontWeight: 600,
+                                                border: 'none', background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                                                color: '#fff', cursor: promptModal.saving ? 'not-allowed' : 'pointer',
+                                                opacity: promptModal.saving ? 0.7 : 1,
+                                                display: 'flex', alignItems: 'center', gap: 6
+                                            }}
+                                        >
+                                            {promptModal.saving ? <Loader size={14} className="spin" /> : <Save size={14} />}
+                                            {promptModal.saving ? 'Kaydediliyor...' : 'Kaydet'}
+                                        </button>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
