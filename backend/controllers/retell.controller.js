@@ -1016,6 +1016,14 @@ async function checkOverdueAgentCalls() {
     try {
         const now = new Date();
 
+        // ─── MESAI SAATİ KONTROLÜ ─────────────────────────────────────────
+        // Gece 21:00 - sabah 09:00 arası yeni arama oluşturma
+        const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+        const currentHour = nowTR.getHours();
+        if (currentHour < 9 || currentHour >= 21) {
+            return;
+        }
+
         // 1. Find workspaces with active Retell auto-call settings
         const workspaces = await prisma.workspace.findMany({
             where: {
@@ -1229,6 +1237,16 @@ async function checkOverdueAgentCalls() {
 // Cron: process due ScheduledCalls every 60 seconds (persistent across restarts)
 export const processScheduledCalls = async () => {
     try {
+        // ─── MESAI SAATİ KONTROLÜ ─────────────────────────────────────────
+        // Türkiye saatine göre 09:00-21:00 dışında arama YAPILMAZ.
+        // Bekleyen aramalar iptal edilmez, sadece mesai saatine kadar bekletilir.
+        const nowTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+        const currentHour = nowTR.getHours();
+        if (currentHour < 9 || currentHour >= 21) {
+            // Gece yarısı / mesai dışı — hiçbir arama işleme
+            return;
+        }
+
         // Automatically check and queue overdue agent calls first
         await checkOverdueAgentCalls();
 
