@@ -1017,10 +1017,10 @@ async function checkOverdueAgentCalls() {
         const now = new Date();
 
         // ─── MESAI SAATİ KONTROLÜ ─────────────────────────────────────────
-        // Gece 21:00 - sabah 09:00 arası yeni arama oluşturma
+        // Gece 21:00 - sabah 10:00 arası yeni arama oluşturma
         const nowTR = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
         const currentHour = nowTR.getHours();
-        if (currentHour < 9 || currentHour >= 21) {
+        if (currentHour < 10 || currentHour >= 21) {
             return;
         }
 
@@ -1238,11 +1238,11 @@ async function checkOverdueAgentCalls() {
 export const processScheduledCalls = async () => {
     try {
         // ─── MESAI SAATİ KONTROLÜ ─────────────────────────────────────────
-        // Türkiye saatine göre 09:00-21:00 dışında arama YAPILMAZ.
+        // Türkiye saatine göre 10:00-21:00 dışında arama YAPILMAZ.
         // Bekleyen aramalar iptal edilmez, sadece mesai saatine kadar bekletilir.
         const nowTR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
         const currentHour = nowTR.getHours();
-        if (currentHour < 9 || currentHour >= 21) {
+        if (currentHour < 10 || currentHour >= 21) {
             // Gece yarısı / mesai dışı — hiçbir arama işleme
             return;
         }
