@@ -4,7 +4,7 @@
 .insto-bot-fab {
     position: fixed;
     bottom: 80px;
-    left: 8px;
+    right: 24px;
     width: 44px;
     height: 44px;
     border-radius: 50%;
@@ -48,7 +48,7 @@
 .insto-bot-window {
     position: fixed;
     bottom: 132px;
-    left: 60px;
+    right: 24px;
     width: 360px;
     height: 500px;
     background: #1a1b2e;
