@@ -1759,7 +1759,7 @@ const Assistants = () => {
                             ) : (
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
                                     {retellAgents.map(agent => {
-                                        const cfg = agentConfigs[agent.agent_id] || {};
+                                        const cfg = { fallbackDelayMinutes: 1, ...agentConfigs[agent.agent_id] };
                                         const updateCfg = (field, value) => {
                                             setAgentConfigs(prev => ({
                                                 ...prev,

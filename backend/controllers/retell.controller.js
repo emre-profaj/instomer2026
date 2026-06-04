@@ -1121,7 +1121,7 @@ async function checkOverdueAgentCalls() {
             } else if (team?.aiFallbackDelayMinutes != null) {
                 delayMinutes = team.aiFallbackDelayMinutes;
             } else {
-                delayMinutes = ws?.aiFallbackDelayMinutes || 60;
+                delayMinutes = ws?.aiFallbackDelayMinutes || 1;
             }
 
             return { enabled, delayMinutes, poolEnabled: ws?.aiFallbackPoolEnabled || false };
