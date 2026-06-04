@@ -528,35 +528,8 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             salesTeamId = namedTeam?.id;
         }
 
-        // 8. Round-robin agent selection from sales team
-        let assignedUserId = null;
-        if (salesTeamId) {
-            const teamMembers = await prisma.teamMember.findMany({
-                where: { teamId: salesTeamId, userId: { not: null } },
-                include: { user: { select: { id: true, name: true } } },
-                orderBy: { createdAt: 'asc' }
-            });
-            const userMembers = teamMembers.filter(m => m.userId);
-            if (userMembers.length > 0) {
-                // Find last assigned user in this team for round-robin
-                const lastConv = await prisma.conversation.findFirst({
-                    where: {
-                        workspaceId,
-                        teamIds: { contains: salesTeamId },
-                        assignedToId: { not: null },
-                        id: { not: conversationId }
-                    },
-                    orderBy: { updatedAt: 'desc' },
-                    select: { assignedToId: true }
-                });
-                const lastIdx = lastConv
-                    ? userMembers.findIndex(m => m.userId === lastConv.assignedToId)
-                    : -1;
-                const nextIdx = lastIdx >= 0 && lastIdx < userMembers.length - 1 ? lastIdx + 1 : 0;
-                assignedUserId = userMembers[nextIdx].userId;
-                console.log(`👤 [RULE:SALES_PHONE_CALL] Round-robin → ${userMembers[nextIdx].user?.name}`);
-            }
-        }
+        // 8. Aramayı takıma ata (havuza düşsün, biri üstlensin)
+        // Kişiye direkt atama yapılmaz — havuzdan biri üstlenmezse gecikmiş arama olur
 
         // 9. Update conversation: funnel stage + team + agent
         const updateData = {
@@ -567,8 +540,34 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             updateData.teamIds = JSON.stringify([salesTeamId]);
         }
         // Only assign directly if config.assignDirectly is true, otherwise keep it in the team pool
-        if (assignedUserId && config.assignDirectly === true) {
-            updateData.assignedToId = assignedUserId;
+        if (config.assignDirectly === true) {
+            // Round-robin agent selection from sales team (only if assignDirectly)
+            if (salesTeamId) {
+                const teamMembers = await prisma.teamMember.findMany({
+                    where: { teamId: salesTeamId, userId: { not: null } },
+                    include: { user: { select: { id: true, name: true } } },
+                    orderBy: { createdAt: 'asc' }
+                });
+                const userMembers = teamMembers.filter(m => m.userId);
+                if (userMembers.length > 0) {
+                    const lastConv = await prisma.conversation.findFirst({
+                        where: {
+                            workspaceId,
+                            teamIds: { contains: salesTeamId },
+                            assignedToId: { not: null },
+                            id: { not: conversationId }
+                        },
+                        orderBy: { updatedAt: 'desc' },
+                        select: { assignedToId: true }
+                    });
+                    const lastIdx = lastConv
+                        ? userMembers.findIndex(m => m.userId === lastConv.assignedToId)
+                        : -1;
+                    const nextIdx = lastIdx >= 0 && lastIdx < userMembers.length - 1 ? lastIdx + 1 : 0;
+                    updateData.assignedToId = userMembers[nextIdx].userId;
+                    console.log(`👤 [RULE:SALES_PHONE_CALL] Round-robin → ${userMembers[nextIdx].user?.name}`);
+                }
+            }
         }
         await prisma.conversation.update({ where: { id: conversationId }, data: updateData });
         console.log(`🔀 [RULE:SALES_PHONE_CALL] Conversation ${conversationId} → "${salesFunnel.name}" / "${firstStage.name}"`);
@@ -615,7 +614,7 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
-                assignedToId: (config.assignDirectly === true && assignedUserId) ? assignedUserId : null,
+                assignedToId: null,
                 source: 'AUTOMATION'
             }
         });
@@ -769,33 +768,9 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             }
         }
 
-        // 5. Round-robin agent selection
-        let assignedUserId = null;
-        if (salesTeamId) {
-            const teamMembers = await prisma.teamMember.findMany({
-                where: { teamId: salesTeamId, userId: { not: null } },
-                include: { user: { select: { id: true, name: true } } },
-                orderBy: { createdAt: 'asc' }
-            });
-            const userMembers = teamMembers.filter(m => m.userId);
-            if (userMembers.length > 0) {
-                const lastConv = await prisma.conversation.findFirst({
-                    where: {
-                        workspaceId,
-                        teamIds: { contains: salesTeamId },
-                        assignedToId: { not: null }
-                    },
-                    orderBy: { updatedAt: 'desc' },
-                    select: { assignedToId: true }
-                });
-                const lastIdx = lastConv
-                    ? userMembers.findIndex(m => m.userId === lastConv.assignedToId)
-                    : -1;
-                const nextIdx = lastIdx >= 0 && lastIdx < userMembers.length - 1 ? lastIdx + 1 : 0;
-                assignedUserId = userMembers[nextIdx].userId;
-                console.log(`👤 [RULE:AUTO_CALL] Round-robin → ${userMembers[nextIdx].user?.name}`);
-            }
-        }
+        // 5. Aramayı takıma ata (havuza düşsün, biri üstlensin)
+        // Kişiye direkt atama yapılmaz — havuzdan biri üstlenmezse gecikmiş arama olur
+        console.log(`📋 [RULE:AUTO_CALL] Arama takıma atanacak: ${salesTeamId || 'YOK'} (havuz)`);
 
         // 6. Calculate due date — first check customer messages for timing preference
         let dueDate;
@@ -896,7 +871,6 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
 
         // 7. Create CALL activity
         const teamLabel = salesTeamId ? salesTeamId : 'YOK';
-        const userLabel = assignedUserId ? assignedUserId : 'YOK';
         await prisma.contactActivity.create({
             data: {
                 workspaceId,
@@ -907,14 +881,14 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
-                assignedToId: assignedUserId || null,
+                assignedToId: null,
                 source: 'AUTOMATION',
                 fallbackToAi: true,
-                fallbackDelayMinutes: 0, // Planlanan saat geldiğinde agent aramadıysa Retell HEMEN arar
+                fallbackDelayMinutes: 0,
                 aiFallbackTriggered: false
             }
         });
-        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, timing: ${timingSource}, team: ${teamLabel}, user: ${userLabel})`);
+        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, timing: ${timingSource}, team: ${teamLabel}, user: HAVUZ)`);
 
         // 8. Emit socket events
         emitToWorkspace(workspaceId, 'activity_created', {
