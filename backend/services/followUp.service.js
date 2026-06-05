@@ -22,11 +22,10 @@ import prisma from '../lib/prisma.js';
 
 // Default 5-step reminder configuration
 const DEFAULT_REMINDER_STEPS = [
-    { enabled: true, delayMinutes: 6 },
     { enabled: true, delayMinutes: 60 },
     { enabled: false, delayMinutes: 180 },
-    { enabled: false, delayMinutes: 300 },
-    { enabled: false, delayMinutes: 1200 }
+    { enabled: false, delayMinutes: 1440 },
+    { enabled: false, delayMinutes: 5760 }
 ];
 
 /**
@@ -105,7 +104,7 @@ async function generateReminderMessage(conversation, bot, stepNumber, delayMinut
             timeDesc = `${Math.round(delayMinutes / 1440)} gün`;
         }
 
-        const prompt = `Sen "${bot.name}" adında bir asistansın. 
+        const prompt = `Sen "${bot.name}" adında kurumsal bir asistansın. 
 Bot Talimatları: ${(bot.prompt || '').substring(0, 500)}
 
 Görevin: Müşteriye ${stepNumber}. hatırlatma mesajı yazmak.
@@ -117,13 +116,15 @@ Son mesajlar:
 ${messageHistory}
 
 Kurallar:
-- Kısa ve doğal bir mesaj yaz (1-2 cümle max)
-- ${stepNumber === 1 ? 'Nazik ve kısa bir hatırlatma yap' : ''}
-- ${stepNumber === 2 ? 'Biraz daha ilgili bir hatırlatma yap, yardımcı olmak istediğini belirt' : ''}
-- ${stepNumber >= 3 ? 'Kibarca son bir hatırlatma yap, ihtiyacı olursa her zaman yazabileceğini belirt' : ''}
-- Emoji kullanabilirsin ama abartma
+- Kısa ve kurumsal bir mesaj yaz (1-2 cümle max)
+- Profesyonel ve resmi bir ton kullan
+- ${stepNumber === 1 ? 'Nazik ama kurumsal bir hatırlatma yap' : ''}
+- ${stepNumber === 2 ? 'Konuyla ilgili kurumsal bir takip mesajı yaz' : ''}
+- ${stepNumber >= 3 ? 'Kibarca son bir bilgilendirme yap, iletişim kanallarının açık olduğunu belirt' : ''}
+- Emoji kullanma, sade ve profesyonel ol
 - Bot talimatlarındaki amacına uygun davran (numara alma, randevu, bilgi verme vs.)
 - Selamlaşma tekrarı yapma, direkt konuya gir
+- Samimi değil kurumsal bir dil kullan
 - Sadece mesaj metnini yaz, başka hiçbir şey ekleme`;
 
         // Use Gemini API
@@ -168,11 +169,11 @@ Kurallar:
  */
 function getGenericMessage(stepNumber) {
     const messages = [
-        'Merhaba, size yardımcı olabileceğim bir konu var mı? 😊',
-        'Tekrar merhaba! Herhangi bir sorunuz varsa buradayım 🙋‍♂️',
-        'Merhaba, geçen görüşmemizle ilgili bilgi almak ister misiniz?',
-        'Yardıma ihtiyacınız olursa her zaman yazabilirsiniz 😊',
-        'Son bir hatırlatma — herhangi bir konuda destek olmaktan mutluluk duyarız!'
+        'Talebinizle ilgili size yardımcı olmak isteriz. Uygun olduğunuzda dönüş yapabilirsiniz.',
+        'Görüşmemizle ilgili bilgi vermek isteriz. Müsait olduğunuzda bizimle iletişime geçebilirsiniz.',
+        'Talebinizi takip ediyoruz. Detaylı bilgi almak için bize ulaşabilirsiniz.',
+        'Sürecinizle ilgili size destek olmaya hazırız. İletişim kanallarımız açıktır.',
+        'Talebinizi değerlendirmekten memnuniyet duyarız. Herhangi bir sorunuz için bizimle iletişime geçebilirsiniz.'
     ];
     return messages[Math.min(stepNumber - 1, messages.length - 1)];
 }

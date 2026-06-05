@@ -611,6 +611,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
 
             const existingActivity = await prisma.contactActivity.findFirst({
                 where: {
+                    workspaceId,
                     contactId,
                     type: activityType,
                     status: 'PLANNED',
@@ -652,6 +653,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
 
             const existingCall = await prisma.contactActivity.findFirst({
                 where: {
+                    workspaceId,
                     contactId,
                     type: 'CALL',
                     status: 'PLANNED',

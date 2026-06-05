@@ -1240,7 +1240,9 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     });
 
                     // Aksiyonları çalıştır: Lead olduysa VEYA telefon numarası varsa
-                    const contactHasPhone = !!(classResult.extractedData?.phone || contact?.phone);
+                    // Contact.phone'u taze oku — executePhoneCaptureRule tarafından güncellenmiş olabilir
+                    const freshContact = await prisma.contact.findUnique({ where: { id: conv.contactId }, select: { phone: true } });
+                    const contactHasPhone = !!(classResult.extractedData?.phone || freshContact?.phone || contact?.phone);
                     const shouldRunActions = (classResult.isQualifiedLead && !conv?.isQualifiedLead) || contactHasPhone;
                     if (shouldRunActions) {
                         await executeClassificationActions(

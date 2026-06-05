@@ -612,6 +612,10 @@ const Inbox = () => {
     const [showContactSidebar, setShowContactSidebar] = useState(() => window.innerWidth > 768);
     const [convPopup, setConvPopup] = useState(null); // { conversationId, channel }
     const [plannedActivityMap, setPlannedActivityMap] = useState({});
+    const [myCallsPopupOpen, setMyCallsPopupOpen] = useState(false);
+    const [myCallsList, setMyCallsList] = useState([]);
+    const [myCallsLoading, setMyCallsLoading] = useState(false);
+    const [myCallsTab, setMyCallsTab] = useState('pool'); // 'pool' | 'mine'
     const [loading, setLoading] = useState(true);
     const [markingAllRead, setMarkingAllRead] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -1433,7 +1437,7 @@ const Inbox = () => {
                     });
                     setPlannedActivityMap(map);
                 })
-                .catch(() => {});
+                .catch(err => console.warn('⚠️ [ActivityBadges] loadSupportData fetch failed:', err?.message || err));
         } catch (error) {
             console.error('Error loading support data:', error);
         }
@@ -1707,7 +1711,7 @@ const Inbox = () => {
                     });
                     setPlannedActivityMap(map);
                 })
-                .catch(() => {});
+                .catch(err => console.warn('⚠️ [ActivityBadges] Failed to fetch planned activities:', err?.message || err));
 
             let items = [];
 
@@ -3428,6 +3432,47 @@ const Inbox = () => {
                                 </div>
                             );
                         })()}
+
+                        {/* ── Aramalarım (inline compact) ── */}
+                        {(() => {
+                            let myCallCount = 0;
+                            Object.values(plannedActivityMap).forEach(entries => {
+                                entries.forEach(e => {
+                                    if (e.type === 'CALL' && e.status !== 'COMPLETED') myCallCount++;
+                                });
+                            });
+                            if (myCallCount === 0) {
+                                inboxItems.forEach(item => {
+                                    if (item.hasPlannedCall) myCallCount++;
+                                });
+                            }
+                            if (myCallCount === 0) return null;
+                            return (
+                                <button
+                                    className="my-calls-inline-btn"
+                                    onClick={async () => {
+                                        setMyCallsPopupOpen(true);
+                                        setMyCallsLoading(true);
+                                        try {
+                                            const data = await activityAPI.getPlannedActivities(currentWorkspace.id);
+                                            const acts = Array.isArray(data) ? data : (data?.data || []);
+                                            const calls = acts.filter(a => a.type === 'CALL' && a.status === 'PLANNED');
+                                            setMyCallsList(calls);
+                                        } catch (err) {
+                                            console.error('Failed to load calls:', err);
+                                            setMyCallsList([]);
+                                        } finally {
+                                            setMyCallsLoading(false);
+                                        }
+                                    }}
+                                >
+                                    <PhoneCall size={12} />
+                                    <span className="my-calls-inline-label">Aramalarım</span>
+                                    <span className="my-calls-inline-count">{myCallCount}</span>
+                                </button>
+                            );
+                        })()}
+
                         {/* Result Count Display */}
                         {(statusFilter || funnelFilter) && (
                             <div className="toolbar-total-count">
@@ -3436,6 +3481,143 @@ const Inbox = () => {
                         )}
                     </div>
                 </div>
+
+                {/* My Calls Popup Modal */}
+                {myCallsPopupOpen && ReactDOM.createPortal(
+                    <div className="my-calls-overlay" onClick={() => setMyCallsPopupOpen(false)}>
+                        <div className="my-calls-popup" onClick={e => e.stopPropagation()}>
+                            <div className="my-calls-popup-header">
+                                <h3><PhoneCall size={18} /> Aramalarım</h3>
+                                <button className="my-calls-close" onClick={() => setMyCallsPopupOpen(false)}>✕</button>
+                            </div>
+                            <div className="my-calls-tabs">
+                                <button
+                                    className={`my-calls-tab ${myCallsTab === 'pool' ? 'active' : ''}`}
+                                    onClick={() => setMyCallsTab('pool')}
+                                >
+                                    Havuzdaki Aramalar
+                                    <span className="my-calls-tab-count">{myCallsList.filter(c => !c.assignedToId).length}</span>
+                                </button>
+                                <button
+                                    className={`my-calls-tab ${myCallsTab === 'mine' ? 'active' : ''}`}
+                                    onClick={() => setMyCallsTab('mine')}
+                                >
+                                    Bana Atanan
+                                    <span className="my-calls-tab-count">{myCallsList.filter(c => c.assignedToId === user?.id).length}</span>
+                                </button>
+                            </div>
+                            <div className="my-calls-popup-body">
+                                {myCallsLoading ? (
+                                    <div className="my-calls-loading"><RefreshCw size={20} className="spin" /> Yükleniyor...</div>
+                                ) : (() => {
+                                    const filtered = myCallsTab === 'mine'
+                                        ? myCallsList.filter(c => c.assignedToId === user?.id)
+                                        : myCallsList.filter(c => !c.assignedToId);
+                                    if (filtered.length === 0) return (
+                                        <div className="my-calls-empty">
+                                            {myCallsTab === 'mine' ? 'Size atanmış arama yok.' : 'Havuzda arama yok.'}
+                                        </div>
+                                    );
+                                    return filtered.map((call, idx) => {
+                                        const isOverdue = call.dueDate && new Date(call.dueDate) < new Date();
+                                        const dueDateStr = call.dueDate
+                                            ? new Date(call.dueDate).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                            : '-';
+                                        const contactName = call.contact?.name || 'İsimsiz';
+                                        const contactPhone = call.contact?.phone || '-';
+                                        const convId = call.contact?.conversations?.[0]?.id;
+                                        return (
+                                            <div
+                                                key={call.id || idx}
+                                                className={`my-calls-item ${isOverdue ? 'overdue' : ''}`}
+                                                onClick={() => {
+                                                    if (convId) {
+                                                        setMyCallsPopupOpen(false);
+                                                        const target = inboxItems.find(i => i.id === convId);
+                                                        if (target) {
+                                                            handleSelectItem(target);
+                                                        } else {
+                                                            setSearchParams({ conversationId: convId });
+                                                        }
+                                                    }
+                                                }}
+                                            >
+                                                <div className="my-calls-item-left">
+                                                    <div className="my-calls-item-name">
+                                                        <User size={14} />
+                                                        <span>{contactName}</span>
+                                                    </div>
+                                                    <div className="my-calls-item-phone">
+                                                        📱 {contactPhone}
+                                                    </div>
+                                                    {call.description && (
+                                                        <div className="my-calls-item-desc">
+                                                            {call.description.substring(0, 120)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="my-calls-item-right">
+                                                    <span className={`my-calls-due ${isOverdue ? 'overdue' : ''}`}>
+                                                        {isOverdue ? '⏰ Gecikmiş' : '🕐'} {dueDateStr}
+                                                    </span>
+                                                    {call.assignee?.name && (
+                                                        <span className="my-calls-assignee">{call.assignee.name}</span>
+                                                    )}
+                                                    <div className="my-calls-actions">
+                                                        {contactPhone !== '-' && (
+                                                            <button
+                                                                className="my-calls-call-btn"
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    const digits = contactPhone.replace(/\D/g, '');
+                                                                    const toNumber = digits.startsWith('90') ? '+' + digits
+                                                                        : digits.startsWith('0') ? '+90' + digits.slice(1)
+                                                                        : '+90' + digits;
+                                                                    try {
+                                                                        await retellAPI.makeCall(currentWorkspace.id, {
+                                                                            toNumber,
+                                                                            contactName,
+                                                                            contactId: call.contact?.id || null,
+                                                                            conversationId: convId || null,
+                                                                        });
+                                                                    } catch (err) {
+                                                                        console.error('Arama hatası:', err);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <PhoneCall size={11} />
+                                                                Hemen Ara
+                                                            </button>
+                                                        )}
+                                                        {myCallsTab === 'pool' && (
+                                                            <button
+                                                                className="my-calls-claim-btn"
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    try {
+                                                                        await activityAPI.updateActivity(call.id, { assignedToId: user.id });
+                                                                        setMyCallsList(prev => prev.map(c =>
+                                                                            c.id === call.id ? { ...c, assignedToId: user.id, assignee: { name: user.name } } : c
+                                                                        ));
+                                                                    } catch (err) {
+                                                                        console.error('Üstlenme hatası:', err);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                Üstlen
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
 
                 {/* Inbox Items List */}
                 <div className={`inbox-items${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
@@ -3572,9 +3754,16 @@ const Inbox = () => {
                                 // Subject line
                                 const subject = item.emailSubject || item.contact?.notes?.substring(0, 50) || '';
 
-                                // Activity entries
+                                // Activity entries: prefer plannedActivityMap, fallback to backend's hasPlannedCall/hasPlannedMeeting
                                 const cid = item.contactId || item.contact?.id;
-                                const activityEntries = cid ? (plannedActivityMap[cid] || []) : [];
+                                let activityEntries = cid ? (plannedActivityMap[cid] || []) : [];
+                                // Fallback: if map is empty for this contact, use backend conversation flags
+                                if (activityEntries.length === 0) {
+                                    const fallback = [];
+                                    if (item.hasPlannedCall) fallback.push({ type: 'CALL', status: 'PLANNED', dueDate: item.nextActivityDate });
+                                    if (item.hasPlannedMeeting) fallback.push({ type: 'MEETING', status: 'PLANNED', dueDate: item.nextActivityDate });
+                                    activityEntries = fallback;
+                                }
                                 const hasApt = hasReminder(item);
 
                                 return (

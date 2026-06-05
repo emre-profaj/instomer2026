@@ -1231,6 +1231,32 @@ export const getContactAnalytics = async (req, res) => {
             prisma.appointment.count({ where: { ...appointmentFilter, status: 'CANCELLED' } })
         ]);
 
+        // Agent'ların "Randevu" aşamasına taşıdığı kişiler (STAGE_CHANGED event'leri)
+        let stageBasedAppointments = 0;
+        try {
+            const eventDateFilter = {};
+            if (startDate || endDate) {
+                eventDateFilter.createdAt = {};
+                if (startDate) eventDateFilter.createdAt.gte = new Date(startDate);
+                if (endDate) {
+                    const eEnd = new Date(endDate);
+                    eEnd.setHours(23, 59, 59, 999);
+                    eventDateFilter.createdAt.lte = eEnd;
+                }
+            }
+            stageBasedAppointments = await prisma.conversationEvent.count({
+                where: {
+                    workspaceId,
+                    eventType: 'STAGE_CHANGED',
+                    actorType: 'USER',
+                    title: { contains: 'Randevu' },
+                    ...eventDateFilter
+                }
+            });
+        } catch (e) {
+            // ConversationEvent tablosu yoksa sessizce devam et
+        }
+
         // Real resolution rate from conversations
         const resolvedConvs = await prisma.conversation.count({ where: { ...conversationFilter, status: 'RESOLVED' } });
         const realResolutionRate = totalConversations > 0
@@ -1441,9 +1467,9 @@ export const getContactAnalytics = async (req, res) => {
             channelData: Object.entries(channelCounts).map(([k, v]) => ({ channel: k, count: v })),
             monthlyData,
             appointmentStats: {
-                total: totalAppointments,
+                total: totalAppointments + stageBasedAppointments,
                 byBot: botAppointments,
-                byAgent: agentAppointments,
+                byAgent: agentAppointments + stageBasedAppointments,
                 scheduled: scheduledAppointments,
                 completed: completedAppointments,
                 cancelled: cancelledAppointments
@@ -1675,8 +1701,8 @@ export const getAgentPerformance = async (req, res) => {
                 dealTotalAmount += amount;
             }
 
-            // ── Randevu Sayısı ──
-            const appointmentCount = await prisma.appointment.count({
+            // ── Randevu Sayısı (appointment tablosu + aşama değişikliği) ──
+            const appointmentFromTable = await prisma.appointment.count({
                 where: {
                     workspaceId,
                     OR: [
@@ -1686,6 +1712,25 @@ export const getAgentPerformance = async (req, res) => {
                     ...activityDateFilter
                 }
             });
+
+            // Agent'ın "Randevu" aşamasına taşıdığı kişiler (STAGE_CHANGED event'leri)
+            let appointmentFromStage = 0;
+            try {
+                const stageEvents = await prisma.conversationEvent.count({
+                    where: {
+                        workspaceId,
+                        eventType: 'STAGE_CHANGED',
+                        actorId: userId,
+                        title: { contains: 'Randevu' },
+                        ...activityDateFilter
+                    }
+                });
+                appointmentFromStage = stageEvents;
+            } catch (e) {
+                // ConversationEvent tablosu yoksa sessizce devam et
+            }
+
+            const appointmentCount = appointmentFromTable + appointmentFromStage;
 
             // ── AI Arama Sayısı (RetellCall) ──
             const retellCallCount = await prisma.retellCall.count({

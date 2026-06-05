@@ -1793,7 +1793,8 @@ async function processWebhookAsync(body) {
                                 console.error('❌ [RULE:SALES_PHONE_CALL] FB/IG async error:', e.message)
                             );
                             // Also trigger simplified auto call planning (no intent check needed)
-                            executeAutoCallPlanning(facebookPage.workspaceId, contact.id, isInstagram ? 'INSTAGRAM' : 'FACEBOOK').catch(e =>
+                            // IMPORTANT: await so it runs AFTER phone capture has saved the phone number
+                            await executeAutoCallPlanning(facebookPage.workspaceId, contact.id, isInstagram ? 'INSTAGRAM' : 'FACEBOOK').catch(e =>
                                 console.error('❌ [RULE:AUTO_CALL] FB/IG async error:', e.message)
                             );
                         } catch (ruleErr) {

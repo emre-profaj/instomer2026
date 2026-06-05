@@ -359,7 +359,7 @@ export const handleWidgetChat = async (req, res) => {
             // Reload contact to get updated phone after capture
             const updatedContact = await prisma.contact.findUnique({ where: { id: contact.id } });
             if (updatedContact?.phone) {
-                executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
+                await executeAutoCallPlanning(workspaceId, contact.id, 'WEB_WIDGET').catch(e =>
                     console.error('❌ [RULE:AUTO_CALL] Widget async error:', e.message)
                 );
             }
@@ -601,7 +601,7 @@ export const handlePrechat = async (req, res) => {
         // --- AUTO CALL PLANNING (Prechat Form) ---
         try {
             const { executeAutoCallPlanning } = await import('./rules.controller.js');
-            executeAutoCallPlanning(workspaceId, contact.id, 'FORM').catch(e =>
+            await executeAutoCallPlanning(workspaceId, contact.id, 'FORM').catch(e =>
                 console.error('❌ [RULE:AUTO_CALL] Prechat async error:', e.message)
             );
         } catch (ruleErr) {

@@ -98,7 +98,7 @@
     position: absolute;
     bottom: 100%;
     left: 0;
-    width: 340px;
+    width: 420px;
     max-height: 420px;
     background: var(--bg-primary, #ffffff);
     border: 1px solid var(--border-color, #e5e7eb);
@@ -357,4 +357,53 @@
     font-weight: 700;
     border-radius: 8px;
     line-height: 1;
+}
+
+/* ── Overdue Call Notification ── */
+.notification-item.notification-overdue {
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+}
+.notification-item.notification-overdue:hover {
+    background: #fee2e2;
+}
+.notification-icon-wrapper.overdue {
+    background: linear-gradient(135deg, #fee2e2, #fecaca);
+    color: #dc2626;
+}
+.notification-overdue .notification-title {
+    color: #dc2626;
+}
+.notification-overdue .notification-time {
+    color: #ef4444;
+    font-weight: 600;
+}
+.notification-overdue-badge {
+    padding: 2px 8px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 10px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    animation: overduePulse 2s ease-in-out infinite;
+}
+@keyframes overduePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Gecikmiş tab highlight */
+.notif-cat-btn.notif-cat-overdue {
+    color: #dc2626;
+}
+.notif-cat-btn.notif-cat-overdue.active {
+    background: #fef2f2;
+    color: #dc2626;
+    box-shadow: 0 1px 3px rgba(220, 38, 38, 0.15);
+}
+.notif-cat-badge-overdue {
+    background: #dc2626 !important;
+    animation: overduePulse 2s ease-in-out infinite;
 }

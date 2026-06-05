@@ -93,12 +93,15 @@
     align-items: center;
     padding: 14px 18px;
     border-bottom: 1px solid #f1f5f9;
+    gap: 8px;
 }
 
 .bot-info {
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
+    flex: 1;
 }
 
 .bot-avatar {
@@ -118,12 +121,20 @@
     height: 18px;
 }
 
+.bot-title-group {
+    min-width: 0;
+    overflow: hidden;
+}
+
 .bot-title-group h4 {
     font-size: 0.875rem;
     font-weight: 700;
     color: #0f172a;
     margin: 0 0 2px 0;
     letter-spacing: -0.01em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .bot-role-badge {
@@ -136,6 +147,7 @@
     font-size: 0.6875rem;
     font-weight: 600;
     color: #64748b;
+    white-space: nowrap;
 }
 
 .status-badge {
@@ -145,7 +157,8 @@
     border-radius: 12px;
     font-size: 0.6875rem;
     font-weight: 600;
-    margin-left: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .status-badge.active {

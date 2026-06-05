@@ -19,8 +19,8 @@ const Sidebar = () => {
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [isSalesOpen, setIsSalesOpen] = useState(false);
     const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
-    const [isInboxOpen, setIsInboxOpen] = useState(true);  // Inbox alt menü
-    const [isContactsOpen, setIsContactsOpen] = useState(true); // Kişiler alt menü
+    const [isInboxOpen, setIsInboxOpen] = useState(false);  // Inbox alt menü
+    const [isContactsOpen, setIsContactsOpen] = useState(false); // Kişiler alt menü
     const [inboxSubTeams, setInboxSubTeams] = useState([]); // Kullanıcının takımları
 
     const [isCollapsed, setIsCollapsed] = useState(() => {

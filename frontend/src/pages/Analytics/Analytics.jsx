@@ -137,8 +137,9 @@ const Analytics = () => {
 
     if (loading && !analytics) {
         return (
-            <div className="analytics-loading">
-                <Zap className="spin text-primary" size={32} />
+            <div className="loading-container">
+                <div className="loader"></div>
+                <p>Analizler yükleniyor...</p>
             </div>
         );
     }
@@ -572,6 +573,62 @@ const Analytics = () => {
                                 </div>
                             ))}
                         </div>
+
+                        {/* Agent Bazlı Randevu Listesi */}
+                        {agentPerformance?.agents?.filter(a => (a.appointmentCount || 0) > 0).length > 0 && (
+                            <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <UserCheck size={14} />
+                                    Agent Bazlı Randevu Sayıları
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    {agentPerformance.agents
+                                        .filter(a => (a.appointmentCount || 0) > 0)
+                                        .sort((a, b) => (b.appointmentCount || 0) - (a.appointmentCount || 0))
+                                        .map((agent, idx) => (
+                                            <div key={agent.userId} style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '10px 14px', borderRadius: 12,
+                                                background: idx === 0 ? '#eff6ff' : '#f8fafc',
+                                                border: idx === 0 ? '1px solid #bfdbfe' : '1px solid #f1f5f9'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <div style={{
+                                                        width: 28, height: 28, borderRadius: '50%',
+                                                        background: idx === 0 ? '#3b82f6' : idx === 1 ? '#6366f1' : '#94a3b8',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        color: '#fff', fontWeight: 800, fontSize: '0.7rem'
+                                                    }}>
+                                                        {idx + 1}
+                                                    </div>
+                                                    {agent.avatar ? (
+                                                        <img src={agent.avatar} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
+                                                    ) : (
+                                                        <div style={{
+                                                            width: 30, height: 30, borderRadius: '50%',
+                                                            background: '#e0e7ff', display: 'flex', alignItems: 'center',
+                                                            justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', color: '#4f46e5'
+                                                        }}>
+                                                            {agent.name?.charAt(0)}
+                                                        </div>
+                                                    )}
+                                                    <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{agent.name}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <span style={{
+                                                        fontSize: '1.1rem', fontWeight: 800,
+                                                        color: idx === 0 ? '#3b82f6' : '#0ea5e9'
+                                                    }}>
+                                                        {agent.appointmentCount}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 500 }}>randevu</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

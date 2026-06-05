@@ -8,8 +8,8 @@
 
 /* Left Panel - Inbox List */
 .inbox-list-panel {
-    width: 300px;
-    min-width: 300px;
+    width: 335px;
+    min-width: 335px;
     background: #ffffff;
     border-right: 1px solid #e2e8f0;
     display: flex;
@@ -4408,11 +4408,12 @@
 .toolbar-row {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    min-height: 44px;
+    gap: 6px;
+    padding: 6px 8px;
+    min-height: 36px;
     position: relative;
     justify-content: flex-start;
+    flex-wrap: wrap;
 }
 
 .toolbar-total-count {
@@ -6332,4 +6333,303 @@
 }
 .conv-read-toggle.unread:hover {
     background: #dbeafe;
+}
+
+/* ── My Calls Inline Button (toolbar) ── */
+.my-calls-inline-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: #fff;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: #dc2626;
+    transition: all 0.15s ease;
+    outline: none;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.my-calls-inline-btn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+.my-calls-inline-btn svg {
+    flex-shrink: 0;
+}
+.my-calls-inline-label {
+    font-size: 11px;
+    line-height: 1;
+}
+.my-calls-inline-count {
+    background: #ef4444;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 15px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    padding: 0 3px;
+    line-height: 1;
+}
+
+/* ── My Calls Popup Overlay ── */
+.my-calls-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.15s ease;
+}
+.my-calls-popup {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.2);
+    width: 700px;
+    max-width: 90vw;
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: popupSlideIn 0.2s ease;
+}
+@keyframes popupSlideIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.my-calls-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.my-calls-popup-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.my-calls-popup-header h3 svg {
+    color: #ef4444;
+}
+.my-calls-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #94a3b8;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: all 0.15s;
+}
+.my-calls-close:hover {
+    background: #f1f5f9;
+    color: #475569;
+}
+/* ── My Calls Tabs ── */
+.my-calls-tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 16px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.my-calls-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.my-calls-tab:hover {
+    color: #64748b;
+    background: #f8fafc;
+}
+.my-calls-tab.active {
+    color: #dc2626;
+    border-bottom-color: #ef4444;
+    font-weight: 600;
+}
+.my-calls-tab-count {
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    padding: 0 5px;
+}
+.my-calls-tab.active .my-calls-tab-count {
+    background: #fef2f2;
+    color: #ef4444;
+}
+.my-calls-popup-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 8px 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.my-calls-loading,
+.my-calls-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 40px 20px;
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+/* ── My Calls Item ── */
+.my-calls-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+}
+.my-calls-item:hover {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+.my-calls-item.overdue {
+    background: #fff7ed;
+    border-color: #fed7aa;
+}
+.my-calls-item.overdue:hover {
+    background: #ffedd5;
+    border-color: #fdba74;
+}
+.my-calls-item-left {
+    flex: 1;
+    min-width: 0;
+}
+.my-calls-item-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 2px;
+}
+.my-calls-item-name svg {
+    color: #64748b;
+    flex-shrink: 0;
+}
+.my-calls-item-phone {
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 2px;
+}
+.my-calls-item-desc {
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.my-calls-item-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.my-calls-due {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    white-space: nowrap;
+    padding: 3px 8px;
+    background: #f1f5f9;
+    border-radius: 6px;
+}
+.my-calls-due.overdue {
+    background: #fef2f2;
+    color: #dc2626;
+    font-weight: 600;
+}
+.my-calls-assignee {
+    font-size: 10px;
+    color: #94a3b8;
+    padding: 2px 6px;
+    background: #f8fafc;
+    border-radius: 4px;
+}
+.my-calls-claim-btn {
+    padding: 4px 10px;
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.my-calls-claim-btn:hover {
+    background: #dc2626;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+.my-calls-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 2px;
+}
+.my-calls-call-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 10px;
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.my-calls-call-btn:hover {
+    background: #15803d;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
 }

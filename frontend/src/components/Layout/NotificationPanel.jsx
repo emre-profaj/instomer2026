@@ -1,20 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Bell, ArrowRightLeft, UserCheck, MessageSquare, BellOff, Check, Trash2, PhoneCall } from 'lucide-react';
+import { Bell, ArrowRightLeft, UserCheck, MessageSquare, BellOff, Check, Trash2, PhoneCall, AlarmClock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { notificationAPI } from '../../services/api';
+import { activityAPI } from '../../services/activity.api';
 import './NotificationPanel.css';
 
 const NOTIF_CATEGORIES = {
     all: { label: 'Tümü', types: null },
     assignment: { label: 'Atama', types: ['CONVERSATION_ASSIGNED', 'TEAM_ASSIGNED', 'CONTACT_ASSIGNED'] },
     call: { label: 'Arama', types: ['CALL', 'CALL_SCHEDULED', 'CALL_MISSED'] },
+    overdue: { label: 'Gecikmiş', types: ['CALL_OVERDUE'] },
     general: { label: 'Genel', types: ['BOT_ROUTING', 'NEW_MESSAGE', 'APPOINTMENT', 'TASK', 'OTHER'] },
 };
 
 const getCategory = (type) => {
     if (NOTIF_CATEGORIES.assignment.types.includes(type)) return 'assignment';
     if (NOTIF_CATEGORIES.call.types.includes(type)) return 'call';
+    if (NOTIF_CATEGORIES.overdue.types.includes(type)) return 'overdue';
     return 'general';
 };
 
@@ -26,6 +29,7 @@ const NotificationPanel = ({ isCollapsed }) => {
     const [unreadCount, setUnreadCount] = useState(0);
     const [loading, setLoading] = useState(false);
     const [notifTab, setNotifTab] = useState('all');
+    const [overdueAlerts, setOverdueAlerts] = useState([]);
     const panelRef = useRef(null);
 
     const workspaceId = currentWorkspace?.id;
@@ -55,12 +59,46 @@ const NotificationPanel = ({ isCollapsed }) => {
         }
     }, [workspaceId]);
 
-    // Poll unread count every 30 seconds
+    // Fetch overdue calls
+    const fetchOverdueCalls = useCallback(async () => {
+        if (!workspaceId) return;
+        try {
+            const res = await activityAPI.getPlannedActivities(workspaceId);
+            const activities = res.activities || res.data?.activities || [];
+            const now = new Date();
+            const overdue = activities
+                .filter(a => a.activityType === 'CALL' && a.status === 'SCHEDULED' && a.dueDate && new Date(a.dueDate) < now)
+                .map(a => ({
+                    id: `overdue_${a.id}`,
+                    _activityId: a.id,
+                    type: 'CALL_OVERDUE',
+                    title: `⏰ ${a.contact?.name || 'İsimsiz'} — Gecikmiş Arama`,
+                    body: `📱 ${a.contact?.phone || '-'} · Planlanan: ${new Date(a.dueDate).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`,
+                    createdAt: a.dueDate,
+                    isRead: false,
+                    isOverdue: true,
+                    data: JSON.stringify({
+                        conversationId: a.contact?.conversations?.[0]?.id || null,
+                        contactId: a.contact?.id || null,
+                        phone: a.contact?.phone || null,
+                    }),
+                }));
+            setOverdueAlerts(overdue);
+        } catch (err) {
+            console.error('Error fetching overdue calls:', err);
+        }
+    }, [workspaceId]);
+
+    // Poll unread count + overdue every 30 seconds
     useEffect(() => {
         fetchUnreadCount();
-        const interval = setInterval(fetchUnreadCount, 30000);
+        fetchOverdueCalls();
+        const interval = setInterval(() => {
+            fetchUnreadCount();
+            fetchOverdueCalls();
+        }, 30000);
         return () => clearInterval(interval);
-    }, [fetchUnreadCount]);
+    }, [fetchUnreadCount, fetchOverdueCalls]);
 
     // Listen for real-time notifications via window event (dispatched from AuthContext)
     useEffect(() => {
@@ -92,11 +130,24 @@ const NotificationPanel = ({ isCollapsed }) => {
     const handleToggle = () => {
         if (!isOpen) {
             fetchNotifications();
+            fetchOverdueCalls();
         }
         setIsOpen(!isOpen);
     };
 
     const handleMarkAsRead = async (notif) => {
+        // Overdue alerts — just navigate
+        if (notif.isOverdue) {
+            try {
+                const data = notif.data ? JSON.parse(notif.data) : null;
+                if (data?.conversationId) {
+                    navigate(`/inbox?conversation=${data.conversationId}`);
+                    setIsOpen(false);
+                }
+            } catch (e) { /* ignore */ }
+            return;
+        }
+
         if (!notif.isRead) {
             try {
                 await notificationAPI.markAsRead(workspaceId, notif.id);
@@ -154,6 +205,8 @@ const NotificationPanel = ({ isCollapsed }) => {
                 return <UserCheck size={16} />;
             case 'NEW_MESSAGE':
                 return <MessageSquare size={16} />;
+            case 'CALL_OVERDUE':
+                return <AlarmClock size={16} />;
             case 'CALL':
             case 'CALL_SCHEDULED':
             case 'CALL_MISSED':
@@ -170,6 +223,7 @@ const NotificationPanel = ({ isCollapsed }) => {
             case 'TEAM_ASSIGNED':
             case 'CONTACT_ASSIGNED': return 'assignment';
             case 'NEW_MESSAGE': return 'message';
+            case 'CALL_OVERDUE': return 'overdue';
             case 'CALL':
             case 'CALL_SCHEDULED':
             case 'CALL_MISSED': return 'call';
@@ -192,18 +246,24 @@ const NotificationPanel = ({ isCollapsed }) => {
         return date.toLocaleDateString('tr-TR');
     };
 
-    // Filter notifications by category tab
-    const filteredNotifications = notifTab === 'all'
-        ? notifications
-        : notifications.filter(n => getCategory(n.type) === notifTab);
+    // Merge overdue alerts (top) with real notifications
+    const allNotifications = [...overdueAlerts, ...notifications];
 
-    // Count unread per category
+    // Filter by category tab
+    const filteredNotifications = notifTab === 'all'
+        ? allNotifications
+        : allNotifications.filter(n => getCategory(n.type) === notifTab);
+
+    // Count unread per category (include overdue)
     const unreadCounts = {
-        all: notifications.filter(n => !n.isRead).length,
+        all: notifications.filter(n => !n.isRead).length + overdueAlerts.length,
         assignment: notifications.filter(n => !n.isRead && getCategory(n.type) === 'assignment').length,
         call: notifications.filter(n => !n.isRead && getCategory(n.type) === 'call').length,
+        overdue: overdueAlerts.length,
         general: notifications.filter(n => !n.isRead && getCategory(n.type) === 'general').length,
     };
+
+    const totalBadge = unreadCount + overdueAlerts.length;
 
     return (
         <div className="notification-panel" ref={panelRef}>
@@ -214,9 +274,9 @@ const NotificationPanel = ({ isCollapsed }) => {
             >
                 <Bell size={20} className="nav-icon" />
                 {!isCollapsed && <span>Bildirimler</span>}
-                {unreadCount > 0 && (
+                {totalBadge > 0 && (
                     <span className="notification-badge">
-                        {unreadCount > 99 ? '99+' : unreadCount}
+                        {totalBadge > 99 ? '99+' : totalBadge}
                     </span>
                 )}
             </button>
@@ -246,12 +306,13 @@ const NotificationPanel = ({ isCollapsed }) => {
                         {Object.entries(NOTIF_CATEGORIES).map(([key, cat]) => (
                             <button
                                 key={key}
-                                className={`notif-cat-btn ${notifTab === key ? 'active' : ''}`}
+                                className={`notif-cat-btn ${notifTab === key ? 'active' : ''} ${key === 'overdue' && overdueAlerts.length > 0 ? 'notif-cat-overdue' : ''}`}
                                 onClick={() => setNotifTab(key)}
                             >
+                                {key === 'overdue' && <AlarmClock size={11} />}
                                 {cat.label}
                                 {unreadCounts[key] > 0 && (
-                                    <span className="notif-cat-badge">{unreadCounts[key]}</span>
+                                    <span className={`notif-cat-badge ${key === 'overdue' ? 'notif-cat-badge-overdue' : ''}`}>{unreadCounts[key]}</span>
                                 )}
                             </button>
                         ))}
@@ -269,7 +330,7 @@ const NotificationPanel = ({ isCollapsed }) => {
                             filteredNotifications.map(notif => (
                                 <div
                                     key={notif.id}
-                                    className={`notification-item ${!notif.isRead ? 'unread' : ''}`}
+                                    className={`notification-item ${!notif.isRead ? 'unread' : ''} ${notif.isOverdue ? 'notification-overdue' : ''}`}
                                     onClick={() => handleMarkAsRead(notif)}
                                 >
                                     <div className={`notification-icon-wrapper ${getIconClass(notif.type)}`}>
@@ -278,9 +339,12 @@ const NotificationPanel = ({ isCollapsed }) => {
                                     <div className="notification-content">
                                         <p className="notification-title">{notif.title}</p>
                                         <p className="notification-body">{notif.body}</p>
-                                        <span className="notification-time">{formatTime(notif.createdAt)}</span>
+                                        <span className="notification-time">
+                                            {notif.isOverdue ? `⏰ ${formatTime(notif.createdAt)} gecikmiş` : formatTime(notif.createdAt)}
+                                        </span>
                                     </div>
-                                    {!notif.isRead && <div className="notification-unread-dot" />}
+                                    {!notif.isRead && !notif.isOverdue && <div className="notification-unread-dot" />}
+                                    {notif.isOverdue && <div className="notification-overdue-badge">Gecikmiş</div>}
                                 </div>
                             ))
                         )}

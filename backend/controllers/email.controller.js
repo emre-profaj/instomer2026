@@ -557,7 +557,7 @@ export const syncEmailsInternal = async (channelId) => {
                         console.error('❌ [RULE:SALES_PHONE_CALL] Email async error:', e.message)
                     );
                     if (contact?.id) {
-                        executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                        await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
                             console.error('❌ [RULE:AUTO_CALL] Email async error:', e.message)
                         );
                     }
@@ -1033,7 +1033,7 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                             console.error('❌ [RULE:SALES_PHONE_CALL] Email history error:', e.message)
                         );
                         if (contact?.id) {
-                            executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                            await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
                                 console.error('❌ [RULE:AUTO_CALL] Email history error:', e.message)
                             );
                         }
@@ -1508,7 +1508,7 @@ export const syncEmailsImap = async (channelId) => {
                                                     console.error('❌ [RULE:SALES_PHONE_CALL] IMAP error:', e.message)
                                                 );
                                                 if (contact?.id) {
-                                                    executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                                                    await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
                                                         console.error('❌ [RULE:AUTO_CALL] IMAP error:', e.message)
                                                     );
                                                 }

@@ -179,22 +179,11 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         try {
             if (bot.reminderSteps) return JSON.parse(bot.reminderSteps);
         } catch (e) {}
-        // Legacy migration: convert old fields
-        if (bot.inactivityWarningEnabled || bot.dailyReminderEnabled) {
-            return [
-                { enabled: bot.inactivityWarningEnabled || false, delayMinutes: Math.round((bot.inactivityWarningSeconds || 40) / 60) || 1 },
-                { enabled: bot.dailyReminderEnabled || false, delayMinutes: (bot.dailyReminderHours || 24) * 60 },
-                { enabled: false, delayMinutes: 180 },
-                { enabled: false, delayMinutes: 300 },
-                { enabled: false, delayMinutes: 1200 }
-            ];
-        }
         return [
-            { enabled: true, delayMinutes: 6 },
             { enabled: true, delayMinutes: 60 },
             { enabled: false, delayMinutes: 180 },
-            { enabled: false, delayMinutes: 300 },
-            { enabled: false, delayMinutes: 1200 }
+            { enabled: false, delayMinutes: 1440 },
+            { enabled: false, delayMinutes: 5760 }
         ];
     });
 
@@ -233,13 +222,12 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         setAutoReplyDelayMessage(bot.autoReplyDelayMessage || '');
         try {
             if (bot.reminderSteps) setReminderSteps(JSON.parse(bot.reminderSteps));
-            else if (bot.inactivityWarningEnabled || bot.dailyReminderEnabled) {
+            else {
                 setReminderSteps([
-                    { enabled: bot.inactivityWarningEnabled || false, delayMinutes: Math.round((bot.inactivityWarningSeconds || 40) / 60) || 1 },
-                    { enabled: bot.dailyReminderEnabled || false, delayMinutes: (bot.dailyReminderHours || 24) * 60 },
+                    { enabled: true, delayMinutes: 60 },
                     { enabled: false, delayMinutes: 180 },
-                    { enabled: false, delayMinutes: 300 },
-                    { enabled: false, delayMinutes: 1200 }
+                    { enabled: false, delayMinutes: 1440 },
+                    { enabled: false, delayMinutes: 5760 }
                 ]);
             }
         } catch (e) {}
@@ -632,22 +620,35 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                                         type="number"
                                         className="input-modern input-sm"
                                         min="1"
-                                        max="10000"
-                                        value={step.delayMinutes}
+                                        max="999"
+                                        value={step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440)}
                                         onChange={(e) => {
+                                            const val = parseInt(e.target.value) || 1;
+                                            const unit = step.delayMinutes < 1440 ? 'saat' : 'gun';
+                                            const minutes = unit === 'saat' ? val * 60 : val * 1440;
                                             const updated = [...reminderSteps];
-                                            updated[idx] = { ...updated[idx], delayMinutes: parseInt(e.target.value) || 1 };
+                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
                                             setReminderSteps(updated);
                                         }}
-                                        style={{ width: '75px', textAlign: 'center' }}
+                                        style={{ width: '65px', textAlign: 'center' }}
                                     />
-                                    <span style={{ fontSize: '12px', color: '#64748b' }}>dakika</span>
+                                    <select
+                                        className="input-modern input-sm"
+                                        value={step.delayMinutes < 1440 ? 'saat' : 'gun'}
+                                        onChange={(e) => {
+                                            const unit = e.target.value;
+                                            const currentVal = step.delayMinutes < 1440 ? Math.max(1, Math.round(step.delayMinutes / 60)) : Math.round(step.delayMinutes / 1440);
+                                            const minutes = unit === 'saat' ? currentVal * 60 : currentVal * 1440;
+                                            const updated = [...reminderSteps];
+                                            updated[idx] = { ...updated[idx], delayMinutes: minutes };
+                                            setReminderSteps(updated);
+                                        }}
+                                        style={{ width: '70px', fontSize: '12px', padding: '4px 6px' }}
+                                    >
+                                        <option value="saat">saat</option>
+                                        <option value="gun">gün</option>
+                                    </select>
                                 </div>
-                                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 'auto' }}>
-                                    {step.delayMinutes < 60 ? `${step.delayMinutes} dk` :
-                                     step.delayMinutes < 1440 ? `${(step.delayMinutes / 60).toFixed(1)} saat` :
-                                     `${(step.delayMinutes / 1440).toFixed(1)} gün`}
-                                </span>
                             </div>
                         ))}
                     </div>
@@ -753,7 +754,7 @@ const RetellAgentItem = ({ agent, workspaceId }) => {
                         <span className="bot-role-badge">📞 Arama Asistanı (Voice)</span>
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0, flexWrap: 'nowrap' }}>
                     <span className={`status-badge ${agent.is_published ? 'active' : ''}`} style={{
                         backgroundColor: agent.is_published ? '#ccfbf1' : '#f1f5f9',
                         color: agent.is_published ? '#0f766e' : '#64748b',
@@ -1643,7 +1644,10 @@ const Assistants = () => {
 
                         {/* Bots Grid */}
                         {loading && !bots.length ? (
-                            <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>
+                            <div className="loading-container">
+                                <div className="loader"></div>
+                                <p>Asistanlar yükleniyor...</p>
+                            </div>
                         ) : bots.length === 0 && !showAddBot ? (
                             <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
                                 <Bot size={48} color="#9ca3af" style={{ marginBottom: '16px' }} />
@@ -2071,7 +2075,10 @@ const Assistants = () => {
 
                             {/* Agent List */}
                             {retellLoading ? (
-                                <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>
+                                <div className="loading-container">
+                                    <div className="loader"></div>
+                                    <p>Yükleniyor...</p>
+                                </div>
                             ) : retellAgents.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '40px', background: 'white', borderRadius: '16px', border: '1px dashed #d1d5db' }}>
                                     <Phone size={36} color="#9ca3af" style={{ marginBottom: '12px' }} />

@@ -1399,7 +1399,8 @@ export const webhookHandler = async (req, res) => {
                                 console.error('❌ [RULE:SALES_PHONE_CALL] async error:', e.message)
                             );
                             // Auto call planning runs AFTER phone capture to avoid race condition
-                            executeAutoCallPlanning(waNumber.workspaceId, contact.id, 'WHATSAPP').catch(e =>
+                            // IMPORTANT: await so it runs AFTER phone capture has saved the phone number
+                            await executeAutoCallPlanning(waNumber.workspaceId, contact.id, 'WHATSAPP').catch(e =>
                                 console.error('❌ [RULE:AUTO_CALL] WA async error:', e.message)
                             );
                         } catch (ruleErr) {

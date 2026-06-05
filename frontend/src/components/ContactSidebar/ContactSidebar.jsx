@@ -1552,7 +1552,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
                             {/* Atama / Üstlen Widget */}
                             {!readOnly && activeConv && (
-                                <div style={{ display: 'flex', gap: '8px', padding: '8px 16px 4px', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', gap: '8px', padding: '20px 0 10px', alignItems: 'center' }}>
                                     {/* ── Atama Pill Widget ── */}
                                     {(() => {
                                         let convTeamIds = [];
@@ -1728,7 +1728,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
 
                             {/* ACTION BUTTONS — Row 1: Aktiviteler */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 16px 2px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 0 2px' }}>
                                 <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
                                     <span style={{ position: 'relative', display: 'inline-flex', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' }}>
                                         <PhoneCall size={17} style={{ color: '#374151' }} />
@@ -1762,7 +1762,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </button>
                             </div>
                             {/* ACTION BUTTONS — Row 2: Satış */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 16px 8px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 0 8px' }}>
                                 <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowQuoteForm(true)}>
                                     <FileText size={18} style={{ color: '#10b981' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
@@ -1781,6 +1781,193 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </button>
                             </div>
 
+                            {/* MÜŞTERİ YOLCULUĞU TIMELINE */}
+                            {!timelineLoading && (pastTimeline.length > 0 || plannedTimeline.length > 0 || profile?.createdAt) && (() => {
+                                // Build journey milestones from timeline data + profile
+                                const milestones = [];
+
+                                // 1. Kişi kaydı oluşturuldu
+                                if (profile?.createdAt) {
+                                    milestones.push({
+                                        icon: '📋',
+                                        label: 'Kayıt Oluşturuldu',
+                                        detail: profile.source ? `Kaynak: ${profile.source}` : null,
+                                        date: new Date(profile.createdAt),
+                                        color: '#ef4444',
+                                        done: true
+                                    });
+                                }
+
+                                // 2. İlk sohbet
+                                const allTimeline = [...pastTimeline, ...plannedTimeline];
+                                const firstConv = allTimeline
+                                    .filter(i => i.sourceType === 'CONVERSATION')
+                                    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                                if (firstConv) {
+                                    milestones.push({
+                                        icon: '💬',
+                                        label: 'İlk Sohbet Başladı',
+                                        detail: firstConv.title || (firstConv.type === 'WHATSAPP' ? 'WhatsApp' : firstConv.type === 'INSTAGRAM' ? 'Instagram' : firstConv.type === 'FACEBOOK' ? 'Facebook' : 'Sohbet'),
+                                        date: new Date(firstConv.date),
+                                        color: '#ef4444',
+                                        done: true
+                                    });
+                                }
+
+                                // 3. Telefon alındı (contact has phone)
+                                if (profile?.phone) {
+                                    const phoneDate = firstConv ? new Date(firstConv.date) : (profile?.createdAt ? new Date(profile.createdAt) : null);
+                                    milestones.push({
+                                        icon: '📱',
+                                        label: 'Telefon Alındı',
+                                        detail: profile.phone,
+                                        date: phoneDate,
+                                        color: '#ef4444',
+                                        done: true
+                                    });
+                                }
+
+                                // 4. Aramalar (tamamlanan)
+                                const calls = allTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.sourceType === 'ACTIVITY');
+                                const completedCalls = calls.filter(i => i.status === 'COMPLETED');
+                                const failedCalls = calls.filter(i => i.status === 'CANCELLED');
+                                if (completedCalls.length > 0) {
+                                    const lastCall = completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                    milestones.push({
+                                        icon: '📞',
+                                        label: `Arama Yapıldı${completedCalls.length > 1 ? ` (${completedCalls.length}x)` : ''}`,
+                                        detail: lastCall.content || lastCall.description || 'Tamamlandı',
+                                        date: new Date(lastCall.dueDate || lastCall.date),
+                                        color: '#16a34a',
+                                        done: true
+                                    });
+                                }
+                                if (failedCalls.length > 0) {
+                                    const lastFailed = failedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                    milestones.push({
+                                        icon: '📵',
+                                        label: `Ulaşılamadı${failedCalls.length > 1 ? ` (${failedCalls.length}x)` : ''}`,
+                                        detail: lastFailed.content || 'Cevap yok',
+                                        date: new Date(lastFailed.dueDate || lastFailed.date),
+                                        color: '#ef4444',
+                                        done: true
+                                    });
+                                }
+
+                                // 5. Randevu / Görüşme
+                                const meetings = allTimeline.filter(i => i.type === 'MEETING' && i.sourceType === 'ACTIVITY');
+                                if (meetings.length > 0) {
+                                    const lastMeeting = meetings.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                    milestones.push({
+                                        icon: '📅',
+                                        label: lastMeeting.status === 'COMPLETED' ? 'Randevu Tamamlandı' : lastMeeting.status === 'PLANNED' ? 'Randevu Planlandı' : 'Randevu',
+                                        detail: lastMeeting.content || lastMeeting.description || null,
+                                        date: new Date(lastMeeting.dueDate || lastMeeting.date),
+                                        color: lastMeeting.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
+                                        done: lastMeeting.status === 'COMPLETED'
+                                    });
+                                }
+
+                                // 6. Ziyaret
+                                const visits = allTimeline.filter(i => i.type === 'VISIT' && i.sourceType === 'ACTIVITY');
+                                if (visits.length > 0) {
+                                    const lastVisit = visits.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                    milestones.push({
+                                        icon: '🏢',
+                                        label: 'Ziyaret',
+                                        detail: lastVisit.content || null,
+                                        date: new Date(lastVisit.dueDate || lastVisit.date),
+                                        color: lastVisit.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
+                                        done: lastVisit.status === 'COMPLETED'
+                                    });
+                                }
+
+                                // 7. Teklif
+                                const proposals = allTimeline.filter(i => i.type === 'PROPOSAL' && i.sourceType === 'ACTIVITY');
+                                if (proposals.length > 0) {
+                                    milestones.push({
+                                        icon: '📄',
+                                        label: `Teklif Verildi${proposals.length > 1 ? ` (${proposals.length}x)` : ''}`,
+                                        detail: null,
+                                        date: new Date(proposals[0].dueDate || proposals[0].date),
+                                        color: '#ef4444',
+                                        done: true
+                                    });
+                                }
+
+                                // 8. Sipariş
+                                const orders = allTimeline.filter(i => i.type === 'ORDER' && i.sourceType === 'ACTIVITY');
+                                if (orders.length > 0) {
+                                    milestones.push({
+                                        icon: '🛒',
+                                        label: `Sipariş${orders.length > 1 ? ` (${orders.length}x)` : ''}`,
+                                        detail: null,
+                                        date: new Date(orders[0].dueDate || orders[0].date),
+                                        color: '#16a34a',
+                                        done: true
+                                    });
+                                }
+
+                                // 9. Planlanmış aramalar (gelecek)
+                                const plannedCalls = plannedTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.status === 'PLANNED');
+                                if (plannedCalls.length > 0) {
+                                    const nextCall = plannedCalls.sort((a, b) => new Date(a.dueDate || a.date) - new Date(b.dueDate || b.date))[0];
+                                    const callDate = new Date(nextCall.dueDate || nextCall.date);
+                                    const isOverdue = callDate < new Date();
+                                    const hasCompletedCall = completedCalls.length > 0;
+                                    milestones.push({
+                                        icon: isOverdue ? '⚠️' : '🔔',
+                                        label: isOverdue ? 'Gecikmiş Arama' : 'Planlanan Arama',
+                                        detail: nextCall.assignedToName ? `→ ${nextCall.assignedToName}` : null,
+                                        date: callDate,
+                                        color: isOverdue ? '#dc2626' : '#f87171',
+                                        done: false,
+                                        overdue: isOverdue && !hasCompletedCall
+                                    });
+                                }
+
+                                // Sort by date
+                                milestones.sort((a, b) => (a.date || 0) - (b.date || 0));
+
+                                if (milestones.length === 0) return null;
+
+                                return (
+                                    <div className="customer-journey-timeline">
+                                        <div className="journey-header">
+                                            <TrendingUp size={13} />
+                                            <span>Sohbet Akışı</span>
+                                            <span className="journey-count">{milestones.length} adım</span>
+                                        </div>
+                                        <div className="journey-steps">
+                                            {milestones.map((m, idx) => (
+                                                <div key={idx} className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}`}>
+                                                    <div className="journey-line-wrapper">
+                                                        <div className="journey-dot" style={{ borderColor: m.color, background: m.done ? m.color : '#fff' }}>
+                                                            {m.done && <Check size={8} color="#fff" />}
+                                                        </div>
+                                                        {idx < milestones.length - 1 && (
+                                                            <div className="journey-line" style={{ background: m.done ? m.color : '#e2e8f0' }} />
+                                                        )}
+                                                    </div>
+                                                    <div className="journey-content">
+                                                        <div className="journey-label">
+                                                            <span className="journey-emoji">{m.icon}</span>
+                                                            <span className="journey-title">{m.label}</span>
+                                                        </div>
+                                                        {m.detail && <div className="journey-detail">{m.detail}</div>}
+                                                        {m.date && (
+                                                            <div className="journey-date">
+                                                                {m.date.toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* TIMELINE SECTION */}
                             <div className="activity-timeline-section">
                                 {/* Başlık ve çizgi kaldırıldı — alan kazanmak için */}
@@ -1792,20 +1979,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         {/* PLANLANMIŞ AKTİVİTELER */}
                                         {plannedTimeline.length > 0 && (
                                             <>
-                                                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 0 6px', borderBottom: '2px solid #dbeafe', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 0 6px', borderBottom: '2px solid #fecaca', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                     <CalendarDays size={13} />
                                                     Yaklaşan Etkinlikler
-                                                    <span style={{ marginLeft: 'auto', background: '#2563eb', color: '#fff', borderRadius: '999px', padding: '0 7px', fontSize: '0.65rem', fontWeight: 800 }}>{plannedTimeline.length}</span>
+                                                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', borderRadius: '999px', padding: '0 7px', fontSize: '0.65rem', fontWeight: 800 }}>{plannedTimeline.length}</span>
                                                 </div>
                                                 {plannedTimeline.map((item) => {
                                                     const typeConfig = {
-                                                        CALL:     { lucide: <PhoneCall size={16}/>,    label: 'Arama Planlandı',    accent: '#3b82f6', accentBg: '#eff6ff', accentLight: '#dbeafe' },
-                                                        MEETING:  { lucide: <CalendarDays size={16}/>, label: 'Görüşme Planlandı', accent: '#10b981', accentBg: '#f0fdf4', accentLight: '#dcfce7' },
+                                                        CALL:     { lucide: <PhoneCall size={16}/>,    label: 'Arama Planlandı',    accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' },
+                                                        MEETING:  { lucide: <CalendarDays size={16}/>, label: 'Görüşme Planlandı', accent: '#16a34a', accentBg: '#f0fdf4', accentLight: '#dcfce7' },
                                                         REMINDER: { lucide: <Bell size={16}/>,         label: 'Hatırlatıcı',        accent: '#f97316', accentBg: '#fff7ed', accentLight: '#ffedd5' },
-                                                        TASK:     { lucide: <Bell size={16}/>,         label: 'Görev',              accent: '#8b5cf6', accentBg: '#faf5ff', accentLight: '#ede9fe' },
-                                                        VISIT:    { lucide: <MapPin size={16}/>,        label: 'Ziyaret',            accent: '#a855f7', accentBg: '#fdf4ff', accentLight: '#f3e8ff' },
+                                                        TASK:     { lucide: <Bell size={16}/>,         label: 'Görev',              accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' },
+                                                        VISIT:    { lucide: <MapPin size={16}/>,        label: 'Ziyaret',            accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' },
                                                     };
-                                                    const cfg = typeConfig[item.type] || { lucide: <Bell size={16}/>, label: item.type, accent: '#f59e0b', accentBg: '#fffbeb', accentLight: '#fef3c7' };
+                                                    const cfg = typeConfig[item.type] || { lucide: <Bell size={16}/>, label: item.type, accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' };
                                                     const now = new Date();
                                                     const due = item.dueDate ? new Date(item.dueDate) : null;
                                                     const overdue = due && due < now;
@@ -1860,7 +2047,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         )}
                                                                         {/* Assignee */}
                                                                         {item.assignedToName && (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.7rem', color: '#6366f1' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.7rem', color: '#ef4444' }}>
                                                                                 <User size={10} /> {item.assignedToName}
                                                                             </div>
                                                                         )}
@@ -1871,7 +2058,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                             <button
                                                                                 onClick={(e) => { e.stopPropagation(); handleClaimActivity(item.id); }}
                                                                                 title="Bu etkinliği üstlen"
-                                                                                style={{ background: '#6366f1', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
+                                                                                style={{ background: '#ef4444', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
                                                                             >
                                                                                 <UserPlus size={12} />
                                                                                 <span>Üstlen</span>
@@ -1880,7 +2067,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         <button
                                                                             onClick={(e) => { e.stopPropagation(); setCompletingActivity(item); setCompleteResult(''); }}
                                                                             title="Tamamlandı — Not gir"
-                                                                            style={{ background: '#10b981', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
+                                                                            style={{ background: '#16a34a', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
                                                                         >
                                                                             <Check size={12} />
                                                                             <span>Tamamla</span>
@@ -2364,7 +2551,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* Block Contact Section */}
                             {!readOnly && profile.id && (
                                 <div className="section-container block-section">
-                                    <h3 className="section-title" style={{ marginBottom: 8, display: 'block' }}>KİŞİ İŞLEMLERİ</h3>
+
 
                                     {profile.isBlocked ? (
                                         <div className="blocked-status">
