@@ -46,5 +46,19 @@ export const activityAPI = {
     getPlannedActivities: async (workspaceId) => {
         const response = await api.get(`/activities/workspace/${workspaceId}/call-queue`);
         return response.data;
+    },
+
+    // Workspace genelinde filtrelenebilir aktivite listesi
+    getWorkspaceActivities: async (workspaceId, filters = {}) => {
+        const params = {};
+        if (filters.type) params.type = filters.type;
+        if (filters.status) params.status = filters.status;
+        if (filters.view) params.view = filters.view;
+        if (filters.assignedToId) params.assignedToId = filters.assignedToId;
+        if (filters.teamId) params.teamId = filters.teamId;
+        if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+        if (filters.dateTo) params.dateTo = filters.dateTo;
+        const response = await api.get(`/activities/workspace/${workspaceId}/list`, { params });
+        return response.data;
     }
 };

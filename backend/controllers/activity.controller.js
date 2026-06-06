@@ -589,6 +589,90 @@ export const claimActivity = async (req, res) => {
 };
 
 // ────────────────────────────────────────────────────────────────────────────
+// WORKSPACE ACTIVITIES — Workspace genelinde aktivite listesi (filtrelenebilir)
+// ────────────────────────────────────────────────────────────────────────────
+// Workspace genelinde aktivite listesi (filtrelenebilir)
+export const getWorkspaceActivities = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { type, status, assignedToId, teamId, dateFrom, dateTo, view, limit = 100 } = req.query;
+
+        const where = { workspaceId };
+
+        // Type filter
+        if (type && type !== 'ALL') {
+            where.type = type;
+        }
+
+        // Status filter
+        if (status && status !== 'ALL') {
+            where.status = status;
+        }
+
+        // View filter: mine = assigned to me, team = my team, all = everyone
+        if (view === 'mine' && req.user?.id) {
+            where.assignedToId = req.user.id;
+        } else if (assignedToId) {
+            where.assignedToId = assignedToId;
+        }
+
+        if (teamId) {
+            where.teamId = teamId;
+        }
+
+        // Date range filter
+        if (dateFrom || dateTo) {
+            where.dueDate = {};
+            if (dateFrom) where.dueDate.gte = new Date(dateFrom);
+            if (dateTo) {
+                const end = new Date(dateTo);
+                end.setHours(23, 59, 59, 999);
+                where.dueDate.lte = end;
+            }
+        }
+
+        const activities = await prisma.contactActivity.findMany({
+            where,
+            include: {
+                contact: {
+                    select: { id: true, name: true, phone: true, email: true, company: true }
+                },
+                assignee: {
+                    select: { id: true, name: true, avatar: true }
+                },
+                creator: {
+                    select: { id: true, name: true }
+                },
+                team: {
+                    select: { id: true, name: true }
+                }
+            },
+            orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+            take: parseInt(limit)
+        });
+
+        // Count by status for summary
+        const counts = await prisma.contactActivity.groupBy({
+            by: ['status'],
+            where: { ...where, status: undefined },
+            _count: true
+        });
+
+        const summary = {
+            planned: counts.find(c => c.status === 'PLANNED')?._count || 0,
+            inProgress: counts.find(c => c.status === 'IN_PROGRESS')?._count || 0,
+            completed: counts.find(c => c.status === 'COMPLETED')?._count || 0,
+            cancelled: counts.find(c => c.status === 'CANCELLED')?._count || 0
+        };
+
+        res.json({ activities, summary });
+    } catch (error) {
+        console.error('Get workspace activities error:', error);
+        res.status(500).json({ error: 'Aktiviteler yüklenirken hata oluştu' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
 // WORKSPACE CALL QUEUE — CALL + MEETING activities (planned & recent completed)
 // ────────────────────────────────────────────────────────────────────────────
 export const getWorkspaceCallQueue = async (req, res) => {

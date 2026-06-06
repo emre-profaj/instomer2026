@@ -1,5 +1,5 @@
 import express from 'express';
-import { createActivity, getContactTimeline, updateActivity, deleteActivity, completeActivity, claimActivity, getWorkspaceCallQueue } from '../controllers/activity.controller.js';
+import { createActivity, getContactTimeline, updateActivity, deleteActivity, completeActivity, claimActivity, getWorkspaceCallQueue, getWorkspaceActivities } from '../controllers/activity.controller.js';
 import { authenticateJWT } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -9,6 +9,7 @@ router.use(authenticateJWT);
 
 // Workspace call queue (CALL + MEETING activities)
 router.get('/workspace/:workspaceId/call-queue', getWorkspaceCallQueue);
+router.get('/workspace/:workspaceId/list', getWorkspaceActivities);
 
 // Tüm route'lar için auth kontrolü
 router.use(authenticateJWT);

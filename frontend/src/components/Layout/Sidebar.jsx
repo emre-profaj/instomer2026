@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -21,7 +21,9 @@ const Sidebar = () => {
     const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
     const [isInboxOpen, setIsInboxOpen] = useState(false);  // Inbox alt menü
     const [isContactsOpen, setIsContactsOpen] = useState(false); // Kişiler alt menü
+    const [isActivitiesOpen, setIsActivitiesOpen] = useState(false); // Aktiviteler alt menü
     const [inboxSubTeams, setInboxSubTeams] = useState([]); // Kullanıcının takımları
+    const [quickCounts, setQuickCounts] = useState({ calls: 0, meetings: 0, tasks: 0 }); // Quick action badge counts
 
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -32,7 +34,7 @@ const Sidebar = () => {
     const menuItems = [
         { path: '/inbox', icon: Inbox, label: t('nav.inbox') },
         { path: '/customers', icon: Contact, label: t('nav.contacts') },
-        { path: '/calendar', icon: Activity, label: 'Aktiviteler' }
+        { path: '/activities/calendar', icon: Activity, label: 'Aktiviteler' }
     ];
 
     const realEstateSubItems = [
@@ -69,7 +71,7 @@ const Sidebar = () => {
     const workspaceRole = workspaceMember?.role;
 
     const filteredMenuItems = (workspaceRole === 'AGENT' && user?.role !== 'SUPER_ADMIN')
-        ? menuItems.filter(item => ['/inbox', '/customers', '/calendar'].includes(item.path))
+        ? menuItems.filter(item => ['/inbox', '/customers', '/activities/calendar'].includes(item.path))
         : menuItems;
 
     useEffect(() => {
@@ -105,6 +107,26 @@ const Sidebar = () => {
         };
         if (user && currentWorkspace) fetchMyTeams();
     }, [user, currentWorkspace]);
+
+    // Quick action counts — planned CALL, MEETING, TASK sayılarını çek
+    useEffect(() => {
+        const fetchCounts = async () => {
+            if (!currentWorkspace?.id) return;
+            try {
+                const { activityAPI } = await import('../../services/activity.api');
+                const data = await activityAPI.getPlannedActivities(currentWorkspace.id);
+                const acts = Array.isArray(data) ? data : (data?.data || []);
+                const calls = acts.filter(a => a.type === 'CALL' && a.status === 'PLANNED').length;
+                const meetings = acts.filter(a => a.type === 'MEETING' && a.status === 'PLANNED').length;
+                const tasks = acts.filter(a => a.type === 'TASK' && a.status === 'PLANNED').length;
+                setQuickCounts({ calls, meetings, tasks });
+            } catch {}
+        };
+        fetchCounts();
+        // Her 60 saniyede yenile
+        const interval = setInterval(fetchCounts, 60000);
+        return () => clearInterval(interval);
+    }, [currentWorkspace?.id]);
 
 
     useEffect(() => {
@@ -349,6 +371,51 @@ const Sidebar = () => {
                                     );
                                 }
 
+                                // Aktiviteler — expandable sub-menu
+                                const isActivities = item.path === '/activities/calendar';
+                                if (isActivities) {
+                                    const isActivitiesActive = location.pathname.startsWith('/activities') || location.pathname === '/calendar';
+                                    return (
+                                        <div key={item.path}>
+                                            <div
+                                                className={`sidebar-nav-item ${isActivitiesActive && !isActivitiesOpen ? 'active' : ''}`}
+                                                style={{ cursor: 'pointer' }}
+                                                onClick={() => {
+                                                    if (isCollapsed) { navigate('/activities/calendar'); return; }
+                                                    setIsActivitiesOpen(v => !v);
+                                                    if (!isActivitiesActive) navigate('/activities/calendar');
+                                                }}
+                                                title={item.label}
+                                            >
+                                                <item.icon size={20} className="nav-icon" />
+                                                {!isCollapsed && <span>{item.label}</span>}
+                                                {!isCollapsed && <ChevronDown size={14} style={{ marginLeft: 'auto', transition: '0.2s', transform: isActivitiesOpen ? 'rotate(180deg)' : 'none', color: '#9ca3af' }} />}
+                                            </div>
+                                            {isActivitiesOpen && !isCollapsed && (
+                                                <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
+                                                    {[
+                                                        { label: 'Takvim', path: '/activities/calendar', icon: Calendar },
+                                                        { label: 'Aramalar', path: '/activities/calls', icon: Phone },
+                                                        { label: 'Randevular', path: '/activities/appointments', icon: CalendarClock },
+                                                        { label: 'Görüşmeler', path: '/activities/meetings', icon: Handshake },
+                                                        { label: 'Görevler', path: '/activities/tasks', icon: ListTodo },
+                                                    ].map(sub => (
+                                                        <Link
+                                                            key={sub.path}
+                                                            to={sub.path}
+                                                            className={`sidebar-nav-item submenu-item ${location.pathname === sub.path ? 'active' : ''}`}
+                                                            style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
+                                                        >
+                                                            <sub.icon size={14} className="nav-icon" style={{ flexShrink: 0 }} />
+                                                            <span>{sub.label}</span>
+                                                        </Link>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                }
+
                                 return (
                                     <Link key={item.path} to={item.path}
                                         className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
@@ -482,6 +549,36 @@ const Sidebar = () => {
                 </div>
 
                 <div className="sidebar-footer">
+                    {/* Quick Access Actions — Bildirimler üstünde */}
+                    <div className={`sidebar-quick-actions ${isCollapsed ? 'collapsed' : ''}`}>
+                        <button
+                            className="quick-action-btn calls"
+                            title="Aramalarım"
+                            onClick={() => navigate('/activities/calls')}
+                        >
+                            <PhoneCall size={18} />
+                            {!isCollapsed && <span>Aramalar</span>}
+                            {quickCounts.calls > 0 && <span className="qa-badge">{quickCounts.calls > 99 ? '99+' : quickCounts.calls}</span>}
+                        </button>
+                        <button
+                            className="quick-action-btn meetings"
+                            title="Görüşmelerim"
+                            onClick={() => navigate('/activities/meetings')}
+                        >
+                            <Handshake size={18} />
+                            {!isCollapsed && <span>Görüşmeler</span>}
+                            {quickCounts.meetings > 0 && <span className="qa-badge">{quickCounts.meetings > 99 ? '99+' : quickCounts.meetings}</span>}
+                        </button>
+                        <button
+                            className="quick-action-btn tasks"
+                            title="Görevlerim"
+                            onClick={() => navigate('/activities/tasks')}
+                        >
+                            <ListTodo size={18} />
+                            {!isCollapsed && <span>Görevler</span>}
+                            {quickCounts.tasks > 0 && <span className="qa-badge">{quickCounts.tasks > 99 ? '99+' : quickCounts.tasks}</span>}
+                        </button>
+                    </div>
                     <NotificationPanel isCollapsed={isCollapsed} />
                     <button onClick={handleLogout} className="logout-button" title={t('nav.logout')}>
                         <LogOut size={20} className="nav-icon" />
@@ -508,8 +605,8 @@ const Sidebar = () => {
                     <span>Kişiler</span>
                 </Link>
                 <Link
-                    to="/calendar"
-                    className={`mobile-nav-item ${location.pathname === '/calendar' ? 'active' : ''}`}
+                    to="/activities/calendar"
+                    className={`mobile-nav-item ${location.pathname.startsWith('/activities') ? 'active' : ''}`}
                 >
                     <Activity size={22} />
                     <span>Aktiviteler</span>

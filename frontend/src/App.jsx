@@ -24,6 +24,7 @@ import AramaAnalizi from './pages/Analytics/AramaAnalizi';
 import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
 import Calendar from './pages/Calendar/Calendar';
+import Activities from './pages/Activities/Activities';
 import Automations from './pages/Automations/Automations';
 import Functions from './pages/Automations/Functions';
 import WebForms from './pages/WebForms/WebForms';
@@ -96,7 +97,12 @@ function App() {
               <Route path="call-analytics" element={<AramaAnalizi />} />
               <Route path="agent-performance" element={<AgentPerformance />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
-              <Route path="calendar" element={<Calendar />} />
+              <Route path="calendar" element={<Navigate to="/activities/calendar" replace />} />
+              <Route path="activities/calendar" element={<Calendar />} />
+              <Route path="activities/calls" element={<Activities />} />
+              <Route path="activities/meetings" element={<Activities />} />
+              <Route path="activities/tasks" element={<Activities />} />
+              <Route path="activities/appointments" element={<Activities />} />
               <Route path="automations" element={<Automations />} />
               <Route path="functions" element={<Functions />} />
               <Route path="web-forms" element={<WebForms />} />
