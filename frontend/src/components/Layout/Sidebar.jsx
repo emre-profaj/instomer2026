@@ -552,38 +552,46 @@ const Sidebar = () => {
                     {/* Quick Access Actions — Bildirimler üstünde */}
                     <div className={`sidebar-quick-actions ${isCollapsed ? 'collapsed' : ''}`}>
                         <button
-                            className="quick-action-btn calls"
+                            className="quick-action-btn"
                             title="Aramalarım"
                             onClick={() => navigate('/activities/calls')}
                         >
                             <PhoneCall size={18} />
-                            {!isCollapsed && <span>Aramalar</span>}
                             {quickCounts.calls > 0 && <span className="qa-badge">{quickCounts.calls > 99 ? '99+' : quickCounts.calls}</span>}
                         </button>
                         <button
-                            className="quick-action-btn meetings"
+                            className="quick-action-btn"
                             title="Görüşmelerim"
                             onClick={() => navigate('/activities/meetings')}
                         >
                             <Handshake size={18} />
-                            {!isCollapsed && <span>Görüşmeler</span>}
                             {quickCounts.meetings > 0 && <span className="qa-badge">{quickCounts.meetings > 99 ? '99+' : quickCounts.meetings}</span>}
                         </button>
                         <button
-                            className="quick-action-btn tasks"
+                            className="quick-action-btn"
                             title="Görevlerim"
                             onClick={() => navigate('/activities/tasks')}
                         >
                             <ListTodo size={18} />
-                            {!isCollapsed && <span>Görevler</span>}
                             {quickCounts.tasks > 0 && <span className="qa-badge">{quickCounts.tasks > 99 ? '99+' : quickCounts.tasks}</span>}
+                        </button>
+                        <button
+                            className="quick-action-btn"
+                            title="Müşterilerim"
+                            onClick={() => navigate('/customers?tab=mine')}
+                        >
+                            <UserCheck size={18} />
                         </button>
                     </div>
                     <NotificationPanel isCollapsed={isCollapsed} />
-                    <button onClick={handleLogout} className="logout-button" title={t('nav.logout')}>
-                        <LogOut size={20} className="nav-icon" />
-                        {!isCollapsed && <span>{t('nav.logout')}</span>}
-                    </button>
+                    <div className="sidebar-profile-row">
+                        <button onClick={handleLogout} className="logout-button" title={t('nav.logout')}>
+                            <LogOut size={16} className="nav-icon" />
+                        </button>
+                        {!isCollapsed && (
+                            <span className="sidebar-profile-name">{user?.name || 'Profil'}</span>
+                        )}
+                    </div>
                 </div>
             </div>
 
