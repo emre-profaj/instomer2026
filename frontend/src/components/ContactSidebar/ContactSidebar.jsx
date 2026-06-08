@@ -2277,12 +2277,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             <span style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                 <Loader size={10} className="spin" /> Çevriliyor...
                                                             </span>
+                                                        )}
                                                     </div>
                                                     {/* Orijinal (EN) */}
                                                     <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>
                                                         {selectedAiCall.summary}
                                                     </div>
-                                                    {/* Türkçe Çeviri */}
+                                                    {/* Türkçe Çeviri — sadece farklıysa veya çeviriyorsa göster */}
+                                                    {(translatingSum || (translatedSummary && translatedSummary !== selectedAiCall.summary)) && (
                                                     <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
                                                             <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1' }}>🇹🇷 Türkçe</span>
@@ -2293,9 +2295,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             )}
                                                         </div>
                                                         <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5, fontStyle: translatingSum ? 'italic' : 'normal' }}>
-                                                            {translatingSum ? 'Çevriliyor...' : (translatedSummary || selectedAiCall.summary)}
+                                                            {translatingSum ? 'Çevriliyor...' : translatedSummary}
                                                         </div>
                                                     </div>
+                                                    )}
                                                 </div>
                                             )}
                                             {/* Audio */}
