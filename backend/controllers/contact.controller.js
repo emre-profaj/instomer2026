@@ -1495,13 +1495,19 @@ export const getContactAnalytics = async (req, res) => {
             prisma.contactActivity.count({ where: overdueWhere })
         ]);
 
+        // Numaralı kişilerin ID set'i (kesişim için)
+        const phoneContactIdSet = new Set(allContactsWithPhone.map(c => c.id));
+
+        // Kaçı arandı = numaralı kişilerden kaçında arama kaydı var (maks 1 per kişi)
+        const calledAmongPhoned = new Set([...calledContactIds].filter(id => phoneContactIdSet.has(id)));
+
         const callTrackingStats = {
             totalWithPhone: contactsWithPhone,
-            totalCalled: calledContactIds.size,
-            totalCallCount,
-            totalCompleted: completedCallContactIds.size,
-            totalNotCalled: contactsWithPhone - calledContactIds.size,
-            callRate: contactsWithPhone > 0 ? ((calledContactIds.size / contactsWithPhone) * 100).toFixed(1) : 0,
+            totalCalled: calledAmongPhoned.size,           // Numaralı kişilerden kaçı arandı (unique)
+            totalCallCount,                                 // Her arama ayrı sayılır (toplam arama sayısı)
+            totalCompleted: totalCallCount,                 // Toplam arama = tüm CALL aktiviteleri
+            totalNotCalled: contactsWithPhone - calledAmongPhoned.size,  // Numaralı - Kaçı Arandı
+            callRate: contactsWithPhone > 0 ? ((calledAmongPhoned.size / contactsWithPhone) * 100).toFixed(1) : 0,
             details: Object.values(callDetailMap).sort((a, b) => new Date(b.lastCallDate) - new Date(a.lastCallDate)),
             phoneContactsList,
             activities: callActivities,
