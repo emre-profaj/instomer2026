@@ -744,11 +744,35 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             return;
         }
 
-        // 4. Find team: SALES_PHONE_CALL config → sohbetin takımı → ChannelRouting → varsayılan takım
+        // 4. Find team: Sohbetin takımı → SALES_PHONE_CALL config → ChannelRouting → varsayılan takım
         const salesFunnelName = config.funnelName || 'Satış Akışı';
-        let salesTeamId = config.teamId;
+        let salesTeamId = null;
 
-        // 4a. SALES_PHONE_CALL config'den takım
+        // 4a. ÖNCELİK 1: Sohbetin kendi assignedTeamId'si (zaten atanmış takım varsa onu kullan)
+        const convWithTeam = await prisma.conversation.findFirst({
+            where: { workspaceId, contactId },
+            orderBy: { updatedAt: 'desc' },
+            select: { assignedTeamId: true, teamIds: true, channel: true }
+        });
+        if (convWithTeam?.assignedTeamId) {
+            salesTeamId = convWithTeam.assignedTeamId;
+            console.log(`📋 [RULE:AUTO_CALL] Takım sohbetten bulundu (öncelikli): ${salesTeamId}`);
+        }
+        // teamIds JSON array'inden de kontrol et
+        if (!salesTeamId && convWithTeam?.teamIds) {
+            try {
+                const teamIdsArr = JSON.parse(convWithTeam.teamIds);
+                if (Array.isArray(teamIdsArr) && teamIdsArr.length > 0) {
+                    salesTeamId = teamIdsArr[0];
+                    console.log(`📋 [RULE:AUTO_CALL] Takım sohbet teamIds'den bulundu: ${salesTeamId}`);
+                }
+            } catch(e) {}
+        }
+
+        // 4b. SALES_PHONE_CALL config'den takım (sohbette takım yoksa)
+        if (!salesTeamId && config.teamId) {
+            salesTeamId = config.teamId;
+        }
         if (!salesTeamId) {
             const salesFunnel = await prisma.funnel.findFirst({
                 where: { workspaceId, name: { contains: salesFunnelName.split(' ')[0], mode: 'insensitive' } }
@@ -762,22 +786,9 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             salesTeamId = namedTeam?.id;
         }
 
-        // 4b. Sohbetin assignedTeamId'sinden takım
-        if (!salesTeamId && latestConversation) {
-            const convWithTeam = await prisma.conversation.findFirst({
-                where: { workspaceId, contactId },
-                orderBy: { updatedAt: 'desc' },
-                select: { assignedTeamId: true, channel: true }
-            });
-            if (convWithTeam?.assignedTeamId) {
-                salesTeamId = convWithTeam.assignedTeamId;
-                console.log(`📋 [RULE:AUTO_CALL] Takım sohbetten bulundu: ${salesTeamId}`);
-            }
-        }
-
         // 4c. ChannelRouting'den takım (kanal → takım eşleşmesi)
         if (!salesTeamId) {
-            const channel = latestConversation?.channel || source;
+            const channel = convWithTeam?.channel || latestConversation?.channel || source;
             if (channel) {
                 const channelRouting = await prisma.channelRouting.findFirst({
                     where: { workspaceId, channel, isActive: true },
