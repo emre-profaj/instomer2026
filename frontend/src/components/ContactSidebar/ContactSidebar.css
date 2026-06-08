@@ -3467,30 +3467,38 @@
 
 /* ── Tıklanabilir adımlar ── */
 .journey-step.clickable {
-    background: rgba(59, 130, 246, 0.04);
+    background: linear-gradient(135deg, #eff6ff 0%, #f0f7ff 100%);
     border-radius: 10px;
-    padding: 6px 8px 6px 4px;
+    padding: 8px 10px 8px 10px;
     margin: -4px -6px;
-    border: 1px solid rgba(59, 130, 246, 0.10);
+    border: 1px solid #bfdbfe;
+    border-left: 3px solid #3b82f6;
     transition: all 0.2s ease;
     position: relative;
+    cursor: pointer;
 }
 
 .journey-step.clickable:hover {
-    background: rgba(59, 130, 246, 0.09);
-    border-color: rgba(59, 130, 246, 0.22);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.10);
-    transform: translateX(2px);
+    background: linear-gradient(135deg, #dbeafe 0%, #e8f2ff 100%);
+    border-color: #93c5fd;
+    border-left-color: #2563eb;
+    box-shadow: 0 3px 12px rgba(59, 130, 246, 0.18);
+    transform: translateX(3px);
 }
 
 .journey-step.clickable:active {
-    transform: translateX(2px) scale(0.98);
+    transform: translateX(3px) scale(0.98);
 }
 
 .journey-step.clickable .journey-title {
-    color: #1e40af;
+    color: #1d4ed8;
+    font-weight: 700;
 }
 
 .journey-step.clickable:hover .journey-title {
-    color: #1d4ed8;
+    color: #1e40af;
+}
+
+.journey-step.clickable .journey-detail {
+    color: #3b82f6;
 }
