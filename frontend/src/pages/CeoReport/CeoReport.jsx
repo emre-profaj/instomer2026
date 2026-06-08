@@ -5,7 +5,8 @@ import {
     ClipboardList, Briefcase, Headphones, Truck, Building2,
     CheckCircle2, AlertTriangle, ListChecks, Handshake,
     Instagram, Facebook, Mail, Globe, MessageCircle,
-    ChevronDown, ChevronRight, PhoneCall, FileText, ShoppingCart
+    ChevronDown, ChevronRight, PhoneCall, FileText, ShoppingCart,
+    Search, BarChart3, Target
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, funnelAPI } from '../../services/api';
@@ -492,7 +493,91 @@ const CeoReport = () => {
             </div>
 
             {/* ═══════════════════════════════════════════════════════ */}
-            {/* BÖLÜM 7: Arama Detayları */}
+            {/* BÖLÜM 7: Gelen Talep Analizi */}
+            {/* ═══════════════════════════════════════════════════════ */}
+            {analytics?.requestAnalysis?.topics?.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 20 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#fdf2f8', color: '#ec4899' }}><Target size={18} /></div>
+                        <h2>Gelen Talep Analizi</h2>
+                    </div>
+                    <div className="ceo-section-body">
+                        {/* Özet Kartlar */}
+                        <div className="ceo-mini-grid cols-4" style={{ marginBottom: 16 }}>
+                            <div className="ceo-mini-card" style={{ background: '#fdf2f8' }}>
+                                <div className="mini-value" style={{ color: '#db2777' }}>{analytics.requestAnalysis.totalRequests}</div>
+                                <div className="mini-label" style={{ color: '#ec4899' }}>Toplam Talep</div>
+                            </div>
+                            <div className="ceo-mini-card" style={{ background: '#ecfdf5' }}>
+                                <div className="mini-value" style={{ color: '#059669' }}>{analytics.requestAnalysis.withPhoneCount}</div>
+                                <div className="mini-label" style={{ color: '#10b981' }}>Numaralı</div>
+                            </div>
+                            <div className="ceo-mini-card" style={{ background: '#eff6ff' }}>
+                                <div className="mini-value" style={{ color: '#2563eb' }}>{analytics.requestAnalysis.calledCount}</div>
+                                <div className="mini-label" style={{ color: '#3b82f6' }}>Arandı</div>
+                            </div>
+                            <div className="ceo-mini-card" style={{ background: '#f0fdf4' }}>
+                                <div className="mini-value" style={{ color: '#16a34a' }}>{analytics.requestAnalysis.relevantCount}</div>
+                                <div className="mini-label" style={{ color: '#22c55e' }}>İlgili Çıktı</div>
+                            </div>
+                        </div>
+
+                        {/* Konu Bazlı Tablo */}
+                        <div className="ceo-label">İlgilenilen Konular</div>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="ceo-perf-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ minWidth: 160 }}>Konu</th>
+                                        <th>Talep</th>
+                                        <th>Numaralı</th>
+                                        <th>Arandı</th>
+                                        <th>İlgili</th>
+                                        <th>Dönüşüm</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {analytics.requestAnalysis.topics.map((t, idx) => {
+                                        const convRate = t.count > 0 ? ((t.relevant / t.count) * 100).toFixed(0) : 0;
+                                        const maxCount = analytics.requestAnalysis.topics[0]?.count || 1;
+                                        const barPct = ((t.count / maxCount) * 100).toFixed(0);
+                                        return (
+                                            <tr key={t.topic}>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: idx === 0 ? '#ec4899' : idx === 1 ? '#f472b6' : '#f9a8d4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.65rem', flexShrink: 0 }}>{idx + 1}</div>
+                                                        <div style={{ minWidth: 0 }}>
+                                                            <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{t.topic}</div>
+                                                            <div style={{ height: 3, background: '#f1f5f9', borderRadius: 2, width: 80, marginTop: 3 }}>
+                                                                <div style={{ height: '100%', background: '#ec4899', borderRadius: 2, width: `${barPct}%` }} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td><span style={{ fontWeight: 700, color: '#db2777' }}>{t.count}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: t.withPhone > 0 ? '#059669' : '#d1d5db' }}>{t.withPhone}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: t.called > 0 ? '#2563eb' : '#d1d5db' }}>{t.called}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: t.relevant > 0 ? '#16a34a' : '#d1d5db' }}>{t.relevant}</span></td>
+                                                <td>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                                                        <span style={{ fontWeight: 700, color: convRate > 30 ? '#16a34a' : convRate > 10 ? '#f59e0b' : '#ef4444', fontSize: '0.9rem' }}>{convRate}%</span>
+                                                        <div style={{ height: 3, background: '#f1f5f9', borderRadius: 2, width: 40 }}>
+                                                            <div style={{ height: '100%', background: convRate > 30 ? '#16a34a' : convRate > 10 ? '#f59e0b' : '#ef4444', borderRadius: 2, width: `${Math.min(convRate, 100)}%` }} />
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════ */}
+            {/* BÖLÜM 8: Arama Detayları */}
             {/* ═══════════════════════════════════════════════════════ */}
             <div className="ceo-section" style={{ marginBottom: 20 }}>
                 <div className="ceo-section-header">

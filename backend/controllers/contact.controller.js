@@ -1635,6 +1635,82 @@ export const getContactAnalytics = async (req, res) => {
             console.error('Activity stats error (non-fatal):', e.message);
         }
 
+        // ── Gelen Talep Analizi (aiTopic bazlı) ──
+        let requestAnalysis = { topics: [], totalRequests: 0, withPhoneCount: 0, calledCount: 0, relevantCount: 0 };
+        try {
+            // Seçili tarih aralığında oluşturulan kişilerin konuşmalarından aiTopic çek
+            const topicConversations = await prisma.conversation.findMany({
+                where: {
+                    workspaceId,
+                    aiTopic: { not: null },
+                    ...(startDate || endDate ? {
+                        createdAt: {
+                            ...(startDate ? { gte: new Date(startDate) } : {}),
+                            ...(endDate ? { lte: (() => { const e = new Date(endDate); e.setHours(23,59,59,999); return e; })() } : {})
+                        }
+                    } : {})
+                },
+                select: {
+                    id: true,
+                    aiTopic: true,
+                    contactId: true,
+                    contact: {
+                        select: {
+                            id: true,
+                            phone: true,
+                            status: true,
+                            funnelStageId: true
+                        }
+                    }
+                }
+            });
+
+            // Topic bazlı gruplama
+            const topicMap = {};
+            const seenContactsByTopic = {};
+            for (const conv of topicConversations) {
+                const topic = conv.aiTopic?.trim();
+                if (!topic) continue;
+                if (!topicMap[topic]) {
+                    topicMap[topic] = { topic, count: 0, withPhone: 0, called: 0, relevant: 0, contactIds: new Set() };
+                    seenContactsByTopic[topic] = new Set();
+                }
+                // Aynı kişi birden fazla konuşma açmış olabilir, unique say
+                if (seenContactsByTopic[topic].has(conv.contactId)) continue;
+                seenContactsByTopic[topic].add(conv.contactId);
+
+                const t = topicMap[topic];
+                t.count++;
+                t.contactIds.add(conv.contactId);
+                if (conv.contact?.phone && conv.contact.phone.trim()) {
+                    t.withPhone++;
+                }
+                // Aranan mı? calledContactIds set'ini kullan (yukarıda zaten hesaplanmış)
+                if (calledContactIds.has(conv.contactId)) {
+                    t.called++;
+                }
+                // İlgili mi? (status OPPORTUNITY, HOT_OPPORTUNITY, MEETING_PLANNED, PROPOSAL, CONVERTED ise ilgili say)
+                const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
+                if (relevantStatuses.includes(conv.contact?.status)) {
+                    t.relevant++;
+                }
+            }
+
+            const topicsArray = Object.values(topicMap)
+                .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant }))
+                .sort((a, b) => b.count - a.count);
+
+            requestAnalysis = {
+                topics: topicsArray,
+                totalRequests: topicsArray.reduce((s, t) => s + t.count, 0),
+                withPhoneCount: topicsArray.reduce((s, t) => s + t.withPhone, 0),
+                calledCount: topicsArray.reduce((s, t) => s + t.called, 0),
+                relevantCount: topicsArray.reduce((s, t) => s + t.relevant, 0)
+            };
+        } catch (e) {
+            console.error('Request analysis error (non-fatal):', e.message);
+        }
+
         res.json({
             totalContacts,
             totalMessages,
@@ -1660,7 +1736,8 @@ export const getContactAnalytics = async (req, res) => {
             },
             callTrackingStats,
             dealStats,
-            activityStats
+            activityStats,
+            requestAnalysis
         });
     } catch (error) {
         console.error('Analytics error:', error);
