@@ -2277,14 +2277,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             <span style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                 <Loader size={10} className="spin" /> Çevriliyor...
                                                             </span>
-                                                        )}
                                                     </div>
+                                                    {/* Orijinal (EN) */}
                                                     <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>
-                                                        {translatingSum ? (
-                                                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Özet Türkçeye çevriliyor...</span>
-                                                        ) : (
-                                                            translatedSummary || selectedAiCall.summary
-                                                        )}
+                                                        {selectedAiCall.summary}
+                                                    </div>
+                                                    {/* Türkçe Çeviri */}
+                                                    <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1' }}>🇹🇷 Türkçe</span>
+                                                            {translatingSum && (
+                                                                <span style={{ fontSize: '0.62rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    <Loader size={9} className="spin" /> Çevriliyor...
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5, fontStyle: translatingSum ? 'italic' : 'normal' }}>
+                                                            {translatingSum ? 'Çevriliyor...' : (translatedSummary || selectedAiCall.summary)}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
