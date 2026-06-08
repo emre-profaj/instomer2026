@@ -2272,7 +2272,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             {selectedAiCall.summary && (
                                                 <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                                        <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#374151' }}>📝 Özet</span>
+                                                        <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#374151' }}>📝 Orijinal Özet</span>
                                                         {translatingSum && (
                                                             <span style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                 <Loader size={10} className="spin" /> Çevriliyor...
@@ -2287,7 +2287,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     {(translatingSum || (translatedSummary && translatedSummary !== selectedAiCall.summary)) && (
                                                     <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-                                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1' }}>🇹🇷 Türkçe</span>
+                                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1' }}>🇹🇷 Çevirisi</span>
                                                             {translatingSum && (
                                                                 <span style={{ fontSize: '0.62rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                     <Loader size={9} className="spin" /> Çevriliyor...
