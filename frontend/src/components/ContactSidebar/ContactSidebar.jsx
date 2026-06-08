@@ -268,6 +268,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     });
     const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
 
+    // Deal detail popup (from timeline click)
+    const [selectedDealDetail, setSelectedDealDetail] = useState(null);
+
     // Takeover confirmation popup
     const [showTakeoverModal, setShowTakeoverModal] = useState(false);
 
@@ -2126,6 +2129,30 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     });
                                 });
 
+                                // 11. Deals / Satış Milestones (Teklif, Sipariş, Fatura)
+                                if (deals && deals.length > 0) {
+                                    deals.forEach(deal => {
+                                        const stageLabels = { QUOTE: 'Teklif Verildi', ORDER: 'Sipariş Oluşturuldu', INVOICE: 'Fatura Kesildi' };
+                                        const stageIcons = { QUOTE: '📋', ORDER: '🛒', INVOICE: '🧾' };
+                                        const stageColors = { QUOTE: '#f59e0b', ORDER: '#3b82f6', INVOICE: '#8b5cf6' };
+                                        const currSymbol = deal.currency === 'TRY' ? '₺' : deal.currency === 'USD' ? '$' : deal.currency === 'EUR' ? '€' : '£';
+                                        milestones.push({
+                                            icon: stageIcons[deal.stage] || '💰',
+                                            label: stageLabels[deal.stage] || 'Satış',
+                                            detail: [
+                                                deal.title,
+                                                deal.quoteNumber || deal.orderNumber || deal.invoiceNumber,
+                                                deal.amount ? `${currSymbol}${deal.amount.toLocaleString('tr-TR')}` : null
+                                            ].filter(Boolean).join(' • '),
+                                            date: new Date(deal.createdAt),
+                                            color: stageColors[deal.stage] || '#10b981',
+                                            done: true,
+                                            _type: 'DEAL',
+                                            _dealData: deal
+                                        });
+                                    });
+                                }
+
                                 // Sort by date — eskiden yeniye
                                 milestones.sort((a, b) => (a.date || 0) - (b.date || 0));
 
@@ -2140,10 +2167,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         </div>
                                         <div className="journey-steps">
                                             {milestones.map((m, idx) => {
+                                                const isClickable = m._sourceItems || m._dealData;
                                                 const handleStepClick = () => {
                                                     if (m._type === 'AI_CALL' && m._sourceItems?.length > 0) {
-                                                        // Tek AI araması varsa direkt aç, birden fazla varsa ilkini aç
                                                         setSelectedAiCall(m._sourceItems[0]);
+                                                    } else if (m._type === 'DEAL' && m._dealData) {
+                                                        setSelectedDealDetail(m._dealData);
                                                     } else if (m._type === 'CONVERSATION' && m._sourceItems?.[0]?.conversationId) {
                                                         if (onConversationOpen) onConversationOpen(m._sourceItems[0].conversationId);
                                                         else setPopupConversationId(m._sourceItems[0].conversationId);
@@ -2153,9 +2182,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 };
                                                 return (
                                                 <div key={idx}
-                                                    className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${m._sourceItems ? ' clickable' : ''}${m._type === 'EVENT' ? ' event-step' : ''}`}
-                                                    onClick={m._sourceItems ? handleStepClick : undefined}
-                                                    style={m._sourceItems ? { cursor: 'pointer' } : {}}
+                                                    className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${isClickable ? ' clickable' : ''}${m._type === 'EVENT' ? ' event-step' : ''}`}
+                                                    onClick={isClickable ? handleStepClick : undefined}
+                                                    style={isClickable ? { cursor: 'pointer' } : {}}
                                                 >
                                                     <div className="journey-line-wrapper">
                                                         <div className="journey-dot" style={{ borderColor: m.color, background: m.done ? m.color : '#fff' }}>
@@ -2169,7 +2198,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <div className="journey-label">
                                                             <span className="journey-emoji">{m.icon}</span>
                                                             <span className="journey-title">{m.label}</span>
-                                                            {m._sourceItems && <ChevronRight size={12} style={{ color: '#94a3b8', marginLeft: 'auto' }} />}
+                                                            {isClickable && <ChevronRight size={12} style={{ color: '#94a3b8', marginLeft: 'auto' }} />}
                                                         </div>
                                                         {m.detail && <div className="journey-detail">{m.detail}</div>}
                                                         {m.date && (
@@ -2257,6 +2286,94 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             );
                                                         })}
                                                     </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Deal Detay Popup — Timeline'dan tıklandığında */}
+                            {selectedDealDetail && (
+                                <div className="reminder-modal-overlay" onClick={() => setSelectedDealDetail(null)}>
+                                    <div className="reminder-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+                                        <div className="reminder-modal-header">
+                                            <span style={{ fontSize: '1.1rem' }}>
+                                                {selectedDealDetail.stage === 'QUOTE' ? '📋' : selectedDealDetail.stage === 'ORDER' ? '🛒' : '🧾'}
+                                            </span>
+                                            <h3>{selectedDealDetail.stage === 'QUOTE' ? 'Teklif Detayı' : selectedDealDetail.stage === 'ORDER' ? 'Sipariş Detayı' : 'Fatura Detayı'}</h3>
+                                            <button className="reminder-modal-close" onClick={() => setSelectedDealDetail(null)}><X size={18} /></button>
+                                        </div>
+                                        <div className="reminder-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                                            {/* Başlık + Badge */}
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                                <span style={{ fontWeight: 700, fontSize: '1rem', color: '#1e293b' }}>{selectedDealDetail.title}</span>
+                                                <span className={`deal-stage-badge ${selectedDealDetail.stage.toLowerCase()}`} style={{ fontSize: '0.7rem' }}>
+                                                    {selectedDealDetail.stage === 'QUOTE' ? 'Teklif' : selectedDealDetail.stage === 'ORDER' ? 'Sipariş' : 'Fatura'}
+                                                </span>
+                                            </div>
+                                            {/* Tutar */}
+                                            <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>Toplam Tutar</span>
+                                                <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#059669' }}>
+                                                    {selectedDealDetail.currency === 'TRY' ? '₺' : selectedDealDetail.currency === 'USD' ? '$' : selectedDealDetail.currency === 'EUR' ? '€' : '£'}
+                                                    {selectedDealDetail.amount?.toLocaleString('tr-TR')}
+                                                </span>
+                                            </div>
+                                            {/* Belge No + Tarih */}
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                                                {(selectedDealDetail.quoteNumber || selectedDealDetail.orderNumber || selectedDealDetail.invoiceNumber) && (
+                                                    <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                                                        📄 {selectedDealDetail.quoteNumber || selectedDealDetail.orderNumber || selectedDealDetail.invoiceNumber}
+                                                    </span>
+                                                )}
+                                                <span style={{ fontSize: '0.72rem', padding: '3px 10px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                                                    📅 {new Date(selectedDealDetail.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                                {selectedDealDetail.status && (
+                                                    <span style={{
+                                                        fontSize: '0.72rem', padding: '3px 10px', borderRadius: '999px', fontWeight: 700,
+                                                        background: selectedDealDetail.status === 'WON' ? '#dcfce7' : selectedDealDetail.status === 'LOST' ? '#fef2f2' : '#f3f4f6',
+                                                        color: selectedDealDetail.status === 'WON' ? '#16a34a' : selectedDealDetail.status === 'LOST' ? '#ef4444' : '#6b7280'
+                                                    }}>
+                                                        {selectedDealDetail.status === 'WON' ? '✅ Kazanıldı' : selectedDealDetail.status === 'LOST' ? '❌ Kaybedildi' : '⏳ Açık'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Açıklama */}
+                                            {selectedDealDetail.description && (
+                                                <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '10px 14px', marginBottom: '10px' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.72rem', color: '#374151', marginBottom: '4px' }}>📝 Açıklama</div>
+                                                    <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>{selectedDealDetail.description}</div>
+                                                </div>
+                                            )}
+                                            {/* Ürünler */}
+                                            {selectedDealDetail.products && (() => {
+                                                let prods = [];
+                                                try { prods = typeof selectedDealDetail.products === 'string' ? JSON.parse(selectedDealDetail.products) : selectedDealDetail.products; } catch(e) {}
+                                                if (!Array.isArray(prods) || prods.length === 0) return null;
+                                                const currSymbol = selectedDealDetail.currency === 'TRY' ? '₺' : selectedDealDetail.currency === 'USD' ? '$' : selectedDealDetail.currency === 'EUR' ? '€' : '£';
+                                                return (
+                                                    <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '10px 14px', marginBottom: '10px' }}>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.72rem', color: '#374151', marginBottom: '6px' }}>📦 Ürünler</div>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                            {prods.map((p, pi) => (
+                                                                <div key={pi} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#1e293b', padding: '4px 0', borderBottom: pi < prods.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
+                                                                    <span>{p.name || `Ürün ${pi + 1}`}</span>
+                                                                    <span style={{ fontWeight: 600, color: '#059669' }}>
+                                                                        {p.quantity || 1} × {currSymbol}{(p.unitPrice || 0).toLocaleString('tr-TR')}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                            {/* Notlar */}
+                                            {selectedDealDetail.notes && (
+                                                <div style={{ background: '#fffbeb', borderRadius: '10px', padding: '10px 14px' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.72rem', color: '#92400e', marginBottom: '4px' }}>💬 Notlar</div>
+                                                    <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>{selectedDealDetail.notes}</div>
                                                 </div>
                                             )}
                                         </div>
