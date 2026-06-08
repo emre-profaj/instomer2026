@@ -1379,9 +1379,9 @@ export const getContactAnalytics = async (req, res) => {
             }
         });
 
-        const calledContactIds = new Set(callActivities.map(a => a.contactId));
-        const completedCallContactIds = new Set(callActivities.filter(a => a.status === 'COMPLETED').map(a => a.contactId));
-        const totalCallCount = callActivities.length; // Her arama ayrı sayılır
+        const calledContactIds = new Set(callActivities.filter(a => a.status === 'COMPLETED').map(a => a.contactId));
+        const completedCallActivities = callActivities.filter(a => a.status === 'COMPLETED');
+        const totalCallCount = completedCallActivities.length; // Sadece tamamlanmış aramalar sayılır
 
         // Kişi bazlı arama detayları (tablo için)
         const callDetailMap = {};
@@ -1438,7 +1438,7 @@ export const getContactAnalytics = async (req, res) => {
                 funnelStageId: c.funnelStageId,
                 company: c.company,
                 createdAt: c.createdAt,
-                wasCalled: !!detail,
+                wasCalled: !!(detail && detail.completedCalls > 0),
                 totalCalls: detail?.totalCalls || 0,
                 completedCalls: detail?.completedCalls || 0,
                 plannedCalls: detail?.plannedCalls || 0,
