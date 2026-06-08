@@ -2184,7 +2184,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <div key={idx}
                                                     className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${isClickable ? ' clickable' : ''}${m._type === 'EVENT' ? ' event-step' : ''}`}
                                                     onClick={isClickable ? handleStepClick : undefined}
-                                                    style={isClickable ? { cursor: 'pointer' } : {}}
+                                                    style={isClickable ? {
+                                                        cursor: 'pointer',
+                                                        background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                                                        borderRadius: '10px',
+                                                        padding: '8px 10px',
+                                                        margin: '2px -6px',
+                                                        border: '1px solid #93c5fd',
+                                                        borderLeft: '4px solid #3b82f6',
+                                                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.12)',
+                                                        transition: 'all 0.2s ease'
+                                                    } : {}}
                                                 >
                                                     <div className="journey-line-wrapper">
                                                         <div className="journey-dot" style={{ borderColor: m.color, background: m.done ? m.color : '#fff' }}>
@@ -2197,12 +2207,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     <div className="journey-content">
                                                         <div className="journey-label">
                                                             <span className="journey-emoji">{m.icon}</span>
-                                                            <span className="journey-title">{m.label}</span>
-                                                            {isClickable && <ChevronRight size={12} style={{ color: '#94a3b8', marginLeft: 'auto' }} />}
+                                                            <span className="journey-title" style={isClickable ? { color: '#1d4ed8', fontWeight: 700 } : {}}>{m.label}</span>
+                                                            {isClickable && (
+                                                                <span style={{
+                                                                    marginLeft: 'auto',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    width: 22,
+                                                                    height: 22,
+                                                                    borderRadius: '50%',
+                                                                    background: '#3b82f6',
+                                                                    flexShrink: 0
+                                                                }}>
+                                                                    <ChevronRight size={14} color="#fff" />
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        {m.detail && <div className="journey-detail">{m.detail}</div>}
+                                                        {m.detail && <div className="journey-detail" style={isClickable ? { color: '#2563eb' } : {}}>{m.detail}</div>}
                                                         {m.date && (
-                                                            <div className="journey-date">
+                                                            <div className="journey-date" style={isClickable ? { color: '#60a5fa' } : {}}>
                                                                 {m.date.toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                             </div>
                                                         )}
