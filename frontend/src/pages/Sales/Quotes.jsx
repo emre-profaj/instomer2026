@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
 import { Plus, Search, Filter, MoreVertical, ArrowRight, TrendingUp, Package, FileText, X, Trash2, Edit2, ChevronDown, User } from 'lucide-react';
@@ -21,9 +22,13 @@ const Quotes = () => {
     const [contactSearch, setContactSearch] = useState('');
     const [showContactDropdown, setShowContactDropdown] = useState(false);
 
+    const location = useLocation();
+    const searchParams = new URLSearchParams(location.search);
+    const initialView = searchParams.get('view');
+
     // Filter states
     const [statusFilter, setStatusFilter] = useState('ALL');
-    const [agentFilter, setAgentFilter] = useState('ALL');
+    const [agentFilter, setAgentFilter] = useState(initialView === 'mine' && user?.id ? user.id : 'ALL');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
 
@@ -272,6 +277,22 @@ const Quotes = () => {
                     </button>
                 </div>
 
+                {/* Stats Row */}
+                <div className="sales-list-stats">
+                    <div className="sales-list-stat">
+                        <span className="sls-value">{quoteStats.count}</span>
+                        <span className="sls-label">Teklif</span>
+                    </div>
+                    <div className="sales-list-stat">
+                        <span className="sls-value">{formatCurrency(quoteStats.totalAmount)}</span>
+                        <span className="sls-label">Tutar</span>
+                    </div>
+                    <div className="sales-list-stat">
+                        <span className="sls-value">{stats?.conversionRates?.quoteToOrder || 0}%</span>
+                        <span className="sls-label">Dönüşüm</span>
+                    </div>
+                </div>
+
                 {/* Filters */}
                 <div className="sales-list-filters">
                     <div className="sales-list-search">
@@ -368,31 +389,6 @@ const Quotes = () => {
             <div className="sales-detail-panel">
                 {selectedDeal ? (
                     <>
-                        {/* Stats Cards */}
-                        <div className="sales-detail-stats">
-                            <div className="stat-card">
-                                <div className="stat-icon quote"><FileText size={20} /></div>
-                                <div className="stat-info">
-                                    <span className="stat-value">{quoteStats.count}</span>
-                                    <span className="stat-label">Toplam Teklif</span>
-                                </div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-icon amount"><TrendingUp size={20} /></div>
-                                <div className="stat-info">
-                                    <span className="stat-value">{formatCurrency(quoteStats.totalAmount)}</span>
-                                    <span className="stat-label">Toplam Tutar</span>
-                                </div>
-                            </div>
-                            <div className="stat-card">
-                                <div className="stat-icon conversion"><ArrowRight size={20} /></div>
-                                <div className="stat-info">
-                                    <span className="stat-value">{stats?.conversionRates?.quoteToOrder || 0}%</span>
-                                    <span className="stat-label">Siparişe Dönüşüm</span>
-                                </div>
-                            </div>
-                        </div>
-
                         {/* Detail Card */}
                         <div className="sales-detail-card">
                             <div className="detail-header">
@@ -443,6 +439,23 @@ const Quotes = () => {
                                     <span className="label">Tarih:</span>
                                     <span className="value">{new Date(selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
                                 </div>
+                                {selectedDeal.channel && (
+                                    <div className="info-row">
+                                        <span className="label">Kaynak:</span>
+                                        <span className="value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={{ fontSize: '1rem' }}>
+                                                {selectedDeal.channel === 'WHATSAPP' ? '📱' : selectedDeal.channel === 'INSTAGRAM' ? '📸' : selectedDeal.channel === 'FACEBOOK' ? '📘' : selectedDeal.channel === 'EMAIL' ? '📧' : selectedDeal.channel === 'WIDGET' ? '🌐' : '📋'}
+                                            </span>
+                                            {selectedDeal.channel}
+                                        </span>
+                                    </div>
+                                )}
+                                {selectedDeal.sourceNote && (
+                                    <div className="info-row">
+                                        <span className="label">Kaynak Notu:</span>
+                                        <span className="value">{selectedDeal.sourceNote}</span>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Products */}
@@ -502,6 +515,8 @@ const Quotes = () => {
                         <p>Detayları görüntülemek için sol panelden bir teklif seçin</p>
                     </div>
                 )}
+
+
             </div>
 
             {/* ── RIGHT PANEL: ContactSidebar ── */}

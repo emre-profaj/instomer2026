@@ -1,5 +1,5 @@
 import express from 'express';
-import { createActivity, getContactTimeline, updateActivity, deleteActivity, completeActivity, claimActivity, getWorkspaceCallQueue, getWorkspaceActivities } from '../controllers/activity.controller.js';
+import { createActivity, getContactTimeline, updateActivity, deleteActivity, completeActivity, claimActivity, getWorkspaceCallQueue, getWorkspaceActivities, getActivityById } from '../controllers/activity.controller.js';
 import { authenticateJWT } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -25,5 +25,6 @@ router.delete('/:activityId', deleteActivity);
 // Aktivite tamamlama ve üstlenme
 router.put('/:activityId/complete', completeActivity);
 router.put('/:activityId/claim', claimActivity);
+router.get('/:activityId/detail', getActivityById);
 
 export default router;

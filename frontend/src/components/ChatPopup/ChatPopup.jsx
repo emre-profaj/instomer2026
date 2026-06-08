@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
-import { X, Loader, Send, ExternalLink, User, Check, CheckCheck, StickyNote, Users, ChevronDown, CheckCircle2, Circle, Trash2, UserCheck } from 'lucide-react';
+import { X, Loader, Send, ExternalLink, User, Check, CheckCheck, StickyNote, Users, ChevronDown, CheckCircle2, Circle, Trash2, UserCheck, Bot, Sparkles, Smile, BookOpen, AlertCircle } from 'lucide-react';
 import { conversationAPI, funnelAPI, workspaceAPI, teamAPI, contactAPI } from '../../services/api';
+import { activityAPI } from '../../services/activity.api';
 import { useAuth } from '../../context/AuthContext';
 import './ChatPopup.css';
 
@@ -64,6 +65,30 @@ const getDefaultStagesForFunnel = (name) => {
     ];
 };
 
+const getChannelIcon = (ch) => {
+    if (ch === 'WHATSAPP') return '💬';
+    if (ch === 'FACEBOOK') return '📘';
+    if (ch === 'INSTAGRAM') return '📸';
+    if (ch === 'FACEBOOK_COMMENT') return '💬';
+    if (ch === 'EMAIL') return '✉️';
+    if (ch === 'WIDGET') return '🌐';
+    if (ch === 'PHONE') return '📞';
+    if (ch === 'FORM' || ch === 'LEAD') return '📋';
+    return '💬';
+};
+
+const getChannelName = (ch) => {
+    if (ch === 'WHATSAPP') return 'WhatsApp';
+    if (ch === 'FACEBOOK') return 'Facebook';
+    if (ch === 'INSTAGRAM') return 'Instagram';
+    if (ch === 'FACEBOOK_COMMENT') return 'FB Yorum';
+    if (ch === 'EMAIL') return 'E-posta';
+    if (ch === 'WIDGET') return 'Web Widget';
+    if (ch === 'PHONE') return 'Telefon';
+    if (ch === 'FORM' || ch === 'LEAD') return 'Form';
+    return ch || 'Mesaj';
+};
+
 const ChatPopup = ({ conversationId, onClose }) => {
     const { currentWorkspace, user } = useAuth();
     const navigate = useNavigate();
@@ -96,27 +121,24 @@ const ChatPopup = ({ conversationId, onClose }) => {
 
     const [takingOver, setTakingOver] = useState(false);
 
+    // NEW: Internal note mode, bot toggle, AI topic
+    const [isInternalNoteMode, setIsInternalNoteMode] = useState(false);
+    const [botEnabled, setBotEnabled] = useState(false);
+    const [togglingBot, setTogglingBot] = useState(false);
+    const [aiTopic, setAiTopic] = useState('');
+
     // Load dependencies (teams, members, funnels)
     useEffect(() => {
-        if (!currentWorkspace?.id) {
-            console.warn('[ChatPopup] No currentWorkspace, skipping dependency load');
-            return;
-        }
-        console.log('[ChatPopup] Loading dependencies for workspace:', currentWorkspace.id);
+        if (!currentWorkspace?.id) return;
         const loadDependencies = async () => {
             try {
                 const [funnelsRes, teamsRes, membersRes] = await Promise.all([
-                    funnelAPI.getAll(currentWorkspace.id).catch(e => { console.error('[ChatPopup] funnelAPI error:', e); return { data: { funnels: [] } }; }),
-                    teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(e => { console.error('[ChatPopup] teamAPI error:', e); return { data: { teams: [] } }; }),
-                    workspaceAPI.getMembers(currentWorkspace.id).catch(e => { console.error('[ChatPopup] membersAPI error:', e); return { data: { members: [] } }; })
+                    funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: { funnels: [] } })),
+                    teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
+                    workspaceAPI.getMembers(currentWorkspace.id).catch(() => ({ data: { members: [] } }))
                 ]);
                 
-                console.log('[ChatPopup] funnelsRes.data:', funnelsRes.data);
-                console.log('[ChatPopup] teamsRes.data:', teamsRes.data);
-                
                 const rawFunnels = funnelsRes.data?.funnels || (Array.isArray(funnelsRes.data) ? funnelsRes.data : []);
-                console.log('[ChatPopup] rawFunnels count:', rawFunnels.length, rawFunnels.map(f => f.name));
-                
                 setFunnelOptions([
                     { value: '', label: 'Genel (Akışsız)', stages: CUSTOMER_STATUS_OPTIONS },
                     ...rawFunnels.map(f => ({
@@ -132,7 +154,6 @@ const ChatPopup = ({ conversationId, onClose }) => {
                 setTeams(rawTeams);
                 const rawMembers = membersRes.data?.members || (Array.isArray(membersRes.data) ? membersRes.data : []);
                 setMembers(rawMembers);
-                console.log('[ChatPopup] Loaded: funnels=%d teams=%d members=%d', rawFunnels.length, rawTeams.length, rawMembers.length);
             } catch (err) {
                 console.error("[ChatPopup] Error loading dependencies", err);
             }
@@ -140,7 +161,7 @@ const ChatPopup = ({ conversationId, onClose }) => {
         loadDependencies();
     }, [currentWorkspace, conversationId]);
 
-    // Load conversation data
+    // Load conversation data with events and activities (like Inbox)
     useEffect(() => {
         if (!conversationId || !currentWorkspace) return;
 
@@ -150,8 +171,10 @@ const ChatPopup = ({ conversationId, onClose }) => {
                 const response = await conversationAPI.getById(currentWorkspace.id, conversationId);
                 const conv = response.data.conversation || response.data;
                 setConversation(conv);
+                setAiTopic(conv.aiTopic || '');
+                setBotEnabled(!!conv.assignedBotId || !!conv.botEnabled);
 
-                // Merge messages and internal notes
+                // Merge messages, internal notes, events, and activities (matching Inbox pattern)
                 const msgs = conv.messages || [];
                 const notes = (conv.internalNotes || []).map(n => ({
                     ...n,
@@ -160,7 +183,48 @@ const ChatPopup = ({ conversationId, onClose }) => {
                     sender: n.user,
                     isFromContact: false
                 }));
-                const combined = [...msgs, ...notes].sort(
+                const events = (conv.events || []).map(e => ({
+                    id: e.id,
+                    createdAt: e.createdAt,
+                    isSystemEvent: true,
+                    eventType: e.eventType,
+                    title: e.title,
+                    actorType: e.actorType,
+                    actorId: e.actorId,
+                    details: e.details
+                }));
+
+                // Load activities for timeline
+                let formattedActivities = [];
+                const contactId = conv.contactId;
+                if (contactId && currentWorkspace?.id) {
+                    try {
+                        const actRes = await activityAPI.getTimeline(contactId, currentWorkspace.id);
+                        const allActivities = [
+                            ...(actRes?.planned || []),
+                            ...(actRes?.past || [])
+                        ];
+                        formattedActivities = allActivities
+                            .filter(a => a.sourceType === 'ACTIVITY' && a.type !== 'NOTE')
+                            .map(a => ({
+                                id: `activity-${a.id}`,
+                                createdAt: a.date || a.dueDate || a.raw?.createdAt,
+                                isActivity: true,
+                                activityType: a.type,
+                                activityStatus: a.status || (a.isCompleted ? 'COMPLETED' : 'PLANNED'),
+                                activityTitle: a.title,
+                                activityContent: a.content || '',
+                                activityResult: a.result || a.raw?.result || '',
+                                activityDueDate: a.dueDate,
+                                activityAssignedTo: a.assignedToName || a.labelName || '',
+                                activityTeam: a.raw?.team?.name || '',
+                            }));
+                    } catch (e) {
+                        console.warn('Activities load failed:', e.message);
+                    }
+                }
+
+                const combined = [...msgs, ...notes, ...events, ...formattedActivities].sort(
                     (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
                 );
                 setMessages(combined);
@@ -196,12 +260,35 @@ const ChatPopup = ({ conversationId, onClose }) => {
 
         setSending(true);
         try {
-            const response = await conversationAPI.sendMessage(
-                currentWorkspace.id,
-                conversation.id,
-                { content: newMessage }
-            );
-            setMessages(prev => [...prev, response.data.message]);
+            if (isInternalNoteMode) {
+                // Send as internal note (like Inbox)
+                const response = await conversationAPI.addNote(
+                    currentWorkspace.id,
+                    conversation.id,
+                    { content: newMessage }
+                );
+                const newNote = {
+                    ...response.data.note,
+                    isInternalNote: true,
+                    messageType: 'NOTE',
+                    sender: user,
+                    isFromContact: false
+                };
+                setMessages(prev => [...prev, newNote]);
+            } else {
+                // Send as regular message
+                const response = await conversationAPI.sendMessage(
+                    currentWorkspace.id,
+                    conversation.id,
+                    { content: newMessage }
+                );
+                if (!response.data.duplicate) {
+                    setMessages(prev => {
+                        if (prev.some(m => m.id === response.data.message.id)) return prev;
+                        return [...prev, response.data.message];
+                    });
+                }
+            }
             setNewMessage('');
             if (textareaRef.current) textareaRef.current.focus();
         } catch (error) {
@@ -239,7 +326,7 @@ const ChatPopup = ({ conversationId, onClose }) => {
         if (!conversation || takingOver) return;
         setTakingOver(true);
         try {
-            const res = await conversationAPI.claim(currentWorkspace.id, conversation.id);
+            await conversationAPI.claim(currentWorkspace.id, conversation.id);
             setConversation(prev => ({ 
                 ...prev, 
                 assignedToId: user.id, 
@@ -301,7 +388,6 @@ const ChatPopup = ({ conversationId, onClose }) => {
                 });
             }
 
-            // Fetch the updated conversation details to keep state in sync
             const updatedConvRes = await conversationAPI.getById(currentWorkspace.id, conversation.id);
             const conv = updatedConvRes.data.conversation || updatedConvRes.data;
             if (conv) {
@@ -320,8 +406,43 @@ const ChatPopup = ({ conversationId, onClose }) => {
         }
     };
 
+    // NEW: Bot toggle handler (matching Inbox)
+    const handleBotToggle = async () => {
+        if (!conversation || togglingBot) return;
+        const newValue = !botEnabled;
+        setTogglingBot(true);
+        try {
+            const response = await conversationAPI.toggleBot(currentWorkspace.id, conversation.id, newValue);
+            setBotEnabled(newValue);
+            if (newValue && response.data?.assignedToId === null) {
+                setConversation(prev => ({
+                    ...prev,
+                    botEnabled: true,
+                    assignedToId: null,
+                    assignedTo: null
+                }));
+            }
+        } catch (error) {
+            console.error('Error toggling bot:', error);
+            setBotEnabled(!newValue);
+        } finally {
+            setTogglingBot(false);
+        }
+    };
+
+    // NEW: AI Topic update handler
+    const handleTopicBlur = async (e) => {
+        const newTopic = e.target.value;
+        try {
+            await conversationAPI.updateTopic(currentWorkspace.id, conversation.id, newTopic);
+        } catch (err) { 
+            console.error('Topic update error:', err); 
+        }
+    };
+
     // Formatters
     const formatTime = (date) => new Date(date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const formatDateTime = (d) => d ? new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '---';
     const formatDateSep = (date) => {
         const d = new Date(date);
         const today = new Date();
@@ -351,21 +472,23 @@ const ChatPopup = ({ conversationId, onClose }) => {
         return prevDate !== curDate;
     };
 
-    const getSenderName = (msg) => {
-        if (msg.isFromContact) return conversation?.contact?.name || 'Müşteri';
-        return null;
-    };
-
     const renderStatus = (msg) => {
         if (msg.isFromContact || msg.isInternalNote) return null;
         if (msg.status === 'READ') return <CheckCheck size={14} className="status-read" />;
         if (msg.status === 'DELIVERED') return <CheckCheck size={14} className="status-delivered" />;
+        if (msg.status === 'FAILED') return <AlertCircle size={14} className="status-failed" />;
         return <Check size={14} className="status-sent" />;
     };
 
     const contactName = conversation?.contact?.name || 'Bilinmeyen';
     const channelLabel = getChannelLabel(conversation);
+    const channel = conversation?.channel;
     
+    // İlk / Son yazma tarihleri (Inbox pattern)
+    const contactMessages = messages.filter(m => m.isFromContact);
+    const firstDate = contactMessages[0]?.createdAt;
+    const lastDate = contactMessages[contactMessages.length - 1]?.createdAt;
+
     // UI Helpers for Assignment Bar
     let convTeamIds = [];
     try { convTeamIds = JSON.parse(conversation?.teamIds || '[]'); } catch {}
@@ -395,10 +518,26 @@ const ChatPopup = ({ conversationId, onClose }) => {
         return activeStageVal;
     })();
 
+    // Activity type configs (matching Inbox)
+    const actTypeConfig = {
+        CALL:     { icon: '📞', label: 'Arama', accent: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe' },
+        NOTE:     { icon: '📝', label: 'Not', accent: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+        MEETING:  { icon: '📅', label: 'Görüşme', accent: '#10b981', bg: '#f0fdf4', border: '#a7f3d0' },
+        REMINDER: { icon: '🔔', label: 'Hatırlatıcı', accent: '#f97316', bg: '#fff7ed', border: '#fed7aa' },
+        TASK:     { icon: '✅', label: 'Görev', accent: '#8b5cf6', bg: '#faf5ff', border: '#ddd6fe' },
+        VISIT:    { icon: '📍', label: 'Ziyaret', accent: '#a855f7', bg: '#fdf4ff', border: '#e9d5ff' },
+        PAYMENT:  { icon: '💰', label: 'Tahsilat', accent: '#eab308', bg: '#fefce8', border: '#fef08a' },
+    };
+    const actStatusConfig = {
+        COMPLETED: { emoji: '✅', label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d' },
+        PLANNED:   { emoji: '🕐', label: 'Planlandı', bg: '#dbeafe', color: '#1d4ed8' },
+        CANCELLED: { emoji: '❌', label: 'İptal', bg: '#f3f4f6', color: '#6b7280' },
+    };
+
     return (
         <div className="chat-popup-overlay" onClick={onClose}>
             <div className="chat-popup-modal" onClick={(e) => e.stopPropagation()}>
-                {/* Header Top Row */}
+                {/* Header Top Row — matching Inbox profile-bar */}
                 <div className="chat-popup-header">
                     <div className="chat-popup-header-left">
                         <div className="chat-popup-avatar">
@@ -414,24 +553,31 @@ const ChatPopup = ({ conversationId, onClose }) => {
                         </div>
                         <div className="chat-popup-header-info">
                             <h3 className="chat-popup-contact-name">{loading ? 'Yükleniyor...' : contactName}</h3>
+                            {/* İlk / Son tarihler — matching Inbox */}
                             {!loading && (
-                                <span className="chat-popup-channel-badge">
-                                    {channelLabel}
-                                    {messages.length > 0 && ` · ${messages.length} mesaj`}
-                                </span>
+                                <div className="chat-popup-dates-row">
+                                    <span>İlk: {formatDateTime(firstDate)}</span>
+                                    <span className="chat-popup-dates-sep">•</span>
+                                    <span>Son: {formatDateTime(lastDate)}</span>
+                                </div>
                             )}
                         </div>
                     </div>
                     <div className="chat-popup-header-actions">
+                        {/* AI Topic Input — matching Inbox */}
+                        {!loading && conversation && (
+                            <input
+                                className="chat-popup-topic-input"
+                                type="text"
+                                placeholder="Konu başlığı..."
+                                value={aiTopic}
+                                onChange={(e) => setAiTopic(e.target.value)}
+                                onBlur={handleTopicBlur}
+                            />
+                        )}
                         {/* Status Toggle & Delete */}
                         {!loading && conversation && (
                             <>
-                                {conversation.assignedBotId && (
-                                    <div className="chat-popup-bot-pill">
-                                        <div className="bot-indicator active" />
-                                        <span>{conversation.assignedBot?.name || 'AI Bot'}</span>
-                                    </div>
-                                )}
                                 <button className={`chat-popup-status-toggle ${conversation.status === 'RESOLVED' ? 'resolved' : 'open'}`} onClick={handleToggleStatus}>
                                     <span className="toggle-thumb">
                                         {conversation.status === 'RESOLVED' ? <CheckCircle2 size={11} /> : <Circle size={11} />}
@@ -629,7 +775,7 @@ const ChatPopup = ({ conversationId, onClose }) => {
                     </div>
                 )}
 
-                {/* Messages */}
+                {/* Messages — with system events and activity cards */}
                 {loading ? (
                     <div className="chat-popup-loading">
                         <Loader size={20} className="spin" />
@@ -642,22 +788,75 @@ const ChatPopup = ({ conversationId, onClose }) => {
                 ) : (
                     <div className="chat-popup-messages">
                         {messages.map((msg, idx) => {
+                            // ── System Event (inline log) — matching Inbox ──
+                            if (msg.isSystemEvent) {
+                                const evtTime = msg.createdAt ? formatTime(msg.createdAt) : '';
+                                const actorName = (() => {
+                                    if (msg.actorType === 'SYSTEM') return 'Sistem';
+                                    if (msg.actorType === 'BOT') return 'Bot';
+                                    if (msg.actorType === 'AUTOMATION') return 'Otomasyon';
+                                    if (msg.actorId && members?.length) {
+                                        const m = members.find(u => u.id === msg.actorId || u.userId === msg.actorId);
+                                        if (m) return m.name || m.user?.name || 'Kullanıcı';
+                                    }
+                                    return msg.actorType === 'USER' ? 'Kullanıcı' : '';
+                                })();
+                                return (
+                                    <div key={msg.id} className="chat-popup-system-event">
+                                        <span className="chat-popup-event-content">
+                                            {evtTime && <span className="chat-popup-event-time">{evtTime}</span>}
+                                            <span dangerouslySetInnerHTML={{ __html: msg.title }} />
+                                            {actorName && <span className="chat-popup-event-actor">— {actorName}</span>}
+                                        </span>
+                                    </div>
+                                );
+                            }
+
+                            // ── Activity Card (inline) — matching Inbox ──
+                            if (msg.isActivity) {
+                                const cfg = actTypeConfig[msg.activityType] || actTypeConfig.NOTE;
+                                const sc = actStatusConfig[msg.activityStatus] || actStatusConfig.PLANNED;
+                                const actDate = msg.createdAt ? new Date(msg.createdAt) : null;
+                                const displayText = msg.activityResult || msg.activityContent || msg.activityTitle || '';
+
+                                return (
+                                    <div key={msg.id} className="chat-popup-activity-row">
+                                        <div className="chat-popup-activity-card" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
+                                            <div className="chat-popup-activity-header">
+                                                <span style={{ fontSize: '1rem' }}>{cfg.icon}</span>
+                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cfg.accent }}>{cfg.label}</span>
+                                                <span className="chat-popup-activity-status" style={{ background: sc.bg, color: sc.color }}>
+                                                    {sc.emoji} {sc.label}
+                                                </span>
+                                                <span className="chat-popup-activity-date">
+                                                    {actDate ? actDate.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                                                </span>
+                                            </div>
+                                            {msg.activityAssignedTo && (
+                                                <div className="chat-popup-activity-assignee">
+                                                    👤 {msg.activityAssignedTo} {msg.activityTeam ? `(${msg.activityTeam})` : ''}
+                                                </div>
+                                            )}
+                                            {displayText && (
+                                                <div className="chat-popup-activity-text">{displayText}</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            // ── Regular Messages, Notes ──
                             const msgClass = msg.isInternalNote
                                 ? 'note'
                                 : msg.isFromContact
                                     ? 'incoming'
                                     : 'outgoing';
-                            const senderName = getSenderName(msg);
+
                             return (
                                 <div key={msg.id || idx} className="chat-popup-msg-row">
                                     {shouldShowDate(msg, idx) && (
                                         <div className="chat-popup-date-sep">
                                             <span>{formatDateSep(msg.createdAt)}</span>
-                                        </div>
-                                    )}
-                                    {senderName && (
-                                        <div className={`chat-popup-msg-sender`}>
-                                            {senderName}
                                         </div>
                                     )}
                                     <div className={`chat-popup-msg ${msgClass}`}>
@@ -669,15 +868,26 @@ const ChatPopup = ({ conversationId, onClose }) => {
                                                 <span className="chat-popup-msg-time">
                                                     {formatTime(msg.createdAt)}
                                                 </span>
+                                                {/* Channel icon + Sender badge — matching Inbox */}
+                                                {!msg.isFromContact && !msg.isInternalNote && (
+                                                    <>
+                                                        <span className="chat-popup-msg-channel-tag">
+                                                            {getChannelIcon(channel)} {getChannelName(channel)}
+                                                        </span>
+                                                        <span className="chat-popup-msg-sender-tag">
+                                                            {msg.senderId
+                                                                ? `👤 ${msg.sender?.name || 'Agent'}`
+                                                                : '🤖 AI Bot'}
+                                                        </span>
+                                                        <span className="chat-popup-msg-status">
+                                                            {renderStatus(msg)}
+                                                        </span>
+                                                    </>
+                                                )}
                                                 {msg.isInternalNote && (
                                                     <span className="chat-popup-note-footer">
                                                         <StickyNote size={10} />
-                                                        {msg.sender?.name || 'Not'}
-                                                    </span>
-                                                )}
-                                                {!msg.isFromContact && !msg.isInternalNote && (
-                                                    <span className="chat-popup-msg-status">
-                                                        {renderStatus(msg)}
+                                                        Dahili Not ({msg.sender?.name || 'Gizli'})
                                                     </span>
                                                 )}
                                             </div>
@@ -690,25 +900,71 @@ const ChatPopup = ({ conversationId, onClose }) => {
                     </div>
                 )}
 
-                {/* Input area */}
+                {/* Input area — matching Inbox with toolbar */}
                 {!loading && (
                     <div className="chat-popup-input-area">
-                        <div className="chat-popup-input-container">
+                        <div className={`chat-popup-input-container ${isInternalNoteMode ? 'note-mode' : ''}`}>
+                            {/* Note mode banner */}
+                            {isInternalNoteMode && (
+                                <div className="chat-popup-note-banner">
+                                    <StickyNote size={12} />
+                                    <span>Dahili Not — sadece ekip görebilir</span>
+                                </div>
+                            )}
                             <textarea
                                 ref={textareaRef}
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Yanıtınızı yazın..."
-                                rows={1}
+                                placeholder={isInternalNoteMode ? '📝 Dahili not yazın...' : 'Yanıtınızı yazın...'}
+                                rows={2}
+                                style={isInternalNoteMode ? { background: '#fffbeb' } : {}}
                             />
-                            <button
-                                className="chat-popup-send-btn"
-                                onClick={handleSend}
-                                disabled={!newMessage.trim() || sending}
-                            >
-                                {sending ? <Loader size={16} className="spin" /> : <Send size={16} />}
-                            </button>
+                            {/* Toolbar — matching Inbox bottom bar */}
+                            <div className="chat-popup-toolbar">
+                                <div className="chat-popup-toolbar-left">
+                                    {/* Channel indicator */}
+                                    <span className="chat-popup-channel-pill">
+                                        <span>{getChannelIcon(channel)}</span>
+                                        <span>{getChannelName(channel)}</span>
+                                    </span>
+
+                                    {/* Internal note toggle */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsInternalNoteMode(!isInternalNoteMode)}
+                                        title={isInternalNoteMode ? 'Not modundan çık' : 'Dahili not yaz'}
+                                        className={`chat-popup-toolbar-btn ${isInternalNoteMode ? 'active-note' : ''}`}
+                                    >
+                                        <StickyNote size={14} />
+                                        <span>Not</span>
+                                    </button>
+
+                                    {/* Bot toggle */}
+                                    <button
+                                        type="button"
+                                        onClick={handleBotToggle}
+                                        title={botEnabled ? 'Oto Pilot Aktif — kapat' : 'Oto Pilot Kapalı — aç'}
+                                        className={`chat-popup-toolbar-btn ${botEnabled ? 'active-bot' : ''}`}
+                                    >
+                                        <Bot size={14} />
+                                        {togglingBot && <Loader size={11} className="spin" />}
+                                    </button>
+                                </div>
+
+                                <span className="chat-popup-toolbar-hint">Enter ile gönder</span>
+
+                                <div className="chat-popup-toolbar-right">
+                                    {/* Send */}
+                                    <button
+                                        className={`chat-popup-send-btn ${isInternalNoteMode ? 'note-send' : ''}`}
+                                        onClick={handleSend}
+                                        disabled={!newMessage.trim() || sending}
+                                    >
+                                        {sending ? <Loader size={16} className="spin" /> : (isInternalNoteMode ? <StickyNote size={16} /> : <Send size={16} />)}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

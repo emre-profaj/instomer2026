@@ -107,6 +107,9 @@ export const getDeal = async (req, res) => {
                 contact: true,
                 assignedTo: {
                     select: { id: true, name: true, avatar: true }
+                },
+                conversation: {
+                    select: { id: true, channel: true, status: true, lastMessageAt: true }
                 }
             }
         });
@@ -132,7 +135,7 @@ export const getDeal = async (req, res) => {
 export const createDeal = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const {
+        let {
             contactId,
             title,
             description,
@@ -146,11 +149,21 @@ export const createDeal = async (req, res) => {
             dueDate,
             vatRate = 0,
             paidAmount = 0,
-            paymentDate
+            paymentDate,
+            // Yeni kaynak alanları
+            conversationId,
+            channel,
+            sourceNote
         } = req.body;
 
         if (!contactId || !title) {
             return res.status(400).json({ error: 'Contact and title are required' });
+        }
+
+        // conversationId varsa ama channel yoksa, konuşmadan kanalı al
+        if (conversationId && !channel) {
+            const conv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { channel: true } });
+            if (conv) channel = conv.channel;
         }
 
         // Ürünlerin KDV dahil toplamını hesapla
@@ -173,8 +186,17 @@ export const createDeal = async (req, res) => {
             vatRate: parseFloat(vatRate) || 0,
             paidAmount: parseFloat(paidAmount) || 0,
             dueDate: dueDate ? new Date(dueDate) : null,
-            paymentDate: paymentDate ? new Date(paymentDate) : null
+            paymentDate: paymentDate ? new Date(paymentDate) : null,
+            conversationId: conversationId || null,
+            channel: channel || null,
+            sourceNote: sourceNote || null
         };
+
+        // assignedToId varsa atayan bilgisini ekle
+        if (assignedToId) {
+            dealData.assignedById = req.user?.id;
+            dealData.assignedByType = 'USER';
+        }
 
         // Stage'e göre numara ve tarih ata
         if (stage === 'QUOTE') {
@@ -236,7 +258,9 @@ export const updateDeal = async (req, res) => {
             dueDate,
             vatRate,
             paidAmount,
-            paymentDate
+            paymentDate,
+            // Kaynak notu
+            sourceNote
         } = req.body;
 
         // Mevcut deal'ı kontrol et
@@ -254,8 +278,16 @@ export const updateDeal = async (req, res) => {
         if (amount !== undefined) updateData.amount = parseFloat(amount);
         if (currency !== undefined) updateData.currency = currency;
         if (products !== undefined) updateData.products = JSON.stringify(products);
-        if (assignedToId !== undefined) updateData.assignedToId = assignedToId || null;
+        if (assignedToId !== undefined) {
+            updateData.assignedToId = assignedToId || null;
+            // Atayan değiştiyse atayan bilgisini güncelle
+            if (assignedToId !== existing.assignedToId) {
+                updateData.assignedById = req.user?.id;
+                updateData.assignedByType = 'USER';
+            }
+        }
         if (notes !== undefined) updateData.notes = notes;
+        if (sourceNote !== undefined) updateData.sourceNote = sourceNote;
         if (quoteNumber !== undefined) updateData.quoteNumber = quoteNumber;
         if (orderNumber !== undefined) updateData.orderNumber = orderNumber;
         if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;

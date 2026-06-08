@@ -598,8 +598,15 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             } else {
                 // Outside business hours → next day 10:15
                 dueDate = new Date(now);
-                dueDate.setDate(dueDate.getDate() + (hour >= 21 ? 1 : 0));
+                dueDate.setDate(dueDate.getDate() + 1); // Her zaman yarın
                 dueDate.setUTCHours(10 - 3, 15, 0, 0); // 10:15 TR = 07:15 UTC
+            }
+
+            // 🚨 Güvenlik: dueDate her zaman gelecekte olmalı
+            if (dueDate <= now) {
+                dueDate = new Date(now);
+                dueDate.setDate(dueDate.getDate() + 1);
+                dueDate.setUTCHours(10 - 3, 15, 0, 0);
             }
         }
 
@@ -655,7 +662,21 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
  * Used for: Widget messages, pre-chat forms, and manually created contacts.
  * Unlike executeSalesPhoneCallRule, this does NOT require call intent in messages.
  */
+// In-memory lock to prevent race condition (Prisma hook + leadgen handler both fire simultaneously)
+if (!global._autoCallPlanningLocks) {
+    global._autoCallPlanningLocks = new Map();
+}
+
 export const executeAutoCallPlanning = async (workspaceId, contactId, source = 'AUTOMATION') => {
+    // Race-condition guard: Only one execution per contactId at a time
+    const lockKey = `${workspaceId}:${contactId}`;
+    if (global._autoCallPlanningLocks.has(lockKey)) {
+        console.log(`⚠️ [RULE:AUTO_CALL] Lock active for ${contactId}, skipping duplicate call`);
+        return;
+    }
+    global._autoCallPlanningLocks.set(lockKey, Date.now());
+    // Auto-release lock after 30 seconds
+    setTimeout(() => global._autoCallPlanningLocks.delete(lockKey), 30000);
     try {
         // SALES_PHONE_CALL config'inden team/funnel bilgisi al (varsa)
         const rule = await prisma.workspaceRule.findUnique({
@@ -876,11 +897,19 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 const delayMin = config.callDelayMinutes || 15;
                 dueDate = new Date(now.getTime() + delayMin * 60 * 1000);
             } else {
-                // Mesai dışı → yarın 10:15
+                // Mesai dışı → yarın 10:15 Türkiye saati
                 dueDate = new Date(now);
-                dueDate.setDate(dueDate.getDate() + (hour >= 21 ? 1 : 0));
+                dueDate.setDate(dueDate.getDate() + 1); // Her zaman yarın
                 dueDate.setUTCHours(10 - 3, 15, 0, 0); // 10:15 TR = 07:15 UTC
             }
+        }
+
+        // 🚨 Güvenlik: dueDate her zaman gelecekte olmalı
+        if (dueDate <= now) {
+            console.log(`⚠️ [RULE:AUTO_CALL] dueDate geçmişte (${dueDate.toISOString()}), yarın 10:15'e çekiliyor`);
+            dueDate = new Date(now);
+            dueDate.setDate(dueDate.getDate() + 1);
+            dueDate.setUTCHours(10 - 3, 15, 0, 0);
         }
 
         // 7. Create CALL activity

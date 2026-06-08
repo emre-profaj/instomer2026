@@ -1820,7 +1820,7 @@ export const getPendingTransfers = async (req, res) => {
 export const createManualConversation = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, phone, email, description, channel, funnelType, funnelStageId, date, aiTopic } = req.body;
+        const { name, phone, email, description, channel, funnelType, funnelStageId, date, aiTopic, utmSource, utmMedium, utmCampaign, utmTerm, utmContent } = req.body;
 
         console.log(`📝 [Manual Conversation] Creating for workspace: ${workspaceId}`);
 
@@ -1912,7 +1912,12 @@ export const createManualConversation = async (req, res) => {
                     assignedToId: req.user.id,
                     ...(funnelType && { funnelType }),
                     ...(funnelStageId && { funnelStageId }),
-                    ...(aiTopic && { aiTopic })
+                    ...(aiTopic && { aiTopic }),
+                    ...(utmSource && { utmSource }),
+                    ...(utmMedium && { utmMedium }),
+                    ...(utmCampaign && { utmCampaign }),
+                    ...(utmTerm && { utmTerm }),
+                    ...(utmContent && { utmContent })
                 },
                 include: {
                     contact: true

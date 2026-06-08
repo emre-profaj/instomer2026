@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import TransferModal from '../TransferModal/TransferModal';
 import ChatPopup from '../ChatPopup/ChatPopup';
-import CallHistory from './CallHistory';
 import './ContactSidebar.css';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -227,6 +226,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [popupConversationId, setPopupConversationId] = useState(null); // Chat popup state
     const [callCompleted, setCallCompleted] = useState(true); // Arama tamamlandı mı? checkbox
     const [postNoteAction, setPostNoteAction] = useState(null); // { funnelStageId, teamId, assignedToId } — not sonrası aksiyon
+    const [expandedMilestone, setExpandedMilestone] = useState(null); // Sohbet akışı popup
+    const [aiCalls, setAiCalls] = useState([]);
+    const [selectedAiCall, setSelectedAiCall] = useState(null);
+    const [translatedSummary, setTranslatedSummary] = useState('');
+    const [translatingSum, setTranslatingSum] = useState(false);
+    const translationCache = useRef({});
 
     // Inline Quote Form State
     const [showQuoteForm, setShowQuoteForm] = useState(false);
@@ -302,6 +307,47 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setLocalAgentId(conversationData.assignedToId || '');
         }
     }, [conversationData?.teamIds, conversationData?.assignedToId]);
+
+    // AI Aramaları — fetch call history
+    useEffect(() => {
+        if (!currentWorkspace?.id || !profile?.id) return;
+        retellAPI.getCallHistory(currentWorkspace.id, { contactId: profile.id, limit: 10 })
+            .then(res => setAiCalls(res.data.calls || []))
+            .catch(() => {});
+    }, [currentWorkspace?.id, profile?.id, callRefreshKey]);
+
+    // AI Araması özet çevirisi — İngilizce ise otomatik Türkçeye çevir
+    useEffect(() => {
+        if (!selectedAiCall?.summary || !currentWorkspace?.id) {
+            setTranslatedSummary('');
+            return;
+        }
+        const summary = selectedAiCall.summary;
+        // Cache kontrolü
+        if (translationCache.current[summary]) {
+            setTranslatedSummary(translationCache.current[summary]);
+            return;
+        }
+        // Basit İngilizce tespiti — yaygın İngilizce kelimeler varsa çevir
+        const engWords = /\b(the|and|was|for|with|that|this|from|they|have|been|were|are|but|not|will|would|could|should|about|their|which|when|what|your|each|make|like|has|him|her|had|its|than|been|who|did|get|may|more|now|out|very|also|back|after|use|how|our|just|most|new|some|time|call|over|such|into|only|other|then|them|these|two|first|being|between|does|down|where|during|while|upon|those|still|both|before|through|same|right|going|much|because|under|another|appointment|scheduled|confirmed|discussed|provided|pricing|details|focused|ended|positively|successfully|contacted|agent|customer|conversation|regarding)\b/gi;
+        const matches = summary.match(engWords) || [];
+        if (matches.length < 3) {
+            setTranslatedSummary(summary); // Zaten Türkçe
+            return;
+        }
+        setTranslatingSum(true);
+        setTranslatedSummary('');
+        aiAPI.instoBotChat(currentWorkspace.id,
+            `Aşağıdaki metni Türkçeye çevir. Sadece çeviriyi yaz, başka bir şey ekleme:\n\n"${summary}"`,
+            []
+        ).then(res => {
+            const tr = (res.data?.response || res.data?.message || summary).replace(/^"|"$/g, '');
+            translationCache.current[summary] = tr;
+            setTranslatedSummary(tr);
+        }).catch(() => {
+            setTranslatedSummary(summary);
+        }).finally(() => setTranslatingSum(false));
+    }, [selectedAiCall?.summary, currentWorkspace?.id]);
 
     // Sync assignment mega menu position on window resize and scroll
     useEffect(() => {
@@ -776,12 +822,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             }
 
             // Local state güncelle - sidebar anında yansıtsın
-            const newTeamIds = teamId ? JSON.stringify([teamId]) : (activeConv.teamIds || '[]');
+            const foundMember = userId ? (members.find(m => (m.user?.id || m.userId) === userId) || members.find(m => m.id === userId)) : null;
+            const assignedToObj = foundMember ? { id: userId, name: foundMember.user?.name || foundMember.name || 'Agent' } : (userId ? { id: userId, name: 'Agent' } : null);
             const updatedData = {
                 teamIds: teamId !== undefined ? (teamId ? JSON.stringify([teamId]) : '[]') : (activeConv.teamIds || '[]'),
                 assignedTeamId: teamId !== undefined ? (teamId || null) : activeConv.assignedTeamId,
                 assignedToId: userId !== undefined ? (userId || null) : activeConv.assignedToId,
-                assignedTo: userId !== undefined ? (userId ? members.find(m => m.id === userId) : null) : activeConv.assignedTo
+                assignedTo: userId !== undefined ? assignedToObj : activeConv.assignedTo
             };
 
             setLocalConvOverride(prev => ({ ...(prev || activeConv), ...updatedData }));
@@ -1558,12 +1605,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         let convTeamIds = [];
                                         try { convTeamIds = JSON.parse(activeConv.teamIds || '[]'); } catch {}
                                         const assignedTeam = convTeamIds.length > 0 ? teams.find(t => t.id === convTeamIds[0]) : null;
-                                        const assignedAgent = activeConv.assignedTo || (activeConv.assignedToId ? members.find(m => m.id === activeConv.assignedToId) : null);
+                                        const assignedAgent = activeConv.assignedTo || (activeConv.assignedToId ? (members.find(m => (m.user?.id || m.userId) === activeConv.assignedToId) || members.find(m => m.id === activeConv.assignedToId)) : null);
 
                                         let pillLabel = 'Atanmadı';
-                                        if (assignedTeam && assignedAgent) pillLabel = `${assignedTeam.name} / ${assignedAgent.name}`;
+                                        const agentName = assignedAgent?.user?.name || assignedAgent?.name;
+                                        if (assignedTeam && agentName) pillLabel = `${assignedTeam.name} / ${agentName}`;
                                         else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
-                                        else if (assignedAgent) pillLabel = assignedAgent.name;
+                                        else if (agentName) pillLabel = agentName;
 
                                         const canClaim = !activeConv.assignedToId || activeConv.assignedToId !== (currentUserId || user?.id);
 
@@ -1794,7 +1842,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: profile.source ? `Kaynak: ${profile.source}` : null,
                                         date: new Date(profile.createdAt),
                                         color: '#ef4444',
-                                        done: true
+                                        done: true,
+                                        _type: 'RECORD'
                                     });
                                 }
 
@@ -1804,13 +1853,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     .filter(i => i.sourceType === 'CONVERSATION')
                                     .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
                                 if (firstConv) {
+                                    // Prefer aiTopic > lastMessageContent > channel name
+                                    const convDetail = firstConv.aiTopic 
+                                        || firstConv.lastMessageContent 
+                                        || firstConv.title 
+                                        || (firstConv.type === 'WHATSAPP' ? 'WhatsApp' : firstConv.type === 'INSTAGRAM' ? 'Instagram' : firstConv.type === 'FACEBOOK' ? 'Facebook' : 'Sohbet');
                                     milestones.push({
                                         icon: '💬',
                                         label: 'İlk Sohbet Başladı',
-                                        detail: firstConv.title || (firstConv.type === 'WHATSAPP' ? 'WhatsApp' : firstConv.type === 'INSTAGRAM' ? 'Instagram' : firstConv.type === 'FACEBOOK' ? 'Facebook' : 'Sohbet'),
+                                        detail: convDetail,
                                         date: new Date(firstConv.date),
                                         color: '#ef4444',
-                                        done: true
+                                        done: true,
+                                        _type: 'CONVERSATION',
+                                        _sourceItems: [firstConv]
                                     });
                                 }
 
@@ -1823,7 +1879,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: profile.phone,
                                         date: phoneDate,
                                         color: '#ef4444',
-                                        done: true
+                                        done: true,
+                                        _type: 'PHONE'
                                     });
                                 }
 
@@ -1839,7 +1896,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: lastCall.content || lastCall.description || 'Tamamlandı',
                                         date: new Date(lastCall.dueDate || lastCall.date),
                                         color: '#16a34a',
-                                        done: true
+                                        done: true,
+                                        _type: 'CALL',
+                                        _sourceItems: completedCalls
                                     });
                                 }
                                 if (failedCalls.length > 0) {
@@ -1850,7 +1909,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: lastFailed.content || 'Cevap yok',
                                         date: new Date(lastFailed.dueDate || lastFailed.date),
                                         color: '#ef4444',
-                                        done: true
+                                        done: true,
+                                        _type: 'CALL_FAILED',
+                                        _sourceItems: failedCalls
                                     });
                                 }
 
@@ -1864,7 +1925,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: lastMeeting.content || lastMeeting.description || null,
                                         date: new Date(lastMeeting.dueDate || lastMeeting.date),
                                         color: lastMeeting.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
-                                        done: lastMeeting.status === 'COMPLETED'
+                                        done: lastMeeting.status === 'COMPLETED',
+                                        _type: 'MEETING',
+                                        _sourceItems: meetings
                                     });
                                 }
 
@@ -1878,7 +1941,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: lastVisit.content || null,
                                         date: new Date(lastVisit.dueDate || lastVisit.date),
                                         color: lastVisit.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
-                                        done: lastVisit.status === 'COMPLETED'
+                                        done: lastVisit.status === 'COMPLETED',
+                                        _type: 'VISIT',
+                                        _sourceItems: visits
                                     });
                                 }
 
@@ -1891,7 +1956,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: null,
                                         date: new Date(proposals[0].dueDate || proposals[0].date),
                                         color: '#ef4444',
-                                        done: true
+                                        done: true,
+                                        _type: 'PROPOSAL',
+                                        _sourceItems: proposals
                                     });
                                 }
 
@@ -1904,7 +1971,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         detail: null,
                                         date: new Date(orders[0].dueDate || orders[0].date),
                                         color: '#16a34a',
-                                        done: true
+                                        done: true,
+                                        _type: 'ORDER',
+                                        _sourceItems: orders
+                                    });
+                                }
+
+                                // 8.5 AI Aramaları
+                                if (aiCalls.length > 0) {
+                                    const lastAiCall = aiCalls[0];
+                                    milestones.push({
+                                        icon: '🤖',
+                                        label: `AI Araması${aiCalls.length > 1 ? ` (${aiCalls.length}x)` : ''}`,
+                                        detail: lastAiCall.summary ? lastAiCall.summary.substring(0, 60) + '...' : (lastAiCall.callSuccessful ? 'Başarılı' : 'Başarısız'),
+                                        date: new Date(lastAiCall.createdAt),
+                                        color: lastAiCall.callSuccessful ? '#16a34a' : '#ef4444',
+                                        done: true,
+                                        _type: 'AI_CALL',
+                                        _sourceItems: aiCalls
                                     });
                                 }
 
@@ -1918,11 +2002,16 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     milestones.push({
                                         icon: isOverdue ? '⚠️' : '🔔',
                                         label: isOverdue ? 'Gecikmiş Arama' : 'Planlanan Arama',
-                                        detail: nextCall.assignedToName ? `→ ${nextCall.assignedToName}` : null,
+                                        detail: [
+                                            nextCall.assignedToName ? `→ ${nextCall.assignedToName}` : null,
+                                            nextCall.callTopic ? `📋 ${nextCall.callTopic}` : null
+                                        ].filter(Boolean).join('  •  ') || null,
                                         date: callDate,
                                         color: isOverdue ? '#dc2626' : '#f87171',
                                         done: false,
-                                        overdue: isOverdue && !hasCompletedCall
+                                        overdue: isOverdue && !hasCompletedCall,
+                                        _type: 'PLANNED_CALL',
+                                        _sourceItems: plannedCalls
                                     });
                                 }
 
@@ -1939,8 +2028,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <span className="journey-count">{milestones.length} adım</span>
                                         </div>
                                         <div className="journey-steps">
-                                            {milestones.map((m, idx) => (
-                                                <div key={idx} className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}`}>
+                                            {milestones.map((m, idx) => {
+                                                const handleStepClick = () => {
+                                                    if (m._type === 'AI_CALL' && m._sourceItems?.length > 0) {
+                                                        // Tek AI araması varsa direkt aç, birden fazla varsa ilkini aç
+                                                        setSelectedAiCall(m._sourceItems[0]);
+                                                    } else if (m._type === 'CONVERSATION' && m._sourceItems?.[0]?.conversationId) {
+                                                        if (onConversationOpen) onConversationOpen(m._sourceItems[0].conversationId);
+                                                        else setPopupConversationId(m._sourceItems[0].conversationId);
+                                                    } else if (m._sourceItems?.length > 0) {
+                                                        setExpandedMilestone(m);
+                                                    }
+                                                };
+                                                return (
+                                                <div key={idx}
+                                                    className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${m._sourceItems ? ' clickable' : ''}`}
+                                                    onClick={m._sourceItems ? handleStepClick : undefined}
+                                                    style={m._sourceItems ? { cursor: 'pointer' } : {}}
+                                                >
                                                     <div className="journey-line-wrapper">
                                                         <div className="journey-dot" style={{ borderColor: m.color, background: m.done ? m.color : '#fff' }}>
                                                             {m.done && <Check size={8} color="#fff" />}
@@ -1953,6 +2058,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <div className="journey-label">
                                                             <span className="journey-emoji">{m.icon}</span>
                                                             <span className="journey-title">{m.label}</span>
+                                                            {m._sourceItems && <ChevronRight size={12} style={{ color: '#94a3b8', marginLeft: 'auto' }} />}
                                                         </div>
                                                         {m.detail && <div className="journey-detail">{m.detail}</div>}
                                                         {m.date && (
@@ -1962,341 +2068,233 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         )}
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 );
                             })()}
 
-                            {/* TIMELINE SECTION */}
-                            <div className="activity-timeline-section">
-                                {/* Başlık ve çizgi kaldırıldı — alan kazanmak için */}
-
-                                {timelineLoading ? (
-                                    <div className="loading-state"><Loader className="spin" size={24} /></div>
-                                ) : (
-                                    <div className="timeline-container">
-                                        {/* PLANLANMIŞ AKTİVİTELER */}
-                                        {plannedTimeline.length > 0 && (
-                                            <>
-                                                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '6px 0 6px', borderBottom: '2px solid #fecaca', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <CalendarDays size={13} />
-                                                    Yaklaşan Etkinlikler
-                                                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', borderRadius: '999px', padding: '0 7px', fontSize: '0.65rem', fontWeight: 800 }}>{plannedTimeline.length}</span>
-                                                </div>
-                                                {plannedTimeline.map((item) => {
-                                                    const typeConfig = {
-                                                        CALL:     { lucide: <PhoneCall size={16}/>,    label: 'Arama Planlandı',    accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' },
-                                                        MEETING:  { lucide: <CalendarDays size={16}/>, label: 'Görüşme Planlandı', accent: '#16a34a', accentBg: '#f0fdf4', accentLight: '#dcfce7' },
-                                                        REMINDER: { lucide: <Bell size={16}/>,         label: 'Hatırlatıcı',        accent: '#f97316', accentBg: '#fff7ed', accentLight: '#ffedd5' },
-                                                        TASK:     { lucide: <Bell size={16}/>,         label: 'Görev',              accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' },
-                                                        VISIT:    { lucide: <MapPin size={16}/>,        label: 'Ziyaret',            accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' },
-                                                    };
-                                                    const cfg = typeConfig[item.type] || { lucide: <Bell size={16}/>, label: item.type, accent: '#ef4444', accentBg: '#fef2f2', accentLight: '#fecaca' };
-                                                    const now = new Date();
-                                                    const due = item.dueDate ? new Date(item.dueDate) : null;
-                                                    const overdue = due && due < now;
-                                                    const diffMs = due ? due - now : null;
-                                                    const diffMins = diffMs ? Math.round(diffMs / 60000) : null;
-                                                    let countdown = '';
-                                                    if (diffMins !== null) {
-                                                        if (overdue) {
-                                                            const overMins = Math.abs(diffMins);
-                                                            countdown = overMins < 60 ? `${overMins} dk gecikti` : overMins < 1440 ? `${Math.round(overMins/60)} saat gecikti` : `${Math.round(overMins/1440)} gün gecikti`;
-                                                        } else {
-                                                            countdown = diffMins < 60 ? `${diffMins} dk sonra` : diffMins < 1440 ? `${Math.round(diffMins/60)} saat sonra` : `${Math.round(diffMins/1440)} gün sonra`;
-                                                        }
-                                                    }
-                                                    return (
-                                                        <div
-                                                            key={item.id}
-                                                            style={{ background: '#fff', borderRadius: '12px', marginBottom: '8px', boxShadow: '0 1px 6px rgba(0,0,0,0.08)', overflow: 'hidden', border: `1px solid ${overdue ? '#fecaca' : '#e5e7eb'}`, cursor: 'default', transition: 'box-shadow 0.15s' }}
-                                                            onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.12)'}
-                                                            onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 6px rgba(0,0,0,0.08)'}
-                                                        >
-                                                            {/* Colored top stripe */}
-                                                            <div style={{ height: '3px', background: overdue ? '#ef4444' : cfg.accent, borderRadius: '12px 12px 0 0' }} />
-                                                            <div style={{ padding: '10px 12px' }}>
-                                                                {/* Header row */}
-                                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                                                    {/* Icon box */}
-                                                                    <div style={{ width: '36px', height: '36px', borderRadius: '9px', background: overdue ? '#fff7ed' : cfg.accentLight, display: 'flex', alignItems: 'center', justifyContent: 'center', color: overdue ? '#f97316' : cfg.accent, flexShrink: 0, marginTop: '1px' }}>
-                                                                        {cfg.lucide}
-                                                                    </div>
-                                                                    {/* Content */}
-                                                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                                                            <span style={{ fontWeight: 700, fontSize: '0.83rem', color: '#111827' }}>{cfg.label}</span>
-                                                                            <span style={{ fontSize: '0.61rem', fontWeight: 700, padding: '1px 8px', borderRadius: '999px',
-                                                                                background: overdue ? '#fee2e2' : '#fef3c7',
-                                                                                color: overdue ? '#dc2626' : '#92400e',
-                                                                                border: `1px solid ${overdue ? '#fca5a5' : '#fde68a'}`
-                                                                            }}>
-                                                                                {overdue ? `⚠️ ${countdown}` : `⏰ ${countdown || 'Yaklaşan'}`}
-                                                                            </span>
-                                                                        </div>
-                                                                        {item.title && item.title !== cfg.label && (
-                                                                            <div style={{ fontSize: '0.76rem', color: '#374151', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.title}</div>
-                                                                        )}
-                                                                        {/* Date/time row */}
-                                                                        {due && (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '5px', fontSize: '0.72rem', color: overdue ? '#dc2626' : '#4b5563', fontWeight: 500 }}>
-                                                                                <Clock size={11} />
-                                                                                {due.toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                            </div>
-                                                                        )}
-                                                                        {/* Assignee */}
-                                                                        {item.assignedToName && (
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontSize: '0.7rem', color: '#ef4444' }}>
-                                                                                <User size={10} /> {item.assignedToName}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    {/* Action buttons */}
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
-                                                                        {item.assignedToId !== (currentUserId || user?.id) && (
-                                                                            <button
-                                                                                onClick={(e) => { e.stopPropagation(); handleClaimActivity(item.id); }}
-                                                                                title="Bu etkinliği üstlen"
-                                                                                style={{ background: '#ef4444', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
-                                                                            >
-                                                                                <UserPlus size={12} />
-                                                                                <span>Üstlen</span>
-                                                                            </button>
-                                                                        )}
-                                                                        <button
-                                                                            onClick={(e) => { e.stopPropagation(); setCompletingActivity(item); setCompleteResult(''); }}
-                                                                            title="Tamamlandı — Not gir"
-                                                                            style={{ background: '#16a34a', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.63rem', display: 'flex', alignItems: 'center', gap: '3px', lineHeight: 1.2 }}
-                                                                        >
-                                                                            <Check size={12} />
-                                                                            <span>Tamamla</span>
-                                                                        </button>
-                                                                        <div style={{ display: 'flex', gap: '3px' }}>
-                                                                            <button
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    setEditingActivityId(item.id);
-                                                                                    setActivityForm({
-                                                                                        type: item.type || 'CALL',
-                                                                                        title: item.title || '',
-                                                                                        description: item.content || item.description || '',
-                                                                                        dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
-                                                                                        assignedToId: item.assignedToId || '',
-                                                                                        teamId: item.teamId || '',
-                                                                                        funnelStageId: ''
-                                                                                    });
-                                                                                    setShowActivityModal(true);
-                                                                                }}
-                                                                                title="Düzenle"
-                                                                                style={{ flex: 1, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '5px', padding: '4px', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                                            >
-                                                                                <Pencil size={11} />
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteActivity(item.id); }}
-                                                                                title="Sil"
-                                                                                style={{ flex: 1, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '5px', padding: '4px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                                            >
-                                                                                <Trash2 size={11} />
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                {/* Description text */}
-                                                                {(item.content || item.description) && (
-                                                                    <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#4b5563', lineHeight: 1.4, borderTop: '1px dashed #e5e7eb', paddingTop: '6px' }}>
-                                                                        {item.content || item.description}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </>
-                                        )}
-
-
-                                        {/* GEÇMİŞ AKTİVİTELER */}
-                                        {pastTimeline.length > 0 && (
-                                            <>
-                                                {plannedTimeline.length > 0 && (
-                                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '8px 0 4px', borderBottom: '1px dashed #e5e7eb', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <History size={12} /> Geçmiş
-                                                    </div>
+                            {/* AI Araması Detay Modalı */}
+                            {selectedAiCall && (
+                                <div className="reminder-modal-overlay" onClick={() => setSelectedAiCall(null)}>
+                                    <div className="reminder-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                                        <div className="reminder-modal-header">
+                                            <span style={{ fontSize: '1.1rem' }}>🤖</span>
+                                            <h3>AI Araması Detayı</h3>
+                                            <button className="reminder-modal-close" onClick={() => setSelectedAiCall(null)}><X size={18} /></button>
+                                        </div>
+                                        <div className="reminder-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                                            {/* Stats */}
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                                <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                                                    📅 {new Date(selectedAiCall.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                                {selectedAiCall.duration && (
+                                                    <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                                                        ⏱ {Math.floor(selectedAiCall.duration/60)}dk {selectedAiCall.duration%60}sn
+                                                    </span>
                                                 )}
-                                                {pastTimeline.map((item) => {
-                                                    const isNote = item.type === 'NOTE' && item.sourceType === 'ACTIVITY';
-                                                    const isCompletedCall = item.type === 'CALL' && item.sourceType === 'ACTIVITY';
-                                                    const isActivity = item.sourceType === 'ACTIVITY';
-                                                    const isConv = item.sourceType === 'CONVERSATION';
-                                                    const isEditing = editingActivity?.id === item.id;
-                                                    const statusConfig = {
-                                                        COMPLETED: { emoji: '✅', label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d', border: '#86efac' },
-                                                        CANCELLED: { emoji: '❌', label: 'İptal', bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db' },
-                                                        PLANNED:   { emoji: '🕜', label: 'Planlandı', bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' },
-                                                    };
-                                                    const sc = isActivity ? statusConfig[item.status] : null;
-
-                                                    return (
-                                                        <div
-                                                            key={item.id}
-                                                            className={`timeline-item ${isNote ? 'type-note' : ''}`}
-                                                            style={{ position: 'relative', ...(isConv ? { cursor: 'pointer' } : {}) }}
-                                                            onClick={isConv && item.conversationId ? () => {
-                                                                if (onConversationOpen) {
-                                                                    onConversationOpen(item.conversationId);
-                                                                } else {
-                                                                    setPopupConversationId(item.conversationId);
-                                                                }
-                                                            } : undefined}
-                                                        >
-                                                            {/* Row 1: Icon + Title + Status | Date + Actions */}
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', flexWrap: 'wrap' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 0' }}>
-                                                                    <div className={`timeline-icon type-${item.type.toLowerCase()}`}>{renderTimelineIcon(item.type)}</div>
-                                                                    <span className="timeline-type-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-                                                                        {item.title || renderTimelineTypeName(item.type)}
-                                                                    </span>
+                                                <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: selectedAiCall.callSuccessful ? '#dcfce7' : '#fef2f2', color: selectedAiCall.callSuccessful ? '#16a34a' : '#ef4444', fontWeight: 700 }}>
+                                                    {selectedAiCall.callSuccessful ? '✓ Başarılı' : '✗ Başarısız'}
+                                                </span>
+                                                {selectedAiCall.sentiment && (
+                                                    <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: selectedAiCall.sentiment === 'Positive' ? '#dcfce7' : selectedAiCall.sentiment === 'Negative' ? '#fef2f2' : '#f3f4f6', color: selectedAiCall.sentiment === 'Positive' ? '#16a34a' : selectedAiCall.sentiment === 'Negative' ? '#ef4444' : '#6b7280', fontWeight: 600 }}>
+                                                        {selectedAiCall.sentiment === 'Positive' ? '😊 Olumlu' : selectedAiCall.sentiment === 'Negative' ? '😞 Olumsuz' : '😐 Nötr'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Summary — otomatik Türkçe çeviri */}
+                                            {selectedAiCall.summary && (
+                                                <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px 14px', marginBottom: '10px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                                        <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#374151' }}>📝 Özet</span>
+                                                        {translatingSum && (
+                                                            <span style={{ fontSize: '0.65rem', color: '#6366f1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                <Loader size={10} className="spin" /> Çevriliyor...
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>
+                                                        {translatingSum ? (
+                                                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Özet Türkçeye çevriliyor...</span>
+                                                        ) : (
+                                                            translatedSummary || selectedAiCall.summary
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {/* Audio */}
+                                            {selectedAiCall.recordingUrl && (
+                                                <div style={{ marginBottom: '10px' }}>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#374151', marginBottom: '4px' }}>🎙 Ses Kaydı</div>
+                                                    <audio src={selectedAiCall.recordingUrl} controls style={{ width: '100%', height: 36 }} />
+                                                </div>
+                                            )}
+                                            {/* Transcript */}
+                                            {selectedAiCall.transcript && (
+                                                <div>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.78rem', color: '#374151', marginBottom: '6px' }}>💬 Konuşma</div>
+                                                    <div style={{ maxHeight: '200px', overflowY: 'auto', background: '#f8fafc', borderRadius: '8px', padding: '8px 10px' }}>
+                                                        {selectedAiCall.transcript.split('\n').filter(l => l.trim()).map((line, i) => {
+                                                            const isAgent = line.startsWith('Agent:') || line.startsWith('AI:');
+                                                            return (
+                                                                <div key={i} style={{ marginBottom: '6px', padding: '4px 8px', borderRadius: '6px', background: isAgent ? '#eff6ff' : '#fef2f2', fontSize: '0.78rem', color: '#1e293b' }}>
+                                                                    <span style={{ fontWeight: 600, color: isAgent ? '#2563eb' : '#dc2626', fontSize: '0.7rem' }}>{isAgent ? 'AI' : 'Müşteri'}:</span>{' '}
+                                                                    {line.replace(/^(Agent:|AI:|User:|Customer:)\s*/i, '')}
                                                                 </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Etkinlik Detay Modalı — Sohbet Akışı adımlarına tıklandığında */}
+                            {expandedMilestone && expandedMilestone._sourceItems && (
+                                <div className="reminder-modal-overlay" onClick={() => setExpandedMilestone(null)}>
+                                    <div className="reminder-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                                        <div className="reminder-modal-header">
+                                            <span style={{ fontSize: '1.1rem' }}>{expandedMilestone.icon}</span>
+                                            <h3>{expandedMilestone.label}</h3>
+                                            <button className="reminder-modal-close" onClick={() => setExpandedMilestone(null)}><X size={18} /></button>
+                                        </div>
+                                        <div className="reminder-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                                            {expandedMilestone._type === 'PLANNED_CALL' ? (
+                                                /* Planlanan aramalar — aksiyon butonlu */
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                    {expandedMilestone._sourceItems.map((item, ci) => {
+                                                        const due = item.dueDate ? new Date(item.dueDate) : null;
+                                                        const overdue = due && due < new Date();
+                                                        return (
+                                                        <div key={ci} style={{ padding: '12px 14px', background: overdue ? '#fef2f2' : '#f8fafc', borderRadius: '10px', border: `1px solid ${overdue ? '#fecaca' : '#e5e7eb'}` }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: overdue ? '#dc2626' : '#1e293b' }}>
+                                                                    {item.title || 'Planlanan Arama'}
+                                                                </span>
+                                                                {overdue && <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: '#fee2e2', color: '#dc2626', fontWeight: 700 }}>⚠️ Gecikmiş</span>}
+                                                            </div>
+                                                            {due && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', color: '#6b7280', marginBottom: '6px' }}>
+                                                                    <Clock size={12} />
+                                                                    {due.toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                </div>
+                                                            )}
+                                                            {(item.content || item.description) && (
+                                                                <div style={{ fontSize: '0.82rem', color: '#374151', marginBottom: '8px', lineHeight: 1.4 }}>{item.content || item.description}</div>
+                                                            )}
+                                                            {item.callTopic && (
+                                                                <div style={{ fontSize: '0.76rem', color: '#059669', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    📋 Konu: {item.callTopic}
+                                                                </div>
+                                                            )}
+                                                            {item.assignedToName && (
+                                                                <div style={{ fontSize: '0.72rem', color: '#6366f1', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <User size={11} /> Atanan: {item.assignedToName}
+                                                                </div>
+                                                            )}
+                                                            {item.assignedByName && (
+                                                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    Atayan: {item.assignedByType === 'SYSTEM' || item.assignedByType === 'AUTOMATION' ? '🤖 Otomatik' : item.assignedByName}
+                                                                </div>
+                                                            )}
+                                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                                <button onClick={() => { setExpandedMilestone(null); setCompletingActivity(item); setCompleteResult(''); }}
+                                                                    style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <Check size={14} /> Tamamla
+                                                                </button>
+                                                                <button onClick={() => {
+                                                                    setExpandedMilestone(null);
+                                                                    setEditingActivityId(item.id);
+                                                                    setActivityForm({ type: item.type || 'CALL', title: item.title || '', description: item.content || item.description || '',
+                                                                        dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
+                                                                        assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '' });
+                                                                    setShowActivityModal(true);
+                                                                }}
+                                                                    style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <Pencil size={13} /> Düzenle
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                /* Genel aktiviteler — Arama, Görüşme, Ziyaret, Teklif, Sipariş */
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                    {expandedMilestone._sourceItems.map((item, ci) => {
+                                                        const statusMap = {
+                                                            COMPLETED: { label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d', icon: '✅' },
+                                                            CANCELLED: { label: 'İptal', bg: '#f3f4f6', color: '#6b7280', icon: '❌' },
+                                                            PLANNED: { label: 'Planlandı', bg: '#dbeafe', color: '#1d4ed8', icon: '🕜' },
+                                                            IN_PROGRESS: { label: 'Devam Ediyor', bg: '#fef3c7', color: '#92400e', icon: '⏳' },
+                                                        };
+                                                        const sc = statusMap[item.status];
+                                                        const typeLabels = { CALL: 'Arama', MEETING: 'Görüşme', VISIT: 'Ziyaret', TASK: 'Görev', PROPOSAL: 'Teklif', ORDER: 'Sipariş', NOTE: 'Not', REMINDER: 'Hatırlatıcı' };
+                                                        return (
+                                                        <div key={ci} style={{ padding: '12px 14px', background: '#fff', borderRadius: '10px', border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                                <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b' }}>
+                                                                    {item.title || typeLabels[item.type] || expandedMilestone.label}
+                                                                </span>
                                                                 {sc && (
-                                                                    <span style={{ fontSize: '0.58rem', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`, borderRadius: '999px', padding: '1px 6px', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                                                                        {sc.emoji} {sc.label}
+                                                                    <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: sc.bg, color: sc.color, fontWeight: 700 }}>
+                                                                        {sc.icon} {sc.label}
                                                                     </span>
                                                                 )}
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                                                                    <span className="timeline-time" style={{ whiteSpace: 'nowrap' }}>
-                                                                        {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                    </span>
-                                                                    {(isNote || isCompletedCall) && (
-                                                                        <div style={{ display: 'inline-flex', gap: '4px' }}>
-                                                                            <button
-                                                                                title="Düzenle"
-                                                                                onClick={(e) => { e.stopPropagation(); setEditingActivity(item); setEditActivityText(item.content || ''); }}
-                                                                                style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                                            >
-                                                                                <Pencil size={11} />
-                                                                            </button>
-                                                                            <button
-                                                                                title="Sil"
-                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteActivity(item.id); }}
-                                                                                style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                                            >
-                                                                                <Trash2 size={11} />
-                                                                            </button>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
                                                             </div>
-
-                                                            {/* Row 2: Author + Due Date + Assignee */}
-                                                            {(item.labelName || item.dueDate || item.assignedToName) && (
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                                                                    {item.labelName && (
-                                                                        <span style={{ fontSize: '0.65rem', color: '#6b7280', background: '#f3f4f6', borderRadius: '4px', padding: '1px 5px', fontWeight: 500 }}>
-                                                                            {item.labelName}
-                                                                        </span>
-                                                                    )}
-                                                                    {item.dueDate && (
-                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.65rem', color: '#6b7280' }}>
-                                                                            <Clock size={9} />
-                                                                            {new Date(item.dueDate).toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                        </span>
-                                                                    )}
-                                                                    {item.assignedToName && (
-                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.63rem', color: '#6366f1', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '999px', padding: '1px 7px', fontWeight: 500 }}>
-                                                                            <User size={8} /> {item.assignedToName}
-                                                                        </span>
-                                                                    )}
+                                                            {(item.dueDate || item.date) && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', color: '#6b7280', marginBottom: '4px' }}>
+                                                                    <Clock size={12} />
+                                                                    {new Date(item.dueDate || item.date).toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                                 </div>
                                                             )}
-
-                                                            {/* Content / Inline Edit */}
-                                                            {isEditing ? (
-                                                                <div style={{ marginTop: '6px' }} onClick={e => e.stopPropagation()}>
-                                                                    <textarea
-                                                                        value={editActivityText}
-                                                                        onChange={e => setEditActivityText(e.target.value)}
-                                                                        rows={3}
-                                                                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: '6px', padding: '6px 8px', fontSize: '0.82rem', resize: 'vertical', boxSizing: 'border-box' }}
-                                                                        autoFocus
-                                                                    />
-                                                                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                                                        <button onClick={handleUpdateActivity} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
-                                                                            <Save size={12} style={{ marginRight: '3px' }} />Kaydet
-                                                                        </button>
-                                                                        <button onClick={() => { setEditingActivity(null); setEditActivityText(''); }} style={{ background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '5px', padding: '4px 10px', fontSize: '0.78rem', cursor: 'pointer' }}>
-                                                                            İptal
-                                                                        </button>
-                                                                    </div>
+                                                            {item.assignedToName && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#6366f1', marginBottom: '4px' }}>
+                                                                    <User size={11} /> {item.assignedToName}
                                                                 </div>
-                                                            ) : (
-                                                                <>
-                                                                    {isConv && item.recentMessages?.length > 0 ? (
-                                                                        <div style={{ fontSize: '0.78rem', color: '#4b5563', marginTop: '4px' }}>
-                                                                            {item.recentMessages.map((msg, idx) => (
-                                                                                <div key={idx} style={{ display: 'flex', gap: '4px', marginBottom: '2px', lineHeight: 1.3 }}>
-                                                                                    <span style={{ fontWeight: 600, color: msg.isFromContact ? '#dc2626' : '#2563eb', flexShrink: 0, fontSize: '0.72rem' }}>
-                                                                                        {msg.senderName}:
-                                                                                    </span>
-                                                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                                                        {msg.content}
-                                                                                    </span>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <>
-                                                                            {item.content && <div className="timeline-content">{item.content}</div>}
-                                                                            {isNote && item.content && (() => {
-                                                                                const { hasIntent, suggestedDueDate, title } = detectCallIntent(item.content);
-                                                                                if (!hasIntent) return null;
-                                                                                return (
-                                                                                    <button
-                                                                                        onClick={e => {
-                                                                                            e.stopPropagation();
-                                                                                            setActivityForm({
-                                                                                                type: 'CALL',
-                                                                                                title,
-                                                                                                description: '',
-                                                                                                dueDate: suggestedDueDate,
-                                                                                                assignedToId: ''
-                                                                                            });
-                                                                                            setShowActivityModal(true);
-                                                                                        }}
-                                                                                        style={{ marginTop: '6px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#2563eb', borderRadius: '6px', padding: '3px 9px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer' }}
-                                                                                    >
-                                                                                        📞 Arama Planla{suggestedDueDate ? ` (${new Date(suggestedDueDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}
-                                                                                    </button>
-                                                                                );
-                                                                            })()}
-                                                                        </>
-                                                                    )}
-                                                                </>
+                                                            )}
+                                                            {(item.content || item.description) && (
+                                                                <div style={{ fontSize: '0.82rem', color: '#374151', lineHeight: 1.5, marginTop: '4px', borderTop: '1px dashed #e5e7eb', paddingTop: '6px' }}>
+                                                                    {item.content || item.description}
+                                                                </div>
+                                                            )}
+                                                            {/* Aksiyon butonları — sadece tamamlanmamış olanlar için */}
+                                                            {item.status && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
+                                                                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                                                    <button onClick={() => { setExpandedMilestone(null); setCompletingActivity(item); setCompleteResult(''); }}
+                                                                        style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                        <Check size={13} /> Tamamla
+                                                                    </button>
+                                                                    <button onClick={() => {
+                                                                        setExpandedMilestone(null);
+                                                                        setEditingActivityId(item.id);
+                                                                        setActivityForm({ type: item.type || 'CALL', title: item.title || '', description: item.content || item.description || '',
+                                                                            dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
+                                                                            assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '' });
+                                                                        setShowActivityModal(true);
+                                                                    }}
+                                                                        style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                        <Pencil size={12} /> Düzenle
+                                                                    </button>
+                                                                    <button onClick={() => { setExpandedMilestone(null); handleDeleteActivity(item.id); }}
+                                                                        style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                        <Trash2 size={12} /> Sil
+                                                                    </button>
+                                                                </div>
                                                             )}
                                                         </div>
-                                                    );
-                                                })}
-                                            </>
-                                        )}
-
-                                        {plannedTimeline.length === 0 && pastTimeline.length === 0 && !timelineLoading && (
-                                            <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem', padding: '12px 0' }}>Henüz aktivite bulunmuyor.</div>
-                                        )}
-
-                                        {/* Sesli Arama Geçmişi */}
-                                        {profile && currentWorkspace?.id && (
-                                            <CallHistory
-                                                workspaceId={currentWorkspace.id}
-                                                contactId={profile.id}
-                                                refreshKey={callRefreshKey}
-                                            />
-                                        )}
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-
-
+                                </div>
+                            )}
 
 
 
@@ -2375,6 +2373,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         type="datetime-local"
                                                         value={activityForm.dueDate}
                                                         onChange={e => setActivityForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                                                        min={new Date().toISOString().slice(0, 16)}
                                                     />
                                                 </div>
                                             )}

@@ -1174,40 +1174,97 @@ export const getContactAnalytics = async (req, res) => {
         // Funnel Summary — tüm kişiler, date filter yok (mevcut durumu gösterir)
         const allFunnels = await prisma.funnel.findMany({
             where: { workspaceId },
-            include: { stages: { select: { id: true } } },
+            include: { stages: { select: { id: true, name: true, color: true, order: true }, orderBy: { order: 'asc' } } },
             orderBy: { order: 'asc' }
         });
 
+        // Tarih filtresi: Seçilen aralığa göre dinamik recentCount
+        const recentDateFilter = {};
+        if (startDate) recentDateFilter.gte = new Date(startDate);
+        else {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            sevenDaysAgo.setHours(0, 0, 0, 0);
+            recentDateFilter.gte = sevenDaysAgo;
+        }
+        if (endDate) recentDateFilter.lte = new Date(endDate);
+
+        // Tarih etiketi: frontend'e kaç günlük filtre olduğunu gönder
+        const filterDays = Math.ceil((new Date(endDate || Date.now()) - new Date(recentDateFilter.gte)) / (1000 * 60 * 60 * 24));
+        const filterLabel = filterDays <= 1 ? '1g' : filterDays <= 7 ? '7g' : filterDays <= 30 ? '30g' : `${filterDays}g`;
+
         const funnelSummary = await Promise.all(allFunnels.map(async (f) => {
             const stageIds = f.stages.map(s => s.id);
-            const count = await prisma.contact.count({
-                where: {
+            const funnelWhere = {
+                conversations: { some: { workspaceId } },
+                OR: [
+                    ...(stageIds.length > 0 ? [{ funnelStageId: { in: stageIds } }] : []),
+                    { funnelType: f.name }
+                ]
+            };
+            const [count, recentCount, conversationCount] = await Promise.all([
+                prisma.contact.count({ where: funnelWhere }),
+                prisma.contact.count({ where: { ...funnelWhere, createdAt: recentDateFilter } }),
+                // Yazışma sayısı: bu akıştaki kişilerin toplam yazışma sayısı
+                prisma.conversation.count({
+                    where: {
+                        workspaceId,
+                        contact: {
+                            OR: [
+                                ...(stageIds.length > 0 ? [{ funnelStageId: { in: stageIds } }] : []),
+                                { funnelType: f.name }
+                            ]
+                        }
+                    }
+                })
+            ]);
+
+            // Aşama bazlı kişi sayıları + yazışma sayıları
+            const stages = await Promise.all(f.stages.map(async (s) => {
+                const stageWhere = {
                     conversations: { some: { workspaceId } },
-                    OR: [
-                        ...(stageIds.length > 0 ? [{ funnelStageId: { in: stageIds } }] : []),
-                        { funnelType: f.name }
-                    ]
-                }
-            });
-            return { id: f.id, name: f.name, count, color: f.color, icon: f.icon };
+                    funnelStageId: s.id
+                };
+                const [stageCount, stageRecentCount, stageConvCount] = await Promise.all([
+                    prisma.contact.count({ where: stageWhere }),
+                    prisma.contact.count({ where: { ...stageWhere, createdAt: recentDateFilter } }),
+                    prisma.conversation.count({
+                        where: { workspaceId, contact: { funnelStageId: s.id } }
+                    })
+                ]);
+                return { id: s.id, name: s.name, color: s.color, count: stageCount, recentCount: stageRecentCount, conversationCount: stageConvCount };
+            }));
+
+            return { id: f.id, name: f.name, count, recentCount, conversationCount, color: f.color, icon: f.icon, stages, filterLabel };
         }));
 
         // "Genel" funnel'ı — hiçbir funnel'a atanmamış kişiler
         if (!funnelSummary.some(f => f.name.toLowerCase() === 'genel')) {
             const allStageIds = allFunnels.flatMap(f => f.stages.map(s => s.id));
             const allFunnelNames = allFunnels.map(f => f.name);
-            const generalCount = await prisma.contact.count({
-                where: {
-                    conversations: { some: { workspaceId } },
-                    funnelStageId: allStageIds.length > 0 ? { notIn: allStageIds } : undefined,
-                    OR: [
-                        { funnelType: null },
-                        { funnelType: 'Genel' },
-                        ...(allFunnelNames.length > 0 ? [] : [])
-                    ]
-                }
-            });
-            funnelSummary.unshift({ id: 'genel', name: 'Genel', count: generalCount, color: '#64748b', icon: '📋' });
+            const generalWhere = {
+                conversations: { some: { workspaceId } },
+                funnelStageId: allStageIds.length > 0 ? { notIn: allStageIds } : undefined,
+                OR: [
+                    { funnelType: null },
+                    { funnelType: 'Genel' },
+                    ...(allFunnelNames.length > 0 ? [] : [])
+                ]
+            };
+            const [generalCount, generalRecent, generalConvCount] = await Promise.all([
+                prisma.contact.count({ where: generalWhere }),
+                prisma.contact.count({ where: { ...generalWhere, createdAt: recentDateFilter } }),
+                prisma.conversation.count({
+                    where: {
+                        workspaceId,
+                        contact: {
+                            funnelStageId: allStageIds.length > 0 ? { notIn: allStageIds } : undefined,
+                            OR: [{ funnelType: null }, { funnelType: 'Genel' }]
+                        }
+                    }
+                })
+            ]);
+            funnelSummary.unshift({ id: 'genel', name: 'Genel', count: generalCount, recentCount: generalRecent, conversationCount: generalConvCount, color: '#64748b', icon: '📋', stages: [], filterLabel });
         }
 
 
@@ -1451,6 +1508,131 @@ export const getContactAnalytics = async (req, res) => {
             overdueCount
         };
 
+        // ── Deal/Sales Stats (CEO Dashboard) ──
+        let dealStats = { totalDeals: 0, totalQuotes: 0, totalOrders: 0, totalInvoices: 0, wonCount: 0, lostCount: 0, openCount: 0, totalAmount: 0, wonAmount: 0, recentDeals: [] };
+        try {
+            const dealDateFilter = {};
+            if (startDate || endDate) {
+                dealDateFilter.createdAt = {};
+                if (startDate) dealDateFilter.createdAt.gte = new Date(startDate);
+                if (endDate) {
+                    const dEnd = new Date(endDate);
+                    dEnd.setHours(23, 59, 59, 999);
+                    dealDateFilter.createdAt.lte = dEnd;
+                }
+            }
+
+            const [dealsByStageStatus, recentDeals, dealAmounts] = await Promise.all([
+                prisma.deal.groupBy({
+                    by: ['stage', 'status'],
+                    where: { workspaceId, ...dealDateFilter },
+                    _count: true,
+                    _sum: { amount: true }
+                }),
+                prisma.deal.findMany({
+                    where: { workspaceId, ...dealDateFilter },
+                    select: {
+                        id: true, title: true, stage: true, status: true, amount: true, currency: true,
+                        createdAt: true,
+                        contact: { select: { id: true, name: true } },
+                        assignedTo: { select: { id: true, name: true } }
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: 5
+                }),
+                prisma.deal.aggregate({
+                    where: { workspaceId, ...dealDateFilter },
+                    _sum: { amount: true },
+                    _count: true
+                })
+            ]);
+
+            let dTotalQuotes = 0, dTotalOrders = 0, dTotalInvoices = 0;
+            let dWonCount = 0, dLostCount = 0, dOpenCount = 0;
+            let dWonAmount = 0;
+            let dQuoteAmount = 0, dOrderAmount = 0, dInvoiceAmount = 0;
+            for (const d of dealsByStageStatus) {
+                const cnt = typeof d._count === 'number' ? d._count : (d._count?._all || 0);
+                const amt = d._sum?.amount || 0;
+                if (d.stage === 'QUOTE') { dTotalQuotes += cnt; dQuoteAmount += amt; }
+                if (d.stage === 'ORDER') { dTotalOrders += cnt; dOrderAmount += amt; }
+                if (d.stage === 'INVOICE') { dTotalInvoices += cnt; dInvoiceAmount += amt; }
+                if (d.status === 'WON') { dWonCount += cnt; dWonAmount += amt; }
+                if (d.status === 'LOST') dLostCount += cnt;
+                if (d.status === 'OPEN') dOpenCount += cnt;
+            }
+
+            dealStats = {
+                totalDeals: typeof dealAmounts._count === 'number' ? dealAmounts._count : (dealAmounts._count?._all || 0),
+                totalQuotes: dTotalQuotes,
+                totalOrders: dTotalOrders,
+                totalInvoices: dTotalInvoices,
+                quoteAmount: dQuoteAmount,
+                orderAmount: dOrderAmount,
+                invoiceAmount: dInvoiceAmount,
+                wonCount: dWonCount,
+                lostCount: dLostCount,
+                openCount: dOpenCount,
+                totalAmount: dealAmounts._sum?.amount || 0,
+                wonAmount: dWonAmount,
+                recentDeals
+            };
+        } catch (e) {
+            console.error('Deal stats error (non-fatal):', e.message);
+        }
+
+        // ── Activity Stats (CEO Dashboard) ──
+        let activityStats = { totalActivities: 0, plannedCount: 0, completedCount: 0, inProgressCount: 0, cancelledCount: 0, overdueCount: 0, callCount: 0, meetingCount: 0, taskCount: 0, noteCount: 0 };
+        try {
+            const actDateFilter = {};
+            if (startDate || endDate) {
+                actDateFilter.createdAt = {};
+                if (startDate) actDateFilter.createdAt.gte = new Date(startDate);
+                if (endDate) {
+                    const aEnd = new Date(endDate);
+                    aEnd.setHours(23, 59, 59, 999);
+                    actDateFilter.createdAt.lte = aEnd;
+                }
+            }
+
+            const [actByStatus, actByType, actOverdue] = await Promise.all([
+                prisma.contactActivity.groupBy({
+                    by: ['status'],
+                    where: { workspaceId, ...actDateFilter },
+                    _count: true
+                }),
+                prisma.contactActivity.groupBy({
+                    by: ['type'],
+                    where: { workspaceId, ...actDateFilter },
+                    _count: true
+                }),
+                prisma.contactActivity.count({
+                    where: {
+                        workspaceId,
+                        status: 'PLANNED',
+                        dueDate: { lt: new Date() }
+                    }
+                })
+            ]);
+
+            const getCount = (obj) => typeof obj?._count === 'number' ? obj._count : (obj?._count?._all || 0);
+
+            activityStats = {
+                totalActivities: actByStatus.reduce((sum, a) => sum + getCount(a), 0),
+                plannedCount: getCount(actByStatus.find(a => a.status === 'PLANNED')),
+                completedCount: getCount(actByStatus.find(a => a.status === 'COMPLETED')),
+                inProgressCount: getCount(actByStatus.find(a => a.status === 'IN_PROGRESS')),
+                cancelledCount: getCount(actByStatus.find(a => a.status === 'CANCELLED')),
+                overdueCount: actOverdue,
+                callCount: getCount(actByType.find(a => a.type === 'CALL')),
+                meetingCount: getCount(actByType.find(a => a.type === 'MEETING')),
+                taskCount: getCount(actByType.find(a => a.type === 'TASK')),
+                noteCount: getCount(actByType.find(a => a.type === 'NOTE'))
+            };
+        } catch (e) {
+            console.error('Activity stats error (non-fatal):', e.message);
+        }
+
         res.json({
             totalContacts,
             totalMessages,
@@ -1474,7 +1656,9 @@ export const getContactAnalytics = async (req, res) => {
                 completed: completedAppointments,
                 cancelled: cancelledAppointments
             },
-            callTrackingStats
+            callTrackingStats,
+            dealStats,
+            activityStats
         });
     } catch (error) {
         console.error('Analytics error:', error);

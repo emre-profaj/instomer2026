@@ -74,7 +74,9 @@ prisma.$use(async (params, next) => {
         setImmediate(async () => {
             try {
                 const { executeAutoCallPlanning } = await import('../controllers/rules.controller.js');
-                await executeAutoCallPlanning(workspaceId, contactId, 'AUTO_HOOK');
+                // Contact source'una göre doğru source geç (lead form pencere parse'ı için önemli)
+                const hookSource = result.source === 'FACEBOOK_LEAD' ? 'LEAD_FORM' : 'AUTO_HOOK';
+                await executeAutoCallPlanning(workspaceId, contactId, hookSource);
             } catch (err) {
                 // Non-fatal — don't block contact operations
                 console.error('⚠️ [AutoCallHook] Error:', err.message);

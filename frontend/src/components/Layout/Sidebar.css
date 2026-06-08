@@ -172,8 +172,11 @@
 
 /* User Profile / Logout (Optional - matching the aesthetic if we add it back) */
 .sidebar-footer {
-    padding: 16px;
-    border-top: 1px solid #f3f4f6;
+    padding: 6px 0 4px;
+    background: #f8fafc;
+    border-top: none;
+    display: flex;
+    flex-direction: column-reverse;
 }
 
 /* Logout Button */

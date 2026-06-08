@@ -498,14 +498,17 @@ export const handleFormSubmission = async (req, res) => {
         }
 
         // --- AUTO CALL TRIGGER ---
-        if (phone && contact?.id) {
+        const contactPhone = phone || contact?.phone;
+        if (contactPhone && contact?.id) {
             try {
                 const { executeAutoCallPlanning } = await import('./rules.controller.js');
                 await executeAutoCallPlanning(webhook.workspaceId, contact.id, 'WEB_FORM');
-                console.log(`📞 [FormWebhook] Auto call planned for contact ${contact.id}`);
+                console.log(`📞 [FormWebhook] Auto call planned for contact ${contact.id} (phone: ${contactPhone})`);
             } catch (autoCallErr) {
                 console.error('⚠️ [FormWebhook] AutoCall planning error:', autoCallErr.message);
             }
+        } else {
+            console.log(`ℹ️ [FormWebhook] No phone found (form: ${phone || 'null'}, contact: ${contact?.phone || 'null'}) — skipping auto call`);
         }
 
         res.json({

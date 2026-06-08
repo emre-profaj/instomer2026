@@ -1,0 +1,407 @@
+/* ===== CEO Dashboard ===== */
+
+.ceo-report {
+    padding: 20px 28px 60px;
+    max-width: 1400px;
+    margin: 0 auto;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+}
+
+/* ── Header ── */
+.ceo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.ceo-header-title h1 {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0 0 2px;
+}
+.ceo-header-title p {
+    font-size: 0.82rem;
+    color: #64748b;
+    margin: 0;
+}
+.ceo-header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.ceo-select {
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 500;
+    color: #1e293b;
+    outline: none;
+    transition: border 0.2s;
+}
+.ceo-select:focus {
+    border-color: #6366f1;
+}
+.ceo-refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.ceo-refresh-btn:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #6366f1;
+}
+
+/* ── KPI Grid (Section 2) ── */
+.ceo-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+.ceo-kpi-card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 16px 18px;
+    border: 1px solid #f1f5f9;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    position: relative;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.ceo-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}
+.ceo-kpi-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+.ceo-kpi-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 2px;
+}
+.ceo-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+}
+.ceo-kpi-sub {
+    font-size: 0.65rem;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+/* ── Sections ── */
+.ceo-section {
+    background: #fff;
+    border-radius: 16px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    overflow: hidden;
+}
+.ceo-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.ceo-section-header h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+.ceo-section-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: #eef2ff;
+    color: #6366f1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.ceo-section-body {
+    padding: 18px 20px;
+}
+
+/* ── Flow Distribution ── */
+.ceo-flow-item {
+    border: 1px solid #f1f5f9;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+}
+.ceo-flow-item:hover {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+.ceo-flow-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.ceo-flow-header:hover {
+    background: #fafbfc;
+}
+.ceo-flow-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.ceo-flow-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+}
+.ceo-flow-name {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+.ceo-flow-count {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    font-weight: 500;
+}
+.ceo-flow-bar-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ceo-flow-bar-bg {
+    flex: 1;
+    height: 6px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.ceo-flow-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+.ceo-flow-pct {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    min-width: 36px;
+    text-align: right;
+}
+.ceo-flow-stages {
+    padding: 0 16px 14px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.ceo-flow-stage-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+.ceo-stage-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ceo-stage-name {
+    flex: 1;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #475569;
+}
+.ceo-stage-count {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+/* ── Performance Table ── */
+.ceo-perf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+.ceo-perf-table thead th {
+    padding: 12px 14px;
+    background: #f8fafc;
+    font-weight: 700;
+    color: #475569;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    text-align: center;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+.ceo-perf-table thead th:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+.ceo-perf-table tbody td {
+    padding: 12px 14px;
+    text-align: center;
+    border-bottom: 1px solid #f1f5f9;
+    white-space: nowrap;
+}
+.ceo-perf-table tbody td:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+.ceo-perf-table tbody tr:hover {
+    background: #fafbfc;
+}
+.ceo-perf-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ── Activity Section ── */
+.ceo-mini-grid {
+    display: grid;
+    gap: 12px;
+}
+.ceo-mini-grid.cols-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+.ceo-mini-card {
+    padding: 16px;
+    border-radius: 12px;
+    text-align: center;
+}
+.mini-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+.mini-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 2px;
+}
+.ceo-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 10px;
+    margin-top: 8px;
+}
+.ceo-type-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f8fafc;
+}
+.ceo-type-row:last-child {
+    border-bottom: none;
+}
+.type-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.type-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #1e293b;
+    width: 80px;
+}
+.type-count {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #0f172a;
+    width: 40px;
+    text-align: right;
+}
+.ceo-type-bar {
+    flex: 1;
+    height: 6px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.ceo-type-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+.type-pct {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    width: 36px;
+    text-align: right;
+}
+
+/* ── Spinner ── */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .ceo-report {
+        padding: 16px 14px 40px;
+    }
+    .ceo-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .ceo-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .ceo-mini-grid.cols-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .ceo-perf-table {
+        font-size: 0.75rem;
+    }
+}

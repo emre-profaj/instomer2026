@@ -191,6 +191,17 @@
     margin-left: auto;
 }
 
+/* Date filter in header (next to search) */
+.header-date-filter {
+    min-width: auto !important;
+    flex-shrink: 0;
+}
+
+.header-date-filter .filter-select {
+    background-image: none;
+    padding-right: 12px;
+}
+
 
 .source-filter-tabs {
     display: flex;

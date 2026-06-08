@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
 import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User } from 'lucide-react';
@@ -21,9 +22,13 @@ const Orders = () => {
     const [contactSearch, setContactSearch] = useState('');
     const [showContactDropdown, setShowContactDropdown] = useState(false);
 
+    const location = useLocation();
+    const searchParams = new URLSearchParams(location.search);
+    const initialView = searchParams.get('view');
+
     // Filter states
     const [statusFilter, setStatusFilter] = useState('ALL');
-    const [agentFilter, setAgentFilter] = useState('ALL');
+    const [agentFilter, setAgentFilter] = useState(initialView === 'mine' && user?.id ? user.id : 'ALL');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
 
@@ -264,7 +269,23 @@ const Orders = () => {
                         </button>
                     </div>
 
-                    {/* Search */}
+                    {/* Stats Row */}
+                    <div className="sales-list-stats">
+                        <div className="sales-list-stat">
+                            <span className="sls-value">{orderStats.count}</span>
+                            <span className="sls-label">Sipariş</span>
+                        </div>
+                        <div className="sales-list-stat">
+                            <span className="sls-value">{formatCurrency(orderStats.totalAmount)}</span>
+                            <span className="sls-label">Tutar</span>
+                        </div>
+                        <div className="sales-list-stat">
+                            <span className="sls-value">{stats?.conversionRates?.orderToInvoice || 0}%</span>
+                            <span className="sls-label">Dönüşüm</span>
+                        </div>
+                    </div>
+
+                    {/* Search */}}
                     <div className="sales-list-panel-search">
                         <Search size={15} />
                         <input
@@ -357,33 +378,6 @@ const Orders = () => {
 
             {/* ── MIDDLE PANEL: Detail ── */}
             <div className="sales-detail-panel">
-                {/* Stats */}
-                <div className="sales-stats">
-                    <div className="stat-card">
-                        <div className="stat-icon quote" style={{ background: 'rgba(249, 115, 22, 0.1)', color: '#f97316' }}>
-                            <ShoppingCart size={20} />
-                        </div>
-                        <div className="stat-info">
-                            <span className="stat-value">{orderStats.count}</span>
-                            <span className="stat-label">{t('analytics.totalOrders')}</span>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon amount"><TrendingUp size={20} /></div>
-                        <div className="stat-info">
-                            <span className="stat-value">{formatCurrency(orderStats.totalAmount)}</span>
-                            <span className="stat-label">Toplam Tutar</span>
-                        </div>
-                    </div>
-                    <div className="stat-card">
-                        <div className="stat-icon conversion"><ArrowRight size={20} /></div>
-                        <div className="stat-info">
-                            <span className="stat-value">{stats?.conversionRates?.orderToInvoice || 0}%</span>
-                            <span className="stat-label">{t('sales.invoiceConversion')}</span>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Detail content or empty state */}
                 {!selectedDeal ? (
                     <div className="sales-detail-empty">
@@ -441,6 +435,23 @@ const Orders = () => {
                                     <span className="label">Tarih:</span>
                                     <span className="value">{new Date(selectedDeal.orderCreatedAt || selectedDeal.createdAt).toLocaleDateString('tr-TR')}</span>
                                 </div>
+                                {selectedDeal.channel && (
+                                    <div className="info-row">
+                                        <span className="label">Kaynak:</span>
+                                        <span className="value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={{ fontSize: '1rem' }}>
+                                                {selectedDeal.channel === 'WHATSAPP' ? '📱' : selectedDeal.channel === 'INSTAGRAM' ? '📸' : selectedDeal.channel === 'FACEBOOK' ? '📘' : selectedDeal.channel === 'EMAIL' ? '📧' : selectedDeal.channel === 'WIDGET' ? '🌐' : '📋'}
+                                            </span>
+                                            {selectedDeal.channel}
+                                        </span>
+                                    </div>
+                                )}
+                                {selectedDeal.sourceNote && (
+                                    <div className="info-row">
+                                        <span className="label">Kaynak Notu:</span>
+                                        <span className="value">{selectedDeal.sourceNote}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -500,6 +511,8 @@ const Orders = () => {
                         </div>
                     </>
                 )}
+
+
             </div>
 
             {/* ── RIGHT PANEL: Contact Sidebar ── */}

@@ -14,6 +14,16 @@ export const createActivity = async (req, res) => {
         const explicitStatus = req.body.status;
         const explicitCompletedAt = req.body.completedAt;
 
+        // Geçmiş tarih kontrolü
+        if (dueDate) {
+            const now = new Date();
+            const dueDateObj = new Date(dueDate);
+            const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+            if (dueDateObj < fiveMinutesAgo) {
+                return res.status(400).json({ error: 'Geçmiş tarihli aktivite oluşturulamaz' });
+            }
+        }
+
         // Yetki Kontrolü
         const contact = await prisma.contact.findFirst({
             where: { id: contactId, workspaceId }
@@ -50,7 +60,13 @@ export const createActivity = async (req, res) => {
                 completedAt: resolvedCompletedAt,
                 source: req.body.source || 'MANUAL',
                 priority: req.body.priority || 'NORMAL',
-                isCompleted: resolvedIsCompleted
+                isCompleted: resolvedIsCompleted,
+                // Atama bilgisi
+                ...(assignedToId ? {
+                    assignedById: req.user?.id || null,
+                    assignedByType: req.user?.id ? 'USER' : 'SYSTEM',
+                    assignedAt: new Date()
+                } : {})
             },
             include: {
                 creator: { select: { name: true, role: true } },
@@ -233,7 +249,13 @@ export const getContactTimeline = async (req, res) => {
         try {
             conversations = await prisma.conversation.findMany({
                 where: { contactId },
-                include: {
+                select: {
+                    id: true,
+                    channel: true,
+                    status: true,
+                    lastMessageAt: true,
+                    createdAt: true,
+                    aiTopic: true,
                     messages: {
                         include: {
                             sender: { select: { name: true, role: true, teamMemberships: { include: { team: true } } } }
@@ -323,6 +345,10 @@ export const getContactTimeline = async (req, res) => {
                 labelName,
                 assignedToName: act.assignee?.name,
                 assignedToId: act.assignedToId,
+                callTopic: act.callTopic,
+                assignedById: act.assignedById,
+                assignedByType: act.assignedByType,
+                assignedByName: act.creator?.name,
                 raw: act
             });
         });
@@ -373,6 +399,8 @@ export const getContactTimeline = async (req, res) => {
                         conv.channel === 'FACEBOOK' ? 'Facebook' :
                             conv.channel === 'INSTAGRAM' ? 'Instagram' :
                                 conv.channel === 'WIDGET' ? 'Web Widget' : 'Sohbet'),
+                aiTopic: conv.aiTopic || null,
+                lastMessageContent: lastMessage?.content?.substring(0, 80) || null,
                 content: summaryContent,
                 date: lastMessageDate,
                 totalMessages,
@@ -476,19 +504,31 @@ export const getContactTimeline = async (req, res) => {
 export const updateActivity = async (req, res) => {
     try {
         const { activityId } = req.params;
-        const { title, description, dueDate } = req.body;
+        const { title, description, dueDate, assignedToId } = req.body;
 
         const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
         if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
 
+        const updateData = {
+            title: title !== undefined ? title : existing.title,
+            description: description !== undefined ? description : existing.description,
+            result: (existing.status === 'COMPLETED' && description !== undefined) ? description : existing.result,
+            dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
+        };
+
+        // assignedToId değiştiyse atama bilgisini güncelle
+        if (assignedToId !== undefined) {
+            updateData.assignedToId = assignedToId || null;
+            if (assignedToId !== existing.assignedToId) {
+                updateData.assignedById = req.user?.id || null;
+                updateData.assignedByType = req.user?.id ? 'USER' : 'SYSTEM';
+                updateData.assignedAt = new Date();
+            }
+        }
+
         const updated = await prisma.contactActivity.update({
             where: { id: activityId },
-            data: {
-                title: title !== undefined ? title : existing.title,
-                description: description !== undefined ? description : existing.description,
-                result: (existing.status === 'COMPLETED' && description !== undefined) ? description : existing.result,
-                dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
-            },
+            data: updateData,
             include: {
                 creator: { select: { name: true, role: true } },
                 assignee: { select: { name: true } }
@@ -651,10 +691,12 @@ export const getWorkspaceActivities = async (req, res) => {
             take: parseInt(limit)
         });
 
-        // Count by status for summary
+        // Count by status for summary — status filtresini kaldırarak tüm durumları say
+        const summaryWhere = { ...where };
+        delete summaryWhere.status;
         const counts = await prisma.contactActivity.groupBy({
             by: ['status'],
-            where: { ...where, status: undefined },
+            where: summaryWhere,
             _count: true
         });
 
@@ -711,5 +753,28 @@ export const getWorkspaceCallQueue = async (req, res) => {
     } catch (error) {
         console.error('Call Queue Error:', error);
         res.status(500).json({ error: 'Arama kuyruğu alınırken hata oluştu.' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET ACTIVITY BY ID — Tekil aktivite detayı
+// ────────────────────────────────────────────────────────────────────────────
+export const getActivityById = async (req, res) => {
+    try {
+        const { activityId } = req.params;
+        const activity = await prisma.contactActivity.findUnique({
+            where: { id: activityId },
+            include: {
+                contact: { select: { id: true, name: true, phone: true, email: true, company: true } },
+                assignee: { select: { id: true, name: true, avatar: true } },
+                creator: { select: { id: true, name: true } },
+                team: { select: { id: true, name: true } }
+            }
+        });
+        if (!activity) return res.status(404).json({ error: 'Aktivite bulunamadı' });
+        res.json(activity);
+    } catch (error) {
+        console.error('Get activity by id error:', error);
+        res.status(500).json({ error: 'Aktivite yüklenirken hata oluştu' });
     }
 };

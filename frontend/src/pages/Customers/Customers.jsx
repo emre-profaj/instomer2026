@@ -1058,6 +1058,63 @@ const Customers = () => {
                                 onChange={handleSearch}
                             />
                         </div>
+                        {/* Kayıt Tarihi — Header'da arama kutucuğunun yanında */}
+                        <div className="filter-dropdown-item header-date-filter" ref={dateFilterRef} style={{ position: 'relative', flexShrink: 0 }}>
+                            <button
+                                className={`filter-select${dateFilter !== 'ALL' ? ' active' : ''}`}
+                                onClick={() => {
+                                    if (dateFilterRef.current) {
+                                        const rect = dateFilterRef.current.getBoundingClientRect();
+                                        setDateFilterOpenUp(window.innerHeight - rect.bottom < 260);
+                                    }
+                                    setDateFilterOpen(o => !o);
+                                }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', background: dateFilter !== 'ALL' ? '#fef2f2' : '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '7px 12px', fontSize: '0.8rem', color: dateFilter !== 'ALL' ? '#ef4444' : '#374151', fontWeight: dateFilter !== 'ALL' ? 600 : 400, whiteSpace: 'nowrap', height: '38px' }}
+                            >
+                                <Calendar size={14} />
+                                {dateFilter === 'TODAY' ? 'Bugün' : dateFilter === 'WEEK' ? 'Bu Hafta' : dateFilter === 'MONTH' ? 'Bu Ay' : (dateFrom || dateTo) ? `${dateFrom || '...'} - ${dateTo || '...'}` : 'Tüm Zamanlar'}
+                                <ChevronDown size={12} />
+                            </button>
+                            {dateFilterOpen && (() => {
+                                const rect = dateFilterRef.current?.getBoundingClientRect();
+                                if (!rect) return null;
+                                return (
+                                    <div style={{
+                                        position: 'fixed',
+                                        top: dateFilterOpenUp ? undefined : rect.bottom + 4,
+                                        bottom: dateFilterOpenUp ? window.innerHeight - rect.top + 4 : undefined,
+                                        left: rect.left,
+                                        zIndex: 9999,
+                                        background: '#fff',
+                                        border: '1px solid #e5e7eb',
+                                        borderRadius: '8px',
+                                        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                                        minWidth: '190px',
+                                        padding: '6px 0'
+                                    }}>
+                                        {[
+                                            { key: 'ALL', label: 'Tüm Zamanlar' },
+                                            { key: 'TODAY', label: 'Bugün' },
+                                            { key: 'WEEK', label: 'Bu Hafta' },
+                                            { key: 'MONTH', label: 'Bu Ay' },
+                                        ].map(({ key, label }) => (
+                                            <button
+                                                key={key}
+                                                onClick={() => { setDateFilter(key); setDateFrom(''); setDateTo(''); setPage(1); setDateFilterOpen(false); }}
+                                                style={{ display: 'block', width: '100%', padding: '8px 14px', textAlign: 'left', background: dateFilter === key ? '#fef2f2' : 'none', color: dateFilter === key ? '#ef4444' : '#374151', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: dateFilter === key ? 600 : 400 }}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                        <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
+                                            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
+                                            <button onClick={() => setDateFilterOpen(false)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '5px 0', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>Uygula</button>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
                         <div className="header-right-actions">
                             <button
                                 className={`btn-archive-toggle ${showArchived ? 'active' : ''}`}
@@ -1312,64 +1369,6 @@ const Customers = () => {
                                     <option value="NO_PHONE">Numarası Olmayanlar</option>
                                     <option value="NO_EMAIL">E-postası Olmayanlar</option>
                                 </select>
-                            </div>
-
-                            {/* Date Filter Dropdown */}
-                            <div className="filter-dropdown-item" ref={dateFilterRef} style={{ position: 'relative', flexShrink: 0 }}>
-                                <label><Calendar size={12} /> Kayıt Tarihi</label>
-                                <button
-                                    className={`filter-select${dateFilter !== 'ALL' ? ' active' : ''}`}
-                                    onClick={() => {
-                                        if (dateFilterRef.current) {
-                                            const rect = dateFilterRef.current.getBoundingClientRect();
-                                            setDateFilterOpenUp(window.innerHeight - rect.bottom < 260);
-                                        }
-                                        setDateFilterOpen(o => !o);
-                                    }}
-                                    style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', background: 'none', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '6px 10px', fontSize: '0.8rem', color: dateFilter !== 'ALL' ? '#ef4444' : '#374151', fontWeight: dateFilter !== 'ALL' ? 600 : 400, whiteSpace: 'nowrap' }}
-                                >
-                                    {dateFilter === 'TODAY' ? 'Bugün' : dateFilter === 'WEEK' ? 'Bu Hafta' : dateFilter === 'MONTH' ? 'Bu Ay' : (dateFrom || dateTo) ? `${dateFrom || '...'} - ${dateTo || '...'}` : 'Tüm Zamanlar'}
-                                    <ChevronDown size={12} />
-                                </button>
-                                {dateFilterOpen && (() => {
-                                    const rect = dateFilterRef.current?.getBoundingClientRect();
-                                    if (!rect) return null;
-                                    return (
-                                        <div style={{
-                                            position: 'fixed',
-                                            top: dateFilterOpenUp ? undefined : rect.bottom + 4,
-                                            bottom: dateFilterOpenUp ? window.innerHeight - rect.top + 4 : undefined,
-                                            left: rect.left,
-                                            zIndex: 9999,
-                                            background: '#fff',
-                                            border: '1px solid #e5e7eb',
-                                            borderRadius: '8px',
-                                            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                                            minWidth: '190px',
-                                            padding: '6px 0'
-                                        }}>
-                                            {[
-                                                { key: 'ALL', label: 'Tüm Zamanlar' },
-                                                { key: 'TODAY', label: 'Bugün' },
-                                                { key: 'WEEK', label: 'Bu Hafta' },
-                                                { key: 'MONTH', label: 'Bu Ay' },
-                                            ].map(({ key, label }) => (
-                                                <button
-                                                    key={key}
-                                                    onClick={() => { setDateFilter(key); setDateFrom(''); setDateTo(''); setPage(1); setDateFilterOpen(false); }}
-                                                    style={{ display: 'block', width: '100%', padding: '8px 14px', textAlign: 'left', background: dateFilter === key ? '#fef2f2' : 'none', color: dateFilter === key ? '#ef4444' : '#374151', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: dateFilter === key ? 600 : 400 }}
-                                                >
-                                                    {label}
-                                                </button>
-                                            ))}
-                                            <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
-                                                <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
-                                                <button onClick={() => setDateFilterOpen(false)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '5px 0', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>Uygula</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
                             </div>
 
                             {/* Sort Dropdown */}

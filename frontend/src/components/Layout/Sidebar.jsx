@@ -19,11 +19,13 @@ const Sidebar = () => {
     const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [isSalesOpen, setIsSalesOpen] = useState(false);
     const [isRealEstateOpen, setIsRealEstateOpen] = useState(false);
-    const [isInboxOpen, setIsInboxOpen] = useState(false);  // Inbox alt menü
-    const [isContactsOpen, setIsContactsOpen] = useState(false); // Kişiler alt menü
-    const [isActivitiesOpen, setIsActivitiesOpen] = useState(false); // Aktiviteler alt menü
+    const [isInboxOpen, setIsInboxOpen] = useState(false);
+    const [isContactsOpen, setIsContactsOpen] = useState(false);
+    const [isActivitiesOpen, setIsActivitiesOpen] = useState(false);
     const [inboxSubTeams, setInboxSubTeams] = useState([]); // Kullanıcının takımları
     const [quickCounts, setQuickCounts] = useState({ calls: 0, meetings: 0, tasks: 0 }); // Quick action badge counts
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
     const [isCollapsed, setIsCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar-collapsed');
@@ -45,6 +47,7 @@ const Sidebar = () => {
     ];
 
     const analyticsSubItems = [
+        { path: '/ceo-report', icon: BarChart3, label: 'Dashboard' },
         { path: '/analytics', icon: BarChart3, label: t('analytics.title') },
         { path: '/agent-performance', icon: Activity, label: 'Agent Performansları' },
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },
@@ -114,11 +117,11 @@ const Sidebar = () => {
             if (!currentWorkspace?.id) return;
             try {
                 const { activityAPI } = await import('../../services/activity.api');
-                const data = await activityAPI.getPlannedActivities(currentWorkspace.id);
-                const acts = Array.isArray(data) ? data : (data?.data || []);
-                const calls = acts.filter(a => a.type === 'CALL' && a.status === 'PLANNED').length;
-                const meetings = acts.filter(a => a.type === 'MEETING' && a.status === 'PLANNED').length;
-                const tasks = acts.filter(a => a.type === 'TASK' && a.status === 'PLANNED').length;
+                const data = await activityAPI.getWorkspaceActivities(currentWorkspace.id, { status: 'PLANNED', view: 'mine' });
+                const acts = data?.activities || [];
+                const calls = acts.filter(a => a.type === 'CALL').length;
+                const meetings = acts.filter(a => a.type === 'MEETING').length;
+                const tasks = acts.filter(a => a.type === 'TASK').length;
                 setQuickCounts({ calls, meetings, tasks });
             } catch {}
         };
@@ -159,6 +162,18 @@ const Sidebar = () => {
         localStorage.setItem('sidebar-collapsed', String(newState));
         window.dispatchEvent(new CustomEvent('sidebar-toggle', { detail: { collapsed: newState } }));
     };
+
+    // Auto-open/close submenus based on active route
+    useEffect(() => {
+        const path = location.pathname;
+        setIsInboxOpen(path === '/inbox' || path === '/');
+        setIsContactsOpen(path === '/customers');
+        setIsActivitiesOpen(path.startsWith('/activities') || path === '/calendar');
+        setIsRealEstateOpen(path.startsWith('/real-estate'));
+        setIsSalesOpen(['/quotes', '/orders', '/invoices'].some(p => path === p));
+        setIsAnalyticsOpen(['/ceo-report', '/analytics', '/agent-performance', '/call-analytics', '/ai-call-analytics'].some(p => path === p));
+        setIsSettingsOpen(['/channels', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
+    }, [location.pathname]);
 
 
 
@@ -249,7 +264,6 @@ const Sidebar = () => {
 
                 <div className="sidebar-content">
                     <div className="sidebar-section">
-                        {!isCollapsed && <h3 className="section-title">BUSINESS SUITE</h3>}
                         <nav className="sidebar-nav">
                             {filteredMenuItems.map((item) => {
                                 const isActive = location.pathname === item.path || (item.path === '/inbox' && location.pathname === '/');
@@ -549,48 +563,136 @@ const Sidebar = () => {
                 </div>
 
                 <div className="sidebar-footer">
-                    {/* Quick Access Actions — Bildirimler üstünde */}
-                    <div className={`sidebar-quick-actions ${isCollapsed ? 'collapsed' : ''}`}>
-                        <button
-                            className="quick-action-btn"
-                            title="Aramalarım"
-                            onClick={() => navigate('/activities/calls')}
-                        >
-                            <PhoneCall size={18} />
-                            {quickCounts.calls > 0 && <span className="qa-badge">{quickCounts.calls > 99 ? '99+' : quickCounts.calls}</span>}
-                        </button>
-                        <button
-                            className="quick-action-btn"
-                            title="Görüşmelerim"
-                            onClick={() => navigate('/activities/meetings')}
-                        >
-                            <Handshake size={18} />
-                            {quickCounts.meetings > 0 && <span className="qa-badge">{quickCounts.meetings > 99 ? '99+' : quickCounts.meetings}</span>}
-                        </button>
-                        <button
-                            className="quick-action-btn"
-                            title="Görevlerim"
-                            onClick={() => navigate('/activities/tasks')}
-                        >
-                            <ListTodo size={18} />
-                            {quickCounts.tasks > 0 && <span className="qa-badge">{quickCounts.tasks > 99 ? '99+' : quickCounts.tasks}</span>}
-                        </button>
-                        <button
-                            className="quick-action-btn"
-                            title="Müşterilerim"
-                            onClick={() => navigate('/customers?tab=mine')}
-                        >
-                            <UserCheck size={18} />
-                        </button>
-                    </div>
-                    <NotificationPanel isCollapsed={isCollapsed} />
-                    <div className="sidebar-profile-row">
-                        <button onClick={handleLogout} className="logout-button" title={t('nav.logout')}>
-                            <LogOut size={16} className="nav-icon" />
-                        </button>
+                    {/* Profile Card — Her zaman görünür, çekmece tetikleyici */}
+                    <div className={`sidebar-profile-card ${isCollapsed ? 'collapsed' : ''}`}>
+                        <div className="profile-card-avatar" onClick={() => !isCollapsed && setIsProfileMenuOpen(v => !v)}>
+                            {user?.avatar ? (
+                                <img src={user.avatar} alt="" className="profile-avatar-img" />
+                            ) : (
+                                <span className="profile-avatar-initial">{(user?.name || 'U').charAt(0).toUpperCase()}</span>
+                            )}
+                        </div>
                         {!isCollapsed && (
-                            <span className="sidebar-profile-name">{user?.name || 'Profil'}</span>
+                            <>
+                                <div className="profile-card-info" onClick={() => setIsProfileMenuOpen(v => !v)}>
+                                    <span className="profile-card-name">{user?.name || 'Kullanıcı'}</span>
+                                    <span className="profile-card-role">{user?.role === 'SUPER_ADMIN' ? 'Admin' : 'Kullanıcı'}</span>
+                                </div>
+                                <button
+                                    className={`drawer-toggle-btn ${isDrawerOpen ? 'open' : ''}`}
+                                    onClick={() => setIsDrawerOpen(v => !v)}
+                                    title={isDrawerOpen ? 'Menüyü kapat' : 'Hızlı erişim'}
+                                >
+                                    <ChevronDown size={16} style={{ transform: isDrawerOpen ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s ease' }} />
+                                </button>
+                            </>
                         )}
+
+                        {/* Profile Popup Menu */}
+                        {isProfileMenuOpen && !isCollapsed && (
+                            <div className="profile-menu-popup">
+                                <div className="profile-menu-header">
+                                    <div className="profile-menu-avatar">
+                                        {user?.avatar ? (
+                                            <img src={user.avatar} alt="" />
+                                        ) : (
+                                            <span>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
+                                        )}
+                                    </div>
+                                    <div className="profile-menu-info">
+                                        <strong>{user?.name}</strong>
+                                        <small>{user?.email}</small>
+                                    </div>
+                                </div>
+                                <div className="profile-menu-divider" />
+                                <button className="profile-menu-item" onClick={() => { navigate('/settings'); setIsProfileMenuOpen(false); }}>
+                                    <Settings size={15} />
+                                    <span>Profil Ayarları</span>
+                                </button>
+                                <button className="profile-menu-item" onClick={() => { setIsProfileMenuOpen(false); alert('Şifre değiştirme sayfasına yönlendirilecek'); }}>
+                                    <Database size={15} />
+                                    <span>Şifre Değiştir</span>
+                                </button>
+                                <div className="profile-menu-divider" />
+                                <button className="profile-menu-item danger" onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }}>
+                                    <LogOut size={15} />
+                                    <span>Çıkış Yap</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Drawer Content — Yukarı doğru açılan çekmece */}
+                    <div className={`sidebar-drawer ${isDrawerOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
+                        {/* Quick Access Grid */}
+                        <div className={`sidebar-quick-card ${isCollapsed ? 'collapsed' : ''}`}>
+                            <div className="quick-card-grid">
+                                <button
+                                    className={`quick-grid-btn ${location.pathname === '/activities/calls' ? 'active' : ''}`}
+                                    title="Aramalarım"
+                                    onClick={() => navigate('/activities/calls?view=mine')}
+                                >
+                                    <PhoneCall size={17} />
+                                    {!isCollapsed && <span>Aramalarım</span>}
+                                    {quickCounts.calls > 0 && <span className="qc-badge">{quickCounts.calls > 99 ? '99+' : quickCounts.calls}</span>}
+                                </button>
+                                <button
+                                    className={`quick-grid-btn ${location.pathname === '/activities/meetings' ? 'active' : ''}`}
+                                    title="Görüşmelerim"
+                                    onClick={() => navigate('/activities/meetings?view=mine')}
+                                >
+                                    <Handshake size={17} />
+                                    {!isCollapsed && <span>Görüşmem</span>}
+                                    {quickCounts.meetings > 0 && <span className="qc-badge">{quickCounts.meetings > 99 ? '99+' : quickCounts.meetings}</span>}
+                                </button>
+                                <button
+                                    className={`quick-grid-btn ${location.pathname === '/activities/tasks' ? 'active' : ''}`}
+                                    title="Görevlerim"
+                                    onClick={() => navigate('/activities/tasks?view=mine')}
+                                >
+                                    <ListTodo size={17} />
+                                    {!isCollapsed && <span>Görevim</span>}
+                                    {quickCounts.tasks > 0 && <span className="qc-badge">{quickCounts.tasks > 99 ? '99+' : quickCounts.tasks}</span>}
+                                </button>
+                                <button
+                                    className={`quick-grid-btn ${location.pathname === '/quotes' ? 'active' : ''}`}
+                                    title="Tekliflerim"
+                                    onClick={() => navigate('/quotes?view=mine')}
+                                >
+                                    <FileSignature size={17} />
+                                    {!isCollapsed && <span>Teklifim</span>}
+                                </button>
+                                <button
+                                    className={`quick-grid-btn ${location.pathname === '/orders' ? 'active' : ''}`}
+                                    title="Satışlarım"
+                                    onClick={() => navigate('/orders?view=mine')}
+                                >
+                                    <ShoppingCart size={17} />
+                                    {!isCollapsed && <span>Satışım</span>}
+                                </button>
+                                <button
+                                    className={`quick-grid-btn ${location.pathname === '/customers' && location.search.includes('mine') ? 'active' : ''}`}
+                                    title="Müşterilerim"
+                                    onClick={() => navigate('/customers?tab=mine')}
+                                >
+                                    <UserCheck size={17} />
+                                    {!isCollapsed && <span>Müşterim</span>}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Takvim + Notifications */}
+                        <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`}>
+                            <button
+                                className={`footer-row-btn ${location.pathname.startsWith('/activities/calendar') ? 'active' : ''}`}
+                                title="Takvimim"
+                                onClick={() => navigate('/activities/calendar')}
+                            >
+                                <Calendar size={16} />
+                                {!isCollapsed && <span>Takvim</span>}
+                            </button>
+                            <NotificationPanel isCollapsed={isCollapsed} />
+                        </div>
                     </div>
                 </div>
             </div>

@@ -23,6 +23,7 @@ import Analytics from './pages/Analytics/Analytics';
 import AramaAnalizi from './pages/Analytics/AramaAnalizi';
 import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
+import CeoReport from './pages/CeoReport/CeoReport';
 import Calendar from './pages/Calendar/Calendar';
 import Activities from './pages/Activities/Activities';
 import Automations from './pages/Automations/Automations';
@@ -94,6 +95,7 @@ function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="analytics" element={<Analytics />} />
+              <Route path="ceo-report" element={<CeoReport />} />
               <Route path="call-analytics" element={<AramaAnalizi />} />
               <Route path="agent-performance" element={<AgentPerformance />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
