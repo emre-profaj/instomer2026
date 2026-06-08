@@ -1336,14 +1336,18 @@ export const getContactAnalytics = async (req, res) => {
         }
 
         // Telefon numarası olan kişiler (seçili tarih aralığında oluşturulanlar)
-        const contactsWithPhone = await prisma.contact.count({
-            where: {
-                conversations: { some: { workspaceId } },
-                phone: { not: null },
-                NOT: { phone: '' },
-                ...contactDateFilter
-            }
-        });
+        // getDailyContactStats ile aynı filtre: OR workspaceId + conversations
+        const phoneContactWhere = {
+            OR: [
+                { workspaceId },
+                { conversations: { some: { workspaceId } } }
+            ],
+            isDeleted: false,
+            phone: { not: null },
+            NOT: { phone: '' },
+            ...contactDateFilter
+        };
+        const contactsWithPhone = await prisma.contact.count({ where: phoneContactWhere });
 
         // CALL aktivitesi olan unique kişi sayısı
         const activityDateFilter = {};
@@ -1408,14 +1412,9 @@ export const getContactAnalytics = async (req, res) => {
             }
             if (a.assignee) d.assigneeName = a.assignee.name;
         }
-        // Numaralı tüm kişilerin listesi (popup için)
+        // Numaralı tüm kişilerin listesi (popup için) — aynı filtre
         const allContactsWithPhone = await prisma.contact.findMany({
-            where: {
-                conversations: { some: { workspaceId } },
-                phone: { not: null },
-                NOT: { phone: '' },
-                ...contactDateFilter
-            },
+            where: phoneContactWhere,
             select: {
                 id: true,
                 name: true,
