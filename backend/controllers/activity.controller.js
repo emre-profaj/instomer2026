@@ -54,7 +54,7 @@ export const createActivity = async (req, res) => {
                 title,
                 description,
                 dueDate: dueDate ? new Date(dueDate) : null,
-                assignedToId: assignedToId ? assignedToId : null,
+                assignedToId: assignedToId ? assignedToId : (resolvedIsCompleted ? userId : null),
                 teamId: teamId ? teamId : null,
                 createdBy: userId,
                 status: resolvedStatus,
@@ -62,8 +62,8 @@ export const createActivity = async (req, res) => {
                 source: req.body.source || 'MANUAL',
                 priority: req.body.priority || 'NORMAL',
                 isCompleted: resolvedIsCompleted,
-                // Atama bilgisi
-                ...(assignedToId ? {
+                // Atama bilgisi — açıkça atama yapıldıysa ya da oto-atama varsa
+                ...((assignedToId || resolvedIsCompleted) ? {
                     assignedById: req.user?.id || null,
                     assignedByType: req.user?.id ? 'USER' : 'SYSTEM',
                     assignedAt: new Date()
@@ -614,18 +614,26 @@ export const completeActivity = async (req, res) => {
     try {
         const { activityId } = req.params;
         const { result } = req.body;
+        const userId = req.user?.id || null;
 
         const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
         if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
 
+        const updateData = {
+            status: 'COMPLETED',
+            isCompleted: true,
+            completedAt: new Date(),
+            result: result || null
+        };
+
+        // Eğer henüz kimseye atanmamışsa → tamamlayan kişi = atanan kişi
+        if (!existing.assignedToId && userId) {
+            updateData.assignedToId = userId;
+        }
+
         const updated = await prisma.contactActivity.update({
             where: { id: activityId },
-            data: {
-                status: 'COMPLETED',
-                isCompleted: true,
-                completedAt: new Date(),
-                result: result || null
-            },
+            data: updateData,
             include: {
                 creator: { select: { name: true, role: true } },
                 assignee: { select: { name: true } },

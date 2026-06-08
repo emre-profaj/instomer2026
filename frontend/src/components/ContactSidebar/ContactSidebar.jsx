@@ -2376,6 +2376,32 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>{selectedDealDetail.notes}</div>
                                                 </div>
                                             )}
+                                            {/* Düzenle Butonu */}
+                                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #e5e7eb' }}>
+                                                <button onClick={() => {
+                                                    const d = selectedDealDetail;
+                                                    const prods = (() => {
+                                                        try {
+                                                            const p = typeof d.products === 'string' ? JSON.parse(d.products) : d.products;
+                                                            return Array.isArray(p) && p.length > 0 ? p : [{ name: '', quantity: 1, unitPrice: 0 }];
+                                                        } catch { return [{ name: '', quantity: 1, unitPrice: 0 }]; }
+                                                    })();
+                                                    setSelectedDealDetail(null);
+                                                    if (d.stage === 'QUOTE') {
+                                                        setQuoteFormData({ title: d.title || '', description: d.description || '', amount: d.amount || '', currency: d.currency || 'TRY', products: prods, notes: d.notes || '', _editId: d.id });
+                                                        setShowQuoteForm(true);
+                                                    } else if (d.stage === 'ORDER') {
+                                                        setOrderFormData({ title: d.title || '', description: d.description || '', currency: d.currency || 'TRY', products: prods, notes: d.notes || '', _editId: d.id });
+                                                        setShowOrderForm(true);
+                                                    } else if (d.stage === 'INVOICE') {
+                                                        setInvoiceFormData({ title: d.title || '', currency: d.currency || 'TRY', taxRate: d.taxRate || 20, dueDate: d.dueDate ? new Date(d.dueDate).toISOString().slice(0, 10) : '', products: prods, notes: d.notes || '', _editId: d.id });
+                                                        setShowInvoiceForm(true);
+                                                    }
+                                                }}
+                                                    style={{ flex: 1, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px 14px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                                                    <Pencil size={13} /> Düzenle
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -2482,7 +2508,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             )}
                                                             {item.assignedToName && (
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#6366f1', marginBottom: '4px' }}>
-                                                                    <User size={11} /> {item.assignedToName}
+                                                                    <User size={11} /> 👤 {item.assignedToName}
+                                                                </div>
+                                                            )}
+                                                            {item.assignedByName && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#94a3b8', marginBottom: '4px' }}>
+                                                                    Kaydeden: {item.assignedByType === 'SYSTEM' || item.assignedByType === 'AUTOMATION' ? '🤖 Sistem' : item.assignedByName}
+                                                                </div>
+                                                            )}
+                                                            {item.completedByName && (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#16a34a', marginBottom: '4px' }}>
+                                                                    ✅ Tamamlayan: {item.completedByName}
                                                                 </div>
                                                             )}
                                                             {(item.content || item.description) && (
@@ -2490,30 +2526,32 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     {item.content || item.description}
                                                                 </div>
                                                             )}
-                                                            {/* Aksiyon butonları — sadece tamamlanmamış olanlar için */}
-                                                            {item.status && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
-                                                                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                                            {/* Aksiyon butonları */}
+                                                            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                                                                {item.status && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
                                                                     <button onClick={() => { setExpandedMilestone(null); setCompletingActivity(item); setCompleteResult(''); }}
                                                                         style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                         <Check size={13} /> Tamamla
                                                                     </button>
-                                                                    <button onClick={() => {
-                                                                        setExpandedMilestone(null);
-                                                                        setEditingActivityId(item.id);
-                                                                        setActivityForm({ type: item.type || 'CALL', title: item.title || '', description: item.content || item.description || '',
-                                                                            dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
-                                                                            assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '' });
-                                                                        setShowActivityModal(true);
-                                                                    }}
-                                                                        style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                                                        <Pencil size={12} /> Düzenle
-                                                                    </button>
+                                                                )}
+                                                                <button onClick={() => {
+                                                                    setExpandedMilestone(null);
+                                                                    setEditingActivityId(item.id);
+                                                                    setActivityForm({ type: item.type || 'CALL', title: item.title || '', description: item.content || item.description || '',
+                                                                        dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
+                                                                        assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '' });
+                                                                    setShowActivityModal(true);
+                                                                }}
+                                                                    style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    <Pencil size={12} /> Düzenle
+                                                                </button>
+                                                                {item.status && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
                                                                     <button onClick={() => { setExpandedMilestone(null); handleDeleteActivity(item.id); }}
                                                                         style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                         <Trash2 size={12} /> Sil
                                                                     </button>
-                                                                </div>
-                                                            )}
+                                                                )}
+                                                            </div>
                                                         </div>
                                                         );
                                                     })}
