@@ -1247,6 +1247,57 @@
     box-shadow: 0 4px 12px rgba(248, 113, 113, 0.5);
 }
 
+.customers-bulk-status-btn {
+    background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+}
+
+.customers-bulk-status-btn:hover {
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
+}
+
+/* Bulk Status Stage Selection Grid */
+.bulk-status-stage-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+}
+
+.bulk-status-stage-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--stage-bg, #f3f4f6);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+.bulk-status-stage-option:hover {
+    border-color: var(--stage-color, #6366f1);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.bulk-status-stage-option.selected {
+    border-color: var(--stage-color, #6366f1);
+    background: var(--stage-bg, #f3f4f6);
+    box-shadow: 0 0 0 2px var(--stage-color, #6366f1), 0 4px 12px rgba(0, 0, 0, 0.1);
+    font-weight: 600;
+}
+
+.bulk-status-stage-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 /* Bulk Modal */
 .bulk-modal {
     max-width: 520px;

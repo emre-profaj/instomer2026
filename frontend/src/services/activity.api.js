@@ -58,7 +58,22 @@ export const activityAPI = {
         if (filters.teamId) params.teamId = filters.teamId;
         if (filters.dateFrom) params.dateFrom = filters.dateFrom;
         if (filters.dateTo) params.dateTo = filters.dateTo;
+        if (filters.source) params.source = filters.source;
         const response = await api.get(`/activities/workspace/${workspaceId}/list`, { params });
+        return response.data;
+    },
+
+    // Kişi bazlı en son AI arama kaydını getir
+    getContactRetellCall: async (contactId, activityCreatedAt) => {
+        const params = {};
+        if (activityCreatedAt) params.activityCreatedAt = activityCreatedAt;
+        const response = await api.get(`/activities/contacts/${contactId}/retell-call`, { params });
+        return response.data;
+    },
+
+    // Metni Türkçeye çevir
+    translateText: async (workspaceId, text) => {
+        const response = await api.post(`/activities/workspace/${workspaceId}/translate`, { text });
         return response.data;
     }
 };

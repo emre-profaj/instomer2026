@@ -3437,3 +3437,30 @@
     color: #dc2626 !important;
     font-weight: 600;
 }
+
+/* Event milestones (Atama, Transfer, Aşama Değişikliği) */
+.journey-step.event-step {
+    min-height: 36px;
+}
+
+.journey-step.event-step .journey-dot {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+}
+
+.journey-step.event-step .journey-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.journey-step.event-step .journey-detail {
+    font-size: 0.65rem;
+    font-style: italic;
+    color: #94a3b8;
+}
+
+.journey-step.event-step .journey-content {
+    padding-bottom: 8px;
+}

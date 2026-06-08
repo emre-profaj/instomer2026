@@ -197,6 +197,13 @@ const Customers = () => {
     const [retellAgents, setRetellAgents] = useState([]);
     const [selectedAgentId, setSelectedAgentId] = useState('');
 
+    // Bulk Status Change state
+    const [showBulkStatus, setShowBulkStatus] = useState(false);
+    const [bulkStatusFunnel, setBulkStatusFunnel] = useState('');
+    const [bulkStatusStage, setBulkStatusStage] = useState('');
+    const [bulkStatusRunning, setBulkStatusRunning] = useState(false);
+    const [bulkStatusProgress, setBulkStatusProgress] = useState({ done: 0, total: 0, errors: 0 });
+
     // Excel Import state
     const [showImportModal, setShowImportModal] = useState(false);
     const [importData, setImportData] = useState([]);
@@ -747,6 +754,74 @@ const Customers = () => {
                 }
             }
         });
+    };
+
+    // Bulk Status Change handler
+    const handleBulkStatusChange = async () => {
+        if (selectedIds.length === 0 || !bulkStatusStage) return;
+
+        // Find selected funnel and stage info
+        let selectedFunnelObj = null;
+        let selectedStageObj = null;
+        for (const f of availableFunnels) {
+            const s = f.stages?.find(st => st.id === bulkStatusStage);
+            if (s) {
+                selectedFunnelObj = f;
+                selectedStageObj = s;
+                break;
+            }
+        }
+
+        if (!selectedStageObj) {
+            alert('Lütfen geçerli bir aşama seçin.');
+            return;
+        }
+
+        setBulkStatusRunning(true);
+        const total = selectedIds.length;
+        setBulkStatusProgress({ done: 0, total, errors: 0 });
+        let errors = 0;
+
+        // Get full contact data to find their conversations
+        const pool = allSelectedContacts.length > 0 ? allSelectedContacts : contacts;
+
+        for (let i = 0; i < selectedIds.length; i++) {
+            try {
+                // 1. Update contact record
+                await contactAPI.update(currentWorkspace.id, selectedIds[i], {
+                    funnelStageId: selectedStageObj.id,
+                    funnelType: selectedFunnelObj.id
+                });
+
+                // 2. Update all conversations of this contact
+                const contact = pool.find(c => c.id === selectedIds[i]);
+                if (contact?.conversations) {
+                    for (const conv of contact.conversations) {
+                        try {
+                            await conversationAPI.updateFunnel(currentWorkspace.id, conv.id || conv, {
+                                funnelStageId: selectedStageObj.id,
+                                funnelType: selectedFunnelObj.id
+                            });
+                        } catch (convErr) {
+                            // Non-fatal: conversation update failed
+                            console.warn(`Conv update failed for ${conv.id || conv}:`, convErr);
+                        }
+                    }
+                }
+            } catch (e) {
+                errors++;
+                console.error(`Error updating contact ${selectedIds[i]}:`, e);
+            }
+            setBulkStatusProgress({ done: i + 1, total, errors });
+        }
+
+        setBulkStatusRunning(false);
+        alert(`✅ ${total - errors} / ${total} kişinin durumu güncellendi.`);
+        setShowBulkStatus(false);
+        setBulkStatusFunnel('');
+        setBulkStatusStage('');
+        setSelectedIds([]);
+        loadContacts();
     };
 
     const handleDeleteContact = async (id) => {
@@ -1977,6 +2052,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         <PhoneCall size={16} />
                                         Ara
                                     </button>
+                                    <button className="customers-bulk-action-btn customers-bulk-status-btn" onClick={() => setShowBulkStatus(true)}>
+                                        <ArrowUpDown size={16} />
+                                        Durum Değiştir
+                                    </button>
                                     {user?.role === 'SUPER_ADMIN' && (
                                     <button className="customers-bulk-delete-btn" onClick={handleDeleteSelected} disabled={deleting}>
                                         <Trash2 size={16} />
@@ -2248,6 +2327,79 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             </>
                                         );
                                     })()}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ========== BULK STATUS CHANGE MODAL ========== */}
+                    {showBulkStatus && (
+                        <div className="modal-overlay" onClick={() => !bulkStatusRunning && setShowBulkStatus(false)}>
+                            <div className="modal-content bulk-modal" onClick={e => e.stopPropagation()}>
+                                <button className="modal-close" onClick={() => !bulkStatusRunning && setShowBulkStatus(false)}><X size={20} /></button>
+                                <div className="modal-header">
+                                    <h2>🔄 Toplu Durum Değiştir</h2>
+                                </div>
+                                <div style={{ padding: '1.5rem' }}>
+                                    <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
+                                        <strong>{selectedIds.length}</strong> kişinin durumunu topluca değiştireceksiniz.
+                                    </p>
+
+                                    <div className="form-group" style={{ marginBottom: '16px' }}>
+                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#4b5563', marginBottom: '8px' }}>Satış Akışı Seçin</label>
+                                        <select
+                                            className="form-input"
+                                            value={bulkStatusFunnel}
+                                            onChange={(e) => { setBulkStatusFunnel(e.target.value); setBulkStatusStage(''); }}
+                                        >
+                                            <option value="">-- Akış seçin --</option>
+                                            {availableFunnels.map(f => (
+                                                <option key={f.id} value={f.id}>{f.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {bulkStatusFunnel && (() => {
+                                        const funnel = availableFunnels.find(f => f.id === bulkStatusFunnel);
+                                        const stages = funnel?.stages || [];
+                                        return (
+                                            <div className="form-group" style={{ marginBottom: '16px' }}>
+                                                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#4b5563', marginBottom: '8px' }}>Aşama Seçin</label>
+                                                <div className="bulk-status-stage-grid">
+                                                    {stages.map(stage => (
+                                                        <button
+                                                            key={stage.id}
+                                                            className={`bulk-status-stage-option ${bulkStatusStage === stage.id ? 'selected' : ''}`}
+                                                            onClick={() => setBulkStatusStage(stage.id)}
+                                                            style={{
+                                                                '--stage-color': stage.color || '#6366f1',
+                                                                '--stage-bg': (stage.color || '#6366f1') + '15',
+                                                            }}
+                                                        >
+                                                            <span className="bulk-status-stage-dot" style={{ backgroundColor: stage.color || '#6366f1' }} />
+                                                            <span>{stage.name}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {bulkStatusRunning && (
+                                        <div className="customers-bulk-progress">
+                                            <div className="customers-bulk-progress-bar">
+                                                <div className="customers-bulk-progress-fill" style={{ width: `${(bulkStatusProgress.done / bulkStatusProgress.total) * 100}%` }} />
+                                            </div>
+                                            <span>{bulkStatusProgress.done} / {bulkStatusProgress.total} güncellendi{bulkStatusProgress.errors > 0 && ` (${bulkStatusProgress.errors} hata)`}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="modal-actions">
+                                        <button className="btn btn-outline" onClick={() => setShowBulkStatus(false)} disabled={bulkStatusRunning}>İptal</button>
+                                        <button className="btn btn-primary" disabled={!bulkStatusStage || bulkStatusRunning} onClick={handleBulkStatusChange}>
+                                            {bulkStatusRunning ? <><Loader size={14} className="spin" /> Güncelleniyor...</> : <><ArrowUpDown size={14} /> Uygula</>}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

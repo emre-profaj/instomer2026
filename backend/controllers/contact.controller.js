@@ -470,6 +470,7 @@ export const getContacts = async (req, res) => {
                     conversations: {
                         where: { workspaceId: workspaceId },
                         select: {
+                            id: true,
                             channel: true,
                             createdAt: true,
                             lastMessageAt: true,
@@ -550,6 +551,7 @@ export const getContacts = async (req, res) => {
                     conversations: {
                         where: { workspaceId: workspaceId },
                         select: {
+                            id: true,
                             channel: true,
                             createdAt: true,
                             lastMessageAt: true,

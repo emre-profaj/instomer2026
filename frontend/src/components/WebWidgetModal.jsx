@@ -21,6 +21,7 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
     const [width, setWidth] = useState(350);
     const [assignedBotId, setAssignedBotId] = useState('');
     const [prechatFormEnabled, setPrechatFormEnabled] = useState(false);
+    const [ignoreSchedule, setIgnoreSchedule] = useState(true);
     const [availableBots, setAvailableBots] = useState([]);
 
     useEffect(() => {
@@ -53,6 +54,7 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
         setWidth(widget.width || 350);
         setAssignedBotId(widget.assignedBotId || '');
         setPrechatFormEnabled(widget.prechatFormEnabled !== undefined ? widget.prechatFormEnabled : true);
+        setIgnoreSchedule(widget.ignoreSchedule !== undefined ? widget.ignoreSchedule : true);
     };
 
     const handleSave = async () => {
@@ -75,7 +77,8 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
                 position,
                 width,
                 assignedBotId: assignedBotId || null,
-                prechatFormEnabled
+                prechatFormEnabled,
+                ignoreSchedule
             };
 
             if (mode === 'create') {
@@ -272,6 +275,21 @@ const WebWidgetModal = ({ workspaceId, mode = 'create', widget = null, onClose, 
                                         {prechatFormEnabled
                                             ? '✅ Ziyaretçiler sohbet başlamadan önce iletişim bilgilerini dolduracak.'
                                             : '⚠️ Ziyaretçiler doğrudan sohbete başlayacak.'}
+                                    </small>
+                                </div>
+                                <div className="modal-form-group">
+                                    <label className="checkbox-label">
+                                        <input
+                                            type="checkbox"
+                                            checked={ignoreSchedule}
+                                            onChange={(e) => setIgnoreSchedule(e.target.checked)}
+                                        />
+                                        🕐 7/24 Aktif (Bot Zamanlamasını Yok Say)
+                                    </label>
+                                    <small className="hint">
+                                        {ignoreSchedule
+                                            ? '✅ Widget, botun zamanlama ayarından bağımsız olarak 7/24 cevap verecek.'
+                                            : '⚠️ Widget, botun çalışma saatlerine göre yanıt verecek.'}
                                     </small>
                                 </div>
                             </div>

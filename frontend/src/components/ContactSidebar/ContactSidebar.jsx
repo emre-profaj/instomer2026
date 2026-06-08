@@ -1890,10 +1890,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 const failedCalls = calls.filter(i => i.status === 'CANCELLED');
                                 if (completedCalls.length > 0) {
                                     const lastCall = completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                    // Arama sonuç notundan duygu analizi
+                                    const callResult = (lastCall.content || lastCall.description || lastCall.result || '').toLowerCase();
+                                    let callSentiment = '📞';
+                                    const positiveKeywords = ['bilgi verildi', 'ilgili', 'randevu', 'olumlu', 'başarılı', 'tamamlandı', 'satış', 'anlaştık', 'gelecek', 'kabul', 'onaylandı', 'memnun', 'teşekkür'];
+                                    const negativeKeywords = ['ulaşılamadı', 'ilgisiz', 'olumsuz', 'başarısız', 'iptal', 'ret', 'reddetti', 'cevap yok', 'meşgul', 'kapalı', 'yanlış numara', 'ilgilenmiyor', 'vazgeçti'];
+                                    if (positiveKeywords.some(k => callResult.includes(k))) callSentiment = '😊';
+                                    else if (negativeKeywords.some(k => callResult.includes(k))) callSentiment = '😞';
+                                    else if (callResult.length > 0) callSentiment = '😐';
                                     milestones.push({
                                         icon: '📞',
-                                        label: `Arama Yapıldı${completedCalls.length > 1 ? ` (${completedCalls.length}x)` : ''}`,
-                                        detail: lastCall.content || lastCall.description || 'Tamamlandı',
+                                        label: `Arama Yapıldı${completedCalls.length > 1 ? ` (${completedCalls.length}x)` : ''} ${callSentiment}`,
+                                        detail: [
+                                            lastCall.assignedToName ? `→ ${lastCall.assignedToName}` : null,
+                                            lastCall.content || lastCall.description || 'Tamamlandı'
+                                        ].filter(Boolean).join('  •  '),
                                         date: new Date(lastCall.dueDate || lastCall.date),
                                         color: '#16a34a',
                                         done: true,
@@ -1980,10 +1991,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 // 8.5 AI Aramaları
                                 if (aiCalls.length > 0) {
                                     const lastAiCall = aiCalls[0];
+                                    // Retell sentiment → emoji
+                                    const sentimentEmoji = lastAiCall.sentiment === 'Positive' ? '😊' 
+                                        : lastAiCall.sentiment === 'Negative' ? '😞' 
+                                        : lastAiCall.sentiment === 'Neutral' ? '😐' : '';
+                                    const successText = lastAiCall.callSuccessful ? '✅ Başarılı' : '❌ Başarısız';
                                     milestones.push({
                                         icon: '🤖',
-                                        label: `AI Araması${aiCalls.length > 1 ? ` (${aiCalls.length}x)` : ''}`,
-                                        detail: lastAiCall.summary ? lastAiCall.summary.substring(0, 60) + '...' : (lastAiCall.callSuccessful ? 'Başarılı' : 'Başarısız'),
+                                        label: `AI Araması${aiCalls.length > 1 ? ` (${aiCalls.length}x)` : ''} ${sentimentEmoji}`,
+                                        detail: [
+                                            successText,
+                                            lastAiCall.summary ? lastAiCall.summary.substring(0, 50) : null
+                                        ].filter(Boolean).join(' — '),
                                         date: new Date(lastAiCall.createdAt),
                                         color: lastAiCall.callSuccessful ? '#16a34a' : '#ef4444',
                                         done: true,
@@ -2002,10 +2021,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     milestones.push({
                                         icon: isOverdue ? '⚠️' : '🔔',
                                         label: isOverdue ? 'Gecikmiş Arama' : 'Planlanan Arama',
-                                        detail: [
-                                            nextCall.assignedToName ? `→ ${nextCall.assignedToName}` : null,
-                                            nextCall.callTopic ? `📋 ${nextCall.callTopic}` : null
-                                        ].filter(Boolean).join('  •  ') || null,
+                                        detail: (() => {
+                                            const parts = [];
+                                            if (nextCall.assignedToName) parts.push(`→ ${nextCall.assignedToName}`);
+                                            // Konu: callTopic alanından veya content içinden parse et
+                                            let topic = nextCall.callTopic;
+                                            if (!topic && nextCall.content) {
+                                                const match = nextCall.content.match(/Konu:\s*([^\s]+(?:\s+[^\s]+)*?)(?:\s+Numara:|\s+Kaynak:|\s*$)/i);
+                                                if (match) topic = match[1].trim();
+                                            }
+                                            if (topic) parts.push(`📋 ${topic}`);
+                                            return parts.length > 0 ? parts.join('  •  ') : null;
+                                        })(),
                                         date: callDate,
                                         color: isOverdue ? '#dc2626' : '#f87171',
                                         done: false,
@@ -2015,7 +2042,91 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     });
                                 }
 
-                                // Sort by date
+                                // 9.5 Notlar (Internal Notes + Contact Notes)
+                                const noteItems = allTimeline.filter(i => i.type === 'NOTE' && i.sourceType === 'ACTIVITY');
+                                noteItems.forEach(note => {
+                                    const noteContent = (note.content || '').replace(/<[^>]*>/g, '').substring(0, 60);
+                                    milestones.push({
+                                        icon: '📝',
+                                        label: 'Not Eklendi',
+                                        detail: [
+                                            note.labelName && note.labelName !== 'Kişi Notu' ? `${note.labelName}` : null,
+                                            noteContent || null
+                                        ].filter(Boolean).join(' — ') || null,
+                                        date: new Date(note.date),
+                                        color: '#eab308',
+                                        done: true,
+                                        _type: 'NOTE'
+                                    });
+                                });
+
+                                // 10. Conversation Events (Atama, Transfer, Aşama Değişikliği)
+                                const rawEventItems = allTimeline.filter(i => i.sourceType === 'EVENT');
+                                // Aynı başlık + yakın zaman (60sn) olanları deduplicate et
+                                const seenEvents = new Set();
+                                const eventItems = rawEventItems.filter(evt => {
+                                    const evtTime = new Date(evt.date).getTime();
+                                    const key = `${evt.title}_${Math.floor(evtTime / 60000)}`;
+                                    if (seenEvents.has(key)) return false;
+                                    seenEvents.add(key);
+                                    return true;
+                                });
+                                eventItems.forEach(evt => {
+                                    const eventType = evt.eventType || evt.type;
+                                    let icon = '📌';
+                                    let label = evt.title || '';
+                                    let color = '#64748b';
+                                    let detail = null;
+
+                                    switch (eventType) {
+                                        case 'ASSIGNED':
+                                            icon = '👤';
+                                            color = '#3b82f6';
+                                            label = evt.title || 'Agent Atandı';
+                                            break;
+                                        case 'TRANSFERRED':
+                                            icon = '🔄';
+                                            color = '#8b5cf6';
+                                            label = evt.title || 'Transfer Edildi';
+                                            break;
+                                        case 'STAGE_CHANGED':
+                                            icon = '🏷️';
+                                            color = '#f59e0b';
+                                            label = evt.title || 'Aşama Değişti';
+                                            if (evt.details?.fromStage && evt.details?.toStage) {
+                                                detail = `${evt.details.fromStage} → ${evt.details.toStage}`;
+                                            }
+                                            break;
+                                        case 'FUNNEL_CHANGED':
+                                            icon = '📊';
+                                            color = '#6366f1';
+                                            label = evt.title || 'Akış Değişti';
+                                            if (evt.details?.funnelName) {
+                                                detail = evt.details.funnelName;
+                                            }
+                                            break;
+                                        case 'CLAIMED':
+                                            icon = '✋';
+                                            color = '#10b981';
+                                            label = evt.title || 'Üstlenildi';
+                                            break;
+                                        default:
+                                            break;
+                                    }
+
+                                    milestones.push({
+                                        icon,
+                                        label,
+                                        detail,
+                                        date: new Date(evt.date),
+                                        color,
+                                        done: true,
+                                        _type: 'EVENT',
+                                        _eventType: eventType
+                                    });
+                                });
+
+                                // Sort by date — eskiden yeniye
                                 milestones.sort((a, b) => (a.date || 0) - (b.date || 0));
 
                                 if (milestones.length === 0) return null;
@@ -2042,7 +2153,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 };
                                                 return (
                                                 <div key={idx}
-                                                    className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${m._sourceItems ? ' clickable' : ''}`}
+                                                    className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${m._sourceItems ? ' clickable' : ''}${m._type === 'EVENT' ? ' event-step' : ''}`}
                                                     onClick={m._sourceItems ? handleStepClick : undefined}
                                                     style={m._sourceItems ? { cursor: 'pointer' } : {}}
                                                 >

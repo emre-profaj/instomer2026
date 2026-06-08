@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { activityAPI } from '../../services/activity.api';
-import { contactAPI } from '../../services/api';
+import { contactAPI, workspaceAPI } from '../../services/api';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import '../../components/ContactSidebar/ContactSidebar.css';
-import { Phone, Users, Calendar, CheckCircle2, Clock, AlertCircle, CircleDot, PhoneCall, Handshake, ListTodo, CalendarClock, User, Building2, XCircle, FileText, Search, ArrowUpDown, ClipboardList, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Phone, Users, Calendar, CheckCircle2, Clock, AlertCircle, CircleDot, PhoneCall, Handshake, ListTodo, CalendarClock, User, Building2, XCircle, FileText, Search, ArrowUpDown, ClipboardList, Edit2, Trash2, Save, X, Bot, UserCircle, ChevronDown, Languages, Volume2, Loader2 } from 'lucide-react';
 import './Activities.css';
 
 const PAGE_CONFIG = {
@@ -60,7 +60,52 @@ const Activities = () => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('dueDate_desc'); // dueDate_asc, dueDate_desc, createdAt_asc, createdAt_desc
+    const [sortBy, setSortBy] = useState('dueDate_desc');
+    const [sourceFilter, setSourceFilter] = useState(''); // '', 'AGENT', 'AI_CALL'
+    const [selectedAgentId, setSelectedAgentId] = useState('');
+    const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
+    const [members, setMembers] = useState([]);
+    const agentBtnRef = useRef(null);
+
+    // Load workspace members for agent filter
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        workspaceAPI.getMembers(currentWorkspace.id).then(res => {
+            setMembers(res.data?.members || res.data || []);
+        }).catch(() => {});
+    }, [currentWorkspace?.id]);
+
+    // Close agent dropdown on outside click
+    useEffect(() => {
+        const handler = (e) => {
+            if (agentBtnRef.current && !agentBtnRef.current.contains(e.target)) setAgentDropdownOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    // Unified filter setter — mutually exclusive
+    const setFilter = (type, agentId) => {
+        if (type === 'all') {
+            setViewFilter('all');
+            setSourceFilter('');
+            setSelectedAgentId('');
+        } else if (type === 'mine') {
+            setViewFilter('mine');
+            setSourceFilter('');
+            setSelectedAgentId('');
+        } else if (type === 'agent') {
+            setViewFilter('all');
+            setSourceFilter('AGENT');
+            setSelectedAgentId(agentId || '');
+        } else if (type === 'ai') {
+            setViewFilter('all');
+            setSourceFilter('AI_CALL');
+            setSelectedAgentId('');
+        }
+    };
+
+    const activeFilter = sourceFilter === 'AI_CALL' ? 'ai' : sourceFilter === 'AGENT' ? 'agent' : viewFilter === 'mine' ? 'mine' : 'all';
 
     // ContactSidebar state
     const [selectedContactId, setSelectedContactId] = useState(null);
@@ -69,6 +114,12 @@ const Activities = () => {
     const [selectedActivity, setSelectedActivity] = useState(null);
     const [editNotes, setEditNotes] = useState('');
     const [savingNotes, setSavingNotes] = useState(false);
+
+    // Translate & Audio states
+    const [translatedText, setTranslatedText] = useState('');
+    const [translating, setTranslating] = useState(false);
+    const [retellCall, setRetellCall] = useState(null);
+    const [loadingRetell, setLoadingRetell] = useState(false);
 
     const loadActivities = useCallback(async () => {
         if (!currentWorkspace?.id) return;
@@ -83,7 +134,9 @@ const Activities = () => {
                 status: backendStatus !== 'ALL' ? backendStatus : undefined,
                 view: viewFilter,
                 dateFrom: dateFrom || undefined,
-                dateTo: dateTo || undefined
+                dateTo: dateTo || undefined,
+                source: sourceFilter || undefined,
+                assignedToId: selectedAgentId || undefined
             };
 
             if (config.type === 'APPOINTMENT') {
@@ -141,7 +194,7 @@ const Activities = () => {
         } finally {
             setLoading(false);
         }
-    }, [currentWorkspace?.id, config.type, statusFilter, viewFilter, dateFrom, dateTo, user?.id]);
+    }, [currentWorkspace?.id, config.type, statusFilter, viewFilter, dateFrom, dateTo, user?.id, sourceFilter, selectedAgentId]);
 
     useEffect(() => {
         loadActivities();
@@ -184,8 +237,18 @@ const Activities = () => {
     const handleCardClick = (activity) => {
         setSelectedActivity(activity);
         setEditNotes(activity.description || '');
+        setTranslatedText('');
+        setRetellCall(null);
         if (activity.contact?.id) {
             setSelectedContactId(activity.contact.id);
+        }
+        // Load retell call data for AI calls
+        const cid = activity.contactId || activity.contact?.id;
+        if (activity.source === 'AI_CALL' && cid) {
+            setLoadingRetell(true);
+            activityAPI.getContactRetellCall(cid, activity.createdAt).then(data => {
+                setRetellCall(data);
+            }).catch(() => {}).finally(() => setLoadingRetell(false));
         }
     };
 
@@ -314,6 +377,16 @@ const Activities = () => {
                 {/* Summary Cards — Compact */}
                 <div className="activities-summary">
                     <div
+                        className={`summary-card ${statusFilter === 'ALL' ? 'active' : ''}`}
+                        onClick={() => setStatusFilter('ALL')}
+                        style={{ background: 'linear-gradient(135deg, #f8fafc, #e2e8f0)', color: '#475569' }}
+                    >
+                        <div className="summary-info">
+                            <span className="summary-count">{(summary.planned || 0) + (summary.completed || 0) + (summary.inProgress || 0) + (summary.cancelled || 0)}</span>
+                            <span className="summary-label">Tümü</span>
+                        </div>
+                    </div>
+                    <div
                         className={`summary-card planned ${statusFilter === 'PLANNED' ? 'active' : ''}`}
                         onClick={() => setStatusFilter(statusFilter === 'PLANNED' ? 'ALL' : 'PLANNED')}
                     >
@@ -344,12 +417,81 @@ const Activities = () => {
 
                 {/* Filters — compact */}
                 <div className="activities-filters">
-                    <button className={`filter-btn ${viewFilter === 'all' ? 'active' : ''}`} onClick={() => setViewFilter('all')} style={{ padding: '5px 10px', fontSize: '0.75rem' }}>
+                    <button className={`filter-btn ${activeFilter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')} style={{ padding: '5px 10px', fontSize: '0.75rem' }}>
                         <Users size={12} /> Ekip
                     </button>
-                    <button className={`filter-btn ${viewFilter === 'mine' ? 'active' : ''}`} onClick={() => setViewFilter('mine')} style={{ padding: '5px 10px', fontSize: '0.75rem' }}>
+                    <button className={`filter-btn ${activeFilter === 'mine' ? 'active' : ''}`} onClick={() => setFilter('mine')} style={{ padding: '5px 10px', fontSize: '0.75rem' }}>
                         <User size={12} /> Ben
                     </button>
+                    {config.type === 'CALL' && (
+                        <>
+                            <div style={{ width: 1, height: 20, background: '#e2e8f0', margin: '0 2px' }} />
+                            <div ref={agentBtnRef} style={{ position: 'relative' }}>
+                                <button
+                                    className={`filter-btn ${activeFilter === 'agent' ? 'active' : ''}`}
+                                    onClick={() => { if (activeFilter === 'agent' && !agentDropdownOpen) { setFilter('all'); } else { setAgentDropdownOpen(v => !v); if (activeFilter !== 'agent') setFilter('agent'); } }}
+                                    style={{ padding: '5px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                                >
+                                    <UserCircle size={12} />
+                                    {selectedAgentId ? (members.find(m => (m.user?.id || m.id) === selectedAgentId)?.user?.name || members.find(m => (m.user?.id || m.id) === selectedAgentId)?.name || 'Agent') : 'Agent'}
+                                    <ChevronDown size={10} style={{ opacity: 0.6 }} />
+                                </button>
+                                {agentDropdownOpen && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, marginTop: 4,
+                                        background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
+                                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 100,
+                                        minWidth: 180, maxHeight: 240, overflowY: 'auto',
+                                        animation: 'profilePopupIn 0.15s ease'
+                                    }}>
+                                        <div style={{ padding: '6px 10px 4px', fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Agent Seçin</div>
+                                        <button
+                                            onClick={() => { setFilter('agent'); setAgentDropdownOpen(false); }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+                                                border: 'none', background: !selectedAgentId && sourceFilter === 'AGENT' ? '#eef2ff' : 'transparent',
+                                                color: '#1e293b', fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left',
+                                                fontWeight: !selectedAgentId && sourceFilter === 'AGENT' ? 600 : 400
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                                            onMouseLeave={e => e.currentTarget.style.background = !selectedAgentId && sourceFilter === 'AGENT' ? '#eef2ff' : 'transparent'}
+                                        >
+                                            <Users size={14} style={{ color: '#64748b' }} /> Tüm Agentlar
+                                        </button>
+                                        {members.map(m => {
+                                            const mid = m.user?.id || m.id;
+                                            const mname = m.user?.name || m.name;
+                                            return (
+                                                <button
+                                                    key={mid}
+                                                    onClick={() => { setFilter('agent', mid); setAgentDropdownOpen(false); }}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+                                                        border: 'none', background: selectedAgentId === mid ? '#eef2ff' : 'transparent',
+                                                        color: '#1e293b', fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left',
+                                                        fontWeight: selectedAgentId === mid ? 600 : 400
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = selectedAgentId === mid ? '#eef2ff' : 'transparent'}
+                                                >
+                                                    <div style={{
+                                                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                                                        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        color: '#fff', fontSize: '0.6rem', fontWeight: 700
+                                                    }}>{(mname || '?').charAt(0).toUpperCase()}</div>
+                                                    {mname}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            <button className={`filter-btn ${activeFilter === 'ai' ? 'active' : ''}`} onClick={() => setFilter(activeFilter === 'ai' ? 'all' : 'ai')} style={{ padding: '5px 10px', fontSize: '0.75rem' }}>
+                                <Bot size={12} /> AI
+                            </button>
+                        </>
+                    )}
                     <div style={{ position: 'relative', flex: 1 }}>
                         <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                         <input
@@ -418,11 +560,15 @@ const Activities = () => {
                                             </div>
                                         )}
                                         <div className="activity-card-meta">
-                                            {activity.assignee && (
+                                            {activity.source === 'AI_CALL' ? (
+                                                <span className="activity-meta-tag" style={{ background: '#faf5ff', color: '#7c3aed' }}>
+                                                    <Bot size={10} /> AI Arama
+                                                </span>
+                                            ) : activity.assignee ? (
                                                 <span className="activity-meta-tag assignee">
                                                     <User size={10} /> {activity.assignee.name}
                                                 </span>
-                                            )}
+                                            ) : null}
                                             {due && (
                                                 <span className={`activity-meta-tag ${due.className === 'overdue' ? 'priority-URGENT' : 'source'}`}>
                                                     <CalendarClock size={10} /> {due.text}
@@ -524,6 +670,63 @@ const Activities = () => {
                                 <p style={{ margin: 0, fontSize: '0.88rem', color: '#1e293b', lineHeight: 1.5, background: '#f0fdf4', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dcfce7' }}>
                                     {selectedActivity.result}
                                 </p>
+                                {/* Translate Button */}
+                                <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    <button
+                                        onClick={async () => {
+                                            if (translatedText) { setTranslatedText(''); return; }
+                                            setTranslating(true);
+                                            try {
+                                                const res = await activityAPI.translateText(currentWorkspace.id, selectedActivity.result);
+                                                setTranslatedText(res.translation);
+                                            } catch (e) { console.error(e); }
+                                            setTranslating(false);
+                                        }}
+                                        disabled={translating}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 5,
+                                            padding: '5px 12px', border: '1px solid #c7d2fe', borderRadius: 8,
+                                            background: translatedText ? '#eef2ff' : '#fff', color: '#4f46e5',
+                                            fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer',
+                                            transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        {translating ? <Loader2 size={12} className="spin-animation" /> : <Languages size={12} />}
+                                        {translating ? 'Çevriliyor...' : translatedText ? 'Çeviriyi Gizle' : 'Türkçeye Çevir'}
+                                    </button>
+                                </div>
+                                {/* Translation Result */}
+                                {translatedText && (
+                                    <div style={{ marginTop: 8, padding: '10px 14px', borderRadius: 8, background: '#eef2ff', border: '1px solid #c7d2fe', fontSize: '0.86rem', lineHeight: 1.5, color: '#312e81' }}>
+                                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#6366f1', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>🇹🇷 Türkçe Çeviri</div>
+                                        {translatedText}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Audio Recording */}
+                        {selectedActivity.source === 'AI_CALL' && (
+                            <div className="act-detail-section">
+                                <h4 style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Volume2 size={15} /> Ses Kaydı</h4>
+                                {loadingRetell ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontSize: '0.82rem' }}>
+                                        <Loader2 size={14} className="spin-animation" /> Yükleniyor...
+                                    </div>
+                                ) : retellCall?.recordingUrl ? (
+                                    <div style={{ borderRadius: 10, overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', padding: 12 }}>
+                                        <audio controls style={{ width: '100%', height: 36 }} src={retellCall.recordingUrl}>
+                                            Tarayıcınız ses oynatıcıyı desteklemiyor.
+                                        </audio>
+                                        {retellCall.duration && (
+                                            <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                Süre: {Math.floor(retellCall.duration / 60)}dk {retellCall.duration % 60}sn
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>Ses kaydı bulunamadı</p>
+                                )}
                             </div>
                         )}
 

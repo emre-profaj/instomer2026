@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // ────────────────────────────────────────────────────────────────────────────
 // CREATE ACTIVITY
@@ -475,6 +476,51 @@ export const getContactTimeline = async (req, res) => {
             });
         });
 
+        // 6. Conversation Events (Atama, Transfer, Aşama Değişikliği)
+        let conversationEvents = [];
+        try {
+            const convIds = conversations.map(c => c.id);
+            if (convIds.length > 0) {
+                conversationEvents = await prisma.conversationEvent.findMany({
+                    where: {
+                        contactId,
+                        eventType: { in: ['ASSIGNED', 'TRANSFERRED', 'FUNNEL_CHANGED', 'STAGE_CHANGED', 'CLAIMED'] }
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+            }
+        } catch (e) {
+            // ConversationEvent tablosu henüz yoksa sessizce geç
+            if (e.code !== 'P2021') {
+                console.error('Timeline ConversationEvents Error:', e.message);
+            }
+        }
+
+        // Conversation Events'leri timeline'a ekle
+        conversationEvents.forEach(evt => {
+            // HTML tag'lerini temizle (title <b>Dilan</b>'a atandı gibi gelebilir)
+            const cleanTitle = (evt.title || '').replace(/<[^>]*>/g, '');
+            let details = null;
+            try { details = evt.details ? JSON.parse(evt.details) : null; } catch {}
+
+            timeline.push({
+                id: `evt_${evt.id}`,
+                sourceType: 'EVENT',
+                type: evt.eventType,
+                title: cleanTitle,
+                content: cleanTitle,
+                date: evt.createdAt,
+                status: 'COMPLETED',
+                isCompleted: true,
+                eventType: evt.eventType,
+                actorType: evt.actorType,
+                actorId: evt.actorId,
+                details,
+                labelName: evt.actorType === 'SYSTEM' ? 'Sistem' : evt.actorType === 'BOT' ? 'Bot' : evt.actorType === 'AUTOMATION' ? 'Otomasyon' : 'Agent',
+                raw: evt
+            });
+        });
+
         const planned = [];
         const past = [];
 
@@ -635,7 +681,7 @@ export const claimActivity = async (req, res) => {
 export const getWorkspaceActivities = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { type, status, assignedToId, teamId, dateFrom, dateTo, view, limit = 100 } = req.query;
+        const { type, status, assignedToId, teamId, dateFrom, dateTo, view, source, limit = 100 } = req.query;
 
         const where = { workspaceId };
 
@@ -654,6 +700,15 @@ export const getWorkspaceActivities = async (req, res) => {
             where.assignedToId = req.user.id;
         } else if (assignedToId) {
             where.assignedToId = assignedToId;
+        }
+
+        // Source filter: AI_CALL, MANUAL, AUTO, AGENT (= NOT AI_CALL)
+        if (source === 'AI_CALL') {
+            where.source = 'AI_CALL';
+        } else if (source === 'AGENT') {
+            where.source = { not: 'AI_CALL' };
+        } else if (source) {
+            where.source = source;
         }
 
         if (teamId) {
@@ -776,5 +831,107 @@ export const getActivityById = async (req, res) => {
     } catch (error) {
         console.error('Get activity by id error:', error);
         res.status(500).json({ error: 'Aktivite yüklenirken hata oluştu' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// GET CONTACT RETELL CALL — En son AI arama kaydını getir
+// ────────────────────────────────────────────────────────────────────────────
+export const getContactRetellCall = async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const { activityCreatedAt } = req.query;
+
+        // Find the retell call closest to the activity creation time
+        const where = { contactId };
+        if (activityCreatedAt) {
+            const actDate = new Date(activityCreatedAt);
+            const before = new Date(actDate.getTime() - 5 * 60 * 1000); // 5 min before
+            const after = new Date(actDate.getTime() + 5 * 60 * 1000); // 5 min after
+            where.createdAt = { gte: before, lte: after };
+        }
+
+        const call = await prisma.retellCall.findFirst({
+            where,
+            orderBy: { createdAt: 'desc' },
+            select: {
+                id: true,
+                callId: true,
+                recordingUrl: true,
+                transcript: true,
+                summary: true,
+                duration: true,
+                status: true,
+                startedAt: true,
+                createdAt: true
+            }
+        });
+
+        if (!call) {
+            // Fallback: get the most recent call for this contact
+            const latestCall = await prisma.retellCall.findFirst({
+                where: { contactId },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    callId: true,
+                    recordingUrl: true,
+                    transcript: true,
+                    summary: true,
+                    duration: true,
+                    status: true,
+                    startedAt: true,
+                    createdAt: true
+                }
+            });
+            return res.json(latestCall || null);
+        }
+
+        res.json(call);
+    } catch (error) {
+        console.error('Get contact retell call error:', error);
+        res.status(500).json({ error: 'Arama kaydı yüklenirken hata oluştu' });
+    }
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+// TRANSLATE TEXT — Metni Türkçeye çevir (Gemini ile)
+// ────────────────────────────────────────────────────────────────────────────
+export const translateText = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { text } = req.body;
+
+        if (!text) return res.status(400).json({ error: 'Çevrilecek metin gerekli' });
+
+        // Get AI API key
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { aiApiKey: true }
+        });
+        let apiKey = workspace?.aiApiKey;
+        if (!apiKey) {
+            const global = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
+            apiKey = global?.globalAiApiKey;
+        }
+        if (!apiKey) return res.status(400).json({ error: 'AI API Key yapılandırılmamış' });
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const prompt = `Aşağıdaki metni Türkçeye çevir. Sadece çeviriyi yaz, başka hiçbir açıklama ekleme.
+
+Metin:
+${text}
+
+Türkçe Çeviri:`;
+
+        const result = await model.generateContent(prompt);
+        const translation = result.response.text().trim();
+
+        res.json({ translation });
+    } catch (error) {
+        console.error('Translate error:', error);
+        res.status(500).json({ error: 'Çeviri yapılırken hata oluştu' });
     }
 };

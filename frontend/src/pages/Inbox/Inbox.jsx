@@ -3089,7 +3089,7 @@ const Inbox = () => {
                                             onChange={() => setShowResolved(!showResolved)}
                                         />
                                         <Check size={18} className="icon-resolved" />
-                                        <span>Çözülenleri Göster</span>
+                                        <span>Arşivlenenleri Göster</span>
                                     </label>
 
                                     <label className="filter-option resolved-toggle">
@@ -3475,7 +3475,7 @@ const Inbox = () => {
                                     className="show-resolved-btn"
                                     onClick={() => setShowResolved(true)}
                                 >
-                                    Çözülenleri Göster
+                                    Arşivlenenleri Göster
                                 </button>
                             )}
                         </div>
@@ -3917,7 +3917,7 @@ const Inbox = () => {
                                                     <button
                                                         className={`conv-status-toggle ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
                                                         onClick={() => handleConversationStatusChange(selectedItem.id, selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED')}
-                                                        title={selectedItem.status === 'RESOLVED' ? 'Açık yap' : 'Çözüldü yap'}
+                                                        title={selectedItem.status === 'RESOLVED' ? 'Arşivden Çıkar' : 'Arşivle'}
                                                     >
                                                         <span className="conv-status-toggle-track">
                                                             <span className="conv-status-toggle-thumb">
@@ -3925,7 +3925,7 @@ const Inbox = () => {
                                                             </span>
                                                         </span>
                                                         <span className="conv-status-toggle-label">
-                                                            {selectedItem.status === 'RESOLVED' ? 'Çözüldü' : 'Açık'}
+                                                            {selectedItem.status === 'RESOLVED' ? 'Arşivlendi' : 'Arşivle'}
                                                         </span>
                                                     </button>
                                                     <button

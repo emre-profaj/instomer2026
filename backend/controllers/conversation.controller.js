@@ -42,13 +42,8 @@ export const getConversations = async (req, res) => {
             ...(status && { status }),
             ...(contactId && { contactId }),
             ...(funnelType && { funnelType }),
-            // For funnelStageId, check explicit conversation stage OR inherit the contact's funnelStageId
-            ...(funnelStageId && { 
-                OR: [
-                    { funnelStageId: funnelStageId },
-                    { funnelStageId: null, contact: { funnelStageId: funnelStageId } }
-                ]
-            }),
+            // Direct conversation funnelStageId filter (no fallback to contact)
+            ...(funnelStageId && { funnelStageId }),
             // Keep contactStatus check just in case legacy calls use it
             ...(contactStatus && { contact: { status: contactStatus } })
         };
@@ -907,12 +902,31 @@ export const assignConversation = async (req, res) => {
         console.log(`📡 [Assign] Emitted conversation_assigned to workspace ${workspaceId}`);
 
         // Log conversation event
+        // Atanan kişinin adını belirle
+        let assigneeName = conversation.assignedTo?.name;
+        if (!assigneeName && updateData.assignedToId) {
+            try {
+                const assignedUser = await prisma.user.findUnique({
+                    where: { id: updateData.assignedToId },
+                    select: { name: true }
+                });
+                assigneeName = assignedUser?.name;
+            } catch {}
+        }
+        if (!assigneeName && conversation.assignedBotId) {
+            assigneeName = conversation.assignedBot?.name || 'Bot';
+        }
+
+        const eventTitle = assigneeName
+            ? `<b>${req.user?.name || 'Kullanıcı'}</b> konuşmayı <b>${assigneeName}</b> kullanıcısına atadı`
+            : `<b>${req.user?.name || 'Kullanıcı'}</b> konuşma atamasını kaldırdı`;
+
         logEvent({
             conversationId,
             contactId: conversation.contact?.id,
             workspaceId,
             eventType: 'ASSIGNED',
-            title: `<b>${req.user?.name || 'Kullanıcı'}</b> konuşmayı <b>${conversation.assignedTo?.name || 'Bilinmeyen'}</b> kullanıcısına atadı`,
+            title: eventTitle,
             actorId: req.user?.id,
             actorType: 'USER'
         }).catch(() => {});

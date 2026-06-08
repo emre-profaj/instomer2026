@@ -1414,7 +1414,21 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
         }
 
         // Check scheduler - if bot has scheduler enabled, verify it's within active hours
-        if (!isBotScheduleActive(activeBot)) {
+        // Widget kanalı: ignoreSchedule aktifse schedule kontrolünü atla (7/24 çalışır)
+        let skipScheduleCheck = false;
+        if (channel?.toLowerCase() === 'widget') {
+            try {
+                const widgetSettings = await prisma.webWidget.findFirst({
+                    where: { workspaceId, isActive: true },
+                    select: { ignoreSchedule: true }
+                });
+                if (widgetSettings?.ignoreSchedule !== false) {
+                    skipScheduleCheck = true;
+                    console.log(`🌐 [Widget] Schedule bypass active — bot will respond 24/7`);
+                }
+            } catch (e) { /* ignore */ }
+        }
+        if (!skipScheduleCheck && !isBotScheduleActive(activeBot)) {
             console.log(`⏰ Bot ${activeBot.name} is not within scheduled time. Skipping auto-reply.`);
             if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
             return null;

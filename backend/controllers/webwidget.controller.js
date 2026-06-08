@@ -62,7 +62,7 @@ export const getWidget = async (req, res) => {
 // Create new widget
 export const createWidget = async (req, res) => {
     try {
-        const { workspaceId, name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled } = req.body;
+        const { workspaceId, name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled, ignoreSchedule } = req.body;
 
         if (!workspaceId || !name) {
             return res.status(400).json({ error: 'workspaceId and name are required' });
@@ -81,7 +81,8 @@ export const createWidget = async (req, res) => {
                 position: position || 'RIGHT',
                 width: width || 350,
                 assignedBotId: assignedBotId || null,
-                prechatFormEnabled: prechatFormEnabled !== undefined ? prechatFormEnabled : false
+                prechatFormEnabled: prechatFormEnabled !== undefined ? prechatFormEnabled : false,
+                ignoreSchedule: ignoreSchedule !== undefined ? ignoreSchedule : true
             },
             include: {
                 assignedBot: {
@@ -105,7 +106,7 @@ export const createWidget = async (req, res) => {
 export const updateWidget = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled } = req.body;
+        const { name, siteUrl, title, subtitle, primaryColor, greetingMessage, isActive, position, width, assignedBotId, prechatFormEnabled, ignoreSchedule } = req.body;
 
         // If a bot is being assigned, automatically activate it
         if (assignedBotId) {
@@ -129,7 +130,8 @@ export const updateWidget = async (req, res) => {
                 ...(position !== undefined && { position }),
                 ...(width !== undefined && { width }),
                 ...(assignedBotId !== undefined && { assignedBotId: assignedBotId || null }),
-                ...(prechatFormEnabled !== undefined && { prechatFormEnabled })
+                ...(prechatFormEnabled !== undefined && { prechatFormEnabled }),
+                ...(ignoreSchedule !== undefined && { ignoreSchedule })
             },
             include: {
                 assignedBot: {

@@ -563,18 +563,17 @@ const Sidebar = () => {
                 </div>
 
                 <div className="sidebar-footer">
-                    {/* Profile Card — Her zaman görünür, çekmece tetikleyici */}
-                    <div className={`sidebar-profile-card ${isCollapsed ? 'collapsed' : ''}`}>
-                        <div className="profile-card-avatar" onClick={() => !isCollapsed && setIsProfileMenuOpen(v => !v)}>
+                    {/* Profile Card */}
+                    <div className={`sidebar-profile-card ${isCollapsed ? 'collapsed' : ''}`} style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
+                        <div className="profile-card-avatar">
                             {user?.avatar ? (
-                                <img src={user.avatar} alt="" className="profile-avatar-img" />
-                            ) : (
-                                <span className="profile-avatar-initial">{(user?.name || 'U').charAt(0).toUpperCase()}</span>
-                            )}
+                                <img src={user.avatar} alt="" className="profile-avatar-img" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }} />
+                            ) : null}
+                            <span className="profile-avatar-initial" style={user?.avatar ? { display: 'none' } : {}}>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
                         </div>
                         {!isCollapsed && (
                             <>
-                                <div className="profile-card-info" onClick={() => setIsProfileMenuOpen(v => !v)}>
+                                <div className="profile-card-info">
                                     <span className="profile-card-name">{user?.name || 'Kullanıcı'}</span>
                                     <span className="profile-card-role">{user?.role === 'SUPER_ADMIN' ? 'Admin' : 'Kullanıcı'}</span>
                                 </div>
@@ -588,111 +587,111 @@ const Sidebar = () => {
                             </>
                         )}
 
-                        {/* Profile Popup Menu */}
-                        {isProfileMenuOpen && !isCollapsed && (
-                            <div className="profile-menu-popup">
-                                <div className="profile-menu-header">
-                                    <div className="profile-menu-avatar">
+                        {/* Drawer — premium popup, opens upward */}
+                        {isDrawerOpen && !isCollapsed && (
+                            <div className="profile-menu-popup" style={{ minWidth: 260, left: 4, right: 4 }}>
+                                {/* Profile header */}
+                                <div className="profile-menu-header" style={{ padding: '16px', gap: 12 }}>
+                                    <div className="profile-menu-avatar" style={{ width: 42, height: 42 }}>
                                         {user?.avatar ? (
-                                            <img src={user.avatar} alt="" />
-                                        ) : (
-                                            <span>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
-                                        )}
+                                            <img src={user.avatar} alt="" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }} />
+                                        ) : null}
+                                        <span style={user?.avatar ? { display: 'none' } : {}}>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
                                     </div>
                                     <div className="profile-menu-info">
-                                        <strong>{user?.name}</strong>
-                                        <small>{user?.email}</small>
+                                        <strong style={{ fontSize: '0.9rem' }}>{user?.name}</strong>
+                                        <small style={{ fontSize: '0.75rem' }}>{user?.email}</small>
                                     </div>
                                 </div>
+
+                                {/* Hızlı Erişim section */}
+                                <div style={{ padding: '4px 12px 0' }}>
+                                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Hızlı Erişim</div>
+                                </div>
+                                <div style={{ padding: '0 10px 8px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
+                                        {[
+                                            { icon: PhoneCall, label: 'Aramalar', path: '/activities/calls?view=mine', check: '/activities/calls', count: quickCounts.calls },
+                                            { icon: Handshake, label: 'Görüşmeler', path: '/activities/meetings?view=mine', check: '/activities/meetings', count: quickCounts.meetings },
+                                            { icon: ListTodo, label: 'Görevler', path: '/activities/tasks?view=mine', check: '/activities/tasks', count: quickCounts.tasks },
+                                            { icon: FileSignature, label: 'Teklifler', path: '/quotes?view=mine', check: '/quotes' },
+                                            { icon: ShoppingCart, label: 'Satışlar', path: '/orders?view=mine', check: '/orders' },
+                                            { icon: UserCheck, label: 'Müşteriler', path: '/customers?tab=mine', check: '/customers' },
+                                        ].map((item, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => { setIsDrawerOpen(false); navigate(item.path); }}
+                                                style={{
+                                                    position: 'relative',
+                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                                    gap: 3, padding: '10px 4px 7px', border: 'none', borderRadius: 8, cursor: 'pointer',
+                                                    background: location.pathname === item.check ? '#eef2ff' : 'transparent',
+                                                    color: location.pathname === item.check ? '#4f46e5' : '#64748b',
+                                                    fontSize: '0.65rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                                    transition: 'all 0.15s'
+                                                }}
+                                                onMouseEnter={e => { if (location.pathname !== item.check) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}}
+                                                onMouseLeave={e => { if (location.pathname !== item.check) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}}
+                                            >
+                                                <item.icon size={18} />
+                                                <span>{item.label}</span>
+                                                {item.count > 0 && (
+                                                    <span style={{
+                                                        position: 'absolute', top: 2, right: 4, minWidth: 16, height: 16, borderRadius: 8,
+                                                        background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff',
+                                                        fontSize: '0.55rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        padding: '0 3px', boxShadow: '0 1px 3px rgba(239,68,68,0.3)'
+                                                    }}>{item.count > 99 ? '99+' : item.count}</span>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Navigation grid */}
+                                <div style={{ padding: '0 10px 8px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
+                                        {[
+                                            { icon: Calendar, label: 'Takvim', action: () => { setIsDrawerOpen(false); navigate('/activities/calendar'); }, check: '/activities/calendar' },
+                                            { icon: Settings, label: 'Profil', action: () => { setIsDrawerOpen(false); navigate('/settings'); }, check: '/settings' },
+                                            { icon: Database, label: 'Şifre', action: () => { setIsDrawerOpen(false); alert('Şifre değiştirme sayfasına yönlendirilecek'); }, check: null },
+                                        ].map((item, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={item.action}
+                                                style={{
+                                                    position: 'relative',
+                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                                    gap: 3, padding: '10px 4px 7px', border: 'none', borderRadius: 8, cursor: 'pointer',
+                                                    background: item.check && location.pathname.startsWith(item.check) ? '#eef2ff' : 'transparent',
+                                                    color: item.check && location.pathname.startsWith(item.check) ? '#4f46e5' : '#64748b',
+                                                    fontSize: '0.65rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                                    transition: 'all 0.15s'
+                                                }}
+                                                onMouseEnter={e => { if (!item.check || !location.pathname.startsWith(item.check)) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}}
+                                                onMouseLeave={e => { if (!item.check || !location.pathname.startsWith(item.check)) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}}
+                                            >
+                                                <item.icon size={18} />
+                                                <span>{item.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div className="profile-menu-divider" />
-                                <button className="profile-menu-item" onClick={() => { navigate('/settings'); setIsProfileMenuOpen(false); }}>
-                                    <Settings size={15} />
-                                    <span>Profil Ayarları</span>
-                                </button>
-                                <button className="profile-menu-item" onClick={() => { setIsProfileMenuOpen(false); alert('Şifre değiştirme sayfasına yönlendirilecek'); }}>
-                                    <Database size={15} />
-                                    <span>Şifre Değiştir</span>
-                                </button>
-                                <div className="profile-menu-divider" />
-                                <button className="profile-menu-item danger" onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }}>
-                                    <LogOut size={15} />
-                                    <span>Çıkış Yap</span>
-                                </button>
+                                <div style={{ padding: '4px 0' }}>
+                                    <button className="profile-menu-item danger" onClick={() => { setIsDrawerOpen(false); handleLogout(); }}>
+                                        <LogOut size={16} />
+                                        <span>Çıkış Yap</span>
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {/* Drawer Content — Yukarı doğru açılan çekmece */}
-                    <div className={`sidebar-drawer ${isDrawerOpen ? 'open' : ''} ${isCollapsed ? 'collapsed' : ''}`}>
-                        {/* Quick Access Grid */}
-                        <div className={`sidebar-quick-card ${isCollapsed ? 'collapsed' : ''}`}>
-                            <div className="quick-card-grid">
-                                <button
-                                    className={`quick-grid-btn ${location.pathname === '/activities/calls' ? 'active' : ''}`}
-                                    title="Aramalarım"
-                                    onClick={() => navigate('/activities/calls?view=mine')}
-                                >
-                                    <PhoneCall size={17} />
-                                    {!isCollapsed && <span>Aramalarım</span>}
-                                    {quickCounts.calls > 0 && <span className="qc-badge">{quickCounts.calls > 99 ? '99+' : quickCounts.calls}</span>}
-                                </button>
-                                <button
-                                    className={`quick-grid-btn ${location.pathname === '/activities/meetings' ? 'active' : ''}`}
-                                    title="Görüşmelerim"
-                                    onClick={() => navigate('/activities/meetings?view=mine')}
-                                >
-                                    <Handshake size={17} />
-                                    {!isCollapsed && <span>Görüşmem</span>}
-                                    {quickCounts.meetings > 0 && <span className="qc-badge">{quickCounts.meetings > 99 ? '99+' : quickCounts.meetings}</span>}
-                                </button>
-                                <button
-                                    className={`quick-grid-btn ${location.pathname === '/activities/tasks' ? 'active' : ''}`}
-                                    title="Görevlerim"
-                                    onClick={() => navigate('/activities/tasks?view=mine')}
-                                >
-                                    <ListTodo size={17} />
-                                    {!isCollapsed && <span>Görevim</span>}
-                                    {quickCounts.tasks > 0 && <span className="qc-badge">{quickCounts.tasks > 99 ? '99+' : quickCounts.tasks}</span>}
-                                </button>
-                                <button
-                                    className={`quick-grid-btn ${location.pathname === '/quotes' ? 'active' : ''}`}
-                                    title="Tekliflerim"
-                                    onClick={() => navigate('/quotes?view=mine')}
-                                >
-                                    <FileSignature size={17} />
-                                    {!isCollapsed && <span>Teklifim</span>}
-                                </button>
-                                <button
-                                    className={`quick-grid-btn ${location.pathname === '/orders' ? 'active' : ''}`}
-                                    title="Satışlarım"
-                                    onClick={() => navigate('/orders?view=mine')}
-                                >
-                                    <ShoppingCart size={17} />
-                                    {!isCollapsed && <span>Satışım</span>}
-                                </button>
-                                <button
-                                    className={`quick-grid-btn ${location.pathname === '/customers' && location.search.includes('mine') ? 'active' : ''}`}
-                                    title="Müşterilerim"
-                                    onClick={() => navigate('/customers?tab=mine')}
-                                >
-                                    <UserCheck size={17} />
-                                    {!isCollapsed && <span>Müşterim</span>}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Takvim + Notifications */}
-                        <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`}>
-                            <button
-                                className={`footer-row-btn ${location.pathname.startsWith('/activities/calendar') ? 'active' : ''}`}
-                                title="Takvimim"
-                                onClick={() => navigate('/activities/calendar')}
-                            >
-                                <Calendar size={16} />
-                                {!isCollapsed && <span>Takvim</span>}
-                            </button>
-                            <NotificationPanel isCollapsed={isCollapsed} />
-                        </div>
+                    {/* Notifications — always above profile card */}
+                    <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 4, borderTop: 'none' }}>
+                        <NotificationPanel isCollapsed={isCollapsed} />
                     </div>
                 </div>
             </div>
