@@ -585,38 +585,48 @@ const CeoReport = () => {
                     <h2>Arama Detayları</h2>
                 </div>
                 <div className="ceo-section-body">
+                    {(() => {
+                        // Numaralı Başvurular = contactStats ile tutarlı (üstteki TELEFONLU ile aynı kaynak)
+                        const numarali = contactStats?.totals?.withPhone || ct.totalWithPhone || 0;
+                        const kaciArandi = ct.totalCalled || 0;
+                        const toplamArama = ct.totalCompleted || 0;
+                        const aranmayan = Math.max(0, numarali - kaciArandi);
+                        const aramaOrani = numarali > 0 ? ((kaciArandi / numarali) * 100).toFixed(1) : 0;
+                        return (
                     <div className="ceo-kpi-grid" style={{ marginBottom: 16 }}>
                         <div className="ceo-kpi-card">
                             <div className="ceo-kpi-icon" style={{ background: '#eef2ff' }}><Users size={18} style={{ color: '#6366f1' }} /></div>
                             <div className="ceo-kpi-label">Numaralı Başvurular</div>
-                            <div className="ceo-kpi-value">{ct.totalWithPhone || 0}</div>
+                            <div className="ceo-kpi-value">{numarali}</div>
                             <div className="ceo-kpi-sub">Telefon numarası olan kişi</div>
                         </div>
                         <div className="ceo-kpi-card">
                             <div className="ceo-kpi-icon" style={{ background: '#f0fdf4' }}><Phone size={18} style={{ color: '#10b981' }} /></div>
                             <div className="ceo-kpi-label">Kaçı Arandı</div>
-                            <div className="ceo-kpi-value">{ct.totalCalled || 0}</div>
+                            <div className="ceo-kpi-value">{kaciArandi}</div>
                             <div className="ceo-kpi-sub">Benzersiz kişi (5 kez aransa da 1)</div>
                         </div>
                         <div className="ceo-kpi-card">
                             <div className="ceo-kpi-icon" style={{ background: '#ecfdf5' }}><PhoneCall size={18} style={{ color: '#059669' }} /></div>
                             <div className="ceo-kpi-label">Toplam Arama</div>
-                            <div className="ceo-kpi-value">{ct.totalCompleted || 0}</div>
+                            <div className="ceo-kpi-value">{toplamArama}</div>
                             <div className="ceo-kpi-sub">Toplam yapılan arama sayısı</div>
                         </div>
                         <div className="ceo-kpi-card">
                             <div className="ceo-kpi-icon" style={{ background: '#fef2f2' }}><PhoneOff size={18} style={{ color: '#ef4444' }} /></div>
                             <div className="ceo-kpi-label">Aranmayan Başvuru</div>
-                            <div className="ceo-kpi-value" style={{ color: '#ef4444' }}>{ct.totalNotCalled || 0}</div>
+                            <div className="ceo-kpi-value" style={{ color: '#ef4444' }}>{aranmayan}</div>
                             <div className="ceo-kpi-sub">Henüz hiç aranmamış kişi</div>
                         </div>
                         <div className="ceo-kpi-card">
                             <div className="ceo-kpi-icon" style={{ background: '#eef2ff' }}><TrendingUp size={18} style={{ color: '#6366f1' }} /></div>
                             <div className="ceo-kpi-label">Arama Oranı</div>
-                            <div className="ceo-kpi-value">%{ct.callRate || 0}</div>
+                            <div className="ceo-kpi-value">%{aramaOrani}</div>
                             <div className="ceo-kpi-sub">Aranan / Toplam numaralı</div>
                         </div>
                     </div>
+                        );
+                    })()}
 
                     {/* Kime Atandı — Agent bazlı arama dağılımı */}
                     {agentPerformance?.agents?.filter(a => (a.callCount || 0) > 0).length > 0 && (
