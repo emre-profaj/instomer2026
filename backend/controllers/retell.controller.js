@@ -2002,6 +2002,27 @@ async function handleCallStarted(call) {
 
             // Create a NEW conversation for this call ONLY if not linked to an existing one
             if (contactId && !outboundWithExistingConv) {
+                // DEDUP: Son 2dk içinde aynı contact için PHONE conversation varsa tekrar oluşturma
+                const recentPhoneConv = await prisma.conversation.findFirst({
+                    where: {
+                        workspaceId,
+                        contactId,
+                        channel: 'PHONE',
+                        createdAt: { gte: new Date(Date.now() - 120000) }
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+                if (recentPhoneConv) {
+                    // Mevcut conversation'ı kullan, RetellCall'ı bağla
+                    try {
+                        await prisma.retellCall.update({
+                            where: { callId: call.call_id },
+                            data: { conversationId: recentPhoneConv.id }
+                        });
+                    } catch (_) {}
+                    console.log(`📞 [Retell] DEDUP: Reusing recent PHONE conversation ${recentPhoneConv.id} for ${call.call_id}`);
+                    return;
+                }
                 const assignedTeamId = await resolveAgentTeamId(workspaceId, call.agent_id);
                 const conversation = await prisma.conversation.create({
                     data: {
@@ -2094,7 +2115,11 @@ async function handleCallStarted(call) {
                                 if (rec) {
                                     await prisma.retellCall.update({
                                         where: { id: rec.id },
-                                        data: { status: 'ended', duration: checked.duration_ms ? Math.round(checked.duration_ms / 1000) : null }
+                                        data: {
+                                            status: 'ended',
+                                            duration: checked.duration_ms ? Math.round(checked.duration_ms / 1000) : null,
+                                            recordingUrl: checked.recording_url || null
+                                        }
                                     });
                                 }
                                 // Update "devam ediyor" message
@@ -2113,7 +2138,16 @@ async function handleCallStarted(call) {
                                         try {
                                             const analyzed = await retellClient.call.retrieve(realCallId);
                                             if (analyzed.transcript) {
-                                                await prisma.retellCall.update({ where: { id: rec.id }, data: { transcript: analyzed.transcript } });
+                                                await prisma.retellCall.update({
+                                                    where: { id: rec.id },
+                                                    data: {
+                                                        transcript: analyzed.transcript,
+                                                        recordingUrl: analyzed.recording_url || null,
+                                                        summary: analyzed.call_analysis?.call_summary || null,
+                                                        sentiment: analyzed.call_analysis?.user_sentiment || null,
+                                                        callSuccessful: analyzed.call_analysis?.call_successful ?? null
+                                                    }
+                                                });
                                                 await injectTranscriptToChat(
                                                     { ...rec, conversationId: convId },
                                                     analyzed,
@@ -2695,6 +2729,53 @@ async function handleCallAnalyzed(call) {
                 callSuccessful: analysis.call_successful ?? null
             }
         });
+
+        // Update conversation message with summary + recording URL
+        if (analysis.call_summary || call.recording_url) {
+            try {
+                const analyzedCallRec = await prisma.retellCall.findUnique({ where: { callId: call.call_id } });
+                if (analyzedCallRec?.conversationId) {
+                    const callMsg = await prisma.message.findFirst({
+                        where: {
+                            conversationId: analyzedCallRec.conversationId,
+                            messageType: 'CALL_TRANSCRIPT',
+                            OR: [
+                                { content: { contains: 'Arama Tamamlandı' } },
+                                { content: { contains: 'Arama Sona Erdi' } }
+                            ]
+                        },
+                        orderBy: { createdAt: 'desc' }
+                    });
+                    if (callMsg) {
+                        let updatedContent = callMsg.content;
+                        if (analysis.call_summary && !callMsg.content.includes('📋')) {
+                            updatedContent += '\n\n📋 ' + analysis.call_summary;
+                        }
+                        if (call.recording_url && !callMsg.content.includes('[recording:')) {
+                            updatedContent += '\n[recording:' + call.recording_url + ']';
+                        }
+                        await prisma.message.update({
+                            where: { id: callMsg.id },
+                            data: { content: updatedContent }
+                        });
+                        // Also save recording URL to RetellCall record
+                        if (call.recording_url) {
+                            await prisma.retellCall.updateMany({
+                                where: { callId: call.call_id },
+                                data: { recordingUrl: call.recording_url }
+                            });
+                        }
+                        emitToWorkspace(analyzedCallRec.workspaceId, 'new_message', {
+                            workspaceId: analyzedCallRec.workspaceId,
+                            conversationId: analyzedCallRec.conversationId,
+                            message: { type: 'call_analyzed' }
+                        });
+                    }
+                }
+            } catch (sumErr) {
+                console.error('⚠️ [Retell] Summary/recording inject error (non-fatal):', sumErr.message);
+            }
+        }
 
         // Fallback: inject transcript if it wasn't injected during call_ended
         const callRecord = await prisma.retellCall.findUnique({

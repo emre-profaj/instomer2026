@@ -4457,7 +4457,7 @@ const Inbox = () => {
 
                                         // Determine message class
                                         let messageClass = 'message ';
-                                        const isCallSystem = msg.messageType === 'CALL_TRANSCRIPT' && msg.content?.startsWith('📞');
+                                        const isCallSystem = msg.messageType === 'CALL_TRANSCRIPT' && (msg.content?.startsWith('📞') || msg.content?.startsWith('📲'));
                                         if (msg.isInternalNote) {
                                             messageClass += 'internal-note';
                                         } else if (isCallSystem) {
@@ -4551,6 +4551,60 @@ const Inbox = () => {
                                                                             🕐 {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} {new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                                                                         </span>
                                                                     </div>
+                                                                </div>
+                                                            );
+                                                        })()
+                                                    ) : isCallSystem ? (
+                                                        (() => {
+                                                            // Parse call message: extract summary and recording URL
+                                                            const rawContent = msg.content || '';
+                                                            const recordingMatch = rawContent.match(/\[recording:(.*?)\]/);
+                                                            const recordingUrl = recordingMatch ? recordingMatch[1] : null;
+                                                            const summaryMatch = rawContent.match(/📋\s*(.+?)(?:\n\[recording:|$)/s);
+                                                            const summary = summaryMatch ? summaryMatch[1].trim() : null;
+                                                            // Clean content: remove recording tag and summary for header
+                                                            const headerContent = rawContent
+                                                                .replace(/\n\n📋\s*.+$/s, '')
+                                                                .replace(/\n\[recording:.*?\]/, '')
+                                                                .trim();
+                                                            const headerLines = headerContent.split('\n');
+                                                            const titleLine = headerLines[0] || '';
+                                                            const detailLine = headerLines[1] || '';
+                                                            const isInbound = titleLine.includes('Gelen');
+                                                            return (
+                                                                <div className="call-card">
+                                                                    <div className="call-card-header">
+                                                                        <div className="call-card-icon-wrap" style={{ background: isInbound ? '#dcfce7' : '#dbeafe' }}>
+                                                                            <span style={{ fontSize: '1.2rem' }}>{isInbound ? '📲' : '📞'}</span>
+                                                                        </div>
+                                                                        <div className="call-card-info">
+                                                                            <div className="call-card-title">{isInbound ? 'Gelen Arama' : 'Giden Arama'}</div>
+                                                                            <div className="call-card-detail">{detailLine}</div>
+                                                                        </div>
+                                                                        <div className="call-card-status">
+                                                                            {titleLine.includes('Tamamlandı') ? (
+                                                                                <span className="call-card-badge completed">✓ Tamamlandı</span>
+                                                                            ) : titleLine.includes('devam') ? (
+                                                                                <span className="call-card-badge ongoing">● Devam Ediyor</span>
+                                                                            ) : (
+                                                                                <span className="call-card-badge">{titleLine.includes('Sona Erdi') ? '✓ Sona Erdi' : ''}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    {summary && (
+                                                                        <div className="call-card-summary">
+                                                                            <div className="call-card-summary-label">📋 Arama Özeti</div>
+                                                                            <div className="call-card-summary-text">{summary}</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {recordingUrl && (
+                                                                        <div className="call-card-recording">
+                                                                            <div className="call-card-recording-label">🎙️ Kayıt Dinle</div>
+                                                                            <audio controls preload="none" style={{ width: '100%', height: 36, borderRadius: 8 }}>
+                                                                                <source src={recordingUrl} />
+                                                                            </audio>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })()
