@@ -1245,7 +1245,7 @@ const functionDeclarations = [
 export const chat = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { message, history = [] } = req.body;
+        const { message, history = [], translateMode } = req.body;
 
         if (!message?.trim()) {
             return res.status(400).json({ error: 'Mesaj gerekli' });
@@ -1263,6 +1263,17 @@ export const chat = async (req, res) => {
         const aiApiKey = await getEffectiveAiApiKey(workspaceId);
         if (!aiApiKey) {
             return res.status(400).json({ error: 'AI API key yapılandırılmamış.' });
+        }
+
+        // ─── TRANSLATE MODE: simple Gemini call, no tools ───
+        if (translateMode) {
+            const genAI = new GoogleGenerativeAI(aiApiKey);
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const result = await model.generateContent(
+                `Translate the following text to Turkish. Output ONLY the Turkish translation, nothing else.\n\n${message}`
+            );
+            const translation = result.response.text().trim().replace(/^"|"$/g, '');
+            return res.json({ reply: translation, translation, timestamp: new Date().toISOString() });
         }
 
         console.log(`🤖 [İnsto Bot] Message: "${message.substring(0, 60)}..."`);

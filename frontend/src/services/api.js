@@ -372,7 +372,7 @@ export const aiAPI = {
     updateWidgetSettings: (workspaceId, data) => api.put(`/ai/${workspaceId}/widget`, data),
 
     // İnsto Bot
-    instoBotChat: (workspaceId, message, history) => api.post(`/ai/${workspaceId}/insto-bot/chat`, { message, history }),
+    instoBotChat: (workspaceId, message, history, translateMode) => api.post(`/ai/${workspaceId}/insto-bot/chat`, { message, history, translateMode }),
 
     // Translation
     translateText: (workspaceId, text, targetLang) => api.post(`/ai/${workspaceId}/insto-bot/translate`, { text, targetLang })
