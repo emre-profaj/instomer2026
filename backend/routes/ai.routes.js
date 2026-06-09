@@ -8,6 +8,7 @@ const router = express.Router();
 
 // İnsto Bot
 router.post('/:workspaceId/insto-bot/chat', authenticateJWT, requireWorkspaceAccess, instoBotController.chat);
+router.post('/:workspaceId/insto-bot/translate', authenticateJWT, requireWorkspaceAccess, instoBotController.translate);
 
 // Settings
 router.put('/:workspaceId/settings', authenticateJWT, requireWorkspaceAccess, aiController.updateSettings);

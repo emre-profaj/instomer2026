@@ -375,7 +375,7 @@ export const aiAPI = {
     instoBotChat: (workspaceId, message, history) => api.post(`/ai/${workspaceId}/insto-bot/chat`, { message, history }),
 
     // Translation
-    translateText: (workspaceId, text, targetLang) => api.post(`/ai/${workspaceId}/translate`, { text, targetLang })
+    translateText: (workspaceId, text, targetLang) => api.post(`/ai/${workspaceId}/insto-bot/translate`, { text, targetLang })
 };
 
 export const whatsappAPI = {
