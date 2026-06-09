@@ -1757,7 +1757,7 @@ const Assistants = () => {
                             ) : retellAgents.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '40px', background: '#f9fafb', borderRadius: 12, border: '1px dashed #d1d5db' }}>
                                     <Phone size={32} color="#9ca3af" style={{ marginBottom: 10 }} />
-                                    <p style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500, margin: 0 }}>Henüz bağlı Retell agent yok.</p>
+                                    <p style={{ fontSize: '14px', color: '#6b7280', fontWeight: 500, margin: 0 }}>Henüz bağlı sesli asistan yok.</p>
                                     <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0' }}>API Key kaydedip agent oluşturun.</p>
                                 </div>
                             ) : (
