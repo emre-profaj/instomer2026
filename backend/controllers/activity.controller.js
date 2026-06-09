@@ -846,7 +846,7 @@ export const getWorkspaceCallQueue = async (req, res) => {
             where: {
                 workspaceId,
                 type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
-                status: 'PLANNED',
+                status: { in: ['PLANNED', 'COMPLETED'] },
             },
             include: {
                 contact: {
@@ -862,6 +862,7 @@ export const getWorkspaceCallQueue = async (req, res) => {
                     }
                 },
                 assignee: { select: { name: true } },
+                creator: { select: { name: true } },
             },
             orderBy: [
                 { dueDate: 'asc' },

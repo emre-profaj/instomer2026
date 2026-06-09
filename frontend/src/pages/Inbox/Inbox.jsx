@@ -1422,7 +1422,7 @@ const Inbox = () => {
                             type: act.type,
                             status: act.status,
                             dueDate: act.dueDate,
-                            assigneeName: act.assignee?.name || null,
+                            assigneeName: act.assignee?.name || act.creator?.name || null,
                             assignedByType: act.assignedByType || null,
                             source: act.source || null
                         });
@@ -1697,7 +1697,7 @@ const Inbox = () => {
                             type: act.type,
                             status: act.status,
                             dueDate: act.dueDate,
-                            assigneeName: act.assignee?.name || null,
+                            assigneeName: act.assignee?.name || act.creator?.name || null,
                             assignedByType: act.assignedByType || null,
                             source: act.source || null
                         });
