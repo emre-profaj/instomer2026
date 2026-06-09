@@ -570,6 +570,12 @@ export const syncEmailsInternal = async (channelId) => {
             try {
                 const { autoExtractFromConversation } = await import('./ai.controller.js');
                 autoExtractFromConversation(channel.workspaceId, conversation.id);
+
+                // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+                const { ensureCaseForConversation } = await import('./case.controller.js');
+                ensureCaseForConversation(channel.workspaceId, conversation.id).catch(e =>
+                    console.error('⚠️ [AutoCase] Email error:', e.message)
+                );
             } catch (extractError) {
                 // Silent fail
             }

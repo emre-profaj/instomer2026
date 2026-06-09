@@ -340,6 +340,12 @@ export const handleWidgetChat = async (req, res) => {
         try {
             const { autoExtractFromConversation } = await import('./ai.controller.js');
             autoExtractFromConversation(workspaceId, conversation.id);
+
+            // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+            const { ensureCaseForConversation } = await import('./case.controller.js');
+            ensureCaseForConversation(workspaceId, conversation.id).catch(e =>
+                console.error('⚠️ [AutoCase] Widget error:', e.message)
+            );
         } catch (extractError) {
             console.error('❌ AI Auto-Extract (Widget) failed:', extractError);
         }

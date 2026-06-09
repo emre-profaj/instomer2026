@@ -729,3 +729,31 @@ export const realEstateAPI = {
     sendOfferEmail: (workspaceId, offerId) => api.post(`/realestate/${workspaceId}/offers/${offerId}/send-email`),
     deleteOffer: (workspaceId, offerId) => api.delete(`/realestate/${workspaceId}/offers/${offerId}`)
 };
+
+// Case (Sohbet Akışı) API
+export const caseAPI = {
+    // Kişinin tüm case'leri
+    getByContact: (workspaceId, contactId, params = {}) =>
+        api.get(`/contact-cases/${workspaceId}/contact/${contactId}`, { params }),
+    // Tek case detayı
+    getById: (workspaceId, caseId) =>
+        api.get(`/contact-cases/${workspaceId}/cases/${caseId}`),
+    // Yeni case oluştur
+    create: (workspaceId, contactId, data) =>
+        api.post(`/contact-cases/${workspaceId}/contact/${contactId}`, data),
+    // Case güncelle (title, stage, status)
+    update: (workspaceId, caseId, data) =>
+        api.patch(`/contact-cases/${workspaceId}/cases/${caseId}`, data),
+    // Case atama (cascade)
+    assign: (workspaceId, caseId, data) =>
+        api.patch(`/contact-cases/${workspaceId}/cases/${caseId}/assign`, data),
+    // Conversation'ı case'e bağla
+    linkConversation: (workspaceId, caseId, conversationId) =>
+        api.post(`/contact-cases/${workspaceId}/cases/${caseId}/link`, { conversationId }),
+    // Conversation'ı case'den çıkar
+    unlinkConversation: (workspaceId, caseId, conversationId) =>
+        api.delete(`/contact-cases/${workspaceId}/cases/${caseId}/unlink/${conversationId}`),
+    // Case sil
+    delete: (workspaceId, caseId) =>
+        api.delete(`/contact-cases/${workspaceId}/cases/${caseId}`)
+};

@@ -2054,6 +2054,12 @@ async function processWebhookAsync(body) {
                             autoGenerateTopic(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [AutoTopic] FB/IG error:', e.message)
                             );
+
+                            // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+                            const { ensureCaseForConversation } = await import('./case.controller.js');
+                            ensureCaseForConversation(facebookPage.workspaceId, conversation.id).catch(e =>
+                                console.error('⚠️ [AutoCase] FB/IG error:', e.message)
+                            );
                         } catch (extractError) {
                             console.error('❌ AI Auto-Extract call failed:', extractError);
                         }
@@ -3492,6 +3498,18 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 }
             } catch (classifyErr) {
                 console.error('⚠️ [LEADGEN Classifier] Non-fatal error:', classifyErr.message);
+            }
+        }
+
+        // 📦 AUTO-CASE: Lead form conversation için case yoksa oluştur
+        if (conversation?.id) {
+            try {
+                const { ensureCaseForConversation } = await import('./case.controller.js');
+                ensureCaseForConversation(facebookPage.workspaceId, conversation.id).catch(e =>
+                    console.error('⚠️ [AutoCase] Leadgen error:', e.message)
+                );
+            } catch (caseErr) {
+                console.error('⚠️ [AutoCase] Leadgen import error:', caseErr.message);
             }
         }
 

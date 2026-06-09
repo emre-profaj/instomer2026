@@ -1377,6 +1377,12 @@ export const webhookHandler = async (req, res) => {
                             console.error('❌ [AutoTopic] WA error:', e.message)
                         );
                         // autoAssignDefaultFunnel artık applyChannelRouting içinde merkezi olarak çalışıyor
+
+                        // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+                        const { ensureCaseForConversation } = await import('./case.controller.js');
+                        ensureCaseForConversation(waNumber.workspaceId, conversation.id).catch(e =>
+                            console.error('⚠️ [AutoCase] WA error:', e.message)
+                        );
                     } catch (extractError) {
                         console.error('❌ AI Auto-Extract (WhatsApp) call failed:', extractError);
                     }

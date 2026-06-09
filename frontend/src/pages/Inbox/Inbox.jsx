@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI } from '../../services/api';
+import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import { io } from 'socket.io-client';
 import DOMPurify from 'dompurify';
@@ -12,7 +12,7 @@ import {
     Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConversationPopup from '../../components/ConversationPopup/ConversationPopup';
@@ -728,6 +728,11 @@ const Inbox = () => {
     // Topic Dropdown
     const [topicDropdownOpen, setTopicDropdownOpen] = useState(false);
     const [topicDropdownPos, setTopicDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+    // Case linking from topic
+    const [caseLinkDropdownOpen, setCaseLinkDropdownOpen] = useState(false);
+    const [contactCases, setContactCases] = useState([]);
+    const [caseLinkLoading, setCaseLinkLoading] = useState(false);
+    const [newCaseTitle, setNewCaseTitle] = useState('');
     const quickReplyDropdownRef = useRef(null);
 
     const messagesContainerRef = useRef(null);
@@ -3906,6 +3911,240 @@ const Inbox = () => {
                                                                         {topic}
                                                                     </div>
                                                                 ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                            {/* Case Bağlama Butonu — Konu başlığının yanında */}
+                                            {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact?.id && (() => {
+                                                const currentCaseId = selectedItem.caseId;
+                                                const linkedCase = currentCaseId ? contactCases.find(c => c.id === currentCaseId) : null;
+
+                                                return (
+                                                    <div style={{ position: 'relative', display: 'inline-flex' }}>
+                                                        <button
+                                                            className="case-link-btn"
+                                                            title={linkedCase ? `Bağlı: ${linkedCase.title}` : 'Case\'e bağla'}
+                                                            onClick={async () => {
+                                                                if (caseLinkDropdownOpen) {
+                                                                    setCaseLinkDropdownOpen(false);
+                                                                    return;
+                                                                }
+                                                                setCaseLinkLoading(true);
+                                                                setCaseLinkDropdownOpen(true);
+                                                                try {
+                                                                    const res = await caseAPI.getByContact(currentWorkspace.id, selectedItem.contact.id);
+                                                                    setContactCases(res.data || []);
+                                                                } catch (err) {
+                                                                    console.error('Case fetch error:', err);
+                                                                    setContactCases([]);
+                                                                } finally {
+                                                                    setCaseLinkLoading(false);
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                background: linkedCase ? '#f5f3ff' : 'transparent',
+                                                                border: linkedCase ? '1px solid #c4b5fd' : '1px solid transparent',
+                                                                borderRadius: 6, padding: '3px 6px', cursor: 'pointer',
+                                                                display: 'flex', alignItems: 'center', gap: 4,
+                                                                color: linkedCase ? '#7c3aed' : '#9ca3af',
+                                                                fontSize: '0.72rem', fontWeight: 500,
+                                                                transition: 'all 0.15s', whiteSpace: 'nowrap'
+                                                            }}
+                                                        >
+                                                            <Briefcase size={13} />
+                                                            {linkedCase && (
+                                                                <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    {linkedCase.caseNumber}
+                                                                </span>
+                                                            )}
+                                                        </button>
+
+                                                        {/* Case Link Dropdown */}
+                                                        {caseLinkDropdownOpen && (
+                                                            <div
+                                                                style={{
+                                                                    position: 'absolute', top: '100%', right: 0, zIndex: 9999,
+                                                                    background: '#fff', border: '1px solid #e5e7eb',
+                                                                    borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                                    width: 280, maxHeight: 360, overflow: 'auto',
+                                                                    marginTop: 4
+                                                                }}
+                                                                onClick={e => e.stopPropagation()}
+                                                            >
+                                                                {/* Header */}
+                                                                <div style={{
+                                                                    padding: '10px 14px', borderBottom: '1px solid #f3f4f6',
+                                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                                                                }}>
+                                                                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>
+                                                                        Case'e Bağla
+                                                                    </span>
+                                                                    <button
+                                                                        onClick={() => setCaseLinkDropdownOpen(false)}
+                                                                        style={{
+                                                                            background: 'none', border: 'none', cursor: 'pointer',
+                                                                            color: '#9ca3af', padding: 2
+                                                                        }}
+                                                                    ><X size={14} /></button>
+                                                                </div>
+
+                                                                {caseLinkLoading ? (
+                                                                    <div style={{ padding: 16, textAlign: 'center', color: '#9ca3af', fontSize: '0.8rem' }}>
+                                                                        Yükleniyor...
+                                                                    </div>
+                                                                ) : (
+                                                                    <>
+                                                                        {/* Linked case info */}
+                                                                        {linkedCase && (
+                                                                            <div style={{
+                                                                                padding: '8px 14px', background: '#f5f3ff',
+                                                                                borderBottom: '1px solid #ede9fe',
+                                                                                display: 'flex', alignItems: 'center', gap: 8
+                                                                            }}>
+                                                                                <div style={{ flex: 1 }}>
+                                                                                    <div style={{ fontSize: '0.68rem', color: '#a78bfa', fontFamily: 'monospace', fontWeight: 600 }}>
+                                                                                        {linkedCase.caseNumber}
+                                                                                    </div>
+                                                                                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5b21b6' }}>
+                                                                                        {linkedCase.title}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <button
+                                                                                    onClick={async () => {
+                                                                                        try {
+                                                                                            await caseAPI.unlinkConversation(currentWorkspace.id, linkedCase.id, selectedItem.id);
+                                                                                            setSelectedItem(prev => ({ ...prev, caseId: null }));
+                                                                                            setInboxItems(prev => prev.map(item =>
+                                                                                                item.id === selectedItem.id ? { ...item, caseId: null } : item
+                                                                                            ));
+                                                                                            setContactCases(prev => prev.map(c =>
+                                                                                                c.id === linkedCase.id
+                                                                                                    ? { ...c, conversations: (c.conversations || []).filter(cv => cv.id !== selectedItem.id) }
+                                                                                                    : c
+                                                                                            ));
+                                                                                        } catch (err) { console.error('Unlink error:', err); }
+                                                                                    }}
+                                                                                    title="Bağlantıyı kaldır"
+                                                                                    style={{
+                                                                                        background: '#fef2f2', border: '1px solid #fecaca',
+                                                                                        borderRadius: 5, padding: '3px 8px', cursor: 'pointer',
+                                                                                        color: '#ef4444', fontSize: '0.7rem', fontWeight: 500
+                                                                                    }}
+                                                                                >Çıkar</button>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Existing active cases */}
+                                                                        {contactCases.filter(c => c.status === 'ACTIVE' && c.id !== currentCaseId).length > 0 && (
+                                                                            <div style={{ padding: '6px 14px' }}>
+                                                                                <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>
+                                                                                    Mevcut Case'ler
+                                                                                </div>
+                                                                                {contactCases.filter(c => c.status === 'ACTIVE' && c.id !== currentCaseId).map(c => (
+                                                                                    <div
+                                                                                        key={c.id}
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                // If already linked to another case, unlink first
+                                                                                                if (currentCaseId) {
+                                                                                                    await caseAPI.unlinkConversation(currentWorkspace.id, currentCaseId, selectedItem.id);
+                                                                                                }
+                                                                                                await caseAPI.linkConversation(currentWorkspace.id, c.id, selectedItem.id);
+                                                                                                setSelectedItem(prev => ({ ...prev, caseId: c.id }));
+                                                                                                setInboxItems(prev => prev.map(item =>
+                                                                                                    item.id === selectedItem.id ? { ...item, caseId: c.id } : item
+                                                                                                ));
+                                                                                                setCaseLinkDropdownOpen(false);
+                                                                                            } catch (err) { console.error('Link error:', err); }
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '6px 10px', borderRadius: 6, cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            marginBottom: 2, transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f5f3ff'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <Link2 size={12} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                                                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                                                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                                                {c.title}
+                                                                                            </div>
+                                                                                            <div style={{ fontSize: '0.65rem', color: '#9ca3af' }}>
+                                                                                                {c.caseNumber} · 💬{c._conversationCount || 0}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Create new case */}
+                                                                        <div style={{
+                                                                            padding: '8px 14px', borderTop: '1px solid #f3f4f6'
+                                                                        }}>
+                                                                            <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>
+                                                                                Yeni Case Oluştur
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', gap: 4 }}>
+                                                                                <input
+                                                                                    value={newCaseTitle}
+                                                                                    onChange={e => setNewCaseTitle(e.target.value)}
+                                                                                    placeholder={selectedItem.aiTopic || 'Case başlığı...'}
+                                                                                    onKeyDown={async e => {
+                                                                                        if (e.key === 'Enter' && (newCaseTitle.trim() || selectedItem.aiTopic?.trim())) {
+                                                                                            const title = newCaseTitle.trim() || selectedItem.aiTopic.trim();
+                                                                                            try {
+                                                                                                const res = await caseAPI.create(currentWorkspace.id, selectedItem.contact.id, {
+                                                                                                    title,
+                                                                                                    conversationId: selectedItem.id
+                                                                                                });
+                                                                                                setSelectedItem(prev => ({ ...prev, caseId: res.data.id }));
+                                                                                                setInboxItems(prev => prev.map(item =>
+                                                                                                    item.id === selectedItem.id ? { ...item, caseId: res.data.id } : item
+                                                                                                ));
+                                                                                                setNewCaseTitle('');
+                                                                                                setCaseLinkDropdownOpen(false);
+                                                                                            } catch (err) { console.error('Create case error:', err); }
+                                                                                        }
+                                                                                    }}
+                                                                                    style={{
+                                                                                        flex: 1, padding: '6px 10px', border: '1px solid #e5e7eb',
+                                                                                        borderRadius: 6, fontSize: '0.78rem', outline: 'none',
+                                                                                        background: '#faf5ff'
+                                                                                    }}
+                                                                                />
+                                                                                <button
+                                                                                    onClick={async () => {
+                                                                                        const title = newCaseTitle.trim() || selectedItem.aiTopic?.trim();
+                                                                                        if (!title) return;
+                                                                                        try {
+                                                                                            const res = await caseAPI.create(currentWorkspace.id, selectedItem.contact.id, {
+                                                                                                title,
+                                                                                                conversationId: selectedItem.id
+                                                                                            });
+                                                                                            setSelectedItem(prev => ({ ...prev, caseId: res.data.id }));
+                                                                                            setInboxItems(prev => prev.map(item =>
+                                                                                                item.id === selectedItem.id ? { ...item, caseId: res.data.id } : item
+                                                                                            ));
+                                                                                            setNewCaseTitle('');
+                                                                                            setCaseLinkDropdownOpen(false);
+                                                                                        } catch (err) { console.error('Create case error:', err); }
+                                                                                    }}
+                                                                                    style={{
+                                                                                        background: '#8b5cf6', border: 'none', borderRadius: 6,
+                                                                                        color: '#fff', padding: '0 10px', cursor: 'pointer',
+                                                                                        fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap'
+                                                                                    }}
+                                                                                >
+                                                                                    <Plus size={14} />
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </div>

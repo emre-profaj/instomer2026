@@ -2576,6 +2576,64 @@ async function handleCallEnded(call) {
                     console.error(`❌ [Retell Webhook] Failed to update activity ${activityId} in call_ended:`, actErr.message);
                 }
             }
+
+            // ── AUTO-CASE: Arama bittiğinde açık case yoksa otomatik oluştur ──
+            try {
+                const caseContactId = callRecord.contactId;
+                const caseWorkspaceId = callRecord.workspaceId;
+                if (caseContactId && caseWorkspaceId) {
+                    // Bu kişinin aktif case'i var mı?
+                    const existingCase = await prisma.case.findFirst({
+                        where: {
+                            contactId: caseContactId,
+                            workspaceId: caseWorkspaceId,
+                            status: { in: ['ACTIVE', 'PENDING', 'IN_PROGRESS'] }
+                        }
+                    });
+                    if (!existingCase) {
+                        // Case numarası oluştur
+                        const year = new Date().getFullYear();
+                        const prefix = 'CSE';
+                        const lastCase = await prisma.case.findFirst({
+                            where: { workspaceId: caseWorkspaceId, caseNumber: { startsWith: `${prefix}-${year}` } },
+                            orderBy: { createdAt: 'desc' }
+                        });
+                        let nextNum = 1;
+                        if (lastCase?.caseNumber) {
+                            const parts = lastCase.caseNumber.split('-');
+                            if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
+                        }
+                        const caseNumber = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
+
+                        const phoneLabel = callRecord.direction === 'inbound'
+                            ? `Gelen Arama: ${callRecord.fromNumber}`
+                            : `Yapılan Arama: ${callRecord.toNumber}`;
+
+                        const newCase = await prisma.case.create({
+                            data: {
+                                workspaceId: caseWorkspaceId,
+                                contactId: caseContactId,
+                                caseNumber,
+                                title: phoneLabel,
+                                priority: 'NORMAL'
+                            }
+                        });
+
+                        // Conversation varsa case'e bağla
+                        if (callRecord.conversationId) {
+                            await prisma.conversation.update({
+                                where: { id: callRecord.conversationId },
+                                data: { caseId: newCase.id }
+                            });
+                        }
+
+                        console.log(`📦 [AutoCase] Phone call → auto-created case "${caseNumber}" for contact ${caseContactId}`);
+                    }
+                }
+            } catch (caseErr) {
+                console.error(`⚠️ [AutoCase] Failed in handleCallEnded:`, caseErr.message);
+            }
+            // ── AUTO-CASE END ──
         }
 
         console.log(`📞 [Retell] Call ended: ${call.call_id}, duration: ${duration}s, reason: ${call.disconnection_reason || 'N/A'}, hasTranscript: ${!!call.transcript}`);

@@ -165,7 +165,13 @@ const CallHistory = ({ workspaceId, contactId, refreshKey = 0 }) => {
                             <div className="call-history-header">
                                 <div className="call-history-info">
                                     <div className="call-history-top">
-                                        <Phone size={14} style={{ color: call.status === 'ended' ? '#10b981' : '#f59e0b' }} />
+                                        {call.direction === 'inbound'
+                                            ? <span style={{ fontSize: '0.85rem' }}>📲</span>
+                                            : <Phone size={14} style={{ color: call.status === 'ended' ? '#10b981' : '#f59e0b' }} />
+                                        }
+                                        {call.direction === 'inbound' && (
+                                            <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '999px', background: '#e0f2fe', color: '#0284c7', fontWeight: 700 }}>Gelen</span>
+                                        )}
                                         <span className="call-history-date">{formatDate(call.createdAt)}</span>
                                         <span className="call-history-duration">{formatDuration(call.duration)}</span>
                                     </div>
@@ -197,11 +203,17 @@ const CallHistory = ({ workspaceId, contactId, refreshKey = 0 }) => {
                         {/* Header */}
                         <div className="call-modal-header">
                             <div className="call-modal-title">
-                                <PhoneCall size={22} style={{ color: '#10b981' }} />
+                                {selectedCall.direction === 'inbound'
+                                    ? <span style={{ fontSize: '1.4rem' }}>📲</span>
+                                    : <PhoneCall size={22} style={{ color: '#10b981' }} />
+                                }
                                 <div>
-                                    <h2>Arama Detayı</h2>
+                                    <h2>{selectedCall.direction === 'inbound' ? 'Gelen Arama Detayı' : 'Arama Detayı'}</h2>
                                     <span className="call-modal-date">{formatFullDate(selectedCall.createdAt)}</span>
                                 </div>
+                                {selectedCall.direction === 'inbound' && (
+                                    <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: '#e0f2fe', color: '#0284c7', fontWeight: 700, marginLeft: '8px' }}>📲 Gelen Arama</span>
+                                )}
                             </div>
                             <button className="call-modal-close" onClick={() => setSelectedCall(null)}>
                                 <X size={20} />
@@ -216,7 +228,7 @@ const CallHistory = ({ workspaceId, contactId, refreshKey = 0 }) => {
                             </div>
                             <div className="call-stat">
                                 <Phone size={16} />
-                                <span>{selectedCall.toNumber}</span>
+                                <span>{selectedCall.direction === 'inbound' ? selectedCall.fromNumber : selectedCall.toNumber}</span>
                             </div>
                             {selectedCall.sentiment && (() => {
                                 const s = sentimentConfig[selectedCall.sentiment];

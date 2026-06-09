@@ -3201,6 +3201,49 @@ Konu başlığı:`;
             data: { aiTopic: topic }
         });
 
+        // ── AUTO-CASE: Topic oluştuğunda otomatik Case oluştur ──
+        try {
+            const convForCase = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { caseId: true, contactId: true, assignedToId: true, assignedTeamId: true }
+            });
+            if (convForCase && !convForCase.caseId && convForCase.contactId) {
+                // Case numarası oluştur (inline)
+                const year = new Date().getFullYear();
+                const prefix = 'CSE';
+                const lastCase = await prisma.case.findFirst({
+                    where: { workspaceId, caseNumber: { startsWith: `${prefix}-${year}` } },
+                    orderBy: { createdAt: 'desc' }
+                });
+                let nextNum = 1;
+                if (lastCase?.caseNumber) {
+                    const parts = lastCase.caseNumber.split('-');
+                    if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
+                }
+                const caseNumber = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`;
+
+                const newCase = await prisma.case.create({
+                    data: {
+                        workspaceId,
+                        contactId: convForCase.contactId,
+                        caseNumber,
+                        title: topic,
+                        assignedToId: convForCase.assignedToId || null,
+                        assignedTeamId: convForCase.assignedTeamId || null,
+                        priority: 'NORMAL'
+                    }
+                });
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { caseId: newCase.id }
+                });
+                console.log(`📦 [AutoCase] Auto-created case "${caseNumber}" for topic "${topic}"`);
+            }
+        } catch (caseErr) {
+            console.error(`⚠️ [AutoCase] Failed in autoGenerateTopic:`, caseErr.message);
+        }
+        // ── AUTO-CASE END ──
+
         console.log(`✅ [AutoTopic] Conv ${conversationId} (${totalCustomerMsgs} msgs): "${topic}"`);
     } catch (err) {
         console.error('❌ [AutoTopic] Error:', err.message);

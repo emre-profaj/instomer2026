@@ -724,6 +724,12 @@ export const sendMessage = async (req, res) => {
             autoGenerateTopic(conversation.workspaceId, conversationId, content).catch(e =>
                 console.error('❌ [AutoTopic] Dashboard error:', e.message)
             );
+
+            // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+            const { ensureCaseForConversation } = await import('./case.controller.js');
+            ensureCaseForConversation(conversation.workspaceId, conversationId).catch(e =>
+                console.error('⚠️ [AutoCase] Dashboard error:', e.message)
+            );
         } catch (extractError) {
             console.error('❌ AI Auto-Extract (Dashboard) failed:', extractError);
         }

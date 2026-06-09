@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
-import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI } from '../../services/api';
+import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
+import CaseCards from './CaseCards';
 import TransferModal from '../TransferModal/TransferModal';
 import ChatPopup from '../ChatPopup/ChatPopup';
 import './ContactSidebar.css';
@@ -1637,11 +1638,84 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             </div>
 
 
-                            {/* Atama / Üstlen Widget */}
-                            {!readOnly && activeConv && (
-                                <div style={{ display: 'flex', gap: '8px', padding: '20px 0 10px', alignItems: 'center' }}>
-                                    {/* ── Atama Pill Widget ── */}
-                                    {(() => {
+                            {/* ACTION BUTTONS — Row 1: Aktiviteler */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 0 2px' }}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
+                                    <span style={{ position: 'relative', display: 'inline-flex', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+                                        <PhoneCall size={17} style={{ color: '#374151' }} />
+                                        <span style={{
+                                            position: 'absolute', bottom: -3, right: -2,
+                                            width: 14, height: 14, borderRadius: '50%',
+                                            background: '#10b981', display: 'flex',
+                                            alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 0 0 2px #fff'
+                                        }}>
+                                            <Check size={9} strokeWidth={3} style={{ color: '#fff' }} />
+                                        </span>
+                                        <StickyNote size={10} style={{
+                                            position: 'absolute', top: -3, left: -2,
+                                            color: '#f59e0b'
+                                        }} />
+                                    </span>
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
+                                </button>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
+                                    <PhoneCall size={18} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Planla</span>
+                                </button>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('MEETING')}>
+                                    <CalendarDays size={18} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görüşme{' '}Planla</span>
+                                </button>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('REMINDER')}>
+                                    <Bell size={18} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görev{' '}Hatırlatıcı</span>
+                                </button>
+                            </div>
+                            {/* ACTION BUTTONS — Row 2: Satış */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 0 8px' }}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowQuoteForm(true)}>
+                                    <FileText size={18} style={{ color: '#10b981' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
+                                </button>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowOrderForm(true)}>
+                                    <TrendingUp size={18} style={{ color: '#3b82f6' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
+                                </button>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowInvoiceForm(true)}>
+                                    <FileText size={18} style={{ color: '#8b5cf6' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
+                                </button>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('PAYMENT')}>
+                                    <Banknote size={18} style={{ color: '#f59e0b' }} />
+                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Tahsilat</span>
+                                </button>
+                            </div>
+
+                            {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
+                            {/* CaseCards + Atama + Timeline hepsi tek section'da */}
+                            {activeConv && (
+                                <div className="customer-journey-timeline">
+                                    {/* ── Header ── */}
+                                    <div className="journey-header">
+                                        <TrendingUp size={13} />
+                                        <span>Sohbet Akışı</span>
+                                    </div>
+
+                                    {/* ── Case Kartları (inline) ── */}
+                                    {profile?.id && currentWorkspace?.id && (
+                                        <CaseCards
+                                            workspaceId={currentWorkspace.id}
+                                            contactId={profile.id}
+                                            members={members}
+                                            teams={teams}
+                                            conversationId={conversationId}
+                                            inline={true}
+                                        />
+                                    )}
+
+                                    {/* ── Atama / Üstlen Widget ── */}
+                                    {!readOnly && (() => {
                                         let convTeamIds = [];
                                         try { convTeamIds = JSON.parse(activeConv.teamIds || '[]'); } catch {}
                                         const assignedTeam = convTeamIds.length > 0 ? teams.find(t => t.id === convTeamIds[0]) : null;
@@ -1656,11 +1730,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         const canClaim = !activeConv.assignedToId || activeConv.assignedToId !== (currentUserId || user?.id);
 
                                         return (
-                                            <>
+                                            <div style={{ display: 'flex', gap: '6px', padding: '6px 12px 8px', alignItems: 'center' }}>
                                                 <div ref={assignMegaMenuRef} style={{ position: 'relative', flex: 1 }}>
                                                     <button
                                                         className="stage-mega-trigger"
-                                                        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                                        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem' }}
                                                         onClick={e => {
                                                             const rect = e.currentTarget.getBoundingClientRect();
                                                             setAssignMegaMenuPos({ top: rect.bottom + 6, left: Math.max(10, rect.right - 342) });
@@ -1670,7 +1744,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         title="Atama"
                                                     >
                                                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                            <Users size={12} style={{ flexShrink: 0 }} />
+                                                            <Users size={11} style={{ flexShrink: 0 }} />
                                                             {pillLabel}
                                                         </span>
                                                         <ChevronDown size={10} style={{ flexShrink: 0 }} />
@@ -1801,480 +1875,460 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         onClick={handleClaim}
                                                         disabled={takingOver}
                                                         title="Bu konuşmayı üstlen"
+                                                        style={{ fontSize: '0.68rem', padding: '4px 8px' }}
                                                     >
-                                                        <UserCheck size={12} />
+                                                        <UserCheck size={11} />
                                                         Üstlen
                                                     </button>
                                                 )}
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* ── Timeline Steps ── */}
+                                    {!timelineLoading && (pastTimeline.length > 0 || plannedTimeline.length > 0 || profile?.createdAt) && (() => {
+                                        // Build journey milestones from timeline data + profile
+                                        const milestones = [];
+
+                                        // 1. Kişi kaydı oluşturuldu
+                                        if (profile?.createdAt) {
+                                            milestones.push({
+                                                icon: '📋',
+                                                label: 'Kayıt Oluşturuldu',
+                                                detail: profile.source ? `Kaynak: ${profile.source}` : null,
+                                                date: new Date(profile.createdAt),
+                                                color: '#ef4444',
+                                                done: true,
+                                                _type: 'RECORD'
+                                            });
+                                        }
+
+                                        // 2. İlk sohbet
+                                        const allTimeline = [...pastTimeline, ...plannedTimeline];
+                                        const firstConv = allTimeline
+                                            .filter(i => i.sourceType === 'CONVERSATION')
+                                            .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                                        if (firstConv) {
+                                            const convDetail = firstConv.aiTopic 
+                                                || firstConv.lastMessageContent 
+                                                || firstConv.title 
+                                                || (firstConv.type === 'WHATSAPP' ? 'WhatsApp' : firstConv.type === 'INSTAGRAM' ? 'Instagram' : firstConv.type === 'FACEBOOK' ? 'Facebook' : 'Sohbet');
+                                            milestones.push({
+                                                icon: '💬',
+                                                label: 'İlk Sohbet Başladı',
+                                                detail: convDetail,
+                                                date: new Date(firstConv.date),
+                                                color: '#ef4444',
+                                                done: true,
+                                                _type: 'CONVERSATION',
+                                                _sourceItems: [firstConv]
+                                            });
+                                        }
+
+                                        // 3. Telefon alındı
+                                        if (profile?.phone) {
+                                            const isFromPhoneChannel = ['WHATSAPP', 'INSTAGRAM', 'PHONE'].includes(profile.source?.toUpperCase?.());
+                                            const phoneDate = isFromPhoneChannel
+                                                ? new Date(profile.createdAt)
+                                                : (firstConv ? new Date(firstConv.date) : new Date(profile.createdAt));
+                                            milestones.push({
+                                                icon: '📱',
+                                                label: 'Telefon Alındı',
+                                                detail: profile.phone,
+                                                date: phoneDate,
+                                                color: '#ef4444',
+                                                done: true,
+                                                _type: 'PHONE'
+                                            });
+                                        }
+
+                                        // 4. Aramalar
+                                        const calls = allTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.sourceType === 'ACTIVITY');
+                                        const completedCalls = calls.filter(i => i.status === 'COMPLETED');
+                                        const failedCalls = calls.filter(i => i.status === 'CANCELLED');
+
+                                        const humanCompletedCalls = completedCalls.filter(call => {
+                                            const isAI = call.source === 'AI' || call.source === 'RETELL' || call.assignedByType === 'AI';
+                                            if (!isAI) return true;
+                                            const callTime = new Date(call.completedAt || call.dueDate || call.date).getTime();
+                                            const hasMatchingRetell = aiCalls.some(ac => {
+                                                const retellTime = new Date(ac.createdAt).getTime();
+                                                return Math.abs(callTime - retellTime) < 5 * 60 * 1000;
+                                            });
+                                            return !hasMatchingRetell;
+                                        });
+
+                                        humanCompletedCalls.forEach(call => {
+                                            const callerName = call.assignedToName || call.completedByName || 'Bilinmeyen';
+                                            const isAI = call.source === 'AI' || call.source === 'RETELL';
+                                            const initials = callerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+                                            let sentimentEmoji = '';
+                                            if (call.callSentiment) {
+                                                sentimentEmoji = call.callSentiment === 'Positive' ? ' 😊' : call.callSentiment === 'Negative' ? ' 😞' : ' 😐';
+                                            }
+                                            milestones.push({
+                                                icon: isAI ? '🤖' : '👤',
+                                                label: `${isAI ? 'AI Arama' : callerName}${sentimentEmoji}`,
+                                                detail: call.content || call.description || call.result || (call.callSuccessful === true ? 'Başarılı' : call.callSuccessful === false ? 'Başarısız' : 'Tamamlandı'),
+                                                date: new Date(call.completedAt || call.dueDate || call.date),
+                                                color: '#16a34a',
+                                                done: true,
+                                                _type: 'CALL',
+                                                _sourceItems: [call],
+                                                _callerInitials: isAI ? 'AI' : initials,
+                                                _isAI: isAI
+                                            });
+                                        });
+
+                                        aiCalls.forEach(aiCall => {
+                                            let sentimentEmoji = '';
+                                            if (aiCall.sentiment) {
+                                                sentimentEmoji = aiCall.sentiment === 'Positive' ? ' 😊' : aiCall.sentiment === 'Negative' ? ' 😞' : ' 😐';
+                                            }
+                                            const isFailedAI = aiCall.status === 'not_connected' || aiCall.disconnectionReason === 'dial_no_answer' || aiCall.disconnectionReason?.startsWith('dial_');
+                                            const isInbound = aiCall.direction === 'inbound';
+                                            const dirIcon = isInbound ? '📲' : '🤖';
+                                            const dirLabel = isInbound ? 'Gelen AI Arama' : 'AI Arama';
+                                            if (!isFailedAI) {
+                                                milestones.push({
+                                                    icon: dirIcon,
+                                                    label: `${dirLabel}${sentimentEmoji}`,
+                                                    detail: aiCall.summary || aiCall.callTopic || (isInbound ? 'Müşteri geri aradı' : 'AI sesli arama'),
+                                                    date: new Date(aiCall.createdAt),
+                                                    color: isInbound ? '#0ea5e9' : '#6366f1',
+                                                    done: true,
+                                                    _type: 'CALL',
+                                                    _sourceItems: [],
+                                                    _aiCalls: [aiCall],
+                                                    _callerInitials: isInbound ? '📲' : 'AI',
+                                                    _isAI: true,
+                                                    _isInbound: isInbound
+                                                });
+                                            }
+                                        });
+
+                                        const failedAiCalls = aiCalls.filter(ac =>
+                                            ac.status === 'not_connected' || ac.disconnectionReason === 'dial_no_answer' || ac.disconnectionReason?.startsWith('dial_')
+                                        );
+                                        const allFailedEntries = [
+                                            ...failedCalls.map(f => ({ date: new Date(f.dueDate || f.date), source: 'activity', item: f })),
+                                            ...failedAiCalls.map(f => ({ date: new Date(f.createdAt), source: 'retell', item: f }))
+                                        ].sort((a, b) => a.date - b.date);
+
+                                        if (allFailedEntries.length > 0) {
+                                            const lastFailed = allFailedEntries[allFailedEntries.length - 1];
+                                            const reason = lastFailed.source === 'retell'
+                                                ? `Aradı, ulaşamadı. (Sebep: ${lastFailed.item.disconnectionReason || 'cevap yok'})`
+                                                : (lastFailed.item.content || 'Cevap yok');
+                                            milestones.push({
+                                                icon: '📵',
+                                                label: `Ulaşılamadı${allFailedEntries.length > 1 ? ` (${allFailedEntries.length}x)` : ''}`,
+                                                detail: reason,
+                                                date: lastFailed.date,
+                                                color: '#ef4444',
+                                                done: true,
+                                                _type: 'CALL_FAILED',
+                                                _sourceItems: failedCalls
+                                            });
+                                        }
+
+                                        // 5. Randevu / Görüşme
+                                        const meetings = allTimeline.filter(i => i.type === 'MEETING' && i.sourceType === 'ACTIVITY');
+                                        if (meetings.length > 0) {
+                                            const lastMeeting = meetings.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                            milestones.push({
+                                                icon: '📅',
+                                                label: lastMeeting.status === 'COMPLETED' ? 'Randevu Tamamlandı' : lastMeeting.status === 'PLANNED' ? 'Randevu Planlandı' : 'Randevu',
+                                                detail: lastMeeting.content || lastMeeting.description || null,
+                                                date: new Date(lastMeeting.dueDate || lastMeeting.date),
+                                                color: lastMeeting.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
+                                                done: lastMeeting.status === 'COMPLETED',
+                                                _type: 'MEETING',
+                                                _sourceItems: meetings
+                                            });
+                                        }
+
+                                        // 6. Ziyaret
+                                        const visits = allTimeline.filter(i => i.type === 'VISIT' && i.sourceType === 'ACTIVITY');
+                                        if (visits.length > 0) {
+                                            const lastVisit = visits.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                                            milestones.push({
+                                                icon: '🏢',
+                                                label: 'Ziyaret',
+                                                detail: lastVisit.content || null,
+                                                date: new Date(lastVisit.dueDate || lastVisit.date),
+                                                color: lastVisit.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
+                                                done: lastVisit.status === 'COMPLETED',
+                                                _type: 'VISIT',
+                                                _sourceItems: visits
+                                            });
+                                        }
+
+                                        // 7. Teklif
+                                        const proposals = allTimeline.filter(i => i.type === 'PROPOSAL' && i.sourceType === 'ACTIVITY');
+                                        if (proposals.length > 0) {
+                                            milestones.push({
+                                                icon: '📄',
+                                                label: `Teklif Verildi${proposals.length > 1 ? ` (${proposals.length}x)` : ''}`,
+                                                detail: null,
+                                                date: new Date(proposals[0].dueDate || proposals[0].date),
+                                                color: '#ef4444',
+                                                done: true,
+                                                _type: 'PROPOSAL',
+                                                _sourceItems: proposals
+                                            });
+                                        }
+
+                                        // 8. Sipariş
+                                        const orders = allTimeline.filter(i => i.type === 'ORDER' && i.sourceType === 'ACTIVITY');
+                                        if (orders.length > 0) {
+                                            milestones.push({
+                                                icon: '🛒',
+                                                label: `Sipariş${orders.length > 1 ? ` (${orders.length}x)` : ''}`,
+                                                detail: null,
+                                                date: new Date(orders[0].dueDate || orders[0].date),
+                                                color: '#16a34a',
+                                                done: true,
+                                                _type: 'ORDER',
+                                                _sourceItems: orders
+                                            });
+                                        }
+
+                                        // 8.5 AI Aramaları — CALL milestone'a birleştirildi, ayrı entry yok
+
+                                        // 9. Planlanmış aramalar (gelecek)
+                                        const plannedCalls = plannedTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.status === 'PLANNED');
+                                        if (plannedCalls.length > 0) {
+                                            const nextCall = plannedCalls.sort((a, b) => new Date(a.dueDate || a.date) - new Date(b.dueDate || b.date))[0];
+                                            const callDate = new Date(nextCall.dueDate || nextCall.date);
+                                            const isOverdue = callDate < new Date();
+                                            const hasCompletedCall = completedCalls.length > 0;
+                                            milestones.push({
+                                                icon: isOverdue ? '⚠️' : '🔔',
+                                                label: isOverdue ? 'Gecikmiş Arama' : 'Planlanan Arama',
+                                                detail: (() => {
+                                                    const parts = [];
+                                                    if (nextCall.assignedToName) parts.push(`→ ${nextCall.assignedToName}`);
+                                                    let topic = nextCall.callTopic;
+                                                    if (!topic && nextCall.content) {
+                                                        const match = nextCall.content.match(/Konu:\s*([^\s]+(?:\s+[^\s]+)*?)(?:\s+Numara:|\s+Kaynak:|\s*$)/i);
+                                                        if (match) topic = match[1].trim();
+                                                    }
+                                                    if (topic) parts.push(`📋 ${topic}`);
+                                                    return parts.length > 0 ? parts.join('  •  ') : null;
+                                                })(),
+                                                date: callDate,
+                                                color: isOverdue ? '#dc2626' : '#f87171',
+                                                done: false,
+                                                overdue: isOverdue && !hasCompletedCall,
+                                                _type: 'PLANNED_CALL',
+                                                _sourceItems: plannedCalls
+                                            });
+                                        }
+
+                                        // 9.5 Notlar
+                                        const noteItems = allTimeline.filter(i => i.type === 'NOTE' && i.sourceType === 'ACTIVITY');
+                                        noteItems.forEach(note => {
+                                            const noteContent = (note.content || '').replace(/<[^>]*>/g, '').substring(0, 60);
+                                            milestones.push({
+                                                icon: '📝',
+                                                label: 'Not Eklendi',
+                                                detail: [
+                                                    note.labelName && note.labelName !== 'Kişi Notu' ? `${note.labelName}` : null,
+                                                    noteContent || null
+                                                ].filter(Boolean).join(' — ') || null,
+                                                date: new Date(note.date),
+                                                color: '#eab308',
+                                                done: true,
+                                                _type: 'NOTE'
+                                            });
+                                        });
+
+                                        // 10. Conversation Events
+                                        const rawEventItems = allTimeline.filter(i => i.sourceType === 'EVENT');
+                                        const seenEvents = new Set();
+                                        const eventItems = rawEventItems.filter(evt => {
+                                            const evtTime = new Date(evt.date).getTime();
+                                            const key = `${evt.title}_${Math.floor(evtTime / 60000)}`;
+                                            if (seenEvents.has(key)) return false;
+                                            seenEvents.add(key);
+                                            return true;
+                                        });
+                                        eventItems.forEach(evt => {
+                                            const eventType = evt.eventType || evt.type;
+                                            let icon = '📌';
+                                            let label = evt.title || '';
+                                            let color = '#64748b';
+                                            let detail = null;
+
+                                            switch (eventType) {
+                                                case 'ASSIGNED':
+                                                    icon = '👤'; color = '#3b82f6';
+                                                    label = evt.title || 'Agent Atandı';
+                                                    break;
+                                                case 'TRANSFERRED':
+                                                    icon = '🔄'; color = '#8b5cf6';
+                                                    label = evt.title || 'Transfer Edildi';
+                                                    break;
+                                                case 'STAGE_CHANGED':
+                                                    icon = '🏷️'; color = '#f59e0b';
+                                                    label = evt.title || 'Aşama Değişti';
+                                                    if (evt.details?.fromStage && evt.details?.toStage) {
+                                                        detail = `${evt.details.fromStage} → ${evt.details.toStage}`;
+                                                    }
+                                                    break;
+                                                case 'FUNNEL_CHANGED':
+                                                    icon = '📊'; color = '#6366f1';
+                                                    label = evt.title || 'Akış Değişti';
+                                                    if (evt.details?.funnelName) {
+                                                        detail = evt.details.funnelName;
+                                                    }
+                                                    break;
+                                                case 'CLAIMED':
+                                                    icon = '✋'; color = '#10b981';
+                                                    label = evt.title || 'Üstlenildi';
+                                                    break;
+                                                default:
+                                                    break;
+                                            }
+
+                                            milestones.push({
+                                                icon, label, detail,
+                                                date: new Date(evt.date),
+                                                color,
+                                                done: true,
+                                                _type: 'EVENT',
+                                                _eventType: eventType
+                                            });
+                                        });
+
+                                        // 11. Deals / Satış Milestones
+                                        if (deals && deals.length > 0) {
+                                            deals.forEach(deal => {
+                                                const stageLabels = { QUOTE: 'Teklif Verildi', ORDER: 'Sipariş Oluşturuldu', INVOICE: 'Fatura Kesildi' };
+                                                const stageIcons = { QUOTE: '📋', ORDER: '🛒', INVOICE: '🧾' };
+                                                const stageColors = { QUOTE: '#f59e0b', ORDER: '#3b82f6', INVOICE: '#8b5cf6' };
+                                                const currSymbol = deal.currency === 'TRY' ? '₺' : deal.currency === 'USD' ? '$' : deal.currency === 'EUR' ? '€' : '£';
+                                                milestones.push({
+                                                    icon: stageIcons[deal.stage] || '💰',
+                                                    label: stageLabels[deal.stage] || 'Satış',
+                                                    detail: [
+                                                        deal.title,
+                                                        deal.quoteNumber || deal.orderNumber || deal.invoiceNumber,
+                                                        deal.amount ? `${currSymbol}${deal.amount.toLocaleString('tr-TR')}` : null
+                                                    ].filter(Boolean).join(' • '),
+                                                    date: new Date(deal.createdAt),
+                                                    color: stageColors[deal.stage] || '#10b981',
+                                                    done: true,
+                                                    _type: 'DEAL',
+                                                    _dealData: deal
+                                                });
+                                            });
+                                        }
+
+                                        // Sort by date
+                                        milestones.sort((a, b) => (a.date || 0) - (b.date || 0));
+
+                                        if (milestones.length === 0) return null;
+
+                                        return (
+                                            <>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 12px 4px' }}>
+                                                    <span className="journey-count">{milestones.length} adım</span>
+                                                </div>
+                                                <div className="journey-steps">
+                                                    {milestones.map((m, idx) => {
+                                                        const isClickable = m._sourceItems || m._dealData;
+                                                        const handleStepClick = () => {
+                                                            if (m._type === 'CALL' && m._aiCalls?.length > 0) {
+                                                                setExpandedMilestone(m);
+                                                            } else if (m._type === 'DEAL' && m._dealData) {
+                                                                setSelectedDealDetail(m._dealData);
+                                                            } else if (m._type === 'CONVERSATION' && m._sourceItems?.[0]?.conversationId) {
+                                                                if (onConversationOpen) onConversationOpen(m._sourceItems[0].conversationId);
+                                                                else setPopupConversationId(m._sourceItems[0].conversationId);
+                                                            } else if (m._sourceItems?.length > 0) {
+                                                                setExpandedMilestone(m);
+                                                            }
+                                                        };
+                                                        return (
+                                                        <div key={idx}
+                                                            className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${isClickable ? ' clickable' : ''}${m._type === 'EVENT' ? ' event-step' : ''}`}
+                                                            onClick={isClickable ? handleStepClick : undefined}
+                                                            style={isClickable ? { cursor: 'pointer' } : {}}
+                                                        >
+                                                            <div className="journey-line-wrapper" style={{ position: 'relative' }}>
+                                                                <div className="journey-dot" style={{ borderColor: m.color, background: m.done ? m.color : '#fff' }}>
+                                                                    {m.done && <Check size={8} color="#fff" />}
+                                                                </div>
+                                                                {m._isAI && (
+                                                                    <span className="journey-dot-ai-badge" style={{
+                                                                        position: 'absolute',
+                                                                        top: 10, right: -6,
+                                                                        minWidth: 16, height: 16,
+                                                                        borderRadius: '50%',
+                                                                        background: m._isInbound ? '#0ea5e9' : '#7c3aed',
+                                                                        color: '#fff',
+                                                                        fontSize: '7px',
+                                                                        fontWeight: 900,
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        boxShadow: '0 0 0 2px #f1f5f9',
+                                                                        letterSpacing: '-0.03em',
+                                                                        lineHeight: 1,
+                                                                        zIndex: 2
+                                                                    }}>
+                                                                        AI
+                                                                    </span>
+                                                                )}
+                                                                {idx < milestones.length - 1 && (
+                                                                    <div className="journey-line" style={{ background: m.done ? m.color : '#e2e8f0' }} />
+                                                                )}
+                                                            </div>
+                                                            <div className="journey-content">
+                                                                <div className="journey-label">
+                                                                    <span className="journey-emoji">{m.icon}</span>
+                                                                    <span className="journey-title">{m.label}</span>
+                                                                    {isClickable && (
+                                                                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }}>
+                                                                            <ChevronRight size={12} color="#fff" />
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {m.detail && <div className="journey-detail">{m.detail}</div>}
+                                                                {m.date && (
+                                                                    <div className="journey-date">
+                                                                        {m.date.toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </>
                                         );
                                     })()}
                                 </div>
                             )}
 
-
-
-
-                            {/* ACTION BUTTONS — Row 1: Aktiviteler */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '8px 0 2px' }}>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('NOTE')}>
-                                    <span style={{ position: 'relative', display: 'inline-flex', width: 28, height: 24, alignItems: 'center', justifyContent: 'center' }}>
-                                        <PhoneCall size={17} style={{ color: '#374151' }} />
-                                        <span style={{
-                                            position: 'absolute', bottom: -3, right: -2,
-                                            width: 14, height: 14, borderRadius: '50%',
-                                            background: '#10b981', display: 'flex',
-                                            alignItems: 'center', justifyContent: 'center',
-                                            boxShadow: '0 0 0 2px #fff'
-                                        }}>
-                                            <Check size={9} strokeWidth={3} style={{ color: '#fff' }} />
-                                        </span>
-                                        <StickyNote size={10} style={{
-                                            position: 'absolute', top: -3, left: -2,
-                                            color: '#f59e0b'
-                                        }} />
-                                    </span>
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Notu</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('CALL')}>
-                                    <PhoneCall size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Arama{' '}Planla</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('MEETING')}>
-                                    <CalendarDays size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görüşme{' '}Planla</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('REMINDER')}>
-                                    <Bell size={18} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>Görev{' '}Hatırlatıcı</span>
-                                </button>
-                            </div>
-                            {/* ACTION BUTTONS — Row 2: Satış */}
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 0 8px' }}>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowQuoteForm(true)}>
-                                    <FileText size={18} style={{ color: '#10b981' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowOrderForm(true)}>
-                                    <TrendingUp size={18} style={{ color: '#3b82f6' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowInvoiceForm(true)}>
-                                    <FileText size={18} style={{ color: '#8b5cf6' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
-                                </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => openActivityModal('PAYMENT')}>
-                                    <Banknote size={18} style={{ color: '#f59e0b' }} />
-                                    <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Tahsilat</span>
-                                </button>
-                            </div>
-
-                            {/* MÜŞTERİ YOLCULUĞU TIMELINE */}
-                            {!timelineLoading && (pastTimeline.length > 0 || plannedTimeline.length > 0 || profile?.createdAt) && (() => {
-                                // Build journey milestones from timeline data + profile
-                                const milestones = [];
-
-                                // 1. Kişi kaydı oluşturuldu
-                                if (profile?.createdAt) {
-                                    milestones.push({
-                                        icon: '📋',
-                                        label: 'Kayıt Oluşturuldu',
-                                        detail: profile.source ? `Kaynak: ${profile.source}` : null,
-                                        date: new Date(profile.createdAt),
-                                        color: '#ef4444',
-                                        done: true,
-                                        _type: 'RECORD'
-                                    });
-                                }
-
-                                // 2. İlk sohbet
-                                const allTimeline = [...pastTimeline, ...plannedTimeline];
-                                const firstConv = allTimeline
-                                    .filter(i => i.sourceType === 'CONVERSATION')
-                                    .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
-                                if (firstConv) {
-                                    // Prefer aiTopic > lastMessageContent > channel name
-                                    const convDetail = firstConv.aiTopic 
-                                        || firstConv.lastMessageContent 
-                                        || firstConv.title 
-                                        || (firstConv.type === 'WHATSAPP' ? 'WhatsApp' : firstConv.type === 'INSTAGRAM' ? 'Instagram' : firstConv.type === 'FACEBOOK' ? 'Facebook' : 'Sohbet');
-                                    milestones.push({
-                                        icon: '💬',
-                                        label: 'İlk Sohbet Başladı',
-                                        detail: convDetail,
-                                        date: new Date(firstConv.date),
-                                        color: '#ef4444',
-                                        done: true,
-                                        _type: 'CONVERSATION',
-                                        _sourceItems: [firstConv]
-                                    });
-                                }
-
-                                // 3. Telefon alındı (contact has phone)
-                                if (profile?.phone) {
-                                    const phoneDate = firstConv ? new Date(firstConv.date) : (profile?.createdAt ? new Date(profile.createdAt) : null);
-                                    milestones.push({
-                                        icon: '📱',
-                                        label: 'Telefon Alındı',
-                                        detail: profile.phone,
-                                        date: phoneDate,
-                                        color: '#ef4444',
-                                        done: true,
-                                        _type: 'PHONE'
-                                    });
-                                }
-
-                                // 4. Aramalar (tamamlanan) — HER ARAMA AYRI milestone olarak gösterilir
-                                const calls = allTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.sourceType === 'ACTIVITY');
-                                const completedCalls = calls.filter(i => i.status === 'COMPLETED');
-                                const failedCalls = calls.filter(i => i.status === 'CANCELLED');
-
-                                // İnsan aramaları — her biri ayrı milestone
-                                completedCalls.forEach(call => {
-                                    const callerName = call.assignedToName || call.completedByName || 'Bilinmeyen';
-                                    const isAI = call.source === 'AI' || call.source === 'RETELL';
-                                    const initials = callerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
-
-                                    // Sentiment emoji
-                                    let sentimentEmoji = '';
-                                    if (call.callSentiment) {
-                                        sentimentEmoji = call.callSentiment === 'Positive' ? ' 😊' : call.callSentiment === 'Negative' ? ' 😞' : ' 😐';
-                                    }
-
-                                    // Başarı durumu
-                                    const successIcon = call.callSuccessful === true ? '✅' : call.callSuccessful === false ? '❌' : '📞';
-
-                                    milestones.push({
-                                        icon: isAI ? '🤖' : '👤',
-                                        label: `${isAI ? '🤖 AI Arama' : `👤 ${callerName}`}${sentimentEmoji}`,
-                                        detail: call.content || call.description || call.result || (call.callSuccessful === true ? 'Başarılı' : call.callSuccessful === false ? 'Başarısız' : 'Tamamlandı'),
-                                        date: new Date(call.completedAt || call.dueDate || call.date),
-                                        color: '#16a34a',
-                                        done: true,
-                                        _type: 'CALL',
-                                        _sourceItems: [call],
-                                        _callerInitials: isAI ? 'AI' : initials,
-                                        _isAI: isAI
-                                    });
-                                });
-
-                                // AI aramaları (retell) — her biri ayrı milestone
-                                aiCalls.forEach(aiCall => {
-                                    let sentimentEmoji = '';
-                                    if (aiCall.sentiment) {
-                                        sentimentEmoji = aiCall.sentiment === 'Positive' ? ' 😊' : aiCall.sentiment === 'Negative' ? ' 😞' : ' 😐';
-                                    }
-
-                                    milestones.push({
-                                        icon: '🤖',
-                                        label: `🤖 AI Arama${sentimentEmoji}`,
-                                        detail: aiCall.summary || aiCall.callTopic || 'AI sesli arama',
-                                        date: new Date(aiCall.createdAt),
-                                        color: '#6366f1',
-                                        done: true,
-                                        _type: 'CALL',
-                                        _sourceItems: [],
-                                        _aiCalls: [aiCall],
-                                        _callerInitials: 'AI',
-                                        _isAI: true
-                                    });
-                                });
-                                if (failedCalls.length > 0) {
-                                    const lastFailed = failedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-                                    milestones.push({
-                                        icon: '📵',
-                                        label: `Ulaşılamadı${failedCalls.length > 1 ? ` (${failedCalls.length}x)` : ''}`,
-                                        detail: lastFailed.content || 'Cevap yok',
-                                        date: new Date(lastFailed.dueDate || lastFailed.date),
-                                        color: '#ef4444',
-                                        done: true,
-                                        _type: 'CALL_FAILED',
-                                        _sourceItems: failedCalls
-                                    });
-                                }
-
-                                // 5. Randevu / Görüşme
-                                const meetings = allTimeline.filter(i => i.type === 'MEETING' && i.sourceType === 'ACTIVITY');
-                                if (meetings.length > 0) {
-                                    const lastMeeting = meetings.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-                                    milestones.push({
-                                        icon: '📅',
-                                        label: lastMeeting.status === 'COMPLETED' ? 'Randevu Tamamlandı' : lastMeeting.status === 'PLANNED' ? 'Randevu Planlandı' : 'Randevu',
-                                        detail: lastMeeting.content || lastMeeting.description || null,
-                                        date: new Date(lastMeeting.dueDate || lastMeeting.date),
-                                        color: lastMeeting.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
-                                        done: lastMeeting.status === 'COMPLETED',
-                                        _type: 'MEETING',
-                                        _sourceItems: meetings
-                                    });
-                                }
-
-                                // 6. Ziyaret
-                                const visits = allTimeline.filter(i => i.type === 'VISIT' && i.sourceType === 'ACTIVITY');
-                                if (visits.length > 0) {
-                                    const lastVisit = visits.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-                                    milestones.push({
-                                        icon: '🏢',
-                                        label: 'Ziyaret',
-                                        detail: lastVisit.content || null,
-                                        date: new Date(lastVisit.dueDate || lastVisit.date),
-                                        color: lastVisit.status === 'COMPLETED' ? '#16a34a' : '#ef4444',
-                                        done: lastVisit.status === 'COMPLETED',
-                                        _type: 'VISIT',
-                                        _sourceItems: visits
-                                    });
-                                }
-
-                                // 7. Teklif
-                                const proposals = allTimeline.filter(i => i.type === 'PROPOSAL' && i.sourceType === 'ACTIVITY');
-                                if (proposals.length > 0) {
-                                    milestones.push({
-                                        icon: '📄',
-                                        label: `Teklif Verildi${proposals.length > 1 ? ` (${proposals.length}x)` : ''}`,
-                                        detail: null,
-                                        date: new Date(proposals[0].dueDate || proposals[0].date),
-                                        color: '#ef4444',
-                                        done: true,
-                                        _type: 'PROPOSAL',
-                                        _sourceItems: proposals
-                                    });
-                                }
-
-                                // 8. Sipariş
-                                const orders = allTimeline.filter(i => i.type === 'ORDER' && i.sourceType === 'ACTIVITY');
-                                if (orders.length > 0) {
-                                    milestones.push({
-                                        icon: '🛒',
-                                        label: `Sipariş${orders.length > 1 ? ` (${orders.length}x)` : ''}`,
-                                        detail: null,
-                                        date: new Date(orders[0].dueDate || orders[0].date),
-                                        color: '#16a34a',
-                                        done: true,
-                                        _type: 'ORDER',
-                                        _sourceItems: orders
-                                    });
-                                }
-
-                                // 8.5 AI Aramaları — CALL milestone'a birleştirildi, ayrı entry yok
-
-                                // 9. Planlanmış aramalar (gelecek)
-                                const plannedCalls = plannedTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.status === 'PLANNED');
-                                if (plannedCalls.length > 0) {
-                                    const nextCall = plannedCalls.sort((a, b) => new Date(a.dueDate || a.date) - new Date(b.dueDate || b.date))[0];
-                                    const callDate = new Date(nextCall.dueDate || nextCall.date);
-                                    const isOverdue = callDate < new Date();
-                                    const hasCompletedCall = completedCalls.length > 0;
-                                    milestones.push({
-                                        icon: isOverdue ? '⚠️' : '🔔',
-                                        label: isOverdue ? 'Gecikmiş Arama' : 'Planlanan Arama',
-                                        detail: (() => {
-                                            const parts = [];
-                                            if (nextCall.assignedToName) parts.push(`→ ${nextCall.assignedToName}`);
-                                            // Konu: callTopic alanından veya content içinden parse et
-                                            let topic = nextCall.callTopic;
-                                            if (!topic && nextCall.content) {
-                                                const match = nextCall.content.match(/Konu:\s*([^\s]+(?:\s+[^\s]+)*?)(?:\s+Numara:|\s+Kaynak:|\s*$)/i);
-                                                if (match) topic = match[1].trim();
-                                            }
-                                            if (topic) parts.push(`📋 ${topic}`);
-                                            return parts.length > 0 ? parts.join('  •  ') : null;
-                                        })(),
-                                        date: callDate,
-                                        color: isOverdue ? '#dc2626' : '#f87171',
-                                        done: false,
-                                        overdue: isOverdue && !hasCompletedCall,
-                                        _type: 'PLANNED_CALL',
-                                        _sourceItems: plannedCalls
-                                    });
-                                }
-
-                                // 9.5 Notlar (Internal Notes + Contact Notes)
-                                const noteItems = allTimeline.filter(i => i.type === 'NOTE' && i.sourceType === 'ACTIVITY');
-                                noteItems.forEach(note => {
-                                    const noteContent = (note.content || '').replace(/<[^>]*>/g, '').substring(0, 60);
-                                    milestones.push({
-                                        icon: '📝',
-                                        label: 'Not Eklendi',
-                                        detail: [
-                                            note.labelName && note.labelName !== 'Kişi Notu' ? `${note.labelName}` : null,
-                                            noteContent || null
-                                        ].filter(Boolean).join(' — ') || null,
-                                        date: new Date(note.date),
-                                        color: '#eab308',
-                                        done: true,
-                                        _type: 'NOTE'
-                                    });
-                                });
-
-                                // 10. Conversation Events (Atama, Transfer, Aşama Değişikliği)
-                                const rawEventItems = allTimeline.filter(i => i.sourceType === 'EVENT');
-                                // Aynı başlık + yakın zaman (60sn) olanları deduplicate et
-                                const seenEvents = new Set();
-                                const eventItems = rawEventItems.filter(evt => {
-                                    const evtTime = new Date(evt.date).getTime();
-                                    const key = `${evt.title}_${Math.floor(evtTime / 60000)}`;
-                                    if (seenEvents.has(key)) return false;
-                                    seenEvents.add(key);
-                                    return true;
-                                });
-                                eventItems.forEach(evt => {
-                                    const eventType = evt.eventType || evt.type;
-                                    let icon = '📌';
-                                    let label = evt.title || '';
-                                    let color = '#64748b';
-                                    let detail = null;
-
-                                    switch (eventType) {
-                                        case 'ASSIGNED':
-                                            icon = '👤';
-                                            color = '#3b82f6';
-                                            label = evt.title || 'Agent Atandı';
-                                            break;
-                                        case 'TRANSFERRED':
-                                            icon = '🔄';
-                                            color = '#8b5cf6';
-                                            label = evt.title || 'Transfer Edildi';
-                                            break;
-                                        case 'STAGE_CHANGED':
-                                            icon = '🏷️';
-                                            color = '#f59e0b';
-                                            label = evt.title || 'Aşama Değişti';
-                                            if (evt.details?.fromStage && evt.details?.toStage) {
-                                                detail = `${evt.details.fromStage} → ${evt.details.toStage}`;
-                                            }
-                                            break;
-                                        case 'FUNNEL_CHANGED':
-                                            icon = '📊';
-                                            color = '#6366f1';
-                                            label = evt.title || 'Akış Değişti';
-                                            if (evt.details?.funnelName) {
-                                                detail = evt.details.funnelName;
-                                            }
-                                            break;
-                                        case 'CLAIMED':
-                                            icon = '✋';
-                                            color = '#10b981';
-                                            label = evt.title || 'Üstlenildi';
-                                            break;
-                                        default:
-                                            break;
-                                    }
-
-                                    milestones.push({
-                                        icon,
-                                        label,
-                                        detail,
-                                        date: new Date(evt.date),
-                                        color,
-                                        done: true,
-                                        _type: 'EVENT',
-                                        _eventType: eventType
-                                    });
-                                });
-
-                                // 11. Deals / Satış Milestones (Teklif, Sipariş, Fatura)
-                                if (deals && deals.length > 0) {
-                                    deals.forEach(deal => {
-                                        const stageLabels = { QUOTE: 'Teklif Verildi', ORDER: 'Sipariş Oluşturuldu', INVOICE: 'Fatura Kesildi' };
-                                        const stageIcons = { QUOTE: '📋', ORDER: '🛒', INVOICE: '🧾' };
-                                        const stageColors = { QUOTE: '#f59e0b', ORDER: '#3b82f6', INVOICE: '#8b5cf6' };
-                                        const currSymbol = deal.currency === 'TRY' ? '₺' : deal.currency === 'USD' ? '$' : deal.currency === 'EUR' ? '€' : '£';
-                                        milestones.push({
-                                            icon: stageIcons[deal.stage] || '💰',
-                                            label: stageLabels[deal.stage] || 'Satış',
-                                            detail: [
-                                                deal.title,
-                                                deal.quoteNumber || deal.orderNumber || deal.invoiceNumber,
-                                                deal.amount ? `${currSymbol}${deal.amount.toLocaleString('tr-TR')}` : null
-                                            ].filter(Boolean).join(' • '),
-                                            date: new Date(deal.createdAt),
-                                            color: stageColors[deal.stage] || '#10b981',
-                                            done: true,
-                                            _type: 'DEAL',
-                                            _dealData: deal
-                                        });
-                                    });
-                                }
-
-                                // Sort by date — eskiden yeniye
-                                milestones.sort((a, b) => (a.date || 0) - (b.date || 0));
-
-                                if (milestones.length === 0) return null;
-
-                                return (
-                                    <div className="customer-journey-timeline">
-                                        <div className="journey-header">
-                                            <TrendingUp size={13} />
-                                            <span>Sohbet Akışı</span>
-                                            <span className="journey-count">{milestones.length} adım</span>
-                                        </div>
-                                        <div className="journey-steps">
-                                            {milestones.map((m, idx) => {
-                                                const isClickable = m._sourceItems || m._dealData;
-                                                const handleStepClick = () => {
-                                                    if (m._type === 'CALL' && m._aiCalls?.length > 0) {
-                                                        // AI call verisi varsa — birleşik popup aç
-                                                        setExpandedMilestone(m);
-                                                    } else if (m._type === 'DEAL' && m._dealData) {
-                                                        setSelectedDealDetail(m._dealData);
-                                                    } else if (m._type === 'CONVERSATION' && m._sourceItems?.[0]?.conversationId) {
-                                                        if (onConversationOpen) onConversationOpen(m._sourceItems[0].conversationId);
-                                                        else setPopupConversationId(m._sourceItems[0].conversationId);
-                                                    } else if (m._sourceItems?.length > 0) {
-                                                        setExpandedMilestone(m);
-                                                    }
-                                                };
-                                                return (
-                                                <div key={idx}
-                                                    className={`journey-step ${m.done ? 'done' : 'pending'}${m.overdue ? ' overdue-blink' : ''}${isClickable ? ' clickable' : ''}${m._type === 'EVENT' ? ' event-step' : ''}`}
-                                                    onClick={isClickable ? handleStepClick : undefined}
-                                                    style={isClickable ? { cursor: 'pointer' } : {}}
-                                                >
-                                                    <div className="journey-line-wrapper">
-                                                        <div className="journey-dot" style={{ borderColor: m.color, background: m.done ? m.color : '#fff' }}>
-                                                            {m.done && <Check size={8} color="#fff" />}
-                                                        </div>
-                                                        {idx < milestones.length - 1 && (
-                                                            <div className="journey-line" style={{ background: m.done ? m.color : '#e2e8f0' }} />
-                                                        )}
-                                                    </div>
-                                                    <div className="journey-content">
-                                                        <div className="journey-label">
-                                                            <span className="journey-emoji">{m.icon}</span>
-                                                            <span className="journey-title">{m.label}</span>
-                                                            {isClickable && (
-                                                                <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }}>
-                                                                    <ChevronRight size={12} color="#fff" />
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {m.detail && <div className="journey-detail">{m.detail}</div>}
-                                                        {m.date && (
-                                                            <div className="journey-date">
-                                                                {m.date.toLocaleString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-
                             {/* AI Araması Detay Modalı */}
                             {selectedAiCall && (
                                 <div className="reminder-modal-overlay" onClick={() => setSelectedAiCall(null)}>
                                     <div className="reminder-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
                                         <div className="reminder-modal-header">
-                                            <span style={{ fontSize: '1.1rem' }}>🤖</span>
-                                            <h3>AI Araması Detayı</h3>
+                                            <span style={{ fontSize: '1.1rem' }}>{selectedAiCall.direction === 'inbound' ? '📲' : '🤖'}</span>
+                                            <h3>{selectedAiCall.direction === 'inbound' ? 'Gelen AI Araması Detayı' : 'AI Araması Detayı'}</h3>
                                             <button className="reminder-modal-close" onClick={() => setSelectedAiCall(null)}><X size={18} /></button>
                                         </div>
                                         <div className="reminder-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                                             {/* Stats */}
                                             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                                {/* Yön badge */}
+                                                <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: selectedAiCall.direction === 'inbound' ? '#e0f2fe' : '#ede9fe', color: selectedAiCall.direction === 'inbound' ? '#0284c7' : '#7c3aed', fontWeight: 700 }}>
+                                                    {selectedAiCall.direction === 'inbound' ? '📲 Gelen' : '📱 Giden'}
+                                                </span>
                                                 <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
                                                     📅 {new Date(selectedAiCall.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                 </span>
@@ -2481,11 +2535,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     {expandedMilestone._aiCalls.map((ac, aci) => (
                                                         <div key={aci} style={{ background: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e5e7eb' }}>
-                                                            {/* Arayan Kimliği */}
+                                                            {/* Arayan Kimliği + Yön */}
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid #e5e7eb' }}>
-                                                                <span style={{ fontSize: '1rem' }}>🤖</span>
-                                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>AI Asistan</span>
-                                                                <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: '#ede9fe', color: '#7c3aed', fontWeight: 600, marginLeft: 'auto' }}>Otomatik Arama</span>
+                                                                <span style={{ fontSize: '1rem' }}>{ac.direction === 'inbound' ? '📲' : '🤖'}</span>
+                                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>{ac.direction === 'inbound' ? 'Müşteri Aradı' : 'AI Asistan'}</span>
+                                                                <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: ac.direction === 'inbound' ? '#e0f2fe' : '#ede9fe', color: ac.direction === 'inbound' ? '#0284c7' : '#7c3aed', fontWeight: 600, marginLeft: 'auto' }}>{ac.direction === 'inbound' ? '📲 Gelen Arama' : '📱 Giden Arama'}</span>
                                                             </div>
                                                             {/* Stats */}
                                                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>

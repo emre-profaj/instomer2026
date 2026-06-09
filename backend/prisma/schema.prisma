@@ -44,6 +44,7 @@ model User {
   workingHours          Json?
   assignedActivities    ContactActivity[]      @relation("ActivityAssignee")
   createdActivities     ContactActivity[]      @relation("ActivityCreator")
+  assignedCases         Case[]                 @relation("CaseAssignee")
 
   @@map("users")
 }
@@ -136,6 +137,7 @@ model Workspace {
   appointmentBranches  AppointmentBranch[]
   botTools             AIBotTool[]
   retellActions        RetellAction[]
+  cases                Case[]
 
   // Retell AI Voice
   retellApiKey          String?
@@ -345,6 +347,7 @@ model Contact {
   conversations     Conversation[]
   formSubmissions   FormSubmission[]
   deals             Deal[]
+  cases             Case[]
   company           String?
   notes             String?
   language          String?
@@ -415,6 +418,9 @@ model Conversation {
   lastReminderAt        DateTime? // When last reminder was sent
   // Active Flow tracking
   activeFlowId          String? // Which flow is currently processing this conversation
+  // Case (talep akışı) bağlantısı
+  caseId                String?
+  case                  Case?                  @relation(fields: [caseId], references: [id], onDelete: SetNull)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   transfers             ConversationTransfer[]
@@ -430,6 +436,7 @@ model Conversation {
   formSubmissions       FormSubmission[]
   deals                 Deal[]
 
+
   // Performance indexes for high-frequency cron queries
   @@index([workspaceId])
   @@index([status, botEnabled, assignedToId]) // processPendingBotResponses (every 30s)
@@ -438,6 +445,7 @@ model Conversation {
   @@index([contactId])
   @@index([assignedToId])
   @@index([workspaceId, funnelType, funnelStageId, lastMessageAt(sort: Desc)]) // Inbox funnel filter
+  @@index([caseId])
   @@map("conversations")
 }
 
@@ -625,6 +633,7 @@ model Team {
   workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   channelRoutings ChannelRouting[]
   activities      ContactActivity[]
+  cases           Case[]
 
   @@index([workspaceId])
   @@index([parentId])
@@ -1122,6 +1131,8 @@ model RetellCall {
   endedReason    String?
   metadata       String?   @db.Text
   createdById    String    @default("")
+  // Case (talep akışı) bağlantısı
+  caseId         String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -1130,6 +1141,7 @@ model RetellCall {
   @@index([workspaceId])
   @@index([contactId])
   @@index([callId])
+  @@index([caseId])
   @@map("retell_calls")
 }
 
@@ -1478,6 +1490,10 @@ model ContactActivity {
   callSentiment  String?  // "Positive", "Neutral", "Negative"
   // ──────────────────────────────────────────────────────────
 
+  // Case (talep akışı) bağlantısı
+  caseId       String?
+  case         Case?     @relation(fields: [caseId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1491,6 +1507,7 @@ model ContactActivity {
   @@index([workspaceId])
   @@index([status])
   @@index([type, status, dueDate]) // Overdue call query optimization
+  @@index([caseId])
   @@map("contact_activities")
 }
 
@@ -1544,4 +1561,52 @@ model RetellAction {
 
   @@index([workspaceId])
   @@map("retell_actions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CASE SİSTEMİ — Çoklu Talep/Sohbet Akışı
+// Her kişi birden fazla case'e sahip olabilir. Her case bir konuyu temsil eder.
+// Farklı kanallardan gelen yazışmalar aynı case altında birleştirilebilir.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Case {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  contactId      String
+  caseNumber     String?   // CSE-2026-0001 (otomatik)
+  title          String    // "Gastroenteroloji Randevu", "2+1 Daire"
+  description    String?
+  status         String    @default("ACTIVE") // ACTIVE, WON, LOST, CLOSED
+  priority       String    @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+
+  // Pipeline aşaması
+  funnelType     String?   // Pipeline ID (Funnel)
+  funnelStageId  String?   // Stage ID (FunnelStage)
+
+  // Atama
+  assignedToId   String?   // Atanan kişi
+  assignedTeamId String?   // Atanan takım
+
+  // Zaman
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  closedAt       DateTime?
+  wonAt          DateTime?
+  lostAt         DateTime?
+  lostReason     String?
+
+  // İlişkiler
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact        Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedTo     User?            @relation("CaseAssignee", fields: [assignedToId], references: [id])
+  team           Team?            @relation(fields: [assignedTeamId], references: [id])
+  conversations  Conversation[]
+  activities     ContactActivity[]
+
+  @@index([workspaceId])
+  @@index([contactId])
+  @@index([workspaceId, contactId, status])
+  @@index([workspaceId, status])
+  @@index([caseNumber])
+  @@map("cases")
 }

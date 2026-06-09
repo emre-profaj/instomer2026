@@ -497,6 +497,16 @@ export const handleFormSubmission = async (req, res) => {
             console.error('⚠️ [FormWebhook] Flow engine error:', flowErr.message);
         }
 
+        // 📦 AUTO-CASE: Conversation için case yoksa oluştur
+        try {
+            const { ensureCaseForConversation } = await import('./case.controller.js');
+            ensureCaseForConversation(webhook.workspaceId, conversation.id).catch(e =>
+                console.error('⚠️ [AutoCase] FormWebhook error:', e.message)
+            );
+        } catch (caseErr) {
+            console.error('⚠️ [AutoCase] FormWebhook import error:', caseErr.message);
+        }
+
         // --- AUTO CALL TRIGGER ---
         const contactPhone = phone || contact?.phone;
         if (contactPhone && contact?.id) {
