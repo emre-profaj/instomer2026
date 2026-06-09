@@ -1891,7 +1891,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 const completedCalls = calls.filter(i => i.status === 'COMPLETED');
                                 const failedCalls = calls.filter(i => i.status === 'CANCELLED');
                                 if (completedCalls.length > 0 || aiCalls.length > 0) {
-                                    const totalCallCount = Math.max(completedCalls.length, aiCalls.length);
+                                    const totalCallCount = completedCalls.length + aiCalls.length;
                                     const lastCall = completedCalls.length > 0 ? completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
                                     const lastAiCall = aiCalls.length > 0 ? aiCalls[0] : null;
                                     // AI call sentiment varsa onu kullan
@@ -1906,15 +1906,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         else if (negativeKeywords.some(k => callResult.includes(k))) callSentiment = '😞';
                                         else if (callResult.length > 0) callSentiment = '😐';
                                     }
-                                    // Detay satırı
-                                    const detailParts = [];
-                                    if (lastAiCall?.callSuccessful !== undefined) detailParts.push(lastAiCall.callSuccessful ? '✅ Başarılı' : '❌ Başarısız');
-                                    if (lastAiCall?.duration) detailParts.push(`⏱ ${Math.floor(lastAiCall.duration/60)}dk ${lastAiCall.duration%60}sn`);
-                                    if (!lastAiCall && lastCall) detailParts.push(lastCall.content || lastCall.description || 'Tamamlandı');
+                                    // Arayan dökümü: 🤖 AI ×2 • 👤 Ahmet ×1 • 👤 Mehmet ×1
+                                    const callerParts = [];
+                                    if (aiCalls.length > 0) {
+                                        callerParts.push(`🤖 AI${aiCalls.length > 1 ? ` ×${aiCalls.length}` : ''}`);
+                                    }
+                                    // İnsan aramaları — assignedToName'e göre grupla
+                                    if (completedCalls.length > 0) {
+                                        const humanCallers = {};
+                                        completedCalls.forEach(c => {
+                                            const name = c.assignedToName || c.completedByName || 'Bilinmeyen';
+                                            humanCallers[name] = (humanCallers[name] || 0) + 1;
+                                        });
+                                        Object.entries(humanCallers).forEach(([name, count]) => {
+                                            callerParts.push(`👤 ${name}${count > 1 ? ` ×${count}` : ''}`);
+                                        });
+                                    }
                                     milestones.push({
                                         icon: '📞',
                                         label: `Arama Yapıldı${totalCallCount > 1 ? ` (${totalCallCount}x)` : ''} ${callSentiment}`,
-                                        detail: detailParts.join('  •  ') || 'Tamamlandı',
+                                        detail: callerParts.join('  •  ') || 'Tamamlandı',
                                         date: new Date(lastAiCall?.createdAt || lastCall?.dueDate || lastCall?.date),
                                         color: '#16a34a',
                                         done: true,
@@ -2425,6 +2436,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     {expandedMilestone._aiCalls.map((ac, aci) => (
                                                         <div key={aci} style={{ background: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e5e7eb' }}>
+                                                            {/* Arayan Kimliği */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid #e5e7eb' }}>
+                                                                <span style={{ fontSize: '1rem' }}>🤖</span>
+                                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>AI Asistan</span>
+                                                                <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '999px', background: '#ede9fe', color: '#7c3aed', fontWeight: 600, marginLeft: 'auto' }}>Otomatik Arama</span>
+                                                            </div>
                                                             {/* Stats */}
                                                             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
                                                                 <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
@@ -2492,17 +2509,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     {/* Normal aktivite kartları (scheduling bilgisi) */}
                                                     {expandedMilestone._sourceItems?.length > 0 && (
                                                         <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '10px', marginTop: '2px' }}>
-                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>📋 Planlama Geçmişi</div>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>👤 Manuel Aramalar</div>
                                                             {expandedMilestone._sourceItems.map((item, ci) => {
                                                                 const statusMap = {
                                                                     COMPLETED: { label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d', icon: '✅' },
                                                                     CANCELLED: { label: 'İptal', bg: '#f3f4f6', color: '#6b7280', icon: '❌' },
                                                                 };
                                                                 const sc = statusMap[item.status];
+                                                                const callerName = item.assignedToName || item.completedByName || 'Bilinmeyen';
                                                                 return (
                                                                     <div key={ci} style={{ padding: '8px 10px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                                         <div>
-                                                                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{item.title || 'Arama'}</div>
+                                                                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>👤 {callerName} — {item.title || 'Arama'}</div>
                                                                             {(item.dueDate || item.date) && (
                                                                                 <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>
                                                                                     {new Date(item.dueDate || item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
