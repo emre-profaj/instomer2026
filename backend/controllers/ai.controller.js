@@ -527,6 +527,37 @@ export const updateConversationAnalysis = async (req, res) => {
     }
 };
 
+// Simple text translation (no tool calling overhead)
+export const translateText = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { text, targetLang = 'Turkish' } = req.body;
+
+        if (!text?.trim()) {
+            return res.status(400).json({ error: 'Text is required' });
+        }
+
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
+            return res.status(400).json({ error: 'AI API Key not configured' });
+        }
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const result = await model.generateContent(
+            `Translate the following text to ${targetLang}. Output ONLY the translation, nothing else. No quotes, no explanation.\n\n${text}`
+        );
+
+        const translation = result.response.text().trim().replace(/^"|"$/g, '');
+        res.json({ translation });
+
+    } catch (error) {
+        console.error('Translation error:', error.message);
+        res.status(500).json({ error: 'Çeviri yapılamadı.', translation: null });
+    }
+};
+
 // Get AI suggested replies for a conversation
 export const getSuggestedReplies = async (req, res) => {
     try {

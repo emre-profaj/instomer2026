@@ -340,11 +340,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }
         setTranslatingSum(true);
         setTranslatedSummary('');
-        aiAPI.instoBotChat(currentWorkspace.id,
-            `Aşağıdaki metni Türkçeye çevir. Sadece çeviriyi yaz, başka bir şey ekleme:\n\n"${summary}"`,
-            []
+        aiAPI.translateText(currentWorkspace.id, summary, 'Turkish'
         ).then(res => {
-            const tr = (res.data?.reply || res.data?.response || res.data?.message || summary).replace(/^"|"$/g, '');
+            const tr = (res.data?.translation || summary).replace(/^"|"$/g, '');
             translationCache.current[summary] = tr;
             setTranslatedSummary(tr);
         }).catch(() => {

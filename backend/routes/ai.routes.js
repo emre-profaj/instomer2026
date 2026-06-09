@@ -28,6 +28,7 @@ router.delete('/:workspaceId/bots/:botId/documents/:docId', authenticateJWT, req
 // Generation
 router.post('/:workspaceId/generate', authenticateJWT, requireWorkspaceAccess, aiController.generateResponse);
 router.post('/:workspaceId/summarize', authenticateJWT, requireWorkspaceAccess, aiController.summarizeConversation);
+router.post('/:workspaceId/translate', authenticateJWT, requireWorkspaceAccess, aiController.translateText);
 router.put('/:workspaceId/analysis/:conversationId', authenticateJWT, requireWorkspaceAccess, aiController.updateConversationAnalysis);
 router.post('/:workspaceId/extract-info', authenticateJWT, requireWorkspaceAccess, aiController.extractContactInfo);
 router.post('/:workspaceId/suggest-replies', authenticateJWT, requireWorkspaceAccess, aiController.getSuggestedReplies);
