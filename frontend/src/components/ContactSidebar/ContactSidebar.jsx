@@ -610,7 +610,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 title: isCallNote ? 'Telefon Görüşmesi' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite')),
                 description: activityForm.description,
                 dueDate: isNoteType ? new Date().toISOString() : (activityForm.dueDate ? new Date(activityForm.dueDate).toISOString() : null),
-                assignedToId: activityForm.assignedToId || null,
+                assignedToId: isNoteType ? null : (activityForm.assignedToId || null),
                 teamId: activityForm.teamId || null,
                 ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() }),
                 ...(isCallNote && noteCallSuccess !== null && { callSuccessful: noteCallSuccess }),
@@ -637,7 +637,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             }
 
             // CALL veya MEETING planlandıysa → conversation'ı ilgili aşamaya taşı
-            if ((activityForm.type === 'CALL' || activityForm.type === 'MEETING') && activityForm.dueDate) {
+            // NOT: NOTE tipi (görüşme notu) için aşama değişikliği YAPILMAZ
+            if (!isNoteType && (activityForm.type === 'CALL' || activityForm.type === 'MEETING') && activityForm.dueDate) {
                 let targetStageId = activityForm.funnelStageId;
 
                 // Seçili stage yoksa → workspace'te "Görüşme Planlandı" veya "Arama Planlandı" aşamasını bul
@@ -677,15 +678,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 });
             }
 
-            // Not kaydedildi — Akış/Takım/Üstlen panelini göster
-            if (activityForm.type === 'NOTE') {
-                // Funnelleri yükle (akış seçici için)
-                loadActivityFunnels();
-                setTimeout(() => {
-                    setPostNoteAction({ funnelStageId: '', teamId: '', assignedToId: '' });
-                    setShowTakeoverModal(true);
-                }, 300);
-            }
+            // Not kaydedildi — artık akış/takım/üstlen paneli gösterilMEZ
+            // Görüşme notu giren kişi otomatik olarak atanır (backend tarafında)
         } catch (err) {
             console.error('Save activity err:', err);
             alert('Aktivite kaydedilirken hata oluştu.');
@@ -1930,58 +1924,61 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     });
                                 }
 
-                                // 4. Aramalar (tamamlanan) — AI call verileriyle birleştirilmiş
+                                // 4. Aramalar (tamamlanan) — HER ARAMA AYRI milestone olarak gösterilir
                                 const calls = allTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.sourceType === 'ACTIVITY');
                                 const completedCalls = calls.filter(i => i.status === 'COMPLETED');
                                 const failedCalls = calls.filter(i => i.status === 'CANCELLED');
-                                if (completedCalls.length > 0 || aiCalls.length > 0) {
-                                    const totalCallCount = completedCalls.length + aiCalls.length;
-                                    const lastCall = completedCalls.length > 0 ? completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
-                                    const lastAiCall = aiCalls.length > 0 ? aiCalls[0] : null;
-                                    // Sentiment: önce insan aramasındaki callSentiment, sonra AI sentiment, en son metin analizi
-                                    let callSentiment = '📞';
-                                    // İnsan araması — kaydedilmiş callSentiment varsa onu kullan
-                                    const lastCallWithSentiment = completedCalls.find(c => c.callSentiment);
-                                    if (lastCallWithSentiment?.callSentiment) {
-                                        callSentiment = lastCallWithSentiment.callSentiment === 'Positive' ? '😊' : lastCallWithSentiment.callSentiment === 'Negative' ? '😞' : '😐';
-                                    } else if (lastAiCall?.sentiment) {
-                                        callSentiment = lastAiCall.sentiment === 'Positive' ? '😊' : lastAiCall.sentiment === 'Negative' ? '😞' : '😐';
-                                    } else if (lastCall) {
-                                        const callResult = (lastCall.content || lastCall.description || lastCall.result || '').toLowerCase();
-                                        const positiveKeywords = ['bilgi verildi', 'ilgili', 'randevu', 'olumlu', 'başarılı', 'tamamlandı', 'satış', 'anlaştık', 'gelecek', 'kabul', 'onaylandı', 'memnun', 'teşekkür'];
-                                        const negativeKeywords = ['ulaşılamadı', 'ilgisiz', 'olumsuz', 'başarısız', 'iptal', 'ret', 'reddetti', 'cevap yok', 'meşgul', 'kapalı', 'yanlış numara', 'ilgilenmiyor', 'vazgeçti'];
-                                        if (positiveKeywords.some(k => callResult.includes(k))) callSentiment = '😊';
-                                        else if (negativeKeywords.some(k => callResult.includes(k))) callSentiment = '😞';
-                                        else callSentiment = '📞';
+
+                                // İnsan aramaları — her biri ayrı milestone
+                                completedCalls.forEach(call => {
+                                    const callerName = call.assignedToName || call.completedByName || 'Bilinmeyen';
+                                    const isAI = call.source === 'AI' || call.source === 'RETELL';
+                                    const initials = callerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+
+                                    // Sentiment emoji
+                                    let sentimentEmoji = '';
+                                    if (call.callSentiment) {
+                                        sentimentEmoji = call.callSentiment === 'Positive' ? ' 😊' : call.callSentiment === 'Negative' ? ' 😞' : ' 😐';
                                     }
-                                    // Arayan dökümü: 🤖 AI ×2 • 👤 Ahmet ×1 • 👤 Mehmet ×1
-                                    const callerParts = [];
-                                    if (aiCalls.length > 0) {
-                                        callerParts.push(`🤖 AI${aiCalls.length > 1 ? ` ×${aiCalls.length}` : ''}`);
-                                    }
-                                    // İnsan aramaları — assignedToName'e göre grupla
-                                    if (completedCalls.length > 0) {
-                                        const humanCallers = {};
-                                        completedCalls.forEach(c => {
-                                            const name = c.assignedToName || c.completedByName || 'Bilinmeyen';
-                                            humanCallers[name] = (humanCallers[name] || 0) + 1;
-                                        });
-                                        Object.entries(humanCallers).forEach(([name, count]) => {
-                                            callerParts.push(`👤 ${name}${count > 1 ? ` ×${count}` : ''}`);
-                                        });
-                                    }
+
+                                    // Başarı durumu
+                                    const successIcon = call.callSuccessful === true ? '✅' : call.callSuccessful === false ? '❌' : '📞';
+
                                     milestones.push({
-                                        icon: '📞',
-                                        label: `Arama Yapıldı${totalCallCount > 1 ? ` (${totalCallCount}x)` : ''} ${callSentiment}`,
-                                        detail: callerParts.join('  •  ') || 'Tamamlandı',
-                                        date: new Date(lastAiCall?.createdAt || lastCall?.dueDate || lastCall?.date),
+                                        icon: isAI ? '🤖' : '👤',
+                                        label: `${isAI ? '🤖 AI Arama' : `👤 ${callerName}`}${sentimentEmoji}`,
+                                        detail: call.content || call.description || call.result || (call.callSuccessful === true ? 'Başarılı' : call.callSuccessful === false ? 'Başarısız' : 'Tamamlandı'),
+                                        date: new Date(call.completedAt || call.dueDate || call.date),
                                         color: '#16a34a',
                                         done: true,
                                         _type: 'CALL',
-                                        _sourceItems: completedCalls,
-                                        _aiCalls: aiCalls
+                                        _sourceItems: [call],
+                                        _callerInitials: isAI ? 'AI' : initials,
+                                        _isAI: isAI
                                     });
-                                }
+                                });
+
+                                // AI aramaları (retell) — her biri ayrı milestone
+                                aiCalls.forEach(aiCall => {
+                                    let sentimentEmoji = '';
+                                    if (aiCall.sentiment) {
+                                        sentimentEmoji = aiCall.sentiment === 'Positive' ? ' 😊' : aiCall.sentiment === 'Negative' ? ' 😞' : ' 😐';
+                                    }
+
+                                    milestones.push({
+                                        icon: '🤖',
+                                        label: `🤖 AI Arama${sentimentEmoji}`,
+                                        detail: aiCall.summary || aiCall.callTopic || 'AI sesli arama',
+                                        date: new Date(aiCall.createdAt),
+                                        color: '#6366f1',
+                                        done: true,
+                                        _type: 'CALL',
+                                        _sourceItems: [],
+                                        _aiCalls: [aiCall],
+                                        _callerInitials: 'AI',
+                                        _isAI: true
+                                    });
+                                });
                                 if (failedCalls.length > 0) {
                                     const lastFailed = failedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
                                     milestones.push({

@@ -1418,22 +1418,14 @@ const Inbox = () => {
                         if (!act.contact?.id) return;
                         const cid = act.contact.id;
                         if (!map[cid]) map[cid] = [];
-                        const exists = map[cid].find(e => e.type === act.type);
-                        if (!exists) {
-                            map[cid].push({ type: act.type, status: act.status, dueDate: act.dueDate });
-                        } else if (act.status === 'PLANNED') {
-                            if (exists.status !== 'PLANNED') {
-                                exists.status = 'PLANNED';
-                                exists.dueDate = act.dueDate;
-                            } else {
-                                // prioritize older/earlier dueDate to find overdue status
-                                const actDue = act.dueDate ? new Date(act.dueDate) : null;
-                                const existsDue = exists.dueDate ? new Date(exists.dueDate) : null;
-                                if (actDue && (!existsDue || actDue < existsDue)) {
-                                    exists.dueDate = act.dueDate;
-                                }
-                            }
-                        }
+                        map[cid].push({
+                            type: act.type,
+                            status: act.status,
+                            dueDate: act.dueDate,
+                            assigneeName: act.assignee?.name || null,
+                            assignedByType: act.assignedByType || null,
+                            source: act.source || null
+                        });
                     });
                     setPlannedActivityMap(map);
                 })
@@ -1701,13 +1693,14 @@ const Inbox = () => {
                         if (!act.contact?.id) return;
                         const cid = act.contact.id;
                         if (!map[cid]) map[cid] = [];
-                        const exists = map[cid].find(e => e.type === act.type);
-                        if (!exists) {
-                            map[cid].push({ type: act.type, status: act.status, dueDate: act.dueDate });
-                        } else if (act.status === 'PLANNED' && exists.status !== 'PLANNED') {
-                            exists.status = 'PLANNED';
-                            exists.dueDate = act.dueDate;
-                        }
+                        map[cid].push({
+                            type: act.type,
+                            status: act.status,
+                            dueDate: act.dueDate,
+                            assigneeName: act.assignee?.name || null,
+                            assignedByType: act.assignedByType || null,
+                            source: act.source || null
+                        });
                     });
                     setPlannedActivityMap(map);
                 })
@@ -3730,17 +3723,25 @@ const Inbox = () => {
                                                                 const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
                                                                 const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
                                                                 const brd = `1px solid ${done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5')}`;
+                                                                // AI/İnsan göstergesi
+                                                                const isAI = e.source === 'AI' || e.source === 'RETELL' || e.assignedByType === 'AI';
+                                                                const callerLabel = isAI ? '🤖' : (e.assigneeName ? e.assigneeName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : '');
                                                                 return (
                                                                     <span key={idx}
                                                                         className={`activity-badge-icon ${done ? 'done' : 'planned'}`}
-                                                                        title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}`}
+                                                                        title={`${e.type} - ${done ? 'Tamamlandı' : 'Planlandı'}${e.assigneeName ? ' • ' + e.assigneeName : ''}${isAI ? ' • AI' : ''}`}
                                                                         style={{
-                                                                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                            width: 22, height: 22, borderRadius: '50%',
-                                                                            background: bg, border: brd
+                                                                            display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                                                            minWidth: 22, height: callerLabel ? 30 : 22, borderRadius: callerLabel ? 11 : '50%',
+                                                                            background: bg, border: brd, padding: callerLabel ? '1px 3px' : 0, gap: 0
                                                                         }}
                                                                     >
                                                                         {iconMap(done, isOverdue)[e.type] || <Bell size={13} color={done ? '#10b981' : '#ef4444'} />}
+                                                                        {callerLabel && (
+                                                                            <span style={{ fontSize: '0.45rem', lineHeight: 1, fontWeight: 700, color: isAI ? '#6366f1' : '#374151', marginTop: -1 }}>
+                                                                                {callerLabel}
+                                                                            </span>
+                                                                        )}
                                                                     </span>
                                                                 );
                                                             })}
