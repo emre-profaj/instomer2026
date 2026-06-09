@@ -2263,8 +2263,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     <div style={{ fontSize: '0.82rem', color: '#1e293b', lineHeight: 1.5 }}>
                                                         {selectedAiCall.summary}
                                                     </div>
-                                                    {/* Türkçe Çeviri — sadece farklıysa veya çeviriyorsa göster */}
-                                                    {(translatingSum || (translatedSummary && translatedSummary !== selectedAiCall.summary)) && (
+                                                    {/* Türkçe Çeviri */}
                                                     <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
                                                             <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1' }}>🇹🇷 Çevirisi</span>
@@ -2275,10 +2274,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             )}
                                                         </div>
                                                         <div style={{ fontSize: '0.8rem', color: '#475569', lineHeight: 1.5, fontStyle: translatingSum ? 'italic' : 'normal' }}>
-                                                            {translatingSum ? 'Çevriliyor...' : translatedSummary}
+                                                            {translatingSum ? 'Çevriliyor...' : (translatedSummary || 'Çeviri bekleniyor...')}
                                                         </div>
                                                     </div>
-                                                    )}
                                                 </div>
                                             )}
                                             {/* Audio */}
