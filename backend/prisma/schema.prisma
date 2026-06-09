@@ -1473,6 +1473,11 @@ model ContactActivity {
   aiFallbackTriggered  Boolean @default(false) // AI devralma tetiklendi mi?
   // ──────────────────────────────────────────────────────────
 
+  // ─── İnsan Araması Sonuç Bilgileri ────────────────────────
+  callSuccessful Boolean? // true = ulaşıldı/konuşuldu, false = açmadı/kapattı
+  callSentiment  String?  // "Positive", "Neutral", "Negative"
+  // ──────────────────────────────────────────────────────────
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

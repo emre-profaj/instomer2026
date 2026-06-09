@@ -222,9 +222,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [activitySaving, setActivitySaving] = useState(false);
     const [completingActivity, setCompletingActivity] = useState(null);
     const [completeResult, setCompleteResult] = useState('');
+    const [completeCallSuccess, setCompleteCallSuccess] = useState(null); // true/false/null
+    const [completeCallSentiment, setCompleteCallSentiment] = useState(null); // 'Positive'/'Neutral'/'Negative'
     const [activityFunnels, setActivityFunnels] = useState([]); // stage seçici için
     const [popupConversationId, setPopupConversationId] = useState(null); // Chat popup state
     const [callCompleted, setCallCompleted] = useState(true); // Arama tamamlandı mı? checkbox
+    const [noteCallSuccess, setNoteCallSuccess] = useState(null); // true/false/null — not modalındaki başarı durumu
+    const [noteCallSentiment, setNoteCallSentiment] = useState(null); // 'Positive'/'Neutral'/'Negative' — not modalındaki sentiment
+    const [existingPlannedCall, setExistingPlannedCall] = useState(null); // Açık planlanmış arama varsa
+    const [completePlannedCall, setCompletePlannedCall] = useState(true); // Default tikli — planlı aramayı tamamla
     const [postNoteAction, setPostNoteAction] = useState(null); // { funnelStageId, teamId, assignedToId } — not sonrası aksiyon
     const [expandedMilestone, setExpandedMilestone] = useState(null); // Sohbet akışı popup
     const [aiCalls, setAiCalls] = useState([]);
@@ -555,7 +561,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             teamId: defaultTeamId,
             funnelStageId: ''
         });
-        setCallCompleted(true); // Reset checkbox
+        setCallCompleted(true);
+        setNoteCallSuccess(null);
+        setNoteCallSentiment(null);
+
+        // NOTE tipi açılırken, planlanmış arama var mı kontrol et
+        if (type === 'NOTE') {
+            const now = new Date();
+            const plannedCall = (plannedTimeline || []).find(item =>
+                item.sourceType === 'ACTIVITY' &&
+                (item.type === 'CALL' || item.type === 'REMINDER') &&
+                (item.status === 'PLANNED' || item.status === 'IN_PROGRESS') &&
+                new Date(item.dueDate) <= now
+            );
+            setExistingPlannedCall(plannedCall || null);
+            setCompletePlannedCall(!!plannedCall); // Varsa default tikli
+        } else {
+            setExistingPlannedCall(null);
+            setCompletePlannedCall(false);
+        }
+
         setShowActivityModal(true);
     };
 
@@ -576,19 +601,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
         setActivitySaving(true);
         try {
-            // NOTE tipi → callCompleted true ise Arama Notu (CALL+COMPLETED), false ise Dahili Not (NOTE+COMPLETED)
+            // NOTE tipi → her zaman Arama Notu (CALL+COMPLETED) olarak kaydedilir
             const isNoteType = activityForm.type === 'NOTE';
-            const isCallNote = isNoteType && callCompleted;
-            const isInternalNote = isNoteType && !callCompleted;
+            const isCallNote = isNoteType;
             const dataToSave = {
                 workspaceId: currentWorkspace.id,
-                type: isCallNote ? 'CALL' : (isInternalNote ? 'NOTE' : activityForm.type),
-                title: isCallNote ? 'Telefon Görüşmesi' : (isInternalNote ? 'Dahili Not' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite'))),
+                type: isCallNote ? 'CALL' : activityForm.type,
+                title: isCallNote ? 'Telefon Görüşmesi' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite')),
                 description: activityForm.description,
                 dueDate: isNoteType ? new Date().toISOString() : (activityForm.dueDate ? new Date(activityForm.dueDate).toISOString() : null),
                 assignedToId: activityForm.assignedToId || null,
                 teamId: activityForm.teamId || null,
-                ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() })
+                ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() }),
+                ...(isCallNote && noteCallSuccess !== null && { callSuccessful: noteCallSuccess }),
+                ...(isCallNote && noteCallSentiment && { callSentiment: noteCallSentiment }),
+                ...(isCallNote && completePlannedCall && existingPlannedCall && { completePlannedCall: true })
             };
 
             let activityResponse = null;
@@ -637,12 +664,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setShowActivityModal(false);
             setEditingActivityId(null);
             setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '' });
+            setNoteCallSuccess(null);
+            setNoteCallSentiment(null);
             fetchTimeline(profile.id);
             // Inbox list'teki badge'leri hemen güncelle
             if (onActivitySaved) {
-                const wasCallNote = isCallNote;
                 onActivitySaved({
-                    type: wasCallNote ? 'CALL' : (isInternalNote ? 'NOTE' : activityForm.type),
+                    type: isCallNote ? 'CALL' : activityForm.type,
                     status: isNoteType ? 'COMPLETED' : 'PLANNED',
                     contactId: profile.id,
                     dueDate: activityForm.dueDate
@@ -670,15 +698,31 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
     const handleCompleteActivity = async () => {
         if (!completingActivity) return;
+        const isCallType = (completingActivity.type === 'CALL' || completingActivity.type === 'REMINDER');
         try {
             const rawId = completingActivity.id.replace(/^act_/, '');
-            await activityAPI.completeActivity(rawId, completeResult);
+            await activityAPI.completeActivity(
+                rawId,
+                completeResult,
+                isCallType ? completeCallSuccess : undefined,
+                isCallType ? completeCallSentiment : undefined
+            );
             // Planned'dan kaldır, past'a ekle
-            const completedItem = { ...completingActivity, isCompleted: true, isPlanned: false, status: 'COMPLETED', content: completeResult || completingActivity.content };
+            const completedItem = {
+                ...completingActivity,
+                isCompleted: true,
+                isPlanned: false,
+                status: 'COMPLETED',
+                content: completeResult || completingActivity.content,
+                callSuccessful: isCallType ? completeCallSuccess : undefined,
+                callSentiment: isCallType ? completeCallSentiment : undefined
+            };
             setPlannedTimeline(prev => prev.filter(i => i.id !== completingActivity.id));
             setPastTimeline(prev => [completedItem, ...prev]);
             setCompletingActivity(null);
             setCompleteResult('');
+            setCompleteCallSuccess(null);
+            setCompleteCallSentiment(null);
 
             // Inbox'taki aktivite badge'ini anında yeşile çevir
             if (onActivitySaved && profile?.id) {
@@ -1894,9 +1938,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     const totalCallCount = completedCalls.length + aiCalls.length;
                                     const lastCall = completedCalls.length > 0 ? completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
                                     const lastAiCall = aiCalls.length > 0 ? aiCalls[0] : null;
-                                    // AI call sentiment varsa onu kullan
+                                    // Sentiment: önce insan aramasındaki callSentiment, sonra AI sentiment, en son metin analizi
                                     let callSentiment = '📞';
-                                    if (lastAiCall?.sentiment) {
+                                    // İnsan araması — kaydedilmiş callSentiment varsa onu kullan
+                                    const lastCallWithSentiment = completedCalls.find(c => c.callSentiment);
+                                    if (lastCallWithSentiment?.callSentiment) {
+                                        callSentiment = lastCallWithSentiment.callSentiment === 'Positive' ? '😊' : lastCallWithSentiment.callSentiment === 'Negative' ? '😞' : '😐';
+                                    } else if (lastAiCall?.sentiment) {
                                         callSentiment = lastAiCall.sentiment === 'Positive' ? '😊' : lastAiCall.sentiment === 'Negative' ? '😞' : '😐';
                                     } else if (lastCall) {
                                         const callResult = (lastCall.content || lastCall.description || lastCall.result || '').toLowerCase();
@@ -1904,7 +1952,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         const negativeKeywords = ['ulaşılamadı', 'ilgisiz', 'olumsuz', 'başarısız', 'iptal', 'ret', 'reddetti', 'cevap yok', 'meşgul', 'kapalı', 'yanlış numara', 'ilgilenmiyor', 'vazgeçti'];
                                         if (positiveKeywords.some(k => callResult.includes(k))) callSentiment = '😊';
                                         else if (negativeKeywords.some(k => callResult.includes(k))) callSentiment = '😞';
-                                        else if (callResult.length > 0) callSentiment = '😐';
+                                        else callSentiment = '📞';
                                     }
                                     // Arayan dökümü: 🤖 AI ×2 • 👤 Ahmet ×1 • 👤 Mehmet ×1
                                     const callerParts = [];
@@ -2511,23 +2559,33 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '10px', marginTop: '2px' }}>
                                                             <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>👤 Manuel Aramalar</div>
                                                             {expandedMilestone._sourceItems.map((item, ci) => {
-                                                                const statusMap = {
-                                                                    COMPLETED: { label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d', icon: '✅' },
-                                                                    CANCELLED: { label: 'İptal', bg: '#f3f4f6', color: '#6b7280', icon: '❌' },
-                                                                };
-                                                                const sc = statusMap[item.status];
                                                                 const callerName = item.assignedToName || item.completedByName || 'Bilinmeyen';
+                                                                const sentimentMap = { Positive: '😊', Neutral: '😐', Negative: '😞' };
                                                                 return (
-                                                                    <div key={ci} style={{ padding: '8px 10px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                                        <div>
+                                                                    <div key={ci} style={{ padding: '8px 10px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '4px' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                                             <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>👤 {callerName} — {item.title || 'Arama'}</div>
+                                                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                                                {item.callSuccessful !== undefined && item.callSuccessful !== null && (
+                                                                                    <span style={{ fontSize: '0.62rem', padding: '2px 7px', borderRadius: '999px', background: item.callSuccessful ? '#dcfce7' : '#fef2f2', color: item.callSuccessful ? '#15803d' : '#ef4444', fontWeight: 700 }}>
+                                                                                        {item.callSuccessful ? '✅ Başarılı' : '❌ Başarısız'}
+                                                                                    </span>
+                                                                                )}
+                                                                                {item.callSentiment && (
+                                                                                    <span style={{ fontSize: '1rem' }}>{sentimentMap[item.callSentiment] || '😐'}</span>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                                                                             {(item.dueDate || item.date) && (
-                                                                                <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>
+                                                                                <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
                                                                                     {new Date(item.dueDate || item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                                </div>
+                                                                                </span>
+                                                                            )}
+                                                                            {item.result && (
+                                                                                <span style={{ fontSize: '0.68rem', color: '#475569', fontStyle: 'italic' }}>— {item.result.substring(0, 60)}{item.result.length > 60 ? '…' : ''}</span>
                                                                             )}
                                                                         </div>
-                                                                        {sc && <span style={{ fontSize: '0.62rem', padding: '2px 7px', borderRadius: '999px', background: sc.bg, color: sc.color, fontWeight: 700 }}>{sc.icon} {sc.label}</span>}
                                                                     </div>
                                                                 );
                                                             })}
@@ -2705,30 +2763,102 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </button>
                                         </div>
                                         <div className="reminder-modal-body">
-                                            {/* Arama tamamlandı mı? checkbox — sadece NOTE tipi için */}
-                                            {activityForm.type === 'NOTE' && (
+                                            {/* Planlanmış arama varsa — tamamla checkbox */}
+                                            {activityForm.type === 'NOTE' && existingPlannedCall && (
                                                 <label style={{
-                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                    display: 'flex', alignItems: 'center', gap: 10,
                                                     padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-                                                    background: callCompleted ? '#f0fdf4' : '#fefce8',
-                                                    border: `1px solid ${callCompleted ? '#bbf7d0' : '#fde68a'}`,
-                                                    marginBottom: 12, fontSize: '0.85rem', fontWeight: 600,
-                                                    color: callCompleted ? '#166534' : '#92400e',
+                                                    background: completePlannedCall ? '#eff6ff' : '#f9fafb',
+                                                    border: `1.5px solid ${completePlannedCall ? '#93c5fd' : '#e5e7eb'}`,
+                                                    marginBottom: 14, fontSize: '0.82rem', fontWeight: 600,
+                                                    color: completePlannedCall ? '#1d4ed8' : '#6b7280',
                                                     transition: 'all 0.2s'
                                                 }}>
                                                     <input
                                                         type="checkbox"
-                                                        checked={callCompleted}
-                                                        onChange={e => setCallCompleted(e.target.checked)}
-                                                        style={{ width: 18, height: 18, accentColor: callCompleted ? '#16a34a' : '#f59e0b', cursor: 'pointer' }}
+                                                        checked={completePlannedCall}
+                                                        onChange={e => setCompletePlannedCall(e.target.checked)}
+                                                        style={{ width: 18, height: 18, accentColor: '#3b82f6', cursor: 'pointer' }}
                                                     />
                                                     <div>
-                                                        <div>{callCompleted ? '✅ Arama tamamlandı' : '📝 Dahili not olarak kaydet'}</div>
-                                                        <div style={{ fontSize: '0.72rem', fontWeight: 400, color: '#6b7280', marginTop: 2 }}>
-                                                            {callCompleted ? 'Tamamlanmış arama notu olarak kaydedilir' : 'Sadece ekip görebilir, arama kaydı oluşmaz'}
+                                                        <div>📋 Planlanmış aramayı tamamla</div>
+                                                        <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#9ca3af', marginTop: 2 }}>
+                                                            {existingPlannedCall.dueDate
+                                                                ? `${new Date(existingPlannedCall.dueDate).toLocaleDateString('tr-TR')} tarihli planlı arama`
+                                                                : 'Açık planlı arama mevcut'}
+                                                            {existingPlannedCall.callTopic ? ` • ${existingPlannedCall.callTopic}` : ''}
                                                         </div>
                                                     </div>
                                                 </label>
+                                            )}
+                                            {/* Arama Başarısı + Sentiment — NOTE tipi için */}
+                                            {activityForm.type === 'NOTE' && (
+                                                <>
+                                                    <div style={{ marginBottom: '12px' }}>
+                                                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>📞 Arama Başarılı mı?</label>
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNoteCallSuccess(true)}
+                                                                style={{
+                                                                    flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                                                    borderColor: noteCallSuccess === true ? '#16a34a' : '#e5e7eb',
+                                                                    background: noteCallSuccess === true ? '#dcfce7' : '#fff',
+                                                                    color: noteCallSuccess === true ? '#15803d' : '#6b7280',
+                                                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                            >
+                                                                ✅ Başarılı
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Ulaşıldı, konuşuldu</div>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNoteCallSuccess(false)}
+                                                                style={{
+                                                                    flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                                                    borderColor: noteCallSuccess === false ? '#ef4444' : '#e5e7eb',
+                                                                    background: noteCallSuccess === false ? '#fef2f2' : '#fff',
+                                                                    color: noteCallSuccess === false ? '#dc2626' : '#6b7280',
+                                                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                            >
+                                                                ❌ Başarısız
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı / Kapattı</div>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Duygu Analizi */}
+                                                    <div style={{ marginBottom: '12px' }}>
+                                                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>🎭 Görüşme Nasıl Geçti?</label>
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            {[
+                                                                { key: 'Positive', emoji: '😊', label: 'Olumlu', color: '#16a34a', bg: '#dcfce7' },
+                                                                { key: 'Neutral', emoji: '😐', label: 'Nötr', color: '#6b7280', bg: '#f3f4f6' },
+                                                                { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' }
+                                                            ].map(s => (
+                                                                <button
+                                                                    key={s.key}
+                                                                    type="button"
+                                                                    onClick={() => setNoteCallSentiment(s.key)}
+                                                                    style={{
+                                                                        flex: 1, padding: '10px 6px', borderRadius: '10px', border: '2px solid',
+                                                                        borderColor: noteCallSentiment === s.key ? s.color : '#e5e7eb',
+                                                                        background: noteCallSentiment === s.key ? s.bg : '#fff',
+                                                                        color: noteCallSentiment === s.key ? s.color : '#6b7280',
+                                                                        fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                        transition: 'all 0.2s ease', textAlign: 'center'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ fontSize: '1.4rem', marginBottom: '2px' }}>{s.emoji}</div>
+                                                                    {s.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
                                             )}
                                             {activityForm.type !== 'NOTE' && (
                                                 <div className="reminder-form-group">
@@ -2856,13 +2986,85 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </div>
                                                 )}
                                             </div>
+
+                                            {/* Arama sonuç bilgileri — sadece CALL/REMINDER tipi için */}
+                                            {(completingActivity.type === 'CALL' || completingActivity.type === 'REMINDER') && (
+                                                <>
+                                                    {/* Başarılı / Başarısız */}
+                                                    <div style={{ marginBottom: '12px' }}>
+                                                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>📞 Arama Başarılı mı?</label>
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCompleteCallSuccess(true)}
+                                                                style={{
+                                                                    flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                                                    borderColor: completeCallSuccess === true ? '#16a34a' : '#e5e7eb',
+                                                                    background: completeCallSuccess === true ? '#dcfce7' : '#fff',
+                                                                    color: completeCallSuccess === true ? '#15803d' : '#6b7280',
+                                                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                            >
+                                                                ✅ Başarılı
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Ulaşıldı, konuşuldu</div>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCompleteCallSuccess(false)}
+                                                                style={{
+                                                                    flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                                                    borderColor: completeCallSuccess === false ? '#ef4444' : '#e5e7eb',
+                                                                    background: completeCallSuccess === false ? '#fef2f2' : '#fff',
+                                                                    color: completeCallSuccess === false ? '#dc2626' : '#6b7280',
+                                                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                            >
+                                                                ❌ Başarısız
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı / Kapattı</div>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Duygu Analizi */}
+                                                    <div style={{ marginBottom: '12px' }}>
+                                                        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>🎭 Görüşme Nasıl Geçti?</label>
+                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                            {[
+                                                                { key: 'Positive', emoji: '😊', label: 'Olumlu', color: '#16a34a', bg: '#dcfce7' },
+                                                                { key: 'Neutral', emoji: '😐', label: 'Nötr', color: '#6b7280', bg: '#f3f4f6' },
+                                                                { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' }
+                                                            ].map(s => (
+                                                                <button
+                                                                    key={s.key}
+                                                                    type="button"
+                                                                    onClick={() => setCompleteCallSentiment(s.key)}
+                                                                    style={{
+                                                                        flex: 1, padding: '10px 6px', borderRadius: '10px', border: '2px solid',
+                                                                        borderColor: completeCallSentiment === s.key ? s.color : '#e5e7eb',
+                                                                        background: completeCallSentiment === s.key ? s.bg : '#fff',
+                                                                        color: completeCallSentiment === s.key ? s.color : '#6b7280',
+                                                                        fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                        transition: 'all 0.2s ease', textAlign: 'center'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ fontSize: '1.4rem', marginBottom: '2px' }}>{s.emoji}</div>
+                                                                    {s.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
+
                                             <div className="reminder-form-group">
                                                 <label><FileText size={14} /> Sonuç Notu</label>
                                                 <textarea
                                                     value={completeResult}
                                                     onChange={e => setCompleteResult(e.target.value)}
                                                     placeholder="Görüşme sonucunu, notu veya detayları yazın..."
-                                                    rows={4}
+                                                    rows={3}
                                                     autoFocus
                                                 />
                                             </div>

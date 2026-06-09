@@ -31,8 +31,11 @@ export const activityAPI = {
     },
 
     // Aktivite tamamla (not gir + status=COMPLETED)
-    completeActivity: async (activityId, result) => {
-        const response = await api.put(`/activities/${activityId}/complete`, { result });
+    completeActivity: async (activityId, result, callSuccessful, callSentiment) => {
+        const body = { result };
+        if (callSuccessful !== undefined) body.callSuccessful = callSuccessful;
+        if (callSentiment) body.callSentiment = callSentiment;
+        const response = await api.put(`/activities/${activityId}/complete`, body);
         return response.data;
     },
 

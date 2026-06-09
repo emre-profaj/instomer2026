@@ -46,6 +46,54 @@ export const createActivity = async (req, res) => {
             ? (explicitCompletedAt ? new Date(explicitCompletedAt) : new Date())
             : null;
 
+        // ── Planlanmış arama varsa onu tamamla (yeni kayıt oluşturmak yerine) ──
+        // Kullanıcı "Görüşme Notu Ekle" ile CALL+COMPLETED gönderdiğinde,
+        // aynı kişi için açık (PLANNED) bir arama varsa onu güncelle.
+        // Frontend'den completePlannedCall flag'i gelmezse yeni kayıt oluştur.
+        if (type === 'CALL' && resolvedStatus === 'COMPLETED' && req.body.completePlannedCall) {
+            const existingPlannedCall = await prisma.contactActivity.findFirst({
+                where: {
+                    contactId,
+                    workspaceId,
+                    type: { in: ['CALL', 'REMINDER'] },
+                    status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                    dueDate: { lte: new Date() } // Vadesi geçmiş veya şu an olan
+                },
+                orderBy: { dueDate: 'asc' } // En eski planlanmış aramayı al
+            });
+
+            if (existingPlannedCall) {
+                const updatedActivity = await prisma.contactActivity.update({
+                    where: { id: existingPlannedCall.id },
+                    data: {
+                        status: 'COMPLETED',
+                        isCompleted: true,
+                        completedAt: new Date(),
+                        result: description,
+                        description: description || existingPlannedCall.description,
+                        assignedToId: assignedToId || userId,
+                        ...(req.body.callSuccessful !== undefined ? { callSuccessful: req.body.callSuccessful } : {}),
+                        ...(req.body.callSentiment ? { callSentiment: req.body.callSentiment } : {}),
+                        assignedById: req.user?.id || null,
+                        assignedByType: 'USER',
+                        assignedAt: new Date()
+                    },
+                    include: {
+                        creator: { select: { name: true, role: true } },
+                        assignee: { select: { name: true } },
+                        team: { select: { name: true } }
+                    }
+                });
+
+                console.log(`✅ [CallNote] Planlanmış arama tamamlandı (${existingPlannedCall.id}) — yeni kayıt oluşturulmadı`);
+
+                return res.status(201).json({
+                    data: updatedActivity,
+                    completedPlannedCall: existingPlannedCall.id
+                });
+            }
+        }
+
         const newActivity = await prisma.contactActivity.create({
             data: {
                 contactId,
@@ -62,6 +110,9 @@ export const createActivity = async (req, res) => {
                 source: req.body.source || 'MANUAL',
                 priority: req.body.priority || 'NORMAL',
                 isCompleted: resolvedIsCompleted,
+                // Arama sonuç bilgileri (insan aramaları için)
+                ...(req.body.callSuccessful !== undefined ? { callSuccessful: req.body.callSuccessful } : {}),
+                ...(req.body.callSentiment ? { callSentiment: req.body.callSentiment } : {}),
                 // Atama bilgisi — açıkça atama yapıldıysa ya da oto-atama varsa
                 ...((assignedToId || resolvedIsCompleted) ? {
                     assignedById: req.user?.id || null,
@@ -347,6 +398,9 @@ export const getContactTimeline = async (req, res) => {
                 assignedToName: act.assignee?.name,
                 assignedToId: act.assignedToId,
                 callTopic: act.callTopic,
+                callSuccessful: act.callSuccessful,
+                callSentiment: act.callSentiment,
+                completedByName: act.assignee?.name || act.creator?.name,
                 assignedById: act.assignedById,
                 assignedByType: act.assignedByType,
                 assignedByName: act.creator?.name,
@@ -613,7 +667,7 @@ export const deleteActivity = async (req, res) => {
 export const completeActivity = async (req, res) => {
     try {
         const { activityId } = req.params;
-        const { result } = req.body;
+        const { result, callSuccessful, callSentiment } = req.body;
         const userId = req.user?.id || null;
 
         const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
@@ -625,6 +679,10 @@ export const completeActivity = async (req, res) => {
             completedAt: new Date(),
             result: result || null
         };
+
+        // Arama sonuç bilgileri (insan aramaları için)
+        if (callSuccessful !== undefined) updateData.callSuccessful = callSuccessful;
+        if (callSentiment) updateData.callSentiment = callSentiment;
 
         // Eğer henüz kimseye atanmamışsa → tamamlayan kişi = atanan kişi
         if (!existing.assignedToId && userId) {
