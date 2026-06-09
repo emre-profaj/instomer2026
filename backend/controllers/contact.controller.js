@@ -489,7 +489,7 @@ export const getContacts = async (req, res) => {
                     activities: {
                         where: { workspaceId: workspaceId },
                         orderBy: { createdAt: 'desc' },
-                        take: 3,
+                        take: 5,
                         select: {
                             type: true,
                             title: true,
@@ -497,7 +497,11 @@ export const getContacts = async (req, res) => {
                             result: true,
                             status: true,
                             dueDate: true,
-                            createdAt: true
+                            createdAt: true,
+                            assignedByType: true,
+                            source: true,
+                            assignee: { select: { name: true } },
+                            creator: { select: { name: true } }
                         }
                     }
                 },
@@ -570,7 +574,7 @@ export const getContacts = async (req, res) => {
                     activities: {
                         where: { workspaceId: workspaceId },
                         orderBy: { createdAt: 'desc' },
-                        take: 3,
+                        take: 5,
                         select: {
                             type: true,
                             title: true,
@@ -578,7 +582,11 @@ export const getContacts = async (req, res) => {
                             result: true,
                             status: true,
                             dueDate: true,
-                            createdAt: true
+                            createdAt: true,
+                            assignedByType: true,
+                            source: true,
+                            assignee: { select: { name: true } },
+                            creator: { select: { name: true } }
                         }
                     }
                 },

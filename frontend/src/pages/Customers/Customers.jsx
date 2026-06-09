@@ -1777,17 +1777,26 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                         TASK: <CheckCircle2 size={12} color={color} />,
                                                                         VISIT: <MapPin size={12} color={color} />,
                                                                     };
+                                                                    // AI/İnsan göstergesi
+                                                                    const isAI = e.source === 'AI' || e.source === 'RETELL' || e.assignedByType === 'AI';
+                                                                    const callerName = e.assignee?.name || e.creator?.name || '';
+                                                                    const callerLabel = isAI ? '🤖' : (callerName ? callerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : '');
                                                                     return (
                                                                         <span key={idx}
-                                                                            title={`${typeLabels[e.type] || e.type} - ${statusLabel}${dateStr ? ' (' + dateStr + ')' : ''}`}
+                                                                            title={`${typeLabels[e.type] || e.type} - ${statusLabel}${dateStr ? ' (' + dateStr + ')' : ''}${callerName ? ' • ' + callerName : ''}${isAI ? ' • AI' : ''}`}
                                                                             style={{
-                                                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                                                width: 22, height: 22, borderRadius: '50%',
+                                                                                display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                                                                minWidth: 22, height: callerLabel ? 30 : 22, borderRadius: callerLabel ? 11 : '50%',
                                                                                 background: bg, border: `1px solid ${brd}`,
-                                                                                cursor: 'pointer'
+                                                                                cursor: 'pointer', padding: callerLabel ? '1px 3px' : 0, gap: 0
                                                                             }}
                                                                         >
                                                                             {iconEl[e.type] || <Bell size={12} color={color} />}
+                                                                            {callerLabel && (
+                                                                                <span style={{ fontSize: '0.45rem', lineHeight: 1, fontWeight: 700, color: isAI ? '#6366f1' : '#374151', marginTop: -1 }}>
+                                                                                    {callerLabel}
+                                                                                </span>
+                                                                            )}
                                                                         </span>
                                                                     );
                                                                 })}
