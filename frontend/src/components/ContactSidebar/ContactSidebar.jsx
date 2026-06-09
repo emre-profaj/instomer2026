@@ -320,12 +320,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     }, [currentWorkspace?.id, profile?.id, callRefreshKey]);
 
     // AI Araması özet çevirisi — İngilizce ise otomatik Türkçeye çevir
+    const aiCallSummaryToTranslate = selectedAiCall?.summary || (expandedMilestone?._type === 'CALL' && expandedMilestone?._aiCalls?.[0]?.summary) || null;
     useEffect(() => {
-        if (!selectedAiCall?.summary || !currentWorkspace?.id) {
+        if (!aiCallSummaryToTranslate || !currentWorkspace?.id) {
             setTranslatedSummary('');
             return;
         }
-        const summary = selectedAiCall.summary;
+        const summary = aiCallSummaryToTranslate;
         // Cache kontrolü
         if (translationCache.current[summary]) {
             setTranslatedSummary(translationCache.current[summary]);
@@ -348,7 +349,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }).catch(() => {
             setTranslatedSummary('Çeviri yapılamadı.');
         }).finally(() => setTranslatingSum(false));
-    }, [selectedAiCall?.summary, currentWorkspace?.id]);
+    }, [aiCallSummaryToTranslate, currentWorkspace?.id]);
 
     // Sync assignment mega menu position on window resize and scroll
     useEffect(() => {
@@ -1885,32 +1886,41 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     });
                                 }
 
-                                // 4. Aramalar (tamamlanan)
+                                // 4. Aramalar (tamamlanan) — AI call verileriyle birleştirilmiş
                                 const calls = allTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.sourceType === 'ACTIVITY');
                                 const completedCalls = calls.filter(i => i.status === 'COMPLETED');
                                 const failedCalls = calls.filter(i => i.status === 'CANCELLED');
-                                if (completedCalls.length > 0) {
-                                    const lastCall = completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-                                    // Arama sonuç notundan duygu analizi
-                                    const callResult = (lastCall.content || lastCall.description || lastCall.result || '').toLowerCase();
+                                if (completedCalls.length > 0 || aiCalls.length > 0) {
+                                    const totalCallCount = Math.max(completedCalls.length, aiCalls.length);
+                                    const lastCall = completedCalls.length > 0 ? completedCalls.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
+                                    const lastAiCall = aiCalls.length > 0 ? aiCalls[0] : null;
+                                    // AI call sentiment varsa onu kullan
                                     let callSentiment = '📞';
-                                    const positiveKeywords = ['bilgi verildi', 'ilgili', 'randevu', 'olumlu', 'başarılı', 'tamamlandı', 'satış', 'anlaştık', 'gelecek', 'kabul', 'onaylandı', 'memnun', 'teşekkür'];
-                                    const negativeKeywords = ['ulaşılamadı', 'ilgisiz', 'olumsuz', 'başarısız', 'iptal', 'ret', 'reddetti', 'cevap yok', 'meşgul', 'kapalı', 'yanlış numara', 'ilgilenmiyor', 'vazgeçti'];
-                                    if (positiveKeywords.some(k => callResult.includes(k))) callSentiment = '😊';
-                                    else if (negativeKeywords.some(k => callResult.includes(k))) callSentiment = '😞';
-                                    else if (callResult.length > 0) callSentiment = '😐';
+                                    if (lastAiCall?.sentiment) {
+                                        callSentiment = lastAiCall.sentiment === 'Positive' ? '😊' : lastAiCall.sentiment === 'Negative' ? '😞' : '😐';
+                                    } else if (lastCall) {
+                                        const callResult = (lastCall.content || lastCall.description || lastCall.result || '').toLowerCase();
+                                        const positiveKeywords = ['bilgi verildi', 'ilgili', 'randevu', 'olumlu', 'başarılı', 'tamamlandı', 'satış', 'anlaştık', 'gelecek', 'kabul', 'onaylandı', 'memnun', 'teşekkür'];
+                                        const negativeKeywords = ['ulaşılamadı', 'ilgisiz', 'olumsuz', 'başarısız', 'iptal', 'ret', 'reddetti', 'cevap yok', 'meşgul', 'kapalı', 'yanlış numara', 'ilgilenmiyor', 'vazgeçti'];
+                                        if (positiveKeywords.some(k => callResult.includes(k))) callSentiment = '😊';
+                                        else if (negativeKeywords.some(k => callResult.includes(k))) callSentiment = '😞';
+                                        else if (callResult.length > 0) callSentiment = '😐';
+                                    }
+                                    // Detay satırı
+                                    const detailParts = [];
+                                    if (lastAiCall?.callSuccessful !== undefined) detailParts.push(lastAiCall.callSuccessful ? '✅ Başarılı' : '❌ Başarısız');
+                                    if (lastAiCall?.duration) detailParts.push(`⏱ ${Math.floor(lastAiCall.duration/60)}dk ${lastAiCall.duration%60}sn`);
+                                    if (!lastAiCall && lastCall) detailParts.push(lastCall.content || lastCall.description || 'Tamamlandı');
                                     milestones.push({
                                         icon: '📞',
-                                        label: `Arama Yapıldı${completedCalls.length > 1 ? ` (${completedCalls.length}x)` : ''} ${callSentiment}`,
-                                        detail: [
-                                            lastCall.assignedToName ? `→ ${lastCall.assignedToName}` : null,
-                                            lastCall.content || lastCall.description || 'Tamamlandı'
-                                        ].filter(Boolean).join('  •  '),
-                                        date: new Date(lastCall.dueDate || lastCall.date),
+                                        label: `Arama Yapıldı${totalCallCount > 1 ? ` (${totalCallCount}x)` : ''} ${callSentiment}`,
+                                        detail: detailParts.join('  •  ') || 'Tamamlandı',
+                                        date: new Date(lastAiCall?.createdAt || lastCall?.dueDate || lastCall?.date),
                                         color: '#16a34a',
                                         done: true,
                                         _type: 'CALL',
-                                        _sourceItems: completedCalls
+                                        _sourceItems: completedCalls,
+                                        _aiCalls: aiCalls
                                     });
                                 }
                                 if (failedCalls.length > 0) {
@@ -1989,28 +1999,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     });
                                 }
 
-                                // 8.5 AI Aramaları
-                                if (aiCalls.length > 0) {
-                                    const lastAiCall = aiCalls[0];
-                                    // Retell sentiment → emoji
-                                    const sentimentEmoji = lastAiCall.sentiment === 'Positive' ? '😊' 
-                                        : lastAiCall.sentiment === 'Negative' ? '😞' 
-                                        : lastAiCall.sentiment === 'Neutral' ? '😐' : '';
-                                    const successText = lastAiCall.callSuccessful ? '✅ Başarılı' : '❌ Başarısız';
-                                    milestones.push({
-                                        icon: '🤖',
-                                        label: `AI Araması${aiCalls.length > 1 ? ` (${aiCalls.length}x)` : ''} ${sentimentEmoji}`,
-                                        detail: [
-                                            successText,
-                                            lastAiCall.summary ? lastAiCall.summary.substring(0, 50) : null
-                                        ].filter(Boolean).join(' — '),
-                                        date: new Date(lastAiCall.createdAt),
-                                        color: lastAiCall.callSuccessful ? '#16a34a' : '#ef4444',
-                                        done: true,
-                                        _type: 'AI_CALL',
-                                        _sourceItems: aiCalls
-                                    });
-                                }
+                                // 8.5 AI Aramaları — CALL milestone'a birleştirildi, ayrı entry yok
 
                                 // 9. Planlanmış aramalar (gelecek)
                                 const plannedCalls = plannedTimeline.filter(i => (i.type === 'CALL' || i.type === 'REMINDER') && i.status === 'PLANNED');
@@ -2167,8 +2156,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             {milestones.map((m, idx) => {
                                                 const isClickable = m._sourceItems || m._dealData;
                                                 const handleStepClick = () => {
-                                                    if (m._type === 'AI_CALL' && m._sourceItems?.length > 0) {
-                                                        setSelectedAiCall(m._sourceItems[0]);
+                                                    if (m._type === 'CALL' && m._aiCalls?.length > 0) {
+                                                        // AI call verisi varsa — birleşik popup aç
+                                                        setExpandedMilestone(m);
                                                     } else if (m._type === 'DEAL' && m._dealData) {
                                                         setSelectedDealDetail(m._dealData);
                                                     } else if (m._type === 'CONVERSATION' && m._sourceItems?.[0]?.conversationId) {
@@ -2430,7 +2420,103 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <button className="reminder-modal-close" onClick={() => setExpandedMilestone(null)}><X size={18} /></button>
                                         </div>
                                         <div className="reminder-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                                            {expandedMilestone._type === 'PLANNED_CALL' ? (
+                                            {expandedMilestone._type === 'CALL' && expandedMilestone._aiCalls?.length > 0 ? (
+                                                /* Birleşik Arama + AI Call detayı */
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                    {expandedMilestone._aiCalls.map((ac, aci) => (
+                                                        <div key={aci} style={{ background: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e5e7eb' }}>
+                                                            {/* Stats */}
+                                                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                                                                <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                                                                    📅 {new Date(ac.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                                {ac.duration && (
+                                                                    <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: '#f1f5f9', color: '#475569', fontWeight: 600 }}>
+                                                                        ⏱ {Math.floor(ac.duration/60)}dk {ac.duration%60}sn
+                                                                    </span>
+                                                                )}
+                                                                <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: ac.callSuccessful ? '#dcfce7' : '#fef2f2', color: ac.callSuccessful ? '#16a34a' : '#ef4444', fontWeight: 700 }}>
+                                                                    {ac.callSuccessful ? '✓ Başarılı' : '✗ Başarısız'}
+                                                                </span>
+                                                                {ac.sentiment && (
+                                                                    <span style={{ fontSize: '0.72rem', padding: '3px 9px', borderRadius: '999px', background: ac.sentiment === 'Positive' ? '#dcfce7' : ac.sentiment === 'Negative' ? '#fef2f2' : '#f3f4f6', color: ac.sentiment === 'Positive' ? '#16a34a' : ac.sentiment === 'Negative' ? '#ef4444' : '#6b7280', fontWeight: 600 }}>
+                                                                        {ac.sentiment === 'Positive' ? '😊 Olumlu' : ac.sentiment === 'Negative' ? '😞 Olumsuz' : '😐 Nötr'}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            {/* Summary + Çeviri — ilk AI call için translate tetikle */}
+                                                            {ac.summary && (
+                                                                <div style={{ background: '#fff', borderRadius: '8px', padding: '10px 12px', marginBottom: '8px', border: '1px solid #e5e7eb' }}>
+                                                                    <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#374151', marginBottom: '4px' }}>📝 Özet</div>
+                                                                    <div style={{ fontSize: '0.8rem', color: '#1e293b', lineHeight: 1.5 }}>{ac.summary}</div>
+                                                                    {/* Çeviri — sadece ilk AI call için (useEffect zaten tetikleniyor) */}
+                                                                    {aci === 0 && (
+                                                                        <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                                                                                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#6366f1' }}>🇹🇷 Çevirisi</span>
+                                                                                {translatingSum && <Loader size={9} className="spin" style={{ color: '#6366f1' }} />}
+                                                                            </div>
+                                                                            <div style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.5, fontStyle: translatingSum ? 'italic' : 'normal' }}>
+                                                                                {translatingSum ? 'Çevriliyor...' : (translatedSummary || 'Çeviri bekleniyor...')}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            {/* Audio */}
+                                                            {ac.recordingUrl && (
+                                                                <div style={{ marginBottom: '8px' }}>
+                                                                    <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#374151', marginBottom: '4px' }}>🎙 Ses Kaydı</div>
+                                                                    <audio src={ac.recordingUrl} controls style={{ width: '100%', height: 34 }} />
+                                                                </div>
+                                                            )}
+                                                            {/* Transcript */}
+                                                            {ac.transcript && (
+                                                                <div>
+                                                                    <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#374151', marginBottom: '4px' }}>💬 Konuşma</div>
+                                                                    <div style={{ maxHeight: '180px', overflowY: 'auto', background: '#fff', borderRadius: '8px', padding: '6px 8px', border: '1px solid #e5e7eb' }}>
+                                                                        {ac.transcript.split('\n').filter(l => l.trim()).map((line, i) => {
+                                                                            const isAgent = line.startsWith('Agent:') || line.startsWith('AI:');
+                                                                            return (
+                                                                                <div key={i} style={{ marginBottom: '4px', padding: '3px 6px', borderRadius: '5px', background: isAgent ? '#eff6ff' : '#fef2f2', fontSize: '0.76rem', color: '#1e293b' }}>
+                                                                                    <span style={{ fontWeight: 600, color: isAgent ? '#2563eb' : '#dc2626', fontSize: '0.68rem' }}>{isAgent ? 'AI' : 'Müşteri'}:</span>{' '}
+                                                                                    {line.replace(/^(Agent:|AI:|User:|Customer:)\s*/i, '')}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {/* Normal aktivite kartları (scheduling bilgisi) */}
+                                                    {expandedMilestone._sourceItems?.length > 0 && (
+                                                        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '10px', marginTop: '2px' }}>
+                                                            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>📋 Planlama Geçmişi</div>
+                                                            {expandedMilestone._sourceItems.map((item, ci) => {
+                                                                const statusMap = {
+                                                                    COMPLETED: { label: 'Tamamlandı', bg: '#dcfce7', color: '#15803d', icon: '✅' },
+                                                                    CANCELLED: { label: 'İptal', bg: '#f3f4f6', color: '#6b7280', icon: '❌' },
+                                                                };
+                                                                const sc = statusMap[item.status];
+                                                                return (
+                                                                    <div key={ci} style={{ padding: '8px 10px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                                        <div>
+                                                                            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{item.title || 'Arama'}</div>
+                                                                            {(item.dueDate || item.date) && (
+                                                                                <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>
+                                                                                    {new Date(item.dueDate || item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        {sc && <span style={{ fontSize: '0.62rem', padding: '2px 7px', borderRadius: '999px', background: sc.bg, color: sc.color, fontWeight: 700 }}>{sc.icon} {sc.label}</span>}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : expandedMilestone._type === 'PLANNED_CALL' ? (
                                                 /* Planlanan aramalar — aksiyon butonlu */
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                                     {expandedMilestone._sourceItems.map((item, ci) => {
