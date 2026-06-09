@@ -344,7 +344,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             `Aşağıdaki metni Türkçeye çevir. Sadece çeviriyi yaz, başka bir şey ekleme:\n\n"${summary}"`,
             []
         ).then(res => {
-            const tr = (res.data?.response || res.data?.message || summary).replace(/^"|"$/g, '');
+            const tr = (res.data?.reply || res.data?.response || res.data?.message || summary).replace(/^"|"$/g, '');
             translationCache.current[summary] = tr;
             setTranslatedSummary(tr);
         }).catch(() => {
