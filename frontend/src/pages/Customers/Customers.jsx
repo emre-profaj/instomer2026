@@ -1919,7 +1919,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 <td className="contact-tags" style={{ maxWidth: '140px' }}>
                                                     {(() => {
                                                         try {
-                                                            const tagsArray = JSON.parse(contact.tags || '[]');
+                                                            let tagsArray = contact.tags;
+                                                            if (typeof tagsArray === 'string') {
+                                                                tagsArray = JSON.parse(tagsArray || '[]');
+                                                            }
                                                             if (!Array.isArray(tagsArray) || tagsArray.length === 0) return <span style={{color: '#94a3b8'}}>-</span>;
                                                             return (
                                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>

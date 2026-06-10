@@ -299,6 +299,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (externalProfile) {
             const normalized = { ...externalProfile };
             if (normalized.phone) normalized.phone = normalizePhone(normalized.phone);
+            // Ensure tags is always an array
+            if (normalized.tags && typeof normalized.tags === 'string') {
+                try { normalized.tags = JSON.parse(normalized.tags); } catch { normalized.tags = []; }
+            }
+            if (normalized.tags && !Array.isArray(normalized.tags)) normalized.tags = [];
             setProfile(normalized);
             setLoading(false);
             setError(null);
@@ -448,6 +453,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             const response = await facebookAPI.getContactProfile(conversationId);
             const profileData = response.data.profile;
             if (profileData?.phone) profileData.phone = normalizePhone(profileData.phone);
+            // Parse JSON string fields to arrays (same as fetchProfileByContactId)
+            if (profileData?.tags && typeof profileData.tags === 'string') {
+                try { profileData.tags = JSON.parse(profileData.tags); } catch { profileData.tags = []; }
+            }
             setProfile(profileData);
             setHasUnsavedChanges(false);
 
@@ -1617,15 +1626,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 })()}
 
                                                 {/* Normal Tags */}
-                                                {profile.tags && profile.tags.map((tag, i) => (
-                                                    <div key={i} className="unified-tag unified-tag-purple">
-                                                        <Tag size={12} />
-                                                        <span>{tag}</span>
-                                                        <button onClick={() => handleRemoveTag(tag)} className="remove-tag-btn" title="Sil">
-                                                            <X size={10} />
-                                                        </button>
-                                                    </div>
-                                                ))}
+                                                {(() => {
+                                                    let safeTags = profile.tags;
+                                                    if (safeTags && typeof safeTags === 'string') {
+                                                        try { safeTags = JSON.parse(safeTags); } catch { safeTags = []; }
+                                                    }
+                                                    if (!Array.isArray(safeTags)) safeTags = [];
+                                                    return safeTags.map((tag, i) => (
+                                                        <div key={i} className="unified-tag unified-tag-purple">
+                                                            <Tag size={12} />
+                                                            <span>{typeof tag === 'object' ? JSON.stringify(tag) : String(tag)}</span>
+                                                            <button onClick={() => handleRemoveTag(tag)} className="remove-tag-btn" title="Sil">
+                                                                <X size={10} />
+                                                            </button>
+                                                        </div>
+                                                    ));
+                                                })()}
 
                                                 {isAddingTag ? (
                                                     <div className="unified-tag-input-wrapper">
