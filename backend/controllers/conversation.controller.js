@@ -1022,7 +1022,23 @@ export const assignConversation = async (req, res) => {
         // UPWARD CASCADE: Conversation → Case → Sibling Conversations + Activities
         // Case = master entity. Her conversation ataması Case'i de günceller.
         // ═══════════════════════════════════════════════════════════
-        if (conversation.caseId) {
+
+        // Case yoksa otomatik oluştur — her atanmış conversation mutlaka bir Case'e bağlı olmalı
+        let cascadeCaseId = conversation.caseId;
+        if (!cascadeCaseId) {
+            try {
+                const { ensureCaseForConversation } = await import('./case.controller.js');
+                const newCase = await ensureCaseForConversation(workspaceId, conversationId);
+                if (newCase?.id) {
+                    cascadeCaseId = newCase.id;
+                    console.log(`📦 [CaseCascade] Auto-created case ${newCase.caseNumber} for conversation ${conversationId}`);
+                }
+            } catch (caseErr) {
+                console.error('⚠️ [CaseCascade] Auto-case creation failed:', caseErr.message);
+            }
+        }
+
+        if (cascadeCaseId) {
             try {
                 const caseUpdateData = {};
                 if (updateData.assignedToId !== undefined) caseUpdateData.assignedToId = updateData.assignedToId;
@@ -1034,10 +1050,10 @@ export const assignConversation = async (req, res) => {
                 if (Object.keys(caseUpdateData).length > 0) {
                     // 1. Case'i güncelle
                     await prisma.case.update({
-                        where: { id: conversation.caseId },
+                        where: { id: cascadeCaseId },
                         data: caseUpdateData
                     });
-                    console.log(`🔄 [CaseCascade] Case ${conversation.caseId} updated:`, caseUpdateData);
+                    console.log(`🔄 [CaseCascade] Case ${cascadeCaseId} updated:`, caseUpdateData);
 
                     // 2. Kardeş conversation'ları güncelle (bu conversation hariç)
                     const siblingUpdate = {};
@@ -1050,7 +1066,7 @@ export const assignConversation = async (req, res) => {
                     if (Object.keys(siblingUpdate).length > 0) {
                         const siblingResult = await prisma.conversation.updateMany({
                             where: {
-                                caseId: conversation.caseId,
+                                caseId: cascadeCaseId,
                                 id: { not: conversationId },
                                 status: { not: 'RESOLVED' }
                             },
@@ -1067,7 +1083,7 @@ export const assignConversation = async (req, res) => {
                     if (Object.keys(activityUpdate).length > 0) {
                         const activityResult = await prisma.contactActivity.updateMany({
                             where: {
-                                caseId: conversation.caseId,
+                                caseId: cascadeCaseId,
                                 status: { in: ['PLANNED', 'IN_PROGRESS'] }
                             },
                             data: activityUpdate
@@ -1077,7 +1093,7 @@ export const assignConversation = async (req, res) => {
 
                     // 4. Socket event — sidebar'ın otomatik yenilenmesi için
                     emitToWorkspace(workspaceId, 'case_assignment_updated', {
-                        caseId: conversation.caseId,
+                        caseId: cascadeCaseId,
                         ...caseUpdateData
                     });
                 }
@@ -2469,6 +2485,48 @@ export const updateFunnel = async (req, res) => {
             assignedToName,
             teamIds: conversation.teamIds || '[]'
         });
+
+        // ═══════════════════════════════════════════════════════════
+        // UPWARD CASCADE: Conversation funnelStage → Case → Sibling Conversations
+        // Case = master entity. Conversation'da aşama değiştiğinde Case'i de günceller.
+        // ═══════════════════════════════════════════════════════════
+        if (conversation.caseId && (funnelChanged || stageChanged)) {
+            try {
+                const caseFunnelUpdate = {};
+                if (funnelType !== undefined) caseFunnelUpdate.funnelType = conversation.funnelType;
+                if (conversation.funnelStageId !== undefined) caseFunnelUpdate.funnelStageId = conversation.funnelStageId;
+
+                if (Object.keys(caseFunnelUpdate).length > 0) {
+                    // 1. Case'i güncelle
+                    await prisma.case.update({
+                        where: { id: conversation.caseId },
+                        data: caseFunnelUpdate
+                    });
+                    console.log(`🔄 [FunnelCascade] Case ${conversation.caseId} funnel synced:`, caseFunnelUpdate);
+
+                    // 2. Kardeş conversation'ları güncelle (bu conversation hariç)
+                    await prisma.conversation.updateMany({
+                        where: {
+                            caseId: conversation.caseId,
+                            id: { not: conversationId },
+                            status: { not: 'RESOLVED' }
+                        },
+                        data: caseFunnelUpdate
+                    });
+                    console.log(`🔄 [FunnelCascade] Sibling conversations synced`);
+
+                    // 3. Socket: Case güncellemesini bildir
+                    try {
+                        emitToWorkspace(workspaceId, 'case_updated', {
+                            caseId: conversation.caseId,
+                            changes: caseFunnelUpdate
+                        });
+                    } catch (_) {}
+                }
+            } catch (cascadeErr) {
+                console.error('⚠️ [FunnelCascade] Error (non-blocking):', cascadeErr.message);
+            }
+        }
 
         // Emit socket events AFTER response
         try {

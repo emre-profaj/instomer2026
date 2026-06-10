@@ -41,7 +41,9 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 channel: true,
                 aiTopic: true,
                 assignedToId: true,
-                assignedTeamId: true
+                assignedTeamId: true,
+                funnelType: true,
+                funnelStageId: true
             }
         });
 
@@ -90,6 +92,8 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 title,
                 assignedToId: conv.assignedToId || null,
                 assignedTeamId: conv.assignedTeamId || null,
+                funnelType: conv.funnelType || null,
+                funnelStageId: conv.funnelStageId || null,
                 priority: 'NORMAL'
             }
         });
