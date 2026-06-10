@@ -282,6 +282,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     // Deal detail popup (from timeline click)
     const [selectedDealDetail, setSelectedDealDetail] = useState(null);
 
+    // Note edit popup state
+    const [editingNoteData, setEditingNoteData] = useState(null); // { id, content, description, date, sourceType }
+    const [editNoteText, setEditNoteText] = useState('');
+
     // Takeover confirmation popup
     const [showTakeoverModal, setShowTakeoverModal] = useState(false);
 
@@ -1081,6 +1085,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setTopic('');
             setSummary('');
 
+            // Refresh timeline so the note appears instantly in the journey
+            fetchTimeline(profile.id);
+
             console.log('✅ Note saved to both conversation and contact');
         } catch (saveErr) {
             console.error('Error saving note:', saveErr);
@@ -1109,6 +1116,43 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             alert('Not silinirken hata oluştu.');
         } finally {
             setSavingNote(false);
+        }
+    };
+
+    // Note update handler (from edit popup)
+    const handleUpdateNote = async (noteItem, newText) => {
+        if (!profile?.id || !newText.trim()) return;
+        try {
+            // Activity-based note
+            if (noteItem.sourceType === 'ACTIVITY' && noteItem.id) {
+                const rawId = noteItem.id.replace(/^act_/, '');
+                await activityAPI.updateActivity(rawId, { description: newText });
+                // Update local timeline
+                const updateItem = item => item.id === noteItem.id ? { ...item, content: newText, description: newText } : item;
+                setPlannedTimeline(prev => prev.map(updateItem));
+                setPastTimeline(prev => prev.map(updateItem));
+            }
+            // Contact-notes based note (cnote_X)
+            else if (noteItem.id?.startsWith('cnote_')) {
+                const parts = noteItem.id.split('_');
+                const idx = parseInt(parts[parts.length - 1], 10);
+                const existingNotes = profile.notes ? JSON.parse(profile.notes) : [];
+                if (existingNotes[idx]) {
+                    existingNotes[idx].content = newText;
+                    await contactAPI.update(currentWorkspace.id, profile.id, {
+                        notes: JSON.stringify(existingNotes)
+                    });
+                    setProfile(prev => ({ ...prev, notes: JSON.stringify(existingNotes) }));
+                    fetchTimeline(profile.id);
+                }
+            }
+            // Inline note (inote_X) — no update API available, only delete exists
+            // So we skip inote updates silently
+            setEditingNoteData(null);
+            setEditNoteText('');
+        } catch (err) {
+            console.error('Update note error:', err);
+            alert('Not güncellenirken hata oluştu.');
         }
     };
 
@@ -2161,7 +2205,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 date: new Date(note.date),
                                                 color: '#eab308',
                                                 done: true,
-                                                _type: 'NOTE'
+                                                _type: 'NOTE',
+                                                _sourceItems: [note],
+                                                _noteData: note
                                             });
                                         });
 
@@ -2261,7 +2307,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     {milestones.map((m, idx) => {
                                                         const isClickable = m._sourceItems || m._dealData;
                                                         const handleStepClick = () => {
-                                                            if (m._type === 'CALL' && m._aiCalls?.length > 0) {
+                                                            if (m._type === 'NOTE' && m._noteData) {
+                                                                // Open note edit popup
+                                                                setEditingNoteData(m._noteData);
+                                                                setEditNoteText(m._noteData.content || m._noteData.description || '');
+                                                            } else if (m._type === 'CALL' && m._aiCalls?.length > 0) {
                                                                 setExpandedMilestone(m);
                                                             } else if (m._type === 'DEAL' && m._dealData) {
                                                                 setSelectedDealDetail(m._dealData);
@@ -2804,6 +2854,109 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     })}
                                                 </div>
                                             )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Not Düzenleme Modalı */}
+                            {editingNoteData && (
+                                <div className="reminder-modal-overlay" onClick={() => { setEditingNoteData(null); setEditNoteText(''); }}>
+                                    <div className="reminder-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '520px' }}>
+                                        <div className="reminder-modal-header">
+                                            <span style={{ fontSize: '1.1rem' }}>📝</span>
+                                            <h3>Not Düzenle</h3>
+                                            <button className="reminder-modal-close" onClick={() => { setEditingNoteData(null); setEditNoteText(''); }}><X size={18} /></button>
+                                        </div>
+                                        <div className="reminder-modal-body">
+                                            {/* Tarih bilgisi */}
+                                            {editingNoteData.date && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', fontSize: '0.76rem', color: '#6b7280' }}>
+                                                    <Clock size={13} />
+                                                    {new Date(editingNoteData.date).toLocaleString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                            )}
+                                            {/* Kaydeden */}
+                                            {(editingNoteData.assignedByName || editingNoteData.assignedToName) && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '10px', fontSize: '0.74rem', color: '#6366f1' }}>
+                                                    <User size={12} />
+                                                    {editingNoteData.assignedByName || editingNoteData.assignedToName}
+                                                </div>
+                                            )}
+                                            {/* Not içeriği textarea */}
+                                            <textarea
+                                                value={editNoteText}
+                                                onChange={(e) => setEditNoteText(e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    minHeight: '140px',
+                                                    padding: '12px',
+                                                    border: '1.5px solid #e5e7eb',
+                                                    borderRadius: '10px',
+                                                    fontSize: '0.88rem',
+                                                    fontFamily: 'inherit',
+                                                    lineHeight: 1.6,
+                                                    resize: 'vertical',
+                                                    outline: 'none',
+                                                    transition: 'border-color 0.2s',
+                                                    background: '#fafafa'
+                                                }}
+                                                onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+                                                onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                                                placeholder="Not içeriği..."
+                                                autoFocus
+                                            />
+                                        </div>
+                                        <div className="reminder-modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+                                            <button
+                                                onClick={() => { setEditingNoteData(null); setEditNoteText(''); }}
+                                                className="reminder-btn-cancel"
+                                            >
+                                                İptal
+                                            </button>
+                                            <button
+                                                onClick={() => handleUpdateNote(editingNoteData, editNoteText)}
+                                                disabled={!editNoteText.trim()}
+                                                style={{
+                                                    background: !editNoteText.trim() ? '#94a3b8' : '#6366f1',
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 20px',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    cursor: !editNoteText.trim() ? 'not-allowed' : 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                }}
+                                            >
+                                                <Save size={14} /> Kaydet
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm('Bu notu silmek istediğinize emin misiniz?')) {
+                                                        handleDeleteActivity(editingNoteData.id);
+                                                        setEditingNoteData(null);
+                                                        setEditNoteText('');
+                                                    }
+                                                }}
+                                                style={{
+                                                    background: '#fef2f2',
+                                                    color: '#ef4444',
+                                                    border: '1px solid #fecaca',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 14px',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                <Trash2 size={13} /> Sil
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
