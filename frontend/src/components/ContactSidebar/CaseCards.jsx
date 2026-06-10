@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { caseAPI, funnelAPI } from '../../services/api';
 import { Briefcase, Plus, ChevronDown, ChevronRight, User, Users, Loader, X, Check, AlertTriangle } from 'lucide-react';
 
@@ -38,6 +39,12 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [funnels, setFunnels] = useState([]);
     const [editingCaseId, setEditingCaseId] = useState(null);
     const [assigningCaseId, setAssigningCaseId] = useState(null);
+
+    // Mega menü state (inline mode) — must be before any early returns to respect Rules of Hooks
+    const [megaOpen, setMegaOpen] = useState(false);
+    const [megaPos, setMegaPos] = useState({ top: 0, left: 0 });
+    const [megaHoverFunnel, setMegaHoverFunnel] = useState(null);
+    const megaRef = useRef(null);
 
     useEffect(() => {
         if (workspaceId && contactId) {
@@ -160,26 +167,40 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         return null;
     };
 
+
+
     // ── inline mode: case otomatik oluşuyor, sadece mevcut case bilgisini göster ──
     if (inline) {
         // Tüm case'ler (aktif + kapalı) — en güncel olan gösterilir
         const displayCase = currentConvCase || activeCases[0] || cases[0];
 
-        if (!displayCase) return null; // case henüz oluşmadıysa boş göster
+        if (!displayCase) return null;
 
         const stageInfo = getFunnelStageLabel(displayCase);
         const statusInfo = STATUS_LABELS[displayCase.status] || STATUS_LABELS.ACTIVE;
 
+        // Seçili akış ve aşama bilgisini bul
+        const activeFunnel = funnels.find(f => (f.stages || []).some(s => s.id === displayCase.funnelStageId));
+        const activeStageLabel = stageInfo?.name || null;
+        const currentStageColor = stageInfo?.color || '#6366f1';
+        const pillLabel = activeFunnel && activeStageLabel
+            ? `${activeFunnel.name} / ${activeStageLabel}`
+            : activeStageLabel || 'Akış seç...';
+
         return (
-            <div style={{ padding: '2px 12px 6px' }}>
-                {/* Case numarası + başlık + durum */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-                    <span style={{ fontSize: '0.62rem', color: '#a78bfa', fontWeight: 700, fontFamily: 'monospace' }}>
+            <>
+                {/* ── Case No + Başlık + Durum ── */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px 2px' }}>
+                    <span style={{
+                        fontSize: '0.58rem', color: '#a78bfa', fontWeight: 700, fontFamily: 'monospace',
+                        background: '#f5f3ff', padding: '1px 5px', borderRadius: 4, flexShrink: 0
+                    }}>
                         {displayCase.caseNumber}
                     </span>
                     <span style={{
-                        fontSize: '0.78rem', fontWeight: 600, color: '#1f2937',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1
+                        fontSize: '0.72rem', fontWeight: 600, color: '#1f2937',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                        lineHeight: 1.3
                     }}>
                         {displayCase.title}
                     </span>
@@ -187,8 +208,8 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                         value={displayCase.status}
                         onChange={e => handleStatusChange(displayCase.id, e.target.value)}
                         style={{
-                            fontSize: '0.6rem', fontWeight: 600, padding: '1px 3px',
-                            borderRadius: 3, border: 'none', cursor: 'pointer',
+                            fontSize: '0.56rem', fontWeight: 700, padding: '1px 4px',
+                            borderRadius: 4, border: 'none', cursor: 'pointer',
                             color: statusInfo.color, background: statusInfo.bg, flexShrink: 0
                         }}
                     >
@@ -198,36 +219,132 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                     </select>
                 </div>
 
-                {/* Akış seçici (Pipeline Stage) */}
-                {funnels.length > 0 && (
-                    <select
-                        value={displayCase.funnelStageId || ''}
-                        onChange={e => {
-                            const stageId = e.target.value;
-                            if (!stageId) { handleUpdateStage(displayCase.id, null, null); return; }
-                            for (const f of funnels) {
-                                const stage = (f.stages || []).find(s => s.id === stageId);
-                                if (stage) { handleUpdateStage(displayCase.id, f.id, stageId); break; }
-                            }
-                        }}
-                        style={{
-                            width: '100%', padding: '4px 8px', fontSize: '0.74rem',
-                            border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
-                            color: stageInfo ? stageInfo.color : '#6b7280',
-                            background: '#fff', outline: 'none', marginBottom: 4, fontWeight: 500
-                        }}
-                    >
-                        <option value="">📁 Akış seç...</option>
-                        {funnels.map(f => (
-                            <optgroup key={f.id} label={`${f.icon || '📁'} ${f.name}`}>
-                                {(f.stages || []).map(s => (
-                                    <option key={s.id} value={s.id}>{s.name}</option>
-                                ))}
-                            </optgroup>
-                        ))}
-                    </select>
-                )}
-            </div>
+                {/* ── Akış / Aşama Mega Menü Trigger ── */}
+                <div style={{ padding: '2px 12px 4px' }}>
+                    <div ref={megaRef} style={{ position: 'relative' }}>
+                        <button
+                            onClick={e => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setMegaPos({ top: rect.bottom + 4, left: Math.max(10, rect.left) });
+                                setMegaHoverFunnel(activeFunnel?.id || null);
+                                setMegaOpen(v => !v);
+                            }}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                                background: '#f8fafc', border: '1px solid #e2e8f0',
+                                borderRadius: 8, padding: '4px 10px',
+                                cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, color: '#374151',
+                                whiteSpace: 'nowrap', overflow: 'hidden'
+                            }}
+                        >
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, textAlign: 'left' }}>
+                                {activeFunnel ? (
+                                    <><span style={{ color: '#94a3b8', fontWeight: 500 }}>{activeFunnel.name}</span><span style={{ color: '#94a3b8', margin: '0 3px' }}>/</span><span>{activeStageLabel || 'Aşama Seç'}</span></>
+                                ) : (pillLabel)}
+                            </span>
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginLeft: 'auto', flexShrink: 0 }}><path d="M2 3.5L5 6.5L8 3.5" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+
+                        {/* ── Mega Menü Portal ── */}
+                        {megaOpen && ReactDOM.createPortal(
+                            <>
+                                {/* Backdrop */}
+                                <div
+                                    style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+                                    onClick={() => { setMegaOpen(false); setMegaHoverFunnel(null); }}
+                                />
+                                <div style={{
+                                    position: 'fixed',
+                                    top: megaPos.top,
+                                    left: megaPos.left,
+                                    zIndex: 99999,
+                                    background: '#fff',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: 12,
+                                    boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                                    padding: 8,
+                                    display: 'flex',
+                                    flexDirection: 'row',
+                                    gap: 4,
+                                    minWidth: 340,
+                                }}>
+                                    {/* Sol panel: Akışlar */}
+                                    <div style={{ minWidth: 150, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
+                                        <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Akış</div>
+                                        {funnels.map(funnel => {
+                                            const isActive = activeFunnel?.id === funnel.id;
+                                            const isHovered = megaHoverFunnel === funnel.id;
+                                            const isHighlighted = isActive || isHovered;
+                                            return (
+                                                <button
+                                                    key={funnel.id}
+                                                    onMouseEnter={() => setMegaHoverFunnel(funnel.id)}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                                                        padding: '7px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                                                        fontSize: '0.8rem', fontWeight: isActive ? 700 : 500,
+                                                        background: isHighlighted ? '#eff6ff' : 'transparent',
+                                                        color: isHighlighted ? '#1d4ed8' : '#374151',
+                                                        transition: 'background 0.1s'
+                                                    }}
+                                                >
+                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: funnel.color || '#6366f1', flexShrink: 0 }} />
+                                                    {funnel.name}
+                                                    <svg width="12" height="12" viewBox="0 0 12 12" style={{ marginLeft: 'auto', opacity: 0.4 }}><path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Sağ panel: Aşamalar */}
+                                    {(() => {
+                                        const displayFunnel = megaHoverFunnel
+                                            ? funnels.find(f => f.id === megaHoverFunnel)
+                                            : (activeFunnel || funnels[0]);
+                                        if (!displayFunnel) return null;
+                                        const stages = displayFunnel.stages || [];
+                                        const isActiveFunnel = activeFunnel?.id === displayFunnel.id;
+                                        return (
+                                            <div style={{ minWidth: 170 }}>
+                                                <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>{displayFunnel.name}</div>
+                                                {stages.map(stage => {
+                                                    const isSelected = displayCase.funnelStageId === stage.id && isActiveFunnel;
+                                                    return (
+                                                        <button
+                                                            key={stage.id}
+                                                            onClick={() => {
+                                                                handleUpdateStage(displayCase.id, displayFunnel.id, stage.id);
+                                                                setMegaOpen(false);
+                                                                setMegaHoverFunnel(null);
+                                                            }}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                                                                padding: '7px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                                                                fontSize: '0.8rem', fontWeight: isSelected ? 700 : 400,
+                                                                background: isSelected ? (stage.color || '#6366f1') + '18' : 'transparent',
+                                                                color: isSelected ? (stage.color || '#6366f1') : '#374151',
+                                                                transition: 'background 0.1s'
+                                                            }}
+                                                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#f8fafc'; }}
+                                                            onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                                                        >
+                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: stage.color || '#6366f1' }} />
+                                                            {stage.name}
+                                                            {isSelected && <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: stage.color || '#6366f1' }}>✓</span>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </>,
+                            document.body
+                        )}
+                    </div>
+                </div>
+            </>
         );
     }
 

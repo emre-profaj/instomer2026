@@ -234,6 +234,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [completePlannedCall, setCompletePlannedCall] = useState(true); // Default tikli — planlı aramayı tamamla
     const [postNoteAction, setPostNoteAction] = useState(null); // { funnelStageId, teamId, assignedToId } — not sonrası aksiyon
     const [expandedMilestone, setExpandedMilestone] = useState(null); // Sohbet akışı popup
+    const [caseStageMegaOpen, setCaseStageMegaOpen] = useState(false);
+    const [caseStageMegaPos, setCaseStageMegaPos] = useState({ top: 0, left: 0 });
+    const [caseStageMegaHoverFunnel, setCaseStageMegaHoverFunnel] = useState(null);
+    const caseStageMegaRef = useRef(null);
     const [aiCalls, setAiCalls] = useState([]);
     const [selectedAiCall, setSelectedAiCall] = useState(null);
     const [translatedSummary, setTranslatedSummary] = useState('');
@@ -862,6 +866,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
             }
 
+            // CASCADE: Case + aktiviteleri de güncelle (backend cascade yapar)
+            const convCaseId = activeConv.caseId;
+            if (convCaseId && currentWorkspace?.id) {
+                try {
+                    const effectiveTeamId = teamId !== undefined ? (teamId || null) : (activeConv.assignedTeamId || null);
+                    const effectiveUserId = userId !== undefined ? (userId || null) : (activeConv.assignedToId || null);
+                    await caseAPI.assign(currentWorkspace.id, convCaseId, {
+                        assignedToId: effectiveUserId,
+                        assignedTeamId: effectiveTeamId
+                    });
+                } catch (caseErr) {
+                    console.warn('Case cascade assign failed (non-critical):', caseErr.message);
+                }
+            }
+
             // Local state güncelle - sidebar anında yansıtsın
             const foundMember = userId ? (members.find(m => (m.user?.id || m.userId) === userId) || members.find(m => m.id === userId)) : null;
             const assignedToObj = foundMember ? { id: userId, name: foundMember.user?.name || foundMember.name || 'Agent' } : (userId ? { id: userId, name: 'Agent' } : null);
@@ -881,6 +900,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             alert('Atama işlemi gerçekleştirilemedi: ' + (err?.response?.data?.error || err.message));
         }
     };
+
 
     const handleClaim = async () => {
         if (!activeConv || takingOver) return;
@@ -1693,16 +1713,16 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             </div>
 
                             {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
-                            {/* CaseCards + Atama + Timeline hepsi tek section'da */}
+                            {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
                             {activeConv && (
                                 <div className="customer-journey-timeline">
-                                    {/* ── Header ── */}
-                                    <div className="journey-header">
+                                    {/* ── Header: Sohbet Akışı + Case No + Başlık ── */}
+                                    <div className="journey-header" style={{ gap: '6px' }}>
                                         <TrendingUp size={13} />
-                                        <span>Sohbet Akışı</span>
+                                        <span style={{ flexShrink: 0 }}>Sohbet Akışı</span>
                                     </div>
 
-                                    {/* ── Case Kartları (inline) ── */}
+                                    {/* ── Case ID + Başlık satırı ── */}
                                     {profile?.id && currentWorkspace?.id && (
                                         <CaseCards
                                             workspaceId={currentWorkspace.id}
@@ -1713,6 +1733,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             inline={true}
                                         />
                                     )}
+
 
                                     {/* ── Atama / Üstlen Widget ── */}
                                     {!readOnly && (() => {

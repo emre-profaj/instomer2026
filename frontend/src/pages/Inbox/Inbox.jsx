@@ -821,16 +821,20 @@ const Inbox = () => {
     }, [searchParams]);
 
     // Handle conversationId from URL query params
+    const inboxItemsRef = useRef(inboxItems);
+    inboxItemsRef.current = inboxItems;
+
     useEffect(() => {
         const conversationId = searchParams.get('conversationId');
         const contactId = searchParams.get('contactId');
+        if (!conversationId && !contactId) return;
 
         if (conversationId && currentWorkspace) {
             // Force switch to chat mode to ensure the UI becomes visible (e.g., when navigated from pipeline view)
             setViewMode('chat');
             
             // First check if it's already in loaded items
-            const targetItem = inboxItems.find(item => item.id === conversationId);
+            const targetItem = inboxItemsRef.current.find(item => item.id === conversationId);
             if (targetItem) {
                 handleSelectItem(targetItem);
                 setSearchParams({}, { replace: true });
@@ -860,15 +864,29 @@ const Inbox = () => {
                     }
                 })();
             }
-        } else if (contactId && inboxItems.length > 0) {
+        } else if (contactId && inboxItemsRef.current.length > 0) {
             // Find the first conversation for this contact
-            const targetItem = inboxItems.find(item => item.contactId === contactId || item.contact?.id === contactId);
+            const targetItem = inboxItemsRef.current.find(item => item.contactId === contactId || item.contact?.id === contactId);
             if (targetItem) {
                 handleSelectItem(targetItem);
                 setSearchParams({}, { replace: true });
             }
         }
-    }, [inboxItems, searchParams, currentWorkspace]);
+    }, [searchParams, currentWorkspace]);
+
+    // Separate effect for contactId deep-link: needs to wait until inboxItems are loaded
+    useEffect(() => {
+        const contactId = searchParams.get('contactId');
+        if (!contactId || inboxItems.length === 0) return;
+        const targetItem = inboxItems.find(item => item.contactId === contactId || item.contact?.id === contactId);
+        if (targetItem) {
+            handleSelectItem(targetItem);
+            setSearchParams({}, { replace: true }); // Clears contactId → effect won't re-fire
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inboxItems.length, searchParams]);
+
+
 
 
     // Load quick replies
@@ -1257,7 +1275,7 @@ const Inbox = () => {
         // Listen for general conversation assignment updates
         socket.on('conversation_assigned', (data) => {
             console.log('📋 Conversation assigned:', data);
-            const { conversationId, assignedToId, assignedToName, botEnabled, teamIds } = data;
+            const { conversationId, assignedToId, assignedToName, botEnabled, teamIds, funnelType, funnelStageId } = data;
 
             // Update local state instead of reloading to preserve pagination
             setInboxItems(prev => prev.map(item =>
@@ -1267,23 +1285,28 @@ const Inbox = () => {
                         assignedToId,
                         teamIds: teamIds || item.teamIds,
                         assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
-                        botEnabled
+                        botEnabled,
+                        ...(funnelType !== undefined ? { funnelType } : {}),
+                        ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {})
                     }
                     : item
             ));
 
             // Seçili konuşmayı güncelle
-            if (selectedItem?.id === conversationId) {
+            if (selectedItemRef.current?.id === conversationId) {
                 setSelectedItem(prev => ({
                     ...prev,
                     assignedToId,
                     teamIds: teamIds || prev.teamIds,
                     assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
-                    botEnabled
+                    botEnabled,
+                    ...(funnelType !== undefined ? { funnelType } : {}),
+                    ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {})
                 }));
                 setBotEnabled(botEnabled);
             }
         });
+
 
         // Listen for bot handoff - when bot can't answer and escalates to team
         socket.on('bot_handoff', (data) => {
