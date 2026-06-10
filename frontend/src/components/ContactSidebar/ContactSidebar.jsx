@@ -146,22 +146,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [contactConversations, setContactConversations] = useState([]);
     const [localConvOverride, setLocalConvOverride] = useState(null);
 
-    // Sync localConvOverride when conversationData prop changes from parent (e.g. assignment from Inbox header)
+    // Sync localConvOverride when conversationData prop changes from parent (e.g. assignment or funnel change from Inbox header)
     useEffect(() => {
         if (conversationData && localConvOverride) {
             const changed =
                 conversationData.assignedToId !== localConvOverride.assignedToId ||
-                conversationData.teamIds !== localConvOverride.teamIds;
+                conversationData.teamIds !== localConvOverride.teamIds ||
+                conversationData.funnelStageId !== localConvOverride.funnelStageId ||
+                conversationData.funnelType !== localConvOverride.funnelType;
             if (changed) {
                 setLocalConvOverride(prev => ({
                     ...prev,
                     assignedToId: conversationData.assignedToId,
                     assignedTo: conversationData.assignedTo,
-                    teamIds: conversationData.teamIds
+                    teamIds: conversationData.teamIds,
+                    funnelStageId: conversationData.funnelStageId,
+                    funnelType: conversationData.funnelType
                 }));
             }
         }
-    }, [conversationData?.assignedToId, conversationData?.teamIds]);
+    }, [conversationData?.assignedToId, conversationData?.teamIds, conversationData?.funnelStageId, conversationData?.funnelType]);
 
     const [newNote, setNewNote] = useState('');
     const [savingNote, setSavingNote] = useState(false);
@@ -169,6 +173,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [expandedNotes, setExpandedNotes] = useState({});
     const [isEditingName, setIsEditingName] = useState(false);
     const [funnelStage, setFunnelStage] = useState(null); // { name, color } of the current funnel stage
+    const [activeCaseInfo, setActiveCaseInfo] = useState(null); // { caseNumber, caseId, title } from CaseCards
     const [showExtraFields, setShowExtraFields] = useState(false);
 
     // Reminder states
@@ -667,6 +672,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 if (targetStageId && conversationId) {
                     try {
                         await conversationAPI.updateFunnel(currentWorkspace.id, conversationId, { funnelStageId: targetStageId });
+                        // Sync contact's status field
+                        if (profile?.id) {
+                            try { await contactAPI.update(currentWorkspace.id, profile.id, { status: targetStageId }); } catch (_) {}
+                        }
+                        // Notify Inbox header about auto-stage change
+                        window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                            detail: { conversationId, funnelStageId: targetStageId }
+                        }));
                     } catch { }
                 }
             }
@@ -1764,6 +1777,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <div className="journey-header" style={{ gap: '6px' }}>
                                         <TrendingUp size={13} />
                                         <span style={{ flexShrink: 0 }}>Sohbet Akışı</span>
+                                        {activeCaseInfo?.caseNumber && (
+                                            <span style={{
+                                                fontSize: '0.58rem', color: '#a78bfa', fontWeight: 700, fontFamily: 'monospace',
+                                                background: '#f5f3ff', padding: '1px 5px', borderRadius: 4, flexShrink: 0,
+                                                marginLeft: 2
+                                            }}>
+                                                {activeCaseInfo.caseNumber}
+                                            </span>
+                                        )}
                                     </div>
 
                                     {/* ── Case ID + Başlık satırı ── */}
@@ -1775,6 +1797,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             teams={teams}
                                             conversationId={conversationId}
                                             inline={true}
+                                            onCaseInfo={setActiveCaseInfo}
+                                            onStageChanged={({ funnelType, funnelStageId, stageName, stageColor }) => {
+                                                // Update local sidebar state
+                                                setFunnelStage({ id: funnelStageId, name: stageName, color: stageColor || '#6366f1' });
+                                                setLocalConvOverride(prev => ({
+                                                    ...(prev || activeConv || conversationData || {}),
+                                                    funnelStageId,
+                                                    funnelType,
+                                                    _effectiveStageId: funnelStageId
+                                                }));
+                                            }}
                                         />
                                     )}
 
@@ -3989,13 +4022,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     if (stageId && conversationId && currentWorkspace?.id) {
                                         try {
                                             await conversationAPI.updateFunnel(currentWorkspace.id, conversationId, { funnelStageId: stageId });
-                                            // Find stage name for UI feedback
-                                            let stageName = '';
+                                            // Find stage name and funnelType for UI feedback
+                                            let stageName = '', stageColor = '#6366f1', funnelType = null;
                                             for (const f of activityFunnels) {
                                                 const s = (f.stages || []).find(s => s.id === stageId);
-                                                if (s) { stageName = s.name; break; }
+                                                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; funnelType = f.id; break; }
                                             }
                                             if (stageName) setFunnelStage(prev => ({ ...prev, id: stageId, name: stageName }));
+                                            // Sync contact's status field so Contacts table stays up-to-date
+                                            if (profile?.id) {
+                                                try { await contactAPI.update(currentWorkspace.id, profile.id, { status: stageId }); } catch (_) {}
+                                            }
+                                            // Notify Inbox header about the change
+                                            window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                detail: { conversationId, funnelStageId: stageId, stageName, stageColor }
+                                            }));
                                         } catch { }
                                     }
                                 }}

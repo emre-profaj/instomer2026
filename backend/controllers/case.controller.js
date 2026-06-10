@@ -359,6 +359,20 @@ export const updateCase = async (req, res) => {
                 data: convUpdatePayload
             });
             console.log(`🔄 [CaseUpdate] Cascaded funnel stage to conversations of case ${caseId}`);
+
+            // CASCADE: Contact'ın funnelStageId/funnelType'ını da güncelle
+            // Kişiler tablosundaki DURUM sütunu contact.funnelStageId'den okur
+            if (updated.contactId) {
+                const contactUpdatePayload = {};
+                if (funnelType !== undefined) contactUpdatePayload.funnelType = funnelType;
+                if (funnelStageId !== undefined) contactUpdatePayload.funnelStageId = funnelStageId;
+
+                await prisma.contact.update({
+                    where: { id: updated.contactId },
+                    data: contactUpdatePayload
+                });
+                console.log(`🔄 [CaseUpdate] Cascaded funnel stage to contact ${updated.contactId}`);
+            }
         }
 
         // Socket event
@@ -385,6 +399,18 @@ export const updateCase = async (req, res) => {
                         teamIds: conv.teamIds,
                         funnelType: funnelType ?? updated.funnelType,
                         funnelStageId: funnelStageId ?? updated.funnelStageId
+                    });
+                }
+
+                // Contact güncellemesini de bildir — Kişiler tablosu gerçek zamanlı güncellensin
+                if (updated.contactId) {
+                    io.to(`workspace:${workspaceId}`).emit('contact_updated', {
+                        contactId: updated.contactId,
+                        workspaceId,
+                        updatedFields: {
+                            funnelStageId: funnelStageId ?? updated.funnelStageId,
+                            funnelType: funnelType ?? updated.funnelType
+                        }
                     });
                 }
             }

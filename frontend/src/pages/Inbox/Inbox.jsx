@@ -804,6 +804,49 @@ const Inbox = () => {
         return () => window.removeEventListener('newConversationCreated', handleNewConversation);
     }, [currentWorkspace]);
 
+    // Listen for funnel stage changes from ContactSidebar/CaseCards (right panel → left panel sync)
+    useEffect(() => {
+        const handleFunnelStageUpdate = (e) => {
+            const { conversationId: updatedConvId, funnelStageId, stageName, stageColor } = e.detail || {};
+            if (!updatedConvId || !funnelStageId) return;
+
+            // Find which funnelType this stage belongs to
+            let detectedFunnelType = null;
+            for (const f of (funnelOptions || [])) {
+                if ((f.stages || []).some(s => s.value === funnelStageId)) {
+                    detectedFunnelType = f.value;
+                    break;
+                }
+            }
+
+            // Update selectedItem if it matches
+            setSelectedItem(prev => {
+                if (!prev || prev.id !== updatedConvId) return prev;
+                return {
+                    ...prev,
+                    funnelStageId,
+                    _effectiveStageId: funnelStageId,
+                    ...(detectedFunnelType ? { funnelType: detectedFunnelType } : {})
+                };
+            });
+
+            // Update inboxItems list
+            setInboxItems(prev => prev.map(item =>
+                item.id === updatedConvId
+                    ? {
+                        ...item,
+                        funnelStageId,
+                        _effectiveStageId: funnelStageId,
+                        ...(detectedFunnelType ? { funnelType: detectedFunnelType } : {})
+                    }
+                    : item
+            ));
+        };
+
+        window.addEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
+        return () => window.removeEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
+    }, [funnelOptions]);
+
     // URL ?tab= parametresinden assignment tab'ı oku ve set et
     useEffect(() => {
         const tab = searchParams.get('tab');

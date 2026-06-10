@@ -360,16 +360,18 @@ const Customers = () => {
         const handleContactUpdate = (event) => {
             const data = event.detail;
             if (currentWorkspace && data.workspaceId === currentWorkspace.id) {
-                // Check if only notes were updated — if so, update locally without full reload
                 const fields = data.updatedFields || {};
                 const fieldKeys = Object.keys(fields).filter(k => fields[k] !== undefined);
-                const isNotesOnly = fieldKeys.length === 1 && fieldKeys[0] === 'notes';
 
-                if (isNotesOnly && data.contactId) {
-                    // Local update only — don't reload the entire list
-                    console.log('📝 [Customers] Notes-only update, skipping full reload');
+                // Lokal olarak güncellenebilen alanlar (API reload gerektirmez)
+                const localUpdateFields = ['notes', 'funnelStageId', 'funnelType', 'status', 'category', 'company'];
+                const canUpdateLocally = data.contactId && fieldKeys.length > 0 && fieldKeys.every(k => localUpdateFields.includes(k));
+
+                if (canUpdateLocally) {
+                    // Lokal güncelleme — API'ye istek atmadan anında yansıt
+                    console.log('⚡ [Customers] Local contact update:', fieldKeys.join(', '));
                     setContacts(prev => prev.map(c =>
-                        c.id === data.contactId ? { ...c, notes: fields.notes } : c
+                        c.id === data.contactId ? { ...c, ...fields } : c
                     ));
                 } else {
                     console.log('🔄 [Customers] Real-time contact update received, silent reload...');

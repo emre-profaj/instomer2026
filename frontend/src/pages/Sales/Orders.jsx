@@ -285,7 +285,7 @@ const Orders = () => {
                         </div>
                     </div>
 
-                    {/* Search */}}
+                    {/* Search */}
                     <div className="sales-list-panel-search">
                         <Search size={15} />
                         <input

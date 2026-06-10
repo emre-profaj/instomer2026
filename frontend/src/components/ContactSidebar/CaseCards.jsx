@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { caseAPI, funnelAPI } from '../../services/api';
+import { caseAPI, funnelAPI, conversationAPI, contactAPI } from '../../services/api';
 import { Briefcase, Plus, ChevronDown, ChevronRight, User, Users, Loader, X, Check, AlertTriangle } from 'lucide-react';
 
 const STATUS_LABELS = {
@@ -17,7 +17,7 @@ const PRIORITY_ICONS = {
     URGENT: '🔴'
 };
 
-const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversationId, onCaseLinked, inline = false }) => {
+const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversationId, onCaseLinked, inline = false, onStageChanged = null, onCaseInfo = null }) => {
     // Flatten hierarchical teams
     const flatTeams = (() => {
         const result = [];
@@ -52,6 +52,30 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             loadFunnels();
         }
     }, [workspaceId, contactId]);
+
+    // Listen for funnel stage updates from Inbox header or socket to keep local case state in sync
+    useEffect(() => {
+        const handler = (e) => {
+            const { conversationId: updatedConvId, funnelStageId } = e.detail || {};
+            if (updatedConvId !== conversationId || !funnelStageId) return;
+            // Update local case that owns this conversation
+            setCases(prev => prev.map(c => {
+                const ownsConv = c.conversations?.some(cv => cv.id === updatedConvId);
+                if (!ownsConv) return c;
+                // Find which funnel this stage belongs to
+                let funnelType = c.funnelType;
+                for (const f of funnels) {
+                    if ((f.stages || []).some(s => s.id === funnelStageId)) {
+                        funnelType = f.id;
+                        break;
+                    }
+                }
+                return { ...c, funnelStageId, funnelType };
+            }));
+        };
+        window.addEventListener('websocket:funnel_stage_updated', handler);
+        return () => window.removeEventListener('websocket:funnel_stage_updated', handler);
+    }, [conversationId, funnels]);
 
     const fetchCases = async () => {
         try {
@@ -94,6 +118,37 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         try {
             await caseAPI.update(workspaceId, caseId, { funnelType, funnelStageId });
             setCases(prev => prev.map(c => c.id === caseId ? { ...c, funnelType, funnelStageId } : c));
+
+            // Also sync conversation's funnelStageId (bidirectional sync)
+            if (conversationId && workspaceId) {
+                try {
+                    await conversationAPI.updateFunnel(workspaceId, conversationId, { funnelStageId, funnelType });
+                } catch (_) {}
+            }
+
+            // Sync contact's status field so Contacts table stays up-to-date
+            if (contactId && workspaceId) {
+                try {
+                    await contactAPI.update(workspaceId, contactId, { status: funnelStageId });
+                } catch (_) {}
+            }
+
+            // Find stage info for callback
+            let stageName = '', stageColor = '#6366f1';
+            for (const f of funnels) {
+                const s = (f.stages || []).find(s => s.id === funnelStageId);
+                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; break; }
+            }
+
+            // Notify parent (ContactSidebar → Inbox) about the change
+            if (onStageChanged) {
+                onStageChanged({ funnelType, funnelStageId, stageName, stageColor });
+            }
+
+            // Dispatch custom event for any listener (ContactSidebar funnelStage state)
+            window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                detail: { conversationId, funnelStageId, stageName, stageColor }
+            }));
         } catch (err) {
             console.error('Stage update error:', err);
         }
@@ -174,6 +229,13 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         // Tüm case'ler (aktif + kapalı) — en güncel olan gösterilir
         const displayCase = currentConvCase || activeCases[0] || cases[0];
 
+        // Notify parent about the active case info (for header display)
+        useEffect(() => {
+            if (displayCase && onCaseInfo) {
+                onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title });
+            }
+        }, [displayCase?.caseNumber, displayCase?.id]);
+
         if (!displayCase) return null;
 
         const stageInfo = getFunnelStageLabel(displayCase);
@@ -189,14 +251,8 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
 
         return (
             <>
-                {/* ── Case No + Başlık + Durum ── */}
+                {/* ── Başlık + Durum ── */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px 2px' }}>
-                    <span style={{
-                        fontSize: '0.58rem', color: '#a78bfa', fontWeight: 700, fontFamily: 'monospace',
-                        background: '#f5f3ff', padding: '1px 5px', borderRadius: 4, flexShrink: 0
-                    }}>
-                        {displayCase.caseNumber}
-                    </span>
                     <span style={{
                         fontSize: '0.72rem', fontWeight: 600, color: '#1f2937',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
