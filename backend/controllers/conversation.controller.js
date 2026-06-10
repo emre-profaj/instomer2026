@@ -1018,6 +1018,74 @@ export const assignConversation = async (req, res) => {
             }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        // UPWARD CASCADE: Conversation → Case → Sibling Conversations + Activities
+        // Case = master entity. Her conversation ataması Case'i de günceller.
+        // ═══════════════════════════════════════════════════════════
+        if (conversation.caseId) {
+            try {
+                const caseUpdateData = {};
+                if (updateData.assignedToId !== undefined) caseUpdateData.assignedToId = updateData.assignedToId;
+                if (updateData.teamIds !== undefined) {
+                    const parsedTeam = JSON.parse(updateData.teamIds || '[]');
+                    caseUpdateData.assignedTeamId = parsedTeam[0] || null;
+                }
+
+                if (Object.keys(caseUpdateData).length > 0) {
+                    // 1. Case'i güncelle
+                    await prisma.case.update({
+                        where: { id: conversation.caseId },
+                        data: caseUpdateData
+                    });
+                    console.log(`🔄 [CaseCascade] Case ${conversation.caseId} updated:`, caseUpdateData);
+
+                    // 2. Kardeş conversation'ları güncelle (bu conversation hariç)
+                    const siblingUpdate = {};
+                    if (updateData.assignedToId !== undefined) siblingUpdate.assignedToId = updateData.assignedToId;
+                    if (updateData.teamIds !== undefined) {
+                        siblingUpdate.teamIds = updateData.teamIds;
+                        siblingUpdate.assignedTeamId = caseUpdateData.assignedTeamId;
+                    }
+
+                    if (Object.keys(siblingUpdate).length > 0) {
+                        const siblingResult = await prisma.conversation.updateMany({
+                            where: {
+                                caseId: conversation.caseId,
+                                id: { not: conversationId },
+                                status: { not: 'RESOLVED' }
+                            },
+                            data: siblingUpdate
+                        });
+                        console.log(`🔄 [CaseCascade] ${siblingResult.count} sibling conversations updated`);
+                    }
+
+                    // 3. Açık aktiviteleri güncelle
+                    const activityUpdate = {};
+                    if (updateData.assignedToId !== undefined) activityUpdate.assignedToId = updateData.assignedToId;
+                    if (caseUpdateData.assignedTeamId !== undefined) activityUpdate.teamId = caseUpdateData.assignedTeamId;
+
+                    if (Object.keys(activityUpdate).length > 0) {
+                        const activityResult = await prisma.contactActivity.updateMany({
+                            where: {
+                                caseId: conversation.caseId,
+                                status: { in: ['PLANNED', 'IN_PROGRESS'] }
+                            },
+                            data: activityUpdate
+                        });
+                        console.log(`🔄 [CaseCascade] ${activityResult.count} open activities updated`);
+                    }
+
+                    // 4. Socket event — sidebar'ın otomatik yenilenmesi için
+                    emitToWorkspace(workspaceId, 'case_assignment_updated', {
+                        caseId: conversation.caseId,
+                        ...caseUpdateData
+                    });
+                }
+            } catch (cascadeErr) {
+                console.error('⚠️ [CaseCascade] Error (non-blocking):', cascadeErr.message);
+            }
+        }
+
         res.json({ conversation });
     } catch (error) {
         console.error('❌ Assign conversation error:', error);
@@ -1071,6 +1139,41 @@ export const takeOverConversation = async (req, res) => {
         });
 
         console.log(`👤 [TakeOver] User ${req.user.name} took over conversation ${conversationId}`);
+
+        // UPWARD CASCADE: TakeOver → Case → Siblings + Activities
+        if (updatedConversation.caseId) {
+            try {
+                await prisma.case.update({
+                    where: { id: updatedConversation.caseId },
+                    data: { assignedToId: userId }
+                });
+                // Kardeş conversation'ları güncelle
+                await prisma.conversation.updateMany({
+                    where: {
+                        caseId: updatedConversation.caseId,
+                        id: { not: conversationId },
+                        status: { not: 'RESOLVED' }
+                    },
+                    data: { assignedToId: userId }
+                });
+                // Açık aktiviteleri güncelle
+                await prisma.contactActivity.updateMany({
+                    where: {
+                        caseId: updatedConversation.caseId,
+                        status: { in: ['PLANNED', 'IN_PROGRESS'] }
+                    },
+                    data: { assignedToId: userId }
+                });
+                console.log(`🔄 [TakeOverCascade] Case ${updatedConversation.caseId} + siblings + activities updated`);
+
+                emitToWorkspace(workspaceId, 'case_assignment_updated', {
+                    caseId: updatedConversation.caseId,
+                    assignedToId: userId
+                });
+            } catch (cascadeErr) {
+                console.error('⚠️ [TakeOverCascade] Error (non-blocking):', cascadeErr.message);
+            }
+        }
 
         // Socket ile bildirim gönder
         emitToWorkspace(workspaceId, 'conversation_taken_over', {
