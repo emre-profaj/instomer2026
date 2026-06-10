@@ -205,6 +205,16 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         c.conversations?.some(cv => cv.id === conversationId)
     ) : null;
 
+    // Compute displayCase for inline mode (needed for the useEffect below)
+    const displayCase = inline ? (currentConvCase || activeCases[0] || cases[0]) : null;
+
+    // Notify parent about the active case info (for header display) — MUST be at top level, not inside conditional
+    useEffect(() => {
+        if (inline && displayCase && onCaseInfo) {
+            onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title });
+        }
+    }, [inline, displayCase?.caseNumber, displayCase?.id]);
+
     if (loading) {
         return (
             <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#9ca3af', fontSize: '0.82rem' }}>
@@ -226,16 +236,6 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
 
     // ── inline mode: case otomatik oluşuyor, sadece mevcut case bilgisini göster ──
     if (inline) {
-        // Tüm case'ler (aktif + kapalı) — en güncel olan gösterilir
-        const displayCase = currentConvCase || activeCases[0] || cases[0];
-
-        // Notify parent about the active case info (for header display)
-        useEffect(() => {
-            if (displayCase && onCaseInfo) {
-                onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title });
-            }
-        }, [displayCase?.caseNumber, displayCase?.id]);
-
         if (!displayCase) return null;
 
         const stageInfo = getFunnelStageLabel(displayCase);

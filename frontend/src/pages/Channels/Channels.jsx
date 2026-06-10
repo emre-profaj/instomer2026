@@ -550,6 +550,7 @@ const Channels = () => {
 
         setConnectingPages(true);
         try {
+            let hasConversationRoutingWarning = false;
             for (const pageId of selectedPages) {
                 const page = availablePages.find(p => p.id === pageId);
                 if (page) {
@@ -561,7 +562,10 @@ const Channels = () => {
                         instagramBusinessId: pageSelectChannelType === 'instagram' ? page.instagram_business_account?.id : null,
                         instagramUsername: pageSelectChannelType === 'instagram' ? page.instagram_business_account?.username : null
                     };
-                    await facebookAPI.connectPage(connectData);
+                    const result = await facebookAPI.connectPage(connectData);
+                    if (result.data?.instagramWarning === 'CONVERSATION_ROUTING_ACTIVE') {
+                        hasConversationRoutingWarning = true;
+                    }
                 }
             }
 
@@ -569,7 +573,12 @@ const Channels = () => {
             setSelectedPages([]);
             setAvailablePages([]);
             loadAllChannels();
-            alert('Sayfalar başarıyla bağlandı!');
+
+            if (hasConversationRoutingWarning) {
+                alert('⚠️ Sayfalar bağlandı ancak Instagram hesabında "Conversation Routing" (İleti Yönlendirme) aktif görünüyor.\n\nBot\'un mesaj gönderebilmesi için Instagram hesap sahibinin şu adımları izlemesi gerekiyor:\n\n1. Meta Business Suite → Gelen Kutusu → Ayarlar\n2. Instagram bölümünde uygulamamıza mesaj erişimi verin\n3. Uygulamamızı birincil alıcı olarak seçin\n\nBu ayar yapılana kadar mesajlar alınır ancak bot otomatik cevap veremez.');
+            } else {
+                alert('Sayfalar başarıyla bağlandı!');
+            }
         } catch (error) {
             console.error('Error connecting pages:', error);
             alert('Sayfa bağlantı hatası: ' + (error.response?.data?.error || error.message));

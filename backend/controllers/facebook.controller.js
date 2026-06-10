@@ -132,7 +132,7 @@ export const connectPage = async (req, res) => {
                 {},
                 {
                     params: {
-                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,comments,leadgen',
+                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed',
                         access_token: pageAccessToken
                     }
                 }
@@ -143,17 +143,59 @@ export const connectPage = async (req, res) => {
         }
 
         // Subscribe to Instagram webhooks if Instagram is connected
+        let instagramWarning = null;
         if (instagramBusinessId) {
             try {
                 // Instagram uses the page's subscribed_apps but with different fields
                 // Instagram messaging is handled through the page webhook with 'messages' field
                 console.log(`📸 Instagram ${instagramBusinessId} will receive messages through page webhook`);
+
+                // 🔧 Set up Instagram messenger_profile (ice_breakers) to register app as messaging handler
+                try {
+                    await axios.post(
+                        `https://graph.facebook.com/${GRAPH_API_VERSION}/${pageId}/messenger_profile`,
+                        {
+                            platform: 'instagram',
+                            ice_breakers: [{
+                                call_to_actions: [{ question: 'Merhaba, bilgi almak istiyorum', payload: 'GET_STARTED' }],
+                                locale: 'default'
+                            }]
+                        },
+                        { params: { access_token: pageAccessToken } }
+                    );
+                    console.log(`✅ Instagram messenger_profile (ice_breakers) set for page ${pageId}`);
+                } catch (profileError) {
+                    console.warn(`⚠️ Instagram messenger_profile setup failed:`, profileError.response?.data?.error?.message || profileError.message);
+                }
+
+                // 🔍 Check if Conversation Routing is blocking our app
+                // Send a test to detect thread ownership issues
+                try {
+                    // Check thread_owner for a dummy recipient to see if Conversation Routing is active
+                    const threadCheck = await axios.get(
+                        `https://graph.facebook.com/${GRAPH_API_VERSION}/${pageId}/thread_owner`,
+                        {
+                            params: {
+                                recipient: instagramBusinessId, // dummy check
+                                access_token: pageAccessToken
+                            }
+                        }
+                    ).catch(() => null);
+
+                    // If thread_owner returns data with an owner, Conversation Routing might be active
+                    if (threadCheck?.data?.data?.length > 0 && threadCheck.data.data[0]?.thread_owner?.expiration) {
+                        instagramWarning = 'CONVERSATION_ROUTING_ACTIVE';
+                        console.warn(`⚠️ Instagram Conversation Routing is active for page ${pageId} - messages may not be sendable`);
+                    }
+                } catch (checkError) {
+                    // Ignore check errors
+                }
             } catch (error) {
                 console.error('Instagram webhook subscription error:', error.response?.data);
             }
         }
 
-        res.status(201).json({ page });
+        res.status(201).json({ page, instagramWarning });
     } catch (error) {
         console.error('Connect page error:', error);
         res.status(500).json({ error: 'Failed to connect page' });
@@ -662,7 +704,7 @@ export const connectAdminPage = async (req, res) => {
                 {},
                 {
                     params: {
-                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,comments,leadgen',
+                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed',
                         access_token: pageAccessToken
                     }
                 }
@@ -2011,6 +2053,43 @@ async function processWebhookAsync(body) {
                             const errorSubcode = aiError.response?.data?.error?.error_subcode;
                             if (errorCode === 100) {
                                 console.warn(`⚠️ [${isInstagram ? 'Instagram' : 'Facebook'}] Auto-Reply send failed (code 100, subcode ${errorSubcode}) for workspace ${facebookPage.workspaceId}, conv: ${conversation.id}, recipient: ${senderId}`);
+
+                                // 2534037: Conversation Routing aktif - uygulama thread sahibi değil
+                                // Müşterinin Instagram ayarlarından mesaj erişimi vermesi gerekiyor
+                                if (errorSubcode === 2534037 && isInstagram) {
+                                    try {
+                                        // Aynı konuşmaya daha önce bu uyarı eklenmiş mi kontrol et
+                                        const existingWarning = await prisma.message.findFirst({
+                                            where: {
+                                                conversationId: conversation.id,
+                                                content: { contains: 'hata 2534037' },
+                                                isFromContact: false
+                                            }
+                                        });
+                                        if (!existingWarning) {
+                                            const systemNote = await prisma.message.create({
+                                                data: {
+                                                    conversationId: conversation.id,
+                                                    content: '⚠️ Bot bu kullanıcıya otomatik yanıt gönderemedi. Instagram hesabında "Conversation Routing" (İleti Yönlendirme) aktif olduğu için uygulamamız mesaj gönderemiyor (hata 2534037).\n\nÇözüm: Instagram hesap sahibinin Meta Business Suite → Gelen Kutusu → Ayarlar → Instagram bölümünden uygulamamıza mesaj erişimi vermesi gerekmektedir.\n\nLütfen müşteriyle iletişime geçin veya manuel dönüş yapın.',
+                                                    isFromContact: false,
+                                                    messageType: 'TEXT',
+                                                    senderId: null,
+                                                    status: 'DELIVERED'
+                                                }
+                                            });
+                                            emitToWorkspace(facebookPage.workspaceId, 'new_message', {
+                                                workspaceId: facebookPage.workspaceId,
+                                                conversationId: conversation.id,
+                                                message: systemNote,
+                                                contact: contact,
+                                                channel: 'INSTAGRAM'
+                                            });
+                                            console.log(`📝 [Instagram] 2534037 Conversation Routing uyarısı eklendi → conv: ${conversation.id}`);
+                                        }
+                                    } catch (noteErr) {
+                                        console.error('❌ [Instagram] 2534037 sistem notu eklenemedi:', noteErr.message);
+                                    }
+                                }
 
                                 // 2534038: Kullanıcı Instagram gizlilik ayarı nedeniyle API mesajını engelliyor
                                 // Konuşmaya sistem notu ekle, ekip manuel dönüş yapabilsin
