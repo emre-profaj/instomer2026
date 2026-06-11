@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { isAgentRole, buildAgentDealFilter } from '../utils/rbac.helper.js';
 
 // Helper: Otomatik numara üret
 const generateNumber = async (workspaceId, prefix) => {
@@ -54,6 +55,25 @@ export const getDeals = async (req, res) => {
                 const end = new Date(dateTo);
                 end.setHours(23, 59, 59, 999);
                 where.createdAt.lte = end;
+            }
+        }
+
+        // AGENT RBAC: Kendi + havuz deal'lar
+        if (isAgentRole(req)) {
+            // Agent'ın görebileceği deal'lar (kendi + havuz)
+            const agentFilter = buildAgentDealFilter(req.user.id);
+            // Eğer query'den assignedToId filtresi geldiyse, RBAC ile birleştir
+            if (where.assignedToId) {
+                // Agent yalnızca kendi deal'larını veya havuzu görebilir
+                // Eğer başka birine ait olanları istiyorsa boş dönsün
+                const requestedId = where.assignedToId;
+                delete where.assignedToId;
+                where.AND = [
+                    agentFilter,
+                    { assignedToId: requestedId }
+                ];
+            } else {
+                Object.assign(where, agentFilter);
             }
         }
 
@@ -495,10 +515,17 @@ export const getDealStats = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
+        // AGENT RBAC: baseWhere ile tüm sorgulara agent filtresi uygula
+        let baseWhere = { workspaceId };
+        if (isAgentRole(req)) {
+            const agentFilter = buildAgentDealFilter(req.user.id);
+            Object.assign(baseWhere, agentFilter);
+        }
+
         // Stage bazlı istatistikler
         const stageStats = await prisma.deal.groupBy({
             by: ['stage'],
-            where: { workspaceId },
+            where: baseWhere,
             _count: { id: true },
             _sum: { amount: true }
         });
@@ -506,20 +533,20 @@ export const getDealStats = async (req, res) => {
         // Status bazlı istatistikler
         const statusStats = await prisma.deal.groupBy({
             by: ['status'],
-            where: { workspaceId },
+            where: baseWhere,
             _count: { id: true },
             _sum: { amount: true }
         });
 
         // Dönüşüm oranları
-        const quotes = await prisma.deal.count({ where: { workspaceId } });
-        const orders = await prisma.deal.count({ where: { workspaceId, orderCreatedAt: { not: null } } });
-        const invoices = await prisma.deal.count({ where: { workspaceId, invoiceCreatedAt: { not: null } } });
+        const quotes = await prisma.deal.count({ where: baseWhere });
+        const orders = await prisma.deal.count({ where: { ...baseWhere, orderCreatedAt: { not: null } } });
+        const invoices = await prisma.deal.count({ where: { ...baseWhere, invoiceCreatedAt: { not: null } } });
 
         // Gecikmiş faturalar (vadesi geçmiş + ödenmemiş)
         const overdueInvoices = await prisma.deal.findMany({
             where: {
-                workspaceId,
+                ...baseWhere,
                 stage: 'INVOICE',
                 status: 'OPEN',
                 dueDate: { lt: new Date() }
@@ -531,7 +558,7 @@ export const getDealStats = async (req, res) => {
 
         // Ödenen toplam (WON faturalar)
         const paidStats = await prisma.deal.aggregate({
-            where: { workspaceId, stage: 'INVOICE', status: 'WON' },
+            where: { ...baseWhere, stage: 'INVOICE', status: 'WON' },
             _sum: { paidAmount: true, amount: true }
         });
 

@@ -613,6 +613,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (activityForm.type === 'NOTE' && !activityForm.description.trim()) {
             return alert('Görüşme notu boş olamaz.');
         }
+        if (activityForm.type === 'NOTE' && noteCallSuccess === null) {
+            return alert('Lütfen aramanın başarılı mı yoksa başarısız mı olduğunu seçin.');
+        }
+        if (activityForm.type === 'NOTE' && !noteCallSentiment) {
+            return alert('Lütfen görüşme duygusunu (Olumlu / Nötr / Olumsuz) seçin.');
+        }
         if ((activityForm.type === 'REMINDER' || activityForm.type === 'MEETING') && (!activityForm.dueDate || !activityForm.description.trim())) {
             return alert('Tarih ve açıklama girmelisiniz.');
         }
@@ -722,6 +728,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const handleCompleteActivity = async () => {
         if (!completingActivity) return;
         const isCallType = (completingActivity.type === 'CALL' || completingActivity.type === 'REMINDER');
+        if (isCallType && completeCallSuccess === null) {
+            return alert('Lütfen aramanın başarılı mı yoksa başarısız mı olduğunu seçin.');
+        }
+        if (isCallType && !completeCallSentiment) {
+            return alert('Lütfen görüşme duygusunu (Olumlu / Nötr / Olumsuz) seçin.');
+        }
         try {
             const rawId = completingActivity.id.replace(/^act_/, '');
             await activityAPI.completeActivity(
@@ -1801,55 +1813,81 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
                             {activeConv && (
                                 <div className="customer-journey-timeline">
-                                    {/* ── Header: Sohbet Akışı + Case No + Başlık + Durum ── */}
-                                    <div className="journey-header" style={{ gap: '6px' }}>
-                                        <TrendingUp size={13} />
-                                        {activeCaseInfo?.caseNumber && (
-                                            <span style={{
-                                                fontSize: '0.58rem', color: '#a78bfa', fontWeight: 700, fontFamily: 'monospace',
-                                                background: '#f5f3ff', padding: '1px 5px', borderRadius: 4, flexShrink: 0
-                                            }}>
-                                                {activeCaseInfo.caseNumber}
-                                            </span>
+                                    {/* ── Header: Case No (küçük) + Büyük Editable Başlık + Durum ── */}
+                                    <div className="journey-header">
+                                        {/* Üst satır: ikon + case no (küçük) + durum */}
+                                        <div className="journey-header-top-row">
+                                            <TrendingUp size={13} />
+                                            {activeCaseInfo?.caseNumber && (
+                                                <span style={{
+                                                    fontSize: '0.56rem', color: '#a1a1aa', fontWeight: 500, fontFamily: 'monospace',
+                                                    letterSpacing: '0.02em', flexShrink: 0, opacity: 0.7
+                                                }}>
+                                                    {activeCaseInfo.caseNumber}
+                                                </span>
+                                            )}
+                                            <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                                                {activeCaseInfo?.status && (() => {
+                                                    const STATUS_LABELS_MAP = {
+                                                        ACTIVE: { label: 'Aktif', color: '#3b82f6', bg: '#eff6ff' },
+                                                        WON: { label: 'Kazandı', color: '#10b981', bg: '#ecfdf5' },
+                                                        LOST: { label: 'Kaybetti', color: '#ef4444', bg: '#fef2f2' },
+                                                        CLOSED: { label: 'Kapandı', color: '#6b7280', bg: '#f3f4f6' }
+                                                    };
+                                                    const si = STATUS_LABELS_MAP[activeCaseInfo.status] || STATUS_LABELS_MAP.ACTIVE;
+                                                    return (
+                                                        <select
+                                                            value={activeCaseInfo.status}
+                                                            onChange={async (e) => {
+                                                                const newStatus = e.target.value;
+                                                                try {
+                                                                    await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: newStatus });
+                                                                    setActiveCaseInfo(prev => ({ ...prev, status: newStatus }));
+                                                                } catch (err) { console.error('Status update error:', err); }
+                                                            }}
+                                                            style={{
+                                                                fontSize: '0.56rem', fontWeight: 700, padding: '1px 4px',
+                                                                borderRadius: 4, border: 'none', cursor: 'pointer',
+                                                                color: si.color, background: si.bg, flexShrink: 0
+                                                            }}
+                                                        >
+                                                            {Object.entries(STATUS_LABELS_MAP).map(([k, v]) => (
+                                                                <option key={k} value={k}>{v.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                        {/* Alt satır: Büyük düzenlenebilir başlık */}
+                                        {activeCaseInfo && (
+                                            <input
+                                                type="text"
+                                                value={activeCaseInfo.title || ''}
+                                                onChange={(e) => setActiveCaseInfo(prev => ({ ...prev, title: e.target.value }))}
+                                                onBlur={async (e) => {
+                                                    const newTitle = e.target.value.trim();
+                                                    if (!newTitle || newTitle === activeCaseInfo._savedTitle) return;
+                                                    try {
+                                                        await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { title: newTitle });
+                                                        setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle }));
+                                                    } catch (err) { console.error('Title update error:', err); }
+                                                }}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                                placeholder="Konu başlığı..."
+                                                style={{
+                                                    fontSize: '1.15rem', fontWeight: 700, color: '#1f2937',
+                                                    border: 'none', outline: 'none', background: 'transparent',
+                                                    padding: '4px 0 2px', width: '100%', lineHeight: 1.3,
+                                                    textTransform: 'none', letterSpacing: 'normal',
+                                                    borderBottom: '1.5px dashed transparent',
+                                                    transition: 'border-color 0.2s'
+                                                }}
+                                                onFocus={(e) => { e.target.style.borderBottom = '1.5px dashed #c4b5fd'; }}
+                                                onMouseEnter={(e) => { if (document.activeElement !== e.target) e.target.style.borderBottom = '1.5px dashed #e2e8f0'; }}
+                                                onMouseLeave={(e) => { if (document.activeElement !== e.target) e.target.style.borderBottom = '1.5px dashed transparent'; }}
+                                            />
                                         )}
-                                        {activeCaseInfo?.title && (
-                                            <span style={{
-                                                fontSize: '0.72rem', color: '#374151', fontWeight: 600,
-                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1
-                                            }}>
-                                                {activeCaseInfo.title}
-                                            </span>
-                                        )}
-                                        {activeCaseInfo?.status && (() => {
-                                            const STATUS_LABELS_MAP = {
-                                                ACTIVE: { label: 'Aktif', color: '#3b82f6', bg: '#eff6ff' },
-                                                WON: { label: 'Kazandı', color: '#10b981', bg: '#ecfdf5' },
-                                                LOST: { label: 'Kaybetti', color: '#ef4444', bg: '#fef2f2' },
-                                                CLOSED: { label: 'Kapandı', color: '#6b7280', bg: '#f3f4f6' }
-                                            };
-                                            const si = STATUS_LABELS_MAP[activeCaseInfo.status] || STATUS_LABELS_MAP.ACTIVE;
-                                            return (
-                                                <select
-                                                    value={activeCaseInfo.status}
-                                                    onChange={async (e) => {
-                                                        const newStatus = e.target.value;
-                                                        try {
-                                                            await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: newStatus });
-                                                            setActiveCaseInfo(prev => ({ ...prev, status: newStatus }));
-                                                        } catch (err) { console.error('Status update error:', err); }
-                                                    }}
-                                                    style={{
-                                                        fontSize: '0.56rem', fontWeight: 700, padding: '1px 4px',
-                                                        borderRadius: 4, border: 'none', cursor: 'pointer',
-                                                        color: si.color, background: si.bg, flexShrink: 0
-                                                    }}
-                                                >
-                                                    {Object.entries(STATUS_LABELS_MAP).map(([k, v]) => (
-                                                        <option key={k} value={k}>{v.label}</option>
-                                                    ))}
-                                                </select>
-                                            );
-                                        })()}
                                     </div>
 
                                     {/* ── Case ID + Başlık satırı ── */}
@@ -1861,7 +1899,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             teams={teams}
                                             conversationId={conversationId}
                                             inline={true}
-                                            onCaseInfo={setActiveCaseInfo}
+                                            onCaseInfo={(info) => setActiveCaseInfo(prev => {
+                                                // İlk set veya case değişti: tamamen yaz
+                                                if (!prev || prev.caseId !== info.caseId) {
+                                                    return { ...info, _savedTitle: info.title };
+                                                }
+                                                // Aynı case: sadece caseNumber/status güncelle, title'ı koru (kullanıcı editliyor olabilir)
+                                                return { ...prev, caseNumber: info.caseNumber, status: info.status };
+                                            })}
                                             onStageChanged={({ funnelType, funnelStageId, stageName, stageColor }) => {
                                                 // Update local sidebar state
                                                 setFunnelStage({ id: funnelStageId, name: stageName, color: stageColor || '#6366f1' });

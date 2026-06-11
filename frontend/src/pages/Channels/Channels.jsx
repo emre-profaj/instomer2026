@@ -88,7 +88,8 @@ const Channels = () => {
     const [pageSelectChannelType, setPageSelectChannelType] = useState('facebook');
     const [pageSearchTerm, setPageSearchTerm] = useState('');
 
-    const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(user?.role);
+    const workspaceMemberRole = currentWorkspace?.members?.find(m => m.userId === user?.id)?.role;
+    const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(workspaceMemberRole || user?.role);
 
     const CHANNEL_OPTIONS = [
         { value: 'INSTAGRAM', label: 'Instagram DM', icon: Instagram, color: '#E4405F' },

@@ -16,7 +16,7 @@ export const getContacts = async (req, res) => {
         // Build base conversation filter for this workspace
         let conversationFilter = { workspaceId: workspaceId };
 
-        // AGENT role: only see contacts from their assigned conversations
+        // AGENT role: only see contacts from their assigned conversations + team pool
         if (role === 'AGENT') {
             // Get agent's team IDs
             const userTeams = await prisma.teamMember.findMany({
@@ -25,12 +25,17 @@ export const getContacts = async (req, res) => {
             });
             const myTeamIds = userTeams.map(t => t.teamId);
 
-            // Filter conversations assigned to this agent or their teams
+            // Filter: assigned to me OR (in my team AND not assigned to anyone)
             conversationFilter = {
                 workspaceId: workspaceId,
                 OR: [
                     { assignedToId: req.user.id },
-                    ...myTeamIds.map(tid => ({ teamIds: { contains: `"${tid}"` } }))
+                    ...myTeamIds.map(tid => ({
+                        AND: [
+                            { teamIds: { contains: `"${tid}"` } },
+                            { assignedToId: null }
+                        ]
+                    }))
                 ]
             };
             console.log(`   AGENT filter applied - User: ${req.user.id}, Teams: ${myTeamIds.length}`);
@@ -497,6 +502,16 @@ export const getContacts = async (req, res) => {
                 }
             }
 
+            // Build active case info for display
+            const activeCase = lastActiveCase ? {
+                id: lastActiveCase.id,
+                caseNumber: lastActiveCase.caseNumber || null,
+                title: lastActiveCase.title || null,
+                status: lastActiveCase.status || null,
+                funnelStageId: lastActiveCase.funnelStageId || null,
+                funnelType: lastActiveCase.funnelType || null
+            } : null;
+
             return {
                 ...contact,
                 source: contactSource,
@@ -504,6 +519,7 @@ export const getContacts = async (req, res) => {
                 firstMessageAt,
                 lastMessageAt,
                 aiTopic,
+                activeCase,
                 lastNote: lastNote ? (lastNote.length > 80 ? lastNote.substring(0, 80) + '...' : lastNote) : null,
                 lastNoteType
             };
@@ -547,8 +563,11 @@ export const getContacts = async (req, res) => {
                         where: { workspaceId: workspaceId },
                         select: {
                             id: true,
+                            caseNumber: true,
                             title: true,
                             status: true,
+                            funnelStageId: true,
+                            funnelType: true,
                             createdAt: true,
                             updatedAt: true
                         },
@@ -644,8 +663,11 @@ export const getContacts = async (req, res) => {
                         where: { workspaceId: workspaceId },
                         select: {
                             id: true,
+                            caseNumber: true,
                             title: true,
                             status: true,
+                            funnelStageId: true,
+                            funnelType: true,
                             createdAt: true,
                             updatedAt: true
                         },

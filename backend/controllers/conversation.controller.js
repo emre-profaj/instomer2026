@@ -363,7 +363,7 @@ export const getUnreadCount = async (req, res) => {
 export const markAllAsRead = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const role = req.user.role;
+        const role = req.workspaceMember.role;
 
         // Build query based on user role
         let where = {
@@ -1390,7 +1390,7 @@ export const deleteConversation = async (req, res) => {
 export const deleteAllConversations = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const role = req.workspaceMember?.role || req.user.role;
+        const role = req.workspaceMember?.role;
 
         // Only OWNER or SUPER_ADMIN can delete all conversations
         if (!['OWNER', 'SUPER_ADMIN'].includes(role)) {
@@ -2235,6 +2235,27 @@ export const updateTopic = async (req, res) => {
             where: { id: conversationId },
             data: { aiTopic: aiTopic || null }
         });
+
+        // CASCADE: Bağlı case varsa title'ını da güncelle (bidirectional sync)
+        if (conversation.caseId) {
+            try {
+                await prisma.case.update({
+                    where: { id: conversation.caseId },
+                    data: { title: (aiTopic || '').trim() || 'Yeni Case' }
+                });
+                console.log(`🔄 [TopicSync] aiTopic → Case title synced for case ${conversation.caseId}`);
+
+                // Socket: Case güncellemesini bildir
+                try {
+                    emitToWorkspace(workspaceId, 'case_updated', {
+                        caseId: conversation.caseId,
+                        changes: { title: (aiTopic || '').trim() || 'Yeni Case' }
+                    });
+                } catch (_) {}
+            } catch (caseErr) {
+                console.error('⚠️ [TopicSync] Case title sync error (non-blocking):', caseErr.message);
+            }
+        }
 
         res.json({ success: true, aiTopic: conversation.aiTopic });
     } catch (error) {

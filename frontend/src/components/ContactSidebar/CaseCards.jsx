@@ -209,7 +209,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         if (inline && displayCase && onCaseInfo) {
             onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title, status: displayCase.status });
         }
-    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status]);
+    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title]);
 
     if (loading) {
         return (

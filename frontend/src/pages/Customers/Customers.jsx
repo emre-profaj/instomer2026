@@ -1732,6 +1732,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             { key: null, label: 'TELEFON', style: { minWidth: '100px', maxWidth: '130px' } },
                                             { key: null, label: 'KONU', style: { minWidth: '80px', maxWidth: '140px' } },
                                             { key: 'status', label: 'DURUM', style: { minWidth: '120px', maxWidth: '200px' } },
+                                            { key: null, label: 'CASE', style: { minWidth: '80px', maxWidth: '160px' } },
                                             { key: null, label: 'ATANAN', style: { minWidth: '80px', maxWidth: '140px' } },
                                             { key: 'source', label: 'KAYNAK', style: { minWidth: '70px', maxWidth: '100px' } },
                                             { key: null, label: 'ETİKETLER', style: { minWidth: '80px', maxWidth: '140px' } },
@@ -1934,6 +1935,72 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 >
                                                                     {stageName}
                                                                 </span>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </td>
+                                                {/* CASE KONUM */}
+                                                <td className="contact-case-stage" style={{ maxWidth: '160px' }}>
+                                                    {(() => {
+                                                        const ac = contact.activeCase;
+                                                        if (!ac || !ac.funnelStageId) return <span style={{color: '#94a3b8'}}>---</span>;
+
+                                                        let caseStageName = '';
+                                                        let caseStageColor = '#6b7280';
+                                                        let caseFunnelName = '';
+
+                                                        if (availableFunnels.length > 0) {
+                                                            for (const funnel of availableFunnels) {
+                                                                const s = funnel.stages?.find(x => x.id === ac.funnelStageId);
+                                                                if (s) {
+                                                                    caseStageName = s.name;
+                                                                    caseStageColor = s.color || '#6366f1';
+                                                                    caseFunnelName = funnel.name;
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if (!caseStageName) return <span style={{color: '#94a3b8'}}>---</span>;
+
+                                                        return (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    {ac.caseNumber && (
+                                                                        <span style={{
+                                                                            fontSize: '9px', fontWeight: 600, color: '#94a3b8',
+                                                                            backgroundColor: '#f1f5f9', borderRadius: '3px',
+                                                                            padding: '0px 3px', lineHeight: '14px'
+                                                                        }}>
+                                                                            #{ac.caseNumber}
+                                                                        </span>
+                                                                    )}
+                                                                    <span
+                                                                        style={{
+                                                                            display: 'inline-block',
+                                                                            padding: '2px 6px',
+                                                                            backgroundColor: `${caseStageColor}1a`,
+                                                                            color: caseStageColor,
+                                                                            borderRadius: '4px',
+                                                                            fontSize: '10px',
+                                                                            fontWeight: 600,
+                                                                            maxWidth: '110px',
+                                                                            overflow: 'hidden',
+                                                                            textOverflow: 'ellipsis',
+                                                                            whiteSpace: 'nowrap'
+                                                                        }}
+                                                                    >
+                                                                        {caseStageName}
+                                                                    </span>
+                                                                </div>
+                                                                {ac.status && ac.status !== 'ACTIVE' && (
+                                                                    <span style={{
+                                                                        fontSize: '9px', fontWeight: 500,
+                                                                        color: ac.status === 'WON' ? '#10b981' : ac.status === 'LOST' ? '#ef4444' : '#64748b'
+                                                                    }}>
+                                                                        {ac.status === 'WON' ? '✅ Kazanıldı' : ac.status === 'LOST' ? '❌ Kaybedildi' : ac.status === 'CLOSED' ? '🔒 Kapatıldı' : ac.status}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         );
                                                     })()}

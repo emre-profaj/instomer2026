@@ -378,6 +378,15 @@ export const updateCase = async (req, res) => {
             data: updateData
         });
 
+        // CASCADE: title değiştiyse bağlı conversation'ların aiTopic'ini de güncelle
+        if (title !== undefined) {
+            await prisma.conversation.updateMany({
+                where: { caseId },
+                data: { aiTopic: title.trim() || null }
+            });
+            console.log(`🔄 [CaseUpdate] Cascaded title → aiTopic for conversations of case ${caseId}`);
+        }
+
         // CASCADE: funnelStageId veya funnelType değiştiyse bağlı conversation'ları da güncelle
         if (funnelType !== undefined || funnelStageId !== undefined) {
             const convUpdatePayload = {};

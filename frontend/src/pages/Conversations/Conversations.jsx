@@ -51,7 +51,8 @@ const Conversations = () => {
         scrollToBottom();
     }, [messages, selectedConversation]);
 
-    const userRole = user?.role;
+    const workspaceMemberRole = currentWorkspace?.members?.find(m => m.userId === user?.id)?.role;
+    const userRole = workspaceMemberRole || user?.role;
     const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(userRole);
 
     useEffect(() => {

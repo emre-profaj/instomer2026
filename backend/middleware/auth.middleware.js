@@ -107,12 +107,11 @@ export const requireWorkspaceAccess = async (req, res, next) => {
             return res.status(403).json({ error: 'Access denied to this workspace' });
         }
 
-        // Use workspace-specific role for access control
-        // SUPER_ADMIN and OWNER have full access, others use their workspace role
-        if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'OWNER') {
-            member.role = req.user.role;
-        }
-        // Otherwise keep the workspace member's role (ADMIN, AGENT, etc.)
+        // Always use the workspace-specific member role for access control.
+        // SUPER_ADMIN bypass is already handled above (line 66-73).
+        // The workspace member role from DB is authoritative — never override it
+        // with the global user.role, otherwise AGENT users whose global role
+        // is still OWNER/ADMIN would bypass RBAC filters.
 
         req.workspaceMember = member;
         next();

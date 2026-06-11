@@ -748,7 +748,7 @@ const Inbox = () => {
     });
 
     // Get workspace member role - check both members array and global user role
-    const workspaceMemberRole = currentWorkspace?.members?.[0]?.role;
+    const workspaceMemberRole = currentWorkspace?.members?.find(m => m.userId === user?.id)?.role;
     const globalUserRole = user?.role;
     // Use workspace role first, fallback to global role (for SUPER_ADMIN who might not be in members)
     const isOwner = ['OWNER', 'SUPER_ADMIN'].includes(workspaceMemberRole) || globalUserRole === 'SUPER_ADMIN';

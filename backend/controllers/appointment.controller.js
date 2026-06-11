@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { isAgentRole, buildAgentAppointmentFilter } from '../utils/rbac.helper.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 
 
@@ -35,6 +36,12 @@ export const getAppointments = async (req, res) => {
         // Filter by resource
         if (resourceId) {
             where.resourceId = resourceId;
+        }
+
+        // AGENT RBAC: Sadece kendi randevuları
+        if (isAgentRole(req)) {
+            const agentFilter = buildAgentAppointmentFilter(req.user.id);
+            where = { AND: [where, agentFilter] };
         }
 
         const appointments = await prisma.appointment.findMany({
