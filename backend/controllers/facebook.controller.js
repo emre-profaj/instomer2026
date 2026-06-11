@@ -132,7 +132,7 @@ export const connectPage = async (req, res) => {
                 {},
                 {
                     params: {
-                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed',
+                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,leadgen',
                         access_token: pageAccessToken
                     }
                 }
@@ -405,7 +405,7 @@ export const resubscribeWebhook = async (req, res) => {
             {},
             {
                 params: {
-                    subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,comments,leadgen',
+                    subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,leadgen',
                     access_token: page.pageAccessToken
                 }
             }
@@ -704,7 +704,7 @@ export const connectAdminPage = async (req, res) => {
                 {},
                 {
                     params: {
-                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed',
+                        subscribed_fields: 'messages,messaging_postbacks,messaging_optins,messaging_referrals,feed,leadgen',
                         access_token: pageAccessToken
                     }
                 }
