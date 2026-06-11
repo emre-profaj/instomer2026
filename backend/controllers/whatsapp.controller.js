@@ -297,6 +297,7 @@ export const handleEmbeddedSignup = async (req, res) => {
         );
 
         const tokenData = debugResponse.data.data;
+        console.log('📱 [Embedded Signup DEBUG] full tokenData:', JSON.stringify(tokenData, null, 2));
         const scopes = tokenData.granular_scopes || [];
 
         // Find WABA IDs from whatsapp_business_management scope
