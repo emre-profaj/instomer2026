@@ -590,12 +590,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
         // NOTE tipi açılırken, planlanmış arama var mı kontrol et
         if (type === 'NOTE') {
-            const now = new Date();
             const plannedCall = (plannedTimeline || []).find(item =>
                 item.sourceType === 'ACTIVITY' &&
                 (item.type === 'CALL' || item.type === 'REMINDER') &&
-                (item.status === 'PLANNED' || item.status === 'IN_PROGRESS') &&
-                new Date(item.dueDate) <= now
+                (item.status === 'PLANNED' || item.status === 'IN_PROGRESS')
             );
             setExistingPlannedCall(plannedCall || null);
             setCompletePlannedCall(!!plannedCall); // Varsa default tikli
@@ -939,6 +937,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             }
             const myId = currentUserId || user?.id;
             const myName = user?.name || 'Ben';
+
+            // CASCADE: Case'i de üstlenen kişiye ata
+            const convCaseId = activeConv.caseId;
+            if (convCaseId && currentWorkspace?.id) {
+                try {
+                    await caseAPI.assign(currentWorkspace.id, convCaseId, {
+                        assignedToId: myId,
+                        assignedTeamId: activeConv.assignedTeamId || null
+                    });
+                } catch (caseErr) {
+                    console.warn('Case cascade claim failed (non-critical):', caseErr.message);
+                }
+            }
+
             const claimUpdate = { assignedToId: myId, assignedTo: { id: myId, name: myName } };
             setLocalConvOverride(prev => ({ ...(prev || activeConv), ...claimUpdate }));
             setContactConversations(prev => prev.map(c =>
@@ -1789,19 +1801,55 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
                             {activeConv && (
                                 <div className="customer-journey-timeline">
-                                    {/* ── Header: Sohbet Akışı + Case No + Başlık ── */}
+                                    {/* ── Header: Sohbet Akışı + Case No + Başlık + Durum ── */}
                                     <div className="journey-header" style={{ gap: '6px' }}>
                                         <TrendingUp size={13} />
-                                        <span style={{ flexShrink: 0 }}>Sohbet Akışı</span>
                                         {activeCaseInfo?.caseNumber && (
                                             <span style={{
                                                 fontSize: '0.58rem', color: '#a78bfa', fontWeight: 700, fontFamily: 'monospace',
-                                                background: '#f5f3ff', padding: '1px 5px', borderRadius: 4, flexShrink: 0,
-                                                marginLeft: 2
+                                                background: '#f5f3ff', padding: '1px 5px', borderRadius: 4, flexShrink: 0
                                             }}>
                                                 {activeCaseInfo.caseNumber}
                                             </span>
                                         )}
+                                        {activeCaseInfo?.title && (
+                                            <span style={{
+                                                fontSize: '0.72rem', color: '#374151', fontWeight: 600,
+                                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1
+                                            }}>
+                                                {activeCaseInfo.title}
+                                            </span>
+                                        )}
+                                        {activeCaseInfo?.status && (() => {
+                                            const STATUS_LABELS_MAP = {
+                                                ACTIVE: { label: 'Aktif', color: '#3b82f6', bg: '#eff6ff' },
+                                                WON: { label: 'Kazandı', color: '#10b981', bg: '#ecfdf5' },
+                                                LOST: { label: 'Kaybetti', color: '#ef4444', bg: '#fef2f2' },
+                                                CLOSED: { label: 'Kapandı', color: '#6b7280', bg: '#f3f4f6' }
+                                            };
+                                            const si = STATUS_LABELS_MAP[activeCaseInfo.status] || STATUS_LABELS_MAP.ACTIVE;
+                                            return (
+                                                <select
+                                                    value={activeCaseInfo.status}
+                                                    onChange={async (e) => {
+                                                        const newStatus = e.target.value;
+                                                        try {
+                                                            await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: newStatus });
+                                                            setActiveCaseInfo(prev => ({ ...prev, status: newStatus }));
+                                                        } catch (err) { console.error('Status update error:', err); }
+                                                    }}
+                                                    style={{
+                                                        fontSize: '0.56rem', fontWeight: 700, padding: '1px 4px',
+                                                        borderRadius: 4, border: 'none', cursor: 'pointer',
+                                                        color: si.color, background: si.bg, flexShrink: 0
+                                                    }}
+                                                >
+                                                    {Object.entries(STATUS_LABELS_MAP).map(([k, v]) => (
+                                                        <option key={k} value={k}>{v.label}</option>
+                                                    ))}
+                                                </select>
+                                            );
+                                        })()}
                                     </div>
 
                                     {/* ── Case ID + Başlık satırı ── */}

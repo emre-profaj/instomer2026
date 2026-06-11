@@ -207,7 +207,7 @@ export const getContacts = async (req, res) => {
             }
         }
 
-        // Assignment filter (pool/mine/unassigned) — filters by conversation assignment
+        // Assignment filter (pool/mine/unassigned/team_ID/user_ID) — filters by conversation assignment
         if (assignmentFilter && assignmentFilter !== 'all') {
             // Get user's team IDs for pool filter
             const userTeams = await prisma.teamMember.findMany({
@@ -233,7 +233,7 @@ export const getContacts = async (req, res) => {
                 };
                 console.log(`   AssignmentFilter: MINE (userId: ${req.user.id})`);
             } else if (assignmentFilter === 'unassigned') {
-                // Contacts with conversations that have no assignedToId
+                // Contacts with conversations that have no assignedToId AND no team
                 where = {
                     AND: [
                         where,
@@ -272,6 +272,57 @@ export const getContacts = async (req, res) => {
                     ]
                 };
                 console.log(`   AssignmentFilter: POOL (teams: ${myTeamIds.length})`);
+            } else if (assignmentFilter.startsWith('team_')) {
+                // Filter by specific team: show contacts assigned to this team (pool + all members)
+                const teamId = assignmentFilter.replace('team_', '');
+                // Get all member userIds of this team
+                const teamMembers = await prisma.teamMember.findMany({
+                    where: { teamId },
+                    select: { userId: true }
+                });
+                const memberUserIds = teamMembers.map(m => m.userId).filter(Boolean);
+
+                const orConditions = [
+                    // Conversations assigned to this team (pool)
+                    { teamIds: { contains: `"${teamId}"` } },
+                    { assignedTeamId: teamId }
+                ];
+                // Also include conversations assigned to any member of this team
+                if (memberUserIds.length > 0) {
+                    orConditions.push({ assignedToId: { in: memberUserIds } });
+                }
+
+                where = {
+                    AND: [
+                        where,
+                        {
+                            conversations: {
+                                some: {
+                                    workspaceId,
+                                    OR: orConditions
+                                }
+                            }
+                        }
+                    ]
+                };
+                console.log(`   AssignmentFilter: TEAM (teamId: ${teamId}, members: ${memberUserIds.length})`);
+            } else if (assignmentFilter.startsWith('user_')) {
+                // Filter by specific user
+                const userId = assignmentFilter.replace('user_', '');
+                where = {
+                    AND: [
+                        where,
+                        {
+                            conversations: {
+                                some: {
+                                    workspaceId,
+                                    assignedToId: userId
+                                }
+                            }
+                        }
+                    ]
+                };
+                console.log(`   AssignmentFilter: USER (userId: ${userId})`);
             }
         }
 
@@ -394,11 +445,17 @@ export const getContacts = async (req, res) => {
                     .sort((a, b) => b[1] - a[1])[0][0];
             }
 
-            // Get aiTopic from the most recent conversation that has one
-            const aiTopic = contact.conversations
+            // Get topic: prioritize last active case title, fallback to conversation aiTopic
+            const lastActiveCase = contact.cases
+                ?.filter(c => c.status === 'ACTIVE')
+                ?.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+                ?.[0];
+            const caseTopic = lastActiveCase?.title || null;
+            const convAiTopic = contact.conversations
                 ?.filter(c => c.aiTopic)
                 ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt))
                 ?.[0]?.aiTopic || null;
+            const aiTopic = caseTopic || convAiTopic;
 
             // Build lastNote from: 1) Planned activity, 2) Last completed activity, 3) Last manual note
             let lastNote = null;
@@ -486,6 +543,18 @@ export const getContacts = async (req, res) => {
                         },
                         orderBy: { createdAt: 'asc' }
                     },
+                    cases: {
+                        where: { workspaceId: workspaceId },
+                        select: {
+                            id: true,
+                            title: true,
+                            status: true,
+                            createdAt: true,
+                            updatedAt: true
+                        },
+                        orderBy: { updatedAt: 'desc' },
+                        take: 3
+                    },
                     activities: {
                         where: { workspaceId: workspaceId },
                         orderBy: { createdAt: 'desc' },
@@ -570,6 +639,18 @@ export const getContacts = async (req, res) => {
                             }
                         },
                         orderBy: { createdAt: 'asc' }
+                    },
+                    cases: {
+                        where: { workspaceId: workspaceId },
+                        select: {
+                            id: true,
+                            title: true,
+                            status: true,
+                            createdAt: true,
+                            updatedAt: true
+                        },
+                        orderBy: { updatedAt: 'desc' },
+                        take: 3
                     },
                     activities: {
                         where: { workspaceId: workspaceId },

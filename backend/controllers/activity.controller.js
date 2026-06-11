@@ -56,8 +56,7 @@ export const createActivity = async (req, res) => {
                     contactId,
                     workspaceId,
                     type: { in: ['CALL', 'REMINDER'] },
-                    status: { in: ['PLANNED', 'IN_PROGRESS'] },
-                    dueDate: { lte: new Date() } // Vadesi geçmiş veya şu an olan
+                    status: { in: ['PLANNED', 'IN_PROGRESS'] }
                 },
                 orderBy: { dueDate: 'asc' } // En eski planlanmış aramayı al
             });
@@ -155,6 +154,18 @@ export const createActivity = async (req, res) => {
                         }
                     }
 
+                    // Atama mirası: Mention yoksa conversation'dan miras al
+                    let inheritedCaseId = null;
+                    if (!assignToUserId) {
+                        const conv = await prisma.conversation.findFirst({
+                            where: { contactId, workspaceId },
+                            orderBy: { updatedAt: 'desc' },
+                            select: { assignedToId: true, caseId: true }
+                        });
+                        if (conv?.assignedToId) assignToUserId = conv.assignedToId;
+                        inheritedCaseId = conv?.caseId || null;
+                    }
+
                     const planned = await prisma.contactActivity.create({
                         data: {
                             contactId,
@@ -167,7 +178,13 @@ export const createActivity = async (req, res) => {
                             assignedToId: assignToUserId || null,
                             createdBy: userId,
                             ...(assignToTeamId && { teamId: assignToTeamId }),
-                            source: 'AUTO'
+                            ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
+                            source: 'AUTO',
+                            ...(assignToUserId ? {
+                                assignedById: userId,
+                                assignedByType: 'SYSTEM',
+                                assignedAt: new Date()
+                            } : {})
                         }
                     });
 

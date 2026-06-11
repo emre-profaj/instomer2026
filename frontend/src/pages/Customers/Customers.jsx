@@ -60,8 +60,8 @@ const Customers = () => {
     const location = useLocation();
     const { t } = useTranslation();
 
-    // Read assignment tab from URL (?tab=pool|mine|unassigned)
-    const assignmentFilter = new URLSearchParams(location.search).get('tab') || 'all';
+    // Assignment filter state (all / mine / unassigned / team_ID / user_ID)
+    const [assignmentFilter, setAssignmentFilter] = useState('all');
 
     // Status options
 
@@ -354,7 +354,7 @@ const Customers = () => {
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
-    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, funnelStageFilter, showArchived, limit, page, dateFilter, dateFrom, dateTo]);
+    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, funnelStageFilter, showArchived, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter]);
 
     useEffect(() => {
         const handleContactUpdate = (event) => {
@@ -1445,6 +1445,61 @@ const Customers = () => {
                                     <option value="HAS_BOTH">İkisi de Olanlar</option>
                                     <option value="NO_PHONE">Numarası Olmayanlar</option>
                                     <option value="NO_EMAIL">E-postası Olmayanlar</option>
+                                </select>
+                            </div>
+
+                            {/* Assignment Filter Dropdown */}
+                            <div className="filter-dropdown-item">
+                                <label><Users size={12} /> Atanan</label>
+                                <select
+                                    value={assignmentFilter}
+                                    onChange={(e) => {
+                                        setAssignmentFilter(e.target.value);
+                                        setPage(1);
+                                    }}
+                                    className="filter-select"
+                                >
+                                    <option value="all">Tüm Atamalar</option>
+                                    <option value="unassigned">Atanmamışlar</option>
+                                    {teams.map(team => {
+                                        const teamMembers = team.members || [];
+                                        return (
+                                            <optgroup key={team.id} label={team.name}>
+                                                <option value={`team_${team.id}`}>🏢 {team.name} (Tümü)</option>
+                                                {teamMembers.map(member => {
+                                                    const mUser = member.user || member;
+                                                    const mId = mUser.id || member.userId;
+                                                    const mName = mUser.name || 'İsimsiz';
+                                                    return (
+                                                        <option key={mId} value={`user_${mId}`}>👤 {mName}</option>
+                                                    );
+                                                })}
+                                            </optgroup>
+                                        );
+                                    })}
+                                    {/* Members not in any team */}
+                                    {(() => {
+                                        const teamMemberIds = new Set();
+                                        teams.forEach(t => (t.members || []).forEach(m => {
+                                            teamMemberIds.add(m.user?.id || m.userId || m.id);
+                                        }));
+                                        const unteamedMembers = members.filter(m => {
+                                            const mId = m.user?.id || m.userId || m.id;
+                                            return !teamMemberIds.has(mId);
+                                        });
+                                        if (unteamedMembers.length === 0) return null;
+                                        return (
+                                            <optgroup label="Takımsız">
+                                                {unteamedMembers.map(m => {
+                                                    const mId = m.user?.id || m.userId || m.id;
+                                                    const mName = m.user?.name || m.name || 'İsimsiz';
+                                                    return (
+                                                        <option key={mId} value={`user_${mId}`}>👤 {mName}</option>
+                                                    );
+                                                })}
+                                            </optgroup>
+                                        );
+                                    })()}
                                 </select>
                             </div>
 

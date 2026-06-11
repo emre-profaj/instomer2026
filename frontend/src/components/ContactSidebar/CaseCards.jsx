@@ -211,9 +211,9 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     // Notify parent about the active case info (for header display) — MUST be at top level, not inside conditional
     useEffect(() => {
         if (inline && displayCase && onCaseInfo) {
-            onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title });
+            onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title, status: displayCase.status });
         }
-    }, [inline, displayCase?.caseNumber, displayCase?.id]);
+    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status]);
 
     if (loading) {
         return (
@@ -251,29 +251,6 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
 
         return (
             <>
-                {/* ── Başlık + Durum ── */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 12px 2px' }}>
-                    <span style={{
-                        fontSize: '0.72rem', fontWeight: 600, color: '#1f2937',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                        lineHeight: 1.3
-                    }}>
-                        {displayCase.title}
-                    </span>
-                    <select
-                        value={displayCase.status}
-                        onChange={e => handleStatusChange(displayCase.id, e.target.value)}
-                        style={{
-                            fontSize: '0.56rem', fontWeight: 700, padding: '1px 4px',
-                            borderRadius: 4, border: 'none', cursor: 'pointer',
-                            color: statusInfo.color, background: statusInfo.bg, flexShrink: 0
-                        }}
-                    >
-                        {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                            <option key={k} value={k}>{v.label}</option>
-                        ))}
-                    </select>
-                </div>
 
                 {/* ── Akış / Aşama Mega Menü Trigger ── */}
                 <div style={{ padding: '2px 12px 4px' }}>
@@ -281,7 +258,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                         <button
                             onClick={e => {
                                 const rect = e.currentTarget.getBoundingClientRect();
-                                setMegaPos({ top: rect.bottom + 4, left: Math.max(10, rect.left) });
+                                setMegaPos({ top: rect.bottom + 4, right: Math.max(10, window.innerWidth - rect.right) });
                                 setMegaHoverFunnel(activeFunnel?.id || null);
                                 setMegaOpen(v => !v);
                             }}
@@ -313,20 +290,21 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 <div style={{
                                     position: 'fixed',
                                     top: megaPos.top,
-                                    left: megaPos.left,
+                                    right: megaPos.right,
                                     zIndex: 99999,
                                     background: '#fff',
                                     border: '1px solid #e2e8f0',
                                     borderRadius: 12,
                                     boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-                                    padding: 8,
+                                    padding: 6,
                                     display: 'flex',
                                     flexDirection: 'row',
-                                    gap: 4,
-                                    minWidth: 340,
+                                    gap: 2,
+                                    minWidth: 280,
+                                    maxWidth: 380,
                                 }}>
                                     {/* Sol panel: Akışlar */}
-                                    <div style={{ minWidth: 150, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
+                                    <div style={{ minWidth: 120, maxWidth: 150, borderRight: '1px solid #f1f5f9', paddingRight: 6 }}>
                                         <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Akış</div>
                                         {funnels.map(funnel => {
                                             const isActive = activeFunnel?.id === funnel.id;
@@ -337,9 +315,9 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                                     key={funnel.id}
                                                     onMouseEnter={() => setMegaHoverFunnel(funnel.id)}
                                                     style={{
-                                                        display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                                                        padding: '7px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                                                        fontSize: '0.8rem', fontWeight: isActive ? 700 : 500,
+                                                        display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                        padding: '5px 7px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                                                        fontSize: '0.75rem', fontWeight: isActive ? 700 : 500,
                                                         background: isHighlighted ? '#eff6ff' : 'transparent',
                                                         color: isHighlighted ? '#1d4ed8' : '#374151',
                                                         transition: 'background 0.1s'
@@ -362,7 +340,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         const stages = displayFunnel.stages || [];
                                         const isActiveFunnel = activeFunnel?.id === displayFunnel.id;
                                         return (
-                                            <div style={{ minWidth: 170 }}>
+                                            <div style={{ minWidth: 120, maxWidth: 160 }}>
                                                 <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>{displayFunnel.name}</div>
                                                 {stages.map(stage => {
                                                     const isSelected = displayCase.funnelStageId === stage.id && isActiveFunnel;
@@ -375,9 +353,9 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                                                 setMegaHoverFunnel(null);
                                                             }}
                                                             style={{
-                                                                display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                                                                padding: '7px 8px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                                                                fontSize: '0.8rem', fontWeight: isSelected ? 700 : 400,
+                                                                display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                padding: '5px 7px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                                                                fontSize: '0.75rem', fontWeight: isSelected ? 700 : 400,
                                                                 background: isSelected ? (stage.color || '#6366f1') + '18' : 'transparent',
                                                                 color: isSelected ? (stage.color || '#6366f1') : '#374151',
                                                                 transition: 'background 0.1s'

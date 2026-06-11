@@ -611,7 +611,10 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         }
 
         // 11. Create CALL activity (in ContactActivity)
+        // Atama mirası: Conversation kime atandıysa, arama da ona atansın
         const contact = conversation.contact;
+        const inheritedAssigneeId = conversation.assignedToId || null;
+        const inheritedCaseId = conversation.caseId || null;
         await prisma.contactActivity.create({
             data: {
                 workspaceId,
@@ -622,11 +625,17 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
-                assignedToId: null,
-                source: 'AUTOMATION'
+                assignedToId: inheritedAssigneeId,
+                source: 'AUTOMATION',
+                ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
+                ...(inheritedAssigneeId ? {
+                    assignedById: null,
+                    assignedByType: 'SYSTEM',
+                    assignedAt: new Date()
+                } : {})
             }
         });
-        console.log(`📞 [RULE:SALES_PHONE_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contact.id}`);
+        console.log(`📞 [RULE:SALES_PHONE_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contact.id} (user: ${inheritedAssigneeId || 'HAVUZ'}, case: ${inheritedCaseId || 'YOK'})`);
 
         // 12. Emit socket update so inbox badges refresh instantly
         emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });
@@ -690,11 +699,11 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         });
         if (!contact || !contact.phone || !contact.phone.trim()) return;
 
-        // Get latest conversation for topic/channel info
+        // Get latest conversation for topic/channel info + atama mirası için assignedToId/caseId
         const latestConversation = await prisma.conversation.findFirst({
             where: { workspaceId, contactId },
             orderBy: { updatedAt: 'desc' },
-            select: { aiTopic: true, channel: true }
+            select: { aiTopic: true, channel: true, assignedToId: true, caseId: true }
         });
 
         // 3. Check if there's already a PLANNED call activity for this contact (avoid duplicates)
@@ -752,7 +761,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         const convWithTeam = await prisma.conversation.findFirst({
             where: { workspaceId, contactId },
             orderBy: { updatedAt: 'desc' },
-            select: { assignedTeamId: true, teamIds: true, channel: true }
+            select: { assignedTeamId: true, teamIds: true, channel: true, assignedToId: true, caseId: true }
         });
         if (convWithTeam?.assignedTeamId) {
             salesTeamId = convWithTeam.assignedTeamId;
@@ -814,9 +823,11 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             }
         }
 
-        // 5. Aramayı takıma ata (havuza düşsün, biri üstlensin)
-        // Kişiye direkt atama yapılmaz — havuzdan biri üstlenmezse gecikmiş arama olur
-        console.log(`📋 [RULE:AUTO_CALL] Arama takıma atanacak: ${salesTeamId || 'YOK'} (havuz)`);
+        // 5. Atama mirası: Conversation/case kime atandıysa, arama da ona atansın
+        // Atanmış kişi yoksa → havuza düşsün
+        const inheritedAssigneeId = convWithTeam?.assignedToId || latestConversation?.assignedToId || null;
+        const inheritedCaseId = convWithTeam?.caseId || latestConversation?.caseId || null;
+        console.log(`📋 [RULE:AUTO_CALL] Arama atanacak: ${inheritedAssigneeId || 'HAVUZ'} (takım: ${salesTeamId || 'YOK'}, case: ${inheritedCaseId || 'YOK'})`);
 
         // 6. Calculate due date — first check customer messages for timing preference
         let dueDate;
@@ -923,7 +934,7 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             dueDate.setUTCHours(10 - 3, 15, 0, 0);
         }
 
-        // 7. Create CALL activity
+        // 7. Create CALL activity — atama mirası ile
         const teamLabel = salesTeamId ? salesTeamId : 'YOK';
         await prisma.contactActivity.create({
             data: {
@@ -935,14 +946,20 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 dueDate,
                 status: 'PLANNED',
                 teamId: salesTeamId || null,
-                assignedToId: null,
+                assignedToId: inheritedAssigneeId,
                 source: 'AUTOMATION',
                 fallbackToAi: true,
                 fallbackDelayMinutes: 0,
-                aiFallbackTriggered: false
+                aiFallbackTriggered: false,
+                ...(inheritedCaseId ? { caseId: inheritedCaseId } : {}),
+                ...(inheritedAssigneeId ? {
+                    assignedById: null,
+                    assignedByType: 'SYSTEM',
+                    assignedAt: new Date()
+                } : {})
             }
         });
-        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, timing: ${timingSource}, team: ${teamLabel}, user: HAVUZ)`);
+        console.log(`📞 [RULE:AUTO_CALL] CALL activity created → ${dueDate.toISOString()} for contact ${contactId} (source: ${source}, timing: ${timingSource}, team: ${teamLabel}, user: ${inheritedAssigneeId || 'HAVUZ'})`);
 
         // 8. Emit socket events
         emitToWorkspace(workspaceId, 'activity_created', {
