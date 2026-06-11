@@ -70,7 +70,7 @@ const Sidebar = () => {
         { path: '/invoices', icon: Receipt, label: 'Faturalar' }
     ];
 
-    const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id) || currentWorkspace?.members?.[0];
+    const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
     const workspaceRole = workspaceMember?.role;
 
     const filteredMenuItems = (workspaceRole === 'AGENT' && user?.role !== 'SUPER_ADMIN')
@@ -471,8 +471,8 @@ const Sidebar = () => {
                                 </div>
                             )}
 
-                            {/* Sales */}
-                            {(workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (
+                            {/* Sales — Agent dahil herkes görsün */}
+                            {(
                                 <div className="nav-category">
                                     <button
                                         className={`nav-category-header ${salesSubItems.some(i => location.pathname === i.path) ? 'active' : ''}`}

@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { isAgentRole, getAgentTeamIds, buildAgentActivityFilter } from '../utils/rbac.helper.js';
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -809,6 +810,14 @@ export const getWorkspaceActivities = async (req, res) => {
             }
         }
 
+        // AGENT RBAC: Sadece kendi + takım havuzu
+        if (isAgentRole(req)) {
+            const myTeamIds = await getAgentTeamIds(req.user.id);
+            const agentFilter = buildAgentActivityFilter(req.user.id, myTeamIds);
+            // Merge with existing where using AND
+            Object.assign(where, { AND: [agentFilter] });
+        }
+
         const activities = await prisma.contactActivity.findMany({
             where,
             include: {
@@ -859,12 +868,21 @@ export const getWorkspaceCallQueue = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
+        const where = {
+            workspaceId,
+            type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
+            status: { in: ['PLANNED', 'COMPLETED'] },
+        };
+
+        // AGENT RBAC: Sadece kendi + takım aktiviteleri
+        if (isAgentRole(req)) {
+            const myTeamIds = await getAgentTeamIds(req.user.id);
+            const agentFilter = buildAgentActivityFilter(req.user.id, myTeamIds);
+            where.AND = [agentFilter];
+        }
+
         const activities = await prisma.contactActivity.findMany({
-            where: {
-                workspaceId,
-                type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
-                status: { in: ['PLANNED', 'COMPLETED'] },
-            },
+            where,
             include: {
                 contact: {
                     select: {
