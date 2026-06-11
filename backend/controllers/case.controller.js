@@ -131,6 +131,8 @@ export const getContactCases = async (req, res) => {
                 aiTopic: true,
                 assignedToId: true,
                 assignedTeamId: true,
+                funnelType: true,
+                funnelStageId: true,
                 channel: true,
                 createdAt: true
             }
@@ -149,6 +151,8 @@ export const getContactCases = async (req, res) => {
                             title: conv.aiTopic.trim().substring(0, 200),
                             assignedToId: conv.assignedToId || null,
                             assignedTeamId: conv.assignedTeamId || null,
+                            funnelType: conv.funnelType || null,
+                            funnelStageId: conv.funnelStageId || null,
                             priority: 'NORMAL'
                         }
                     });
@@ -177,6 +181,7 @@ export const getContactCases = async (req, res) => {
                         aiTopic: true,
                         status: true,
                         lastMessageAt: true,
+                        funnelType: true,
                         funnelStageId: true,
                         assignedToId: true,
                         assignedTeamId: true
@@ -195,6 +200,31 @@ export const getContactCases = async (req, res) => {
             },
             orderBy: { updatedAt: 'desc' }
         });
+
+        // ── AUTO-SYNC: Case funnelStageId boşsa ama bağlı conversation'da doluysa, case'i güncelle ──
+        for (const c of cases) {
+            if (!c.funnelStageId && c.conversations?.length > 0) {
+                const convWithStage = c.conversations.find(cv => cv.funnelStageId);
+                if (convWithStage) {
+                    try {
+                        await prisma.case.update({
+                            where: { id: c.id },
+                            data: {
+                                funnelStageId: convWithStage.funnelStageId,
+                                funnelType: convWithStage.funnelType || null
+                            }
+                        });
+                        // Reflect in local object for response
+                        c.funnelStageId = convWithStage.funnelStageId;
+                        c.funnelType = convWithStage.funnelType || null;
+                        console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} funnelStageId from conversation ${convWithStage.id}`);
+                    } catch (syncErr) {
+                        console.warn(`⚠️ [AutoSync] Failed for case ${c.id}:`, syncErr.message);
+                    }
+                }
+            }
+        }
+        // ── AUTO-SYNC END ──
 
         // Her case için retell call sayısını da ekle
         const casesWithCounts = await Promise.all(cases.map(async (c) => {

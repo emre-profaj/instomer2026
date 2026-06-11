@@ -126,12 +126,8 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                 } catch (_) {}
             }
 
-            // Sync contact's status field so Contacts table stays up-to-date
-            if (contactId && workspaceId) {
-                try {
-                    await contactAPI.update(workspaceId, contactId, { status: funnelStageId });
-                } catch (_) {}
-            }
+            // Note: Contact status/funnelStageId sync is handled by backend cascade
+            // (updateCase → contact update, updateFunnel → contact update)
 
             // Find stage info for callback
             let stageName = '', stageColor = '#6366f1';
