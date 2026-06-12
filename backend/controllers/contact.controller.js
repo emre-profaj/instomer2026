@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 import { executeHotOpportunityEmailRule } from './rules.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { ensureCaseForConversation } from './case.controller.js';
 
 
 // Get all contacts in a workspace
@@ -953,6 +954,50 @@ export const createContact = async (req, res) => {
         });
 
         console.log(`✅ [Create Contact] SUCCESS - ID: ${contact.id}, Name: ${name}, Status: ${initialStatus}`);
+
+        // --- CREATE LEAD CONVERSATION (so AGENT users can see this contact) ---
+        let conversation = null;
+        try {
+            // Determine the team of the creating user (for teamIds on conversation)
+            let teamIds = '[]';
+            let assignedTeamId = null;
+            if (req.user?.id) {
+                const userTeams = await prisma.teamMember.findMany({
+                    where: { userId: req.user.id },
+                    select: { teamId: true }
+                });
+                if (userTeams.length > 0) {
+                    teamIds = JSON.stringify(userTeams.map(t => t.teamId));
+                    assignedTeamId = userTeams[0].teamId;
+                }
+            }
+
+            conversation = await prisma.conversation.create({
+                data: {
+                    workspaceId,
+                    contactId: contact.id,
+                    channel: 'LEAD',
+                    status: 'OPEN',
+                    assignedToId: req.user?.id || null,
+                    assignedTeamId: assignedTeamId,
+                    teamIds: teamIds,
+                    botEnabled: false,
+                    aiTopic: `Manuel Kayıt - ${name}`,
+                    lastMessageAt: new Date(),
+                    assignedByType: 'USER',
+                    assignedAt: new Date()
+                }
+            });
+            console.log(`📋 [Create Contact] LEAD conversation created: ${conversation.id}, assigned to: ${req.user?.id || 'none'}`);
+
+            // Auto-create a case for this conversation
+            ensureCaseForConversation(workspaceId, conversation.id).catch(err =>
+                console.error('⚠️ [Create Contact] Auto-case creation error:', err.message)
+            );
+        } catch (convErr) {
+            console.error('⚠️ [Create Contact] Conversation creation error:', convErr.message);
+        }
+        // --- LEAD CONVERSATION END ---
 
         // Emit socket event for real-time update (workspace-specific)
         emitToWorkspace(workspaceId, 'contact_updated', {

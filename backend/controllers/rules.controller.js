@@ -239,8 +239,11 @@ export const executePhoneCaptureRule = async (workspaceId, conversationId, messa
         if (rule && !rule.isActive) return;
 
         // Detect Turkish / international phone numbers in message
+        // Supports: 05XX XXX XX XX, 05XXXXXXXXX, 0XXXXXXXXX (10-11 digits), +90...
         const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
-        const matches = messageContent.match(phoneRegex);
+        // Also try a simpler pattern for fully concatenated numbers (e.g. 0561090832)
+        const simplePhoneRegex = /(?:\+?90|0)5\d{8,9}/gi;
+        const matches = messageContent.match(phoneRegex) || messageContent.match(simplePhoneRegex);
         if (!matches || matches.length === 0) return;
 
         // Get conversation + contact
@@ -459,8 +462,10 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         const salesFunnelName = config.funnelName || 'Satış Akışı';
 
         // 2. Detect phone number in incoming message
+        // Supports: 05XX XXX XX XX, 05XXXXXXXXX, 0XXXXXXXXX (10-11 digits), +90...
         const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
-        if (!phoneRegex.test(messageContent)) return;
+        const simplePhoneRegex2 = /(?:\+?90|0)5\d{8,9}/gi;
+        if (!phoneRegex.test(messageContent) && !simplePhoneRegex2.test(messageContent)) return;
 
         // 3. Get conversation + contact EARLY (needed for status check)
         const conversation = await prisma.conversation.findUnique({

@@ -3086,6 +3086,19 @@ JSON:`;
                 updatedFields: updateData
             });
             console.log('📡 [AI Auto-Extract] WebSocket event (contact_updated) emitted to workspace');
+
+            // 🔁 If phone was just extracted, trigger auto call planning
+            // This covers cases where regex-based phone capture missed the number
+            // (e.g. separatorless formats like 0561090832)
+            if (updateData.phone) {
+                try {
+                    const { executeAutoCallPlanning } = await import('./rules.controller.js');
+                    console.log(`📞 [AI Auto-Extract] Phone extracted → triggering auto call planning for contact ${conversation.contact.id}`);
+                    await executeAutoCallPlanning(workspaceId, conversation.contact.id, conversation.channel || 'AI_EXTRACT');
+                } catch (callErr) {
+                    console.error('⚠️ [AI Auto-Extract] Auto call planning trigger error:', callErr.message);
+                }
+            }
         } else {
             console.log(`ℹ️ [AI Auto-Extract] No updates needed. Current: [${oldName}, ${oldPhone}, ${oldEmail}], Extracted: [${extracted.name}, ${extracted.phone}, ${extracted.email}] (Generic: ${isGenericName})`);
         }

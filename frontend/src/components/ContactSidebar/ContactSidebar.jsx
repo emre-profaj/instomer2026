@@ -2345,7 +2345,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     noteContent || null
                                                 ].filter(Boolean).join(' — ') || null,
                                                 date: new Date(note.date),
-                                                color: '#eab308',
+                                                color: '#16a34a',
                                                 done: true,
                                                 _type: 'NOTE',
                                                 _sourceItems: [note],

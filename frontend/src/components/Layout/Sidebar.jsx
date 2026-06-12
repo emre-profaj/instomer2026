@@ -271,119 +271,23 @@ const Sidebar = () => {
                                 // Inbox için URL paramı oku
                                 const currentTab = isInbox ? new URLSearchParams(location.search).get('tab') || 'all' : null;
 
+                                // Inbox — alt menüsüz, direkt link (unread badge ile)
                                 if (isInbox) {
                                     return (
-                                        <div key={item.path}>
-                                            {/* Inbox ana başlık */}
-                                            <div
-                                                className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
-                                                style={{ cursor: 'pointer' }}
-                                                onClick={() => {
-                                                    if (isCollapsed) { navigate('/inbox'); return; }
-                                                    setIsInboxOpen(v => !v);
-                                                    navigate('/inbox');
-                                                }}
-                                                title={item.label}
-                                            >
-                                                <item.icon size={20} className="nav-icon" />
-                                                {!isCollapsed && <span>{item.label}</span>}
-                                                {unreadCount > 0 && !isCollapsed && (
-                                                    <span className="unread-badge-sidebar">{unreadCount > 99 ? '99+' : unreadCount}</span>
-                                                )}
-                                                {!isCollapsed && <ChevronDown size={14} style={{ marginLeft: 'auto', transition: '0.2s', transform: isInboxOpen ? 'rotate(180deg)' : 'none', color: '#9ca3af' }} />}
-                                            </div>
-                                            {/* Inbox alt menü */}
-                                            {isInboxOpen && !isCollapsed && (
-                                                <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
-                                                    {[
-                                                        { label: 'Hepsi', tab: 'all', icon: Inbox },
-                                                        { label: 'Havuzum', tab: 'pool', icon: Users },
-                                                        { label: 'Bana Atananlar', tab: 'mine', icon: UserCheck },
-                                                        { label: 'Atanmamışlar', tab: 'unassigned', icon: Clock },
-                                                    ].map(sub => (
-                                                        <Link
-                                                            key={sub.tab}
-                                                            to={`/inbox${sub.tab === 'all' ? '' : `?tab=${sub.tab}`}`}
-                                                            className={`sidebar-nav-item submenu-item ${
-                                                                currentTab === sub.tab ||
-                                                                (sub.tab === 'all' && currentTab === 'all') ? 'active' : ''
-                                                            }`}
-                                                            style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
-                                                        >
-                                                            <sub.icon size={14} className="nav-icon" style={{ flexShrink: 0 }} />
-                                                            <span>{sub.label}</span>
-                                                        </Link>
-                                                    ))}
-                                                    {/* Takım filtreleri */}
-                                                    {inboxSubTeams.length > 0 && (
-                                                        <>
-                                                            <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9ca3af', letterSpacing: '0.06em', textTransform: 'uppercase', padding: '6px 12px 2px' }}>TAKIMLAR</div>
-                                                            {inboxSubTeams.map(team => (
-                                                                <Link
-                                                                    key={team.id}
-                                                                    to={`/inbox?tab=team:${team.id}`}
-                                                                    className={`sidebar-nav-item submenu-item ${currentTab === `team:${team.id}` ? 'active' : ''}`}
-                                                                    style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
-                                                                >
-                                                                    <Users size={13} style={{ flexShrink: 0, color: '#6366f1' }} />
-                                                                    <span>{team.name}</span>
-                                                                </Link>
-                                                            ))}
-                                                        </>
-                                                    )}
-                                                </div>
+                                        <Link key={item.path} to="/inbox"
+                                            className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                                            title={item.label}>
+                                            <item.icon size={20} className="nav-icon" />
+                                            {!isCollapsed && <span>{item.label}</span>}
+                                            {unreadCount > 0 && !isCollapsed && (
+                                                <span className="unread-badge-sidebar">{unreadCount > 99 ? '99+' : unreadCount}</span>
                                             )}
-                                        </div>
+                                        </Link>
                                     );
                                 }
 
-                                // Kişiler — expandable sub-menu
-                                const isContacts = item.path === '/customers';
-                                if (isContacts) {
-                                    const contactTab = new URLSearchParams(location.search).get('tab') || 'all';
-                                    const isContactsActive = location.pathname === '/customers';
-                                    return (
-                                        <div key={item.path}>
-                                            <div
-                                                className={`sidebar-nav-item ${isContactsActive && !isContactsOpen ? 'active' : ''}`}
-                                                style={{ cursor: 'pointer' }}
-                                                onClick={() => {
-                                                    if (isCollapsed) { navigate('/customers'); return; }
-                                                    setIsContactsOpen(v => !v);
-                                                    navigate('/customers');
-                                                }}
-                                                title={item.label}
-                                            >
-                                                <item.icon size={20} className="nav-icon" />
-                                                {!isCollapsed && <span>{item.label}</span>}
-                                                {!isCollapsed && <ChevronDown size={14} style={{ marginLeft: 'auto', transition: '0.2s', transform: isContactsOpen ? 'rotate(180deg)' : 'none', color: '#9ca3af' }} />}
-                                            </div>
-                                            {isContactsOpen && !isCollapsed && (
-                                                <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
-                                                    {[
-                                                        { label: 'Hepsi', tab: 'all', icon: Contact },
-                                                        { label: 'Havuzum', tab: 'pool', icon: Users },
-                                                        { label: 'Bana Atananlar', tab: 'mine', icon: UserCheck },
-                                                        { label: 'Atanmamışlar', tab: 'unassigned', icon: Clock },
-                                                    ].map(sub => (
-                                                        <Link
-                                                            key={sub.tab}
-                                                            to={`/customers${sub.tab === 'all' ? '' : `?tab=${sub.tab}`}`}
-                                                            className={`sidebar-nav-item submenu-item ${
-                                                                (isContactsActive && contactTab === sub.tab) ||
-                                                                (sub.tab === 'all' && isContactsActive && contactTab === 'all') ? 'active' : ''
-                                                            }`}
-                                                            style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
-                                                        >
-                                                            <sub.icon size={14} className="nav-icon" style={{ flexShrink: 0 }} />
-                                                            <span>{sub.label}</span>
-                                                        </Link>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                }
+                                // Kişiler — alt menüsüz, direkt link
+
 
                                 // Aktiviteler — expandable sub-menu
                                 const isActivities = item.path === '/activities/calendar';

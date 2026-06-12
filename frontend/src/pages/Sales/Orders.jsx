@@ -3,9 +3,36 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { dealAPI, contactAPI } from '../../services/api';
-import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User } from 'lucide-react';
+import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User, Calendar } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import './Sales.css';
+
+// Helper: compute date range from preset
+const getDateRange = (preset) => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    switch (preset) {
+        case 'TODAY':
+            return { from: startOfDay, to: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1) };
+        case 'THIS_WEEK': {
+            const day = now.getDay();
+            const diffToMonday = day === 0 ? 6 : day - 1;
+            const monday = new Date(startOfDay);
+            monday.setDate(monday.getDate() - diffToMonday);
+            const sunday = new Date(monday);
+            sunday.setDate(sunday.getDate() + 6);
+            sunday.setHours(23, 59, 59, 999);
+            return { from: monday, to: sunday };
+        }
+        case 'THIS_MONTH': {
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+            return { from: firstDay, to: lastDay };
+        }
+        default:
+            return { from: null, to: null };
+    }
+};
 
 const Orders = () => {
     const { t } = useTranslation();
@@ -22,15 +49,22 @@ const Orders = () => {
     const [contactSearch, setContactSearch] = useState('');
     const [showContactDropdown, setShowContactDropdown] = useState(false);
 
+    // Determine workspace-level role
+    const workspaceMemberRole = currentWorkspace?.members?.find(m => m.userId === user?.id)?.role;
+    const userRole = workspaceMemberRole || user?.role;
+    const isAgent = userRole === 'AGENT';
+
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
     const initialView = searchParams.get('view');
 
     // Filter states
     const [statusFilter, setStatusFilter] = useState('ALL');
-    const [agentFilter, setAgentFilter] = useState(initialView === 'mine' && user?.id ? user.id : 'ALL');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
+    // AGENT users always see only their own deals (backend enforces this too)
+    const [agentFilter, setAgentFilter] = useState(isAgent ? user?.id : (initialView === 'mine' && user?.id ? user.id : 'ALL'));
+    const [datePreset, setDatePreset] = useState('ALL');
+    const [customDateFrom, setCustomDateFrom] = useState('');
+    const [customDateTo, setCustomDateTo] = useState('');
 
     // Form state
     const [formData, setFormData] = useState({
@@ -233,13 +267,23 @@ const Orders = () => {
         const matchesAgent = agentFilter === 'ALL' || deal.assignedToId === agentFilter;
 
         let matchesDate = true;
-        if (dateFrom) {
-            matchesDate = new Date(deal.createdAt) >= new Date(dateFrom);
-        }
-        if (dateTo && matchesDate) {
-            const end = new Date(dateTo);
-            end.setHours(23, 59, 59, 999);
-            matchesDate = new Date(deal.createdAt) <= end;
+        if (datePreset !== 'ALL') {
+            const dealDate = new Date(deal.createdAt);
+            if (datePreset === 'CUSTOM') {
+                if (customDateFrom) {
+                    matchesDate = dealDate >= new Date(customDateFrom);
+                }
+                if (customDateTo && matchesDate) {
+                    const end = new Date(customDateTo);
+                    end.setHours(23, 59, 59, 999);
+                    matchesDate = dealDate <= end;
+                }
+            } else {
+                const range = getDateRange(datePreset);
+                if (range.from && range.to) {
+                    matchesDate = dealDate >= range.from && dealDate <= range.to;
+                }
+            }
         }
 
         return matchesSearch && matchesStatus && matchesAgent && matchesDate;
@@ -308,31 +352,54 @@ const Orders = () => {
                                 <option value="WON">Tamamlandı</option>
                                 <option value="LOST">İptal</option>
                             </select>
-                            <select
-                                value={agentFilter}
-                                onChange={(e) => setAgentFilter(e.target.value)}
-                            >
-                                <option value="ALL">Tüm Temsilciler</option>
-                                {users.map(u => (
-                                    <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
-                                        {u.user?.name || u.name}
-                                    </option>
-                                ))}
-                            </select>
+                            {!isAgent && (
+                                <select
+                                    value={agentFilter}
+                                    onChange={(e) => setAgentFilter(e.target.value)}
+                                >
+                                    <option value="ALL">Tüm Temsilciler</option>
+                                    {users.map(u => (
+                                        <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
+                                            {u.user?.name || u.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
                         </div>
-                        <div className="sales-list-panel-filter-row">
-                            <input
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                            />
-                            <span className="sales-list-panel-date-sep">—</span>
-                            <input
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                            />
+                        <div className="sales-date-presets">
+                            {[
+                                { key: 'ALL', label: 'Tümü' },
+                                { key: 'TODAY', label: 'Bugün' },
+                                { key: 'THIS_WEEK', label: 'Bu Hafta' },
+                                { key: 'THIS_MONTH', label: 'Bu Ay' },
+                                { key: 'CUSTOM', label: 'Özel' },
+                            ].map(p => (
+                                <button
+                                    key={p.key}
+                                    className={`sales-date-preset-btn ${datePreset === p.key ? 'active' : ''}`}
+                                    onClick={() => { setDatePreset(p.key); if (p.key !== 'CUSTOM') { setCustomDateFrom(''); setCustomDateTo(''); } }}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
                         </div>
+                        {datePreset === 'CUSTOM' && (
+                            <div className="sales-custom-date-row">
+                                <input
+                                    type="date"
+                                    value={customDateFrom}
+                                    onChange={(e) => setCustomDateFrom(e.target.value)}
+                                    className="sales-filter-date"
+                                />
+                                <span className="sales-date-sep">—</span>
+                                <input
+                                    type="date"
+                                    value={customDateTo}
+                                    onChange={(e) => setCustomDateTo(e.target.value)}
+                                    className="sales-filter-date"
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -618,20 +685,22 @@ const Orders = () => {
                                 )}
                             </div>
 
-                            <div className="form-group">
-                                <label>Temsilci</label>
-                                <select
-                                    value={formData.assignedToId}
-                                    onChange={(e) => setFormData({ ...formData, assignedToId: e.target.value })}
-                                >
-                                    <option value="">Temsilci Seç (Opsiyonel)</option>
-                                    {users.map(u => (
-                                        <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
-                                            {u.user?.name || u.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                            {!isAgent && (
+                                <div className="form-group">
+                                    <label>Temsilci</label>
+                                    <select
+                                        value={formData.assignedToId}
+                                        onChange={(e) => setFormData({ ...formData, assignedToId: e.target.value })}
+                                    >
+                                        <option value="">Temsilci Seç (Opsiyonel)</option>
+                                        {users.map(u => (
+                                            <option key={u.user?.id || u.userId} value={u.user?.id || u.userId}>
+                                                {u.user?.name || u.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
 
                             <div className="form-group">
                                 <label>Sipariş Başlığı *</label>
