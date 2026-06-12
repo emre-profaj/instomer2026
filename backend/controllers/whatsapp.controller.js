@@ -302,7 +302,53 @@ export const handleEmbeddedSignup = async (req, res) => {
 
         // Find WABA IDs from whatsapp_business_management scope
         const wabaScope = scopes.find(s => s.scope === 'whatsapp_business_management');
-        const wabaIds = wabaScope?.target_ids || [];
+        let wabaIds = wabaScope?.target_ids || [];
+
+        if (wabaIds.length === 0) {
+            console.log('⚠️ [Embedded Signup] Target IDs empty in debug_token. Trying fallback discovery methods...');
+            
+            // Fallback 1: Try client_whatsapp_business_accounts
+            try {
+                const clientWabaResponse = await axios.get(
+                    `https://graph.facebook.com/${GRAPH_API_VERSION}/me/client_whatsapp_business_accounts`,
+                    { params: { access_token: accessToken } }
+                );
+                const clientWabas = clientWabaResponse.data?.data || [];
+                if (clientWabas.length > 0) {
+                    wabaIds = clientWabas.map(w => w.id);
+                    console.log('✅ [Embedded Signup] Found WABA IDs via client_wabas:', wabaIds);
+                }
+            } catch (e1) {
+                console.log('⚠️ [Embedded Signup] Fallback 1 failed:', e1.response?.data || e1.message);
+            }
+            
+            // Fallback 2: Try businesses owned WABAs
+            if (wabaIds.length === 0) {
+                try {
+                    const bizResponse = await axios.get(
+                        `https://graph.facebook.com/${GRAPH_API_VERSION}/me`,
+                        {
+                            params: {
+                                fields: 'businesses{id,name,owned_whatsapp_business_accounts{id,name}}',
+                                access_token: accessToken
+                            }
+                        }
+                    );
+                    const businesses = bizResponse.data.businesses?.data || [];
+                    for (const biz of businesses) {
+                        const ownedWabas = biz.owned_whatsapp_business_accounts?.data || [];
+                        if (ownedWabas.length > 0) {
+                            wabaIds = [...wabaIds, ...ownedWabas.map(w => w.id)];
+                        }
+                    }
+                    if (wabaIds.length > 0) {
+                        console.log('✅ [Embedded Signup] Found WABA IDs via businesses owned accounts:', wabaIds);
+                    }
+                } catch (e2) {
+                    console.log('⚠️ [Embedded Signup] Fallback 2 failed:', e2.response?.data || e2.message);
+                }
+            }
+        }
 
         if (wabaIds.length === 0) {
             console.error('📱 [Embedded Signup] No WABAs found in token');
