@@ -1522,7 +1522,7 @@ const Customers = () => {
                     {/* Quick Filter Buttons */}
                     <div className="contacts-quick-stats">
                         {[
-                            { key: 'ALL', label: 'Tümü', icon: Users, count: quickStats.totalAllTime, colorClass: 'total' },
+                            { key: 'ALL', label: 'Tümü', icon: Users, count: quickStats.periodCount, colorClass: 'total' },
                             { key: 'ASSIGNED_ME', label: 'Bana Atananlar', icon: UserCheck, count: null, colorClass: 'today' },
                             { key: 'HAS_PHONE', label: 'Numaralılar', icon: Phone, count: quickStats.withPhoneCount, colorClass: 'phone' },
                             { key: 'AGENT_CALLS', label: 'Agent Aramaları', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
