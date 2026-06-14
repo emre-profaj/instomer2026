@@ -3453,58 +3453,26 @@ const Inbox = () => {
                             )}
                         </div>
 
-                        {/* Quick Date Filter Dropdown */}
-                        {(() => {
-                            const QF_OPTIONS = [
-                                { key: 'today',  label: t('inbox.today') },
-                                { key: 'week',   label: t('inbox.thisWeek') },
-                                { key: 'month',  label: t('inbox.thisMonth') },
-                                { key: 'unread', label: t('inbox.unread') },
-                            ];
-                            const activeLabel = QF_OPTIONS.find(o => o.key === quickFilter)?.label;
-                            return (
-                                <div className="qf-dropdown-wrapper" ref={quickFilterRef} style={{ position: 'relative' }}>
-                                    <button
-                                        className={`qf-dropdown-btn ${quickFilter ? 'active' : ''}`}
-                                        onClick={() => setQuickFilterOpen(p => !p)}
-                                    >
-                                        <Filter size={13} />
-                                        {activeLabel || t('common.filter')}
-                                        <ChevronDown size={13} style={{ marginLeft: 2, transform: quickFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                                    </button>
-                                    {quickFilterOpen && (
-                                        <div className="qf-dropdown-menu">
-                                            {QF_OPTIONS.map(({ key, label }) => (
-                                                <button
-                                                    key={key}
-                                                    className={`qf-menu-item ${quickFilter === key ? 'active' : ''}`}
-                                                    onClick={() => { setQuickFilter(quickFilter === key ? null : key); setQuickFilterOpen(false); }}
-                                                >
-                                                    {label}
-                                                </button>
-                                            ))}
-                                            {quickFilter && (
-                                                <>
-                                                    <div className="qf-divider" />
-                                                    <button className="qf-menu-item clear" onClick={() => { setQuickFilter(null); setQuickFilterOpen(false); }}>
-                                                        {t('common.clearFilter')}
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })()}
-
-                        {/* Result Count Display */}
-                        {(statusFilter || funnelFilter) && (
-                            <div className="toolbar-total-count">
-                                {totalItems} {t('common.items', 'adet')}
-                            </div>
-                        )}
                     </div>
-                </div>
+                    {/* Date Preset Buttons */}
+                    <div className="sales-date-presets" style={{ padding: '0 10px' }}>
+                        {[
+                            { key: null, label: 'Tümü' },
+                            { key: 'today', label: 'Bugün' },
+                            { key: 'week', label: 'Bu Hafta' },
+                            { key: 'month', label: 'Bu Ay' },
+                            { key: 'unread', label: 'Okunmamış' },
+                        ].map(p => (
+                            <button
+                                key={p.key || 'ALL'}
+                                className={`sales-date-preset-btn ${quickFilter === p.key ? 'active' : ''}`}
+                                onClick={() => setQuickFilter(quickFilter === p.key ? null : p.key)}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+                    </div>
 
                 {/* Inbox Items List */}
                 <div className={`inbox-items${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>

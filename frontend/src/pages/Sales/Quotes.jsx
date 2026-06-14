@@ -291,7 +291,15 @@ const Quotes = () => {
         return matchesSearch && matchesStatus && matchesAgent && matchesDate;
     });
 
-    const quoteStats = stats?.stageStats?.find(s => s.stage === 'QUOTE') || { count: 0, totalAmount: 0 };
+    // Dynamic stats computed from filtered results
+    const filteredStats = {
+        count: filteredDeals.length,
+        totalAmount: filteredDeals.reduce((sum, d) => sum + (d.amount || 0), 0),
+        wonCount: filteredDeals.filter(d => d.status === 'WON').length,
+    };
+    const conversionRate = filteredDeals.length > 0
+        ? ((filteredStats.wonCount / filteredDeals.length) * 100).toFixed(1)
+        : 0;
 
     // Build externalProfile for ContactSidebar from the selected deal's contact
     const sidebarProfile = selectedDeal?.contact ? {
@@ -313,28 +321,12 @@ const Quotes = () => {
                 <div className="sales-list-panel-header">
                     <div className="sales-list-panel-title">
                         <h2>Teklifler</h2>
-                        <span className="sales-count">{quoteStats.count} teklif</span>
+                        <span className="sales-count">{filteredStats.count} teklif</span>
                     </div>
                     <button className="btn-primary btn-sm" onClick={() => { resetForm(); setShowForm(true); }}>
                         <Plus size={16} />
                         Yeni Teklif
                     </button>
-                </div>
-
-                {/* Stats Row */}
-                <div className="sales-list-stats">
-                    <div className="sales-list-stat">
-                        <span className="sls-value">{quoteStats.count}</span>
-                        <span className="sls-label">Teklif</span>
-                    </div>
-                    <div className="sales-list-stat">
-                        <span className="sls-value">{formatCurrency(quoteStats.totalAmount)}</span>
-                        <span className="sls-label">Tutar</span>
-                    </div>
-                    <div className="sales-list-stat">
-                        <span className="sls-value">{stats?.conversionRates?.quoteToOrder || 0}%</span>
-                        <span className="sls-label">Dönüşüm</span>
-                    </div>
                 </div>
 
                 {/* Filters */}
@@ -408,6 +400,22 @@ const Quotes = () => {
                             />
                         </div>
                     )}
+
+                    {/* Stats Row - after filters, updates dynamically */}
+                    <div className="sales-list-stats">
+                        <div className="sales-list-stat">
+                            <span className="sls-value">{filteredStats.count}</span>
+                            <span className="sls-label">TEKLİF</span>
+                        </div>
+                        <div className="sales-list-stat">
+                            <span className="sls-value">{formatCurrency(filteredStats.totalAmount)}</span>
+                            <span className="sls-label">TUTAR</span>
+                        </div>
+                        <div className="sales-list-stat">
+                            <span className="sls-value">{conversionRate}%</span>
+                            <span className="sls-label">DÖNÜŞÜM</span>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Quote Cards List */}

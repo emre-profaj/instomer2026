@@ -2286,7 +2286,12 @@ async function handleCallEnded(call) {
             }
 
             // Send notification only for outbound calls where we know who initiated
-            if (callRecord.createdById) {
+            // createdById can be a real userId, 'activity_xxx', 'auto_chat_request', or '' — only notify real users
+            const isRealUserId = callRecord.createdById
+                && !callRecord.createdById.startsWith('activity_')
+                && !callRecord.createdById.startsWith('auto_')
+                && callRecord.createdById.length > 10; // CUID/UUID are long strings
+            if (isRealUserId) {
                 try {
                     await createNotification(
                         callRecord.workspaceId,

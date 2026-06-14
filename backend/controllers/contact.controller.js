@@ -457,11 +457,44 @@ export const getContacts = async (req, res) => {
                 ?.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
                 ?.[0];
             const caseTopic = lastActiveCase?.title || null;
-            const convAiTopic = contact.conversations
+            // Generic source labels that should NOT be used as topic
+            const GENERIC_LABELS = ['form', 'web widget', 'web_widget', 'whatsapp', 'instagram', 'facebook', 'messenger', 'email', 'manual'];
+            let rawConvAiTopic = contact.conversations
                 ?.filter(c => c.aiTopic)
                 ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt))
                 ?.[0]?.aiTopic || null;
-            const aiTopic = caseTopic || convAiTopic;
+            // If aiTopic is a generic source label, treat it as null
+            const convAiTopic = (rawConvAiTopic && GENERIC_LABELS.includes(rawConvAiTopic.trim().toLowerCase())) ? null : rawConvAiTopic;
+            // Fallback: extract topic from classificationData if aiTopic is missing
+            let classificationTopic = null;
+            if (!convAiTopic) {
+                const sortedConvs = contact.conversations
+                    ?.filter(c => c.classificationData)
+                    ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt));
+                if (sortedConvs?.length > 0) {
+                    try {
+                        const classData = JSON.parse(sortedConvs[0].classificationData);
+                        classificationTopic = classData?.extractedData?.topic || classData?.topic || null;
+                    } catch (e) { /* ignore parse error */ }
+                }
+            }
+            // Fallback: use first customer message content from the earliest conversation
+            let firstMessageTopic = null;
+            if (!caseTopic && !convAiTopic && !classificationTopic) {
+                const sortedConvsForMsg = contact.conversations
+                    ?.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                for (const conv of (sortedConvsForMsg || [])) {
+                    const firstMsg = conv.messages?.[0];
+                    if (firstMsg?.content) {
+                        // Truncate long messages to 60 chars
+                        firstMessageTopic = firstMsg.content.length > 60
+                            ? firstMsg.content.substring(0, 60) + '...'
+                            : firstMsg.content;
+                        break;
+                    }
+                }
+            }
+            const aiTopic = caseTopic || convAiTopic || classificationTopic || firstMessageTopic;
 
             // Build lastNote from: 1) Planned activity, 2) Last completed activity, 3) Last manual note
             let lastNote = null;
@@ -532,6 +565,10 @@ export const getContacts = async (req, res) => {
         let finalContacts = [];
         let totalCount = 0;
 
+        // Check if Case and ContactActivity models exist in Prisma client to avoid 500 errors
+        const hasCasesModel = !!prisma.case;
+        const hasActivitiesModel = !!prisma.contactActivity;
+
         if (hasSourceFilter) {
             // SOURCE FILTER ACTIVE: Fetch ALL contacts, filter by source, then paginate at app level
             // This ensures consistent page sizes (e.g., always 15 per page)
@@ -549,6 +586,7 @@ export const getContacts = async (req, res) => {
                             createdAt: true,
                             lastMessageAt: true,
                             aiTopic: true,
+                            classificationData: true,
                             teamIds: true,
                             assignedTeamId: true,
                             assignedTo: {
@@ -556,43 +594,53 @@ export const getContacts = async (req, res) => {
                                     id: true,
                                     name: true
                                 }
+                            },
+                            messages: {
+                                where: { isFromContact: true },
+                                select: { content: true },
+                                orderBy: { createdAt: 'asc' },
+                                take: 1
                             }
                         },
                         orderBy: { createdAt: 'asc' }
                     },
-                    cases: {
-                        where: { workspaceId: workspaceId },
-                        select: {
-                            id: true,
-                            caseNumber: true,
-                            title: true,
-                            status: true,
-                            funnelStageId: true,
-                            funnelType: true,
-                            createdAt: true,
-                            updatedAt: true
-                        },
-                        orderBy: { updatedAt: 'desc' },
-                        take: 3
-                    },
-                    activities: {
-                        where: { workspaceId: workspaceId },
-                        orderBy: { createdAt: 'desc' },
-                        take: 5,
-                        select: {
-                            type: true,
-                            title: true,
-                            description: true,
-                            result: true,
-                            status: true,
-                            dueDate: true,
-                            createdAt: true,
-                            assignedByType: true,
-                            source: true,
-                            assignee: { select: { name: true } },
-                            creator: { select: { name: true } }
+                    ...(hasCasesModel ? {
+                        cases: {
+                            where: { workspaceId: workspaceId },
+                            select: {
+                                id: true,
+                                caseNumber: true,
+                                title: true,
+                                status: true,
+                                funnelStageId: true,
+                                funnelType: true,
+                                createdAt: true,
+                                updatedAt: true
+                            },
+                            orderBy: { updatedAt: 'desc' },
+                            take: 3
                         }
-                    }
+                    } : {}),
+                    ...(hasActivitiesModel ? {
+                        activities: {
+                            where: { workspaceId: workspaceId },
+                            orderBy: { createdAt: 'desc' },
+                            take: 5,
+                            select: {
+                                type: true,
+                                title: true,
+                                description: true,
+                                result: true,
+                                status: true,
+                                dueDate: true,
+                                createdAt: true,
+                                assignedByType: true,
+                                source: true,
+                                assignee: { select: { name: true } },
+                                creator: { select: { name: true } }
+                            }
+                        }
+                    } : {})
                 },
                 orderBy: ['name', 'company', 'status', 'createdAt'].includes(sortField)
                     ? { [sortField]: sortDir }
@@ -649,6 +697,7 @@ export const getContacts = async (req, res) => {
                             createdAt: true,
                             lastMessageAt: true,
                             aiTopic: true,
+                            classificationData: true,
                             teamIds: true,
                             assignedTeamId: true,
                             assignedTo: {
@@ -656,43 +705,53 @@ export const getContacts = async (req, res) => {
                                     id: true,
                                     name: true
                                 }
+                            },
+                            messages: {
+                                where: { isFromContact: true },
+                                select: { content: true },
+                                orderBy: { createdAt: 'asc' },
+                                take: 1
                             }
                         },
                         orderBy: { createdAt: 'asc' }
                     },
-                    cases: {
-                        where: { workspaceId: workspaceId },
-                        select: {
-                            id: true,
-                            caseNumber: true,
-                            title: true,
-                            status: true,
-                            funnelStageId: true,
-                            funnelType: true,
-                            createdAt: true,
-                            updatedAt: true
-                        },
-                        orderBy: { updatedAt: 'desc' },
-                        take: 3
-                    },
-                    activities: {
-                        where: { workspaceId: workspaceId },
-                        orderBy: { createdAt: 'desc' },
-                        take: 5,
-                        select: {
-                            type: true,
-                            title: true,
-                            description: true,
-                            result: true,
-                            status: true,
-                            dueDate: true,
-                            createdAt: true,
-                            assignedByType: true,
-                            source: true,
-                            assignee: { select: { name: true } },
-                            creator: { select: { name: true } }
+                    ...(hasCasesModel ? {
+                        cases: {
+                            where: { workspaceId: workspaceId },
+                            select: {
+                                id: true,
+                                caseNumber: true,
+                                title: true,
+                                status: true,
+                                funnelStageId: true,
+                                funnelType: true,
+                                createdAt: true,
+                                updatedAt: true
+                            },
+                            orderBy: { updatedAt: 'desc' },
+                            take: 3
                         }
-                    }
+                    } : {}),
+                    ...(hasActivitiesModel ? {
+                        activities: {
+                            where: { workspaceId: workspaceId },
+                            orderBy: { createdAt: 'desc' },
+                            take: 5,
+                            select: {
+                                type: true,
+                                title: true,
+                                description: true,
+                                result: true,
+                                status: true,
+                                dueDate: true,
+                                createdAt: true,
+                                assignedByType: true,
+                                source: true,
+                                assignee: { select: { name: true } },
+                                creator: { select: { name: true } }
+                            }
+                        }
+                    } : {})
                 },
                 orderBy: ['name', 'company', 'status', 'createdAt'].includes(sortField)
                     ? { [sortField]: sortDir }
@@ -748,10 +807,189 @@ export const getContacts = async (req, res) => {
             } catch { }
         });
 
-        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort() });
+        // ── Quick Stats (use same date range as the main query) ──
+        const baseWhere = { workspaceId, isArchived: false, isDeleted: false };
+
+        // Build the date range for stats from the same dateFilter params
+        let statsDateFilter = {};
+        if (dateFilter && dateFilter !== 'ALL') {
+            const now = new Date();
+            let gte, lte;
+            if (dateFilter === 'TODAY') {
+                gte = new Date(now); gte.setHours(0, 0, 0, 0);
+                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'WEEK') {
+                gte = new Date(now); gte.setDate(now.getDate() - now.getDay()); gte.setHours(0, 0, 0, 0);
+                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'MONTH') {
+                gte = new Date(now.getFullYear(), now.getMonth(), 1);
+                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'CUSTOM') {
+                if (dateFrom) { gte = new Date(dateFrom); gte.setHours(0, 0, 0, 0); }
+                if (dateTo)   { lte = new Date(dateTo);   lte.setHours(23, 59, 59, 999); }
+            }
+            if (gte || lte) {
+                statsDateFilter = {};
+                if (gte) statsDateFilter.gte = gte;
+                if (lte) statsDateFilter.lte = lte;
+            }
+        }
+
+        const hasDateRange = Object.keys(statsDateFilter).length > 0;
+        const periodContactWhere = hasDateRange
+            ? { ...baseWhere, createdAt: statsDateFilter }
+            : baseWhere;
+        // When date range active, get period contact IDs for sub-filtering
+        let periodContactIds = null;
+        if (hasDateRange) {
+            const periodContacts = await prisma.contact.findMany({
+                where: periodContactWhere,
+                select: { id: true }
+            });
+            periodContactIds = periodContacts.map(c => c.id);
+        }
+
+        const retellCallWhere = {
+            workspaceId,
+            ...(periodContactIds ? { contactId: { in: periodContactIds } } : {})
+        };
+        const humanCallWhere = {
+            workspaceId,
+            type: 'CALL',
+            status: 'COMPLETED',
+            ...(periodContactIds ? { contactId: { in: periodContactIds } } : {})
+        };
+
+        const hasRetellModel = !!prisma.retellCall;
+        const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime] = await Promise.all([
+            prisma.contact.count({ where: periodContactWhere }),
+            prisma.contact.count({ where: { ...periodContactWhere, phone: { not: '' }, NOT: { phone: null } } }),
+            // 1) Retell AI calls — distinct contacts
+            hasRetellModel ? prisma.retellCall.findMany({
+                where: retellCallWhere,
+                select: { contactId: true },
+                distinct: ['contactId']
+            }) : Promise.resolve([]),
+            // 2) Human / manual completed calls (ContactActivity type=CALL)
+            hasActivitiesModel ? prisma.contactActivity.findMany({
+                where: humanCallWhere,
+                select: { contactId: true },
+                distinct: ['contactId']
+            }) : Promise.resolve([]),
+            prisma.contact.count({ where: baseWhere })
+        ]);
+        // Deduplicate: each contact counted at most once
+        const uniqueHumanCalledSet = new Set(humanCalledIds.map(r => r.contactId).filter(Boolean));
+        const agentCalledCount = uniqueHumanCalledSet.size;
+        const aiCalledCount = new Set(retellCalledIds.map(r => r.contactId).filter(Boolean)).size;
+
+        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, totalAllTime } });
     } catch (error) {
-        console.error('Get contacts error:', error);
-        res.status(500).json({ error: 'Failed to fetch contacts' });
+        console.error('Get contacts error:', error?.message || error);
+        console.error('Get contacts error stack:', error?.stack);
+        // Fallback: try a minimal query without optional relations
+        try {
+            const { workspaceId } = req.params;
+            const limit = req.query.limit || 100;
+            const offset = req.query.offset || 0;
+            console.log('⚠️ [Get Contacts] Attempting fallback query without cases/activities...');
+            const contacts = await prisma.contact.findMany({
+                where: { workspaceId, isArchived: false, isDeleted: false },
+                include: {
+                    _count: { select: { conversations: true } },
+                    conversations: {
+                        where: { workspaceId },
+                        select: {
+                            id: true,
+                            channel: true,
+                            createdAt: true,
+                            lastMessageAt: true,
+                            aiTopic: true,
+                            classificationData: true,
+                            teamIds: true,
+                            assignedTeamId: true,
+                            assignedTo: { select: { id: true, name: true } },
+                            messages: {
+                                where: { isFromContact: true },
+                                select: { content: true },
+                                orderBy: { createdAt: 'asc' },
+                                take: 1
+                            }
+                        },
+                        orderBy: { createdAt: 'asc' }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: parseInt(limit),
+                skip: parseInt(offset)
+            });
+            const totalCount = await prisma.contact.count({ where: { workspaceId, isArchived: false, isDeleted: false } });
+            const withPhoneCount = await prisma.contact.count({ where: { workspaceId, isArchived: false, isDeleted: false, AND: [{ phone: { not: null } }, { phone: { not: '' } }] } });
+
+            const GENERIC_LABELS = ['form', 'web widget', 'web_widget', 'whatsapp', 'instagram', 'facebook', 'messenger', 'email', 'manual'];
+            const finalContacts = contacts.map(c => {
+                // Source
+                const source = c.conversations?.length > 0
+                    ? (c.conversations[0].channel === 'WHATSAPP' ? 'WHATSAPP'
+                        : c.conversations[0].channel === 'INSTAGRAM' ? 'INSTAGRAM'
+                        : c.conversations[0].channel === 'FACEBOOK' ? 'FACEBOOK'
+                        : c.conversations[0].channel === 'EMAIL' ? 'EMAIL'
+                        : c.conversations[0].channel === 'WIDGET' ? 'WIDGET'
+                        : 'MANUAL')
+                    : 'MANUAL';
+
+                // Topic extraction (same logic as enrichContactWithSource)
+                let rawConvAiTopic = c.conversations
+                    ?.filter(cv => cv.aiTopic)
+                    ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt))
+                    ?.[0]?.aiTopic || null;
+                const convAiTopic = (rawConvAiTopic && GENERIC_LABELS.includes(rawConvAiTopic.trim().toLowerCase())) ? null : rawConvAiTopic;
+
+                let classificationTopic = null;
+                if (!convAiTopic) {
+                    const sortedConvs = c.conversations
+                        ?.filter(cv => cv.classificationData)
+                        ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt));
+                    if (sortedConvs?.length > 0) {
+                        try {
+                            const classData = JSON.parse(sortedConvs[0].classificationData);
+                            classificationTopic = classData?.extractedData?.topic || classData?.topic || null;
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+
+                let firstMessageTopic = null;
+                if (!convAiTopic && !classificationTopic) {
+                    const sortedConvsForMsg = c.conversations
+                        ?.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                    for (const conv of (sortedConvsForMsg || [])) {
+                        const firstMsg = conv.messages?.[0];
+                        if (firstMsg?.content) {
+                            firstMessageTopic = firstMsg.content.length > 60
+                                ? firstMsg.content.substring(0, 60) + '...'
+                                : firstMsg.content;
+                            break;
+                        }
+                    }
+                }
+
+                return {
+                    ...c,
+                    source,
+                    channels: [...new Set((c.conversations || []).map(conv => conv.channel).filter(Boolean))],
+                    conversationCount: c._count?.conversations || 0,
+                    aiTopic: convAiTopic || classificationTopic || firstMessageTopic,
+                    lastNote: null,
+                    lastNoteType: null,
+                    activeCase: null
+                };
+            });
+            console.log(`✅ [Get Contacts] Fallback query succeeded -> ${totalCount} total, showing ${finalContacts.length}`);
+            return res.json({ contacts: finalContacts, total: totalCount, allImportGroups: [], allTags: [], quickStats: { periodCount: totalCount, withPhoneCount, agentCalledCount: 0, aiCalledCount: 0, totalAllTime: totalCount } });
+        } catch (fallbackError) {
+            console.error('Get contacts fallback error:', fallbackError);
+            return res.status(500).json({ error: 'Failed to fetch contacts' });
+        }
     }
 };
 

@@ -20,8 +20,8 @@
 .contacts-header {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 20px 24px;
+    gap: 12px;
+    padding: 12px 24px;
     border-bottom: 1px solid #e5e7eb;
     background: #ffffff;
 }
@@ -96,7 +96,7 @@
 .filter-dropdowns-row {
     display: flex;
     gap: 10px;
-    align-items: flex-end;
+    align-items: center;
     overflow: visible;
     padding-bottom: 4px;        /* scrollbar boşluğu */
     flex-wrap: nowrap;          /* asla alt satıra sarmasın */
@@ -106,17 +106,13 @@
 .filter-dropdown-item {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    min-width: 120px;   /* 160 → 120 */
-    flex-shrink: 0;     /* küçülmesin, scroll olsun */
+    gap: 0;
+    min-width: 120px;
+    flex-shrink: 0;
 }
 
 .filter-dropdown-item label {
-    font-size: 11px;
-    font-weight: 600;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: none;
 }
 
 .filter-select {
@@ -489,6 +485,60 @@
     object-fit: cover;
     flex-shrink: 0;
 }
+
+/* Source icon overlay on avatar */
+.contact-source-badge {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.contact-source-badge svg {
+    width: 9px !important;
+    height: 9px !important;
+}
+
+/* Inline filter select in table header */
+.th-inline-filter {
+    width: 100%;
+    padding: 4px 20px 4px 6px;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    background: #f8fafc;
+    font-size: 10px;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    background-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    transition: all 0.15s;
+}
+
+.th-inline-filter:hover {
+    border-color: #cbd5e1;
+    background-color: #f1f5f9;
+}
+
+.th-inline-filter:focus {
+    outline: none;
+    border-color: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
 
 .contact-name-info {
     display: flex;
@@ -2343,4 +2393,196 @@
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-8px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Date Preset Buttons (horizontal inline in header) ── */
+.contacts-date-presets {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.date-preset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 20px;
+    background: #ffffff;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.date-preset-btn:hover {
+    border-color: #d1d5db;
+    background: #f9fafb;
+    color: #374151;
+}
+
+.date-preset-btn.active {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.date-preset-custom {
+    position: relative;
+}
+
+.date-preset-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 999;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 200px;
+    animation: fadeIn 0.15s ease;
+}
+
+.date-preset-dropdown label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.date-preset-dropdown input[type="date"] {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #374151;
+    width: 100%;
+}
+
+.date-preset-dropdown input[type="date"]:focus {
+    outline: none;
+    border-color: #ef4444;
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.date-preset-apply {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 0;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 4px;
+}
+
+.date-preset-apply:hover {
+    background: #dc2626;
+}
+
+/* ── Quick Stats Bar ── */
+.contacts-quick-stats {
+    display: flex;
+    gap: 8px;
+    padding: 8px 24px;
+    border-bottom: 1px solid #f3f4f6;
+    background: #fafbfc;
+}
+
+.quick-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: #ffffff;
+    border: 1px solid #f0f0f0;
+    border-radius: 10px;
+    transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.quick-stat-card:hover {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    border-color: #e5e7eb;
+}
+
+.quick-stat-icon {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    flex-shrink: 0;
+}
+
+.quick-stat-icon.today {
+    background: #eff6ff;
+    color: #3b82f6;
+}
+
+.quick-stat-icon.phone {
+    background: #ecfdf5;
+    color: #10b981;
+}
+
+.quick-stat-icon.called {
+    background: #fef3c7;
+    color: #f59e0b;
+}
+
+.quick-stat-icon.ai {
+    background: #ede9fe;
+    color: #7c3aed;
+}
+
+.quick-stat-icon.total {
+    background: #f3e8ff;
+    color: #8b5cf6;
+}
+
+.quick-stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+    line-height: 1;
+}
+
+.quick-stat-label {
+    font-size: 11px;
+    color: #9ca3af;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.quick-stat-icon.no-activity {
+    background: #fff1f2;
+    color: #ef4444;
+}
+
+.quick-stat-active {
+    border-color: #ef4444 !important;
+    background: #fef2f2 !important;
+    box-shadow: 0 0 0 1px #ef4444 inset, 0 2px 8px rgba(239, 68, 68, 0.12) !important;
+}
+
+.quick-stat-active .quick-stat-label {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.quick-stat-active .quick-stat-value {
+    color: #dc2626;
 }

@@ -28,6 +28,57 @@ const releaseAiReplyLock = (conversationId) => {
     aiReplyLocks.delete(conversationId);
 };
 
+// ─── DYNAMIC HEALTH CONTEXT CACHE (Probel branş + doktor listesi) ───────────
+// Workspace başına 1 saat cache'lenir. Sadece Probel bağlantısı olan workspace'ler için çalışır.
+const healthContextCache = new Map(); // key: workspaceId, value: { data, expiry }
+const HEALTH_CACHE_TTL = 60 * 60 * 1000; // 1 saat
+
+async function getDynamicHealthContext(workspaceId) {
+    // Cache kontrolü
+    const cached = healthContextCache.get(workspaceId);
+    if (cached && cached.expiry > Date.now()) {
+        console.log(`🏥 [HealthContext] Cache hit for workspace ${workspaceId} (${cached.data.length} chars)`);
+        return cached.data;
+    }
+
+    try {
+        const { getBranches, getDoctors } = await import('../services/probel_appointment.service.js');
+
+        // 1) Tüm branşları çek
+        const branchResult = await getBranches(workspaceId);
+        if (!branchResult.success || !branchResult.branches?.length) {
+            console.warn(`⚠️ [HealthContext] No branches found for workspace ${workspaceId}`);
+            return null;
+        }
+
+        // 2) Her branş için doktorları çek (parallel)
+        const branchDoctorPairs = await Promise.all(
+            branchResult.branches.map(async (branch) => {
+                try {
+                    const docResult = await getDoctors(workspaceId, branch.brans_kodu);
+                    const doctors = docResult.success && docResult.doctors?.length
+                        ? docResult.doctors.map(d => d.doktor_adi).join(', ')
+                        : 'Doktor bilgisi yok';
+                    return `📋 ${branch.brans_adi}: ${doctors}`;
+                } catch (e) {
+                    return `📋 ${branch.brans_adi}: (doktor bilgisi alınamadı)`;
+                }
+            })
+        );
+
+        const contextText = `\n=== 🏥 HASTANE BRANŞ VE DOKTOR LİSTESİ ===\nAşağıda hastanenin tüm branşları ve her branştaki doktorlar listelenmiştir.\nMüşteri bir doktor adı sorduğunda bu listeden bulup hangi branşta olduğunu söyle.\nEğer müşteri randevu almak isterse, randevu sürecine yönlendir.\n\n${branchDoctorPairs.join('\n')}\n=== HASTANE LİSTESİ SONU ===`;
+
+        // Cache'e yaz
+        healthContextCache.set(workspaceId, { data: contextText, expiry: Date.now() + HEALTH_CACHE_TTL });
+        console.log(`🏥 [HealthContext] Fetched & cached for workspace ${workspaceId}: ${branchResult.branches.length} branches, ${contextText.length} chars`);
+
+        return contextText;
+    } catch (error) {
+        console.error(`❌ [HealthContext] Error fetching health context for workspace ${workspaceId}:`, error.message);
+        return null;
+    }
+}
+
 // Helper to get effective AI API key (workspace key > global key)
 const getEffectiveAiApiKey = async (workspaceId) => {
     // 1. Check workspace's own key first
@@ -1531,6 +1582,19 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`📄 [AI] Bot documents loaded: ${activeBot.documents.length} documents`);
         } else {
             console.log(`⚠️ [AI] No bot documents found for bot: ${activeBot.name}`);
+        }
+
+        // 🏥 Probel bağlantısı olan workspace'ler için dinamik branş+doktor listesi enjekte et
+        if (hasHealthApi) {
+            try {
+                const healthContext = await getDynamicHealthContext(workspaceId);
+                if (healthContext) {
+                    documentContext += healthContext;
+                    console.log(`🏥 [AI] Dynamic health context injected: ${healthContext.length} chars`);
+                }
+            } catch (healthErr) {
+                console.error(`⚠️ [AI] Health context injection failed (non-fatal):`, healthErr.message);
+            }
         }
 
         // Detect language from bot prompt

@@ -45,7 +45,10 @@ import {
     PhoneOff,
     Eye,
     EyeOff,
-    ArrowUpDown
+    ArrowUpDown,
+    Bot,
+    UserCheck,
+    CircleOff
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -62,6 +65,9 @@ const Customers = () => {
 
     // Assignment filter state (all / mine / unassigned / team_ID / user_ID)
     const [assignmentFilter, setAssignmentFilter] = useState('all');
+
+    // Quick filter mode for stats bar buttons
+    const [quickFilterMode, setQuickFilterMode] = useState('ALL');
 
     // Status options
 
@@ -126,7 +132,8 @@ const Customers = () => {
     const [showArchived, setShowArchived] = useState(false);
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
-    const [limit, setLimit] = useState(20);
+    const [limit, setLimit] = useState(100);
+    const [quickStats, setQuickStats] = useState({ periodCount: 0, withPhoneCount: 0, agentCalledCount: 0, aiCalledCount: 0, totalAllTime: 0 });
 
     // Column sorting
     const [sortField, setSortField] = useState('createdAt');
@@ -228,6 +235,11 @@ const Customers = () => {
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
 
+    // Inline stage change dropdown
+    const [stageDropdownContactId, setStageDropdownContactId] = useState(null);
+    const [hoveredFunnelId, setHoveredFunnelId] = useState(null);
+    const stageDropdownRef = useRef(null);
+
     // Filter labels to show on the main button
     const getActiveFilterLabel = () => {
         if (mergedFunnelIds) {
@@ -305,6 +317,9 @@ const Customers = () => {
             if (dateFilterRef.current && !dateFilterRef.current.contains(event.target)) {
                 setDateFilterOpen(false);
             }
+            if (stageDropdownRef.current && !stageDropdownRef.current.contains(event.target)) {
+                setStageDropdownContactId(null);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -343,6 +358,7 @@ const Customers = () => {
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);
+            if (response.data.quickStats) setQuickStats(response.data.quickStats);
 
             if (response.data.allTags) {
                 setAvailableTags(response.data.allTags);
@@ -445,6 +461,7 @@ const Customers = () => {
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);
+            if (response.data.quickStats) setQuickStats(response.data.quickStats);
 
             // Use allTags from backend response (filtered)
             if (response.data.allTags) {
@@ -980,6 +997,39 @@ const Customers = () => {
         setSelectedContact(null);
     };
 
+    // Inline stage change handler
+    const handleInlineStageChange = async (contact, funnelId, stageId) => {
+        setStageDropdownContactId(null);
+        try {
+            // Optimistic local update
+            setContacts(prev => prev.map(c =>
+                c.id === contact.id ? { ...c, funnelStageId: stageId, funnelType: funnelId } : c
+            ));
+            // 1. Update contact record
+            await contactAPI.update(currentWorkspace.id, contact.id, {
+                funnelStageId: stageId,
+                funnelType: funnelId
+            });
+            // 2. Update conversations
+            if (contact.conversations) {
+                for (const conv of contact.conversations) {
+                    try {
+                        await conversationAPI.updateFunnel(currentWorkspace.id, conv.id || conv, {
+                            funnelStageId: stageId,
+                            funnelType: funnelId
+                        });
+                    } catch (convErr) {
+                        console.warn('Conv update failed:', convErr);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Inline stage change error:', err);
+            // Revert on error
+            silentReloadContacts();
+        }
+    };
+
     // Excel Import handler
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
@@ -1135,62 +1185,40 @@ const Customers = () => {
                                 onChange={handleSearch}
                             />
                         </div>
-                        {/* Kayıt Tarihi — Header'da arama kutucuğunun yanında */}
-                        <div className="filter-dropdown-item header-date-filter" ref={dateFilterRef} style={{ position: 'relative', flexShrink: 0 }}>
-                            <button
-                                className={`filter-select${dateFilter !== 'ALL' ? ' active' : ''}`}
-                                onClick={() => {
-                                    if (dateFilterRef.current) {
-                                        const rect = dateFilterRef.current.getBoundingClientRect();
-                                        setDateFilterOpenUp(window.innerHeight - rect.bottom < 260);
-                                    }
-                                    setDateFilterOpen(o => !o);
-                                }}
-                                style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', background: dateFilter !== 'ALL' ? '#fef2f2' : '#f8fafc', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '7px 12px', fontSize: '0.8rem', color: dateFilter !== 'ALL' ? '#ef4444' : '#374151', fontWeight: dateFilter !== 'ALL' ? 600 : 400, whiteSpace: 'nowrap', height: '38px' }}
-                            >
-                                <Calendar size={14} />
-                                {dateFilter === 'TODAY' ? 'Bugün' : dateFilter === 'WEEK' ? 'Bu Hafta' : dateFilter === 'MONTH' ? 'Bu Ay' : (dateFrom || dateTo) ? `${dateFrom || '...'} - ${dateTo || '...'}` : 'Tüm Zamanlar'}
-                                <ChevronDown size={12} />
-                            </button>
-                            {dateFilterOpen && (() => {
-                                const rect = dateFilterRef.current?.getBoundingClientRect();
-                                if (!rect) return null;
-                                return (
-                                    <div style={{
-                                        position: 'fixed',
-                                        top: dateFilterOpenUp ? undefined : rect.bottom + 4,
-                                        bottom: dateFilterOpenUp ? window.innerHeight - rect.top + 4 : undefined,
-                                        left: rect.left,
-                                        zIndex: 9999,
-                                        background: '#fff',
-                                        border: '1px solid #e5e7eb',
-                                        borderRadius: '8px',
-                                        boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                                        minWidth: '190px',
-                                        padding: '6px 0'
-                                    }}>
-                                        {[
-                                            { key: 'ALL', label: 'Tüm Zamanlar' },
-                                            { key: 'TODAY', label: 'Bugün' },
-                                            { key: 'WEEK', label: 'Bu Hafta' },
-                                            { key: 'MONTH', label: 'Bu Ay' },
-                                        ].map(({ key, label }) => (
-                                            <button
-                                                key={key}
-                                                onClick={() => { setDateFilter(key); setDateFrom(''); setDateTo(''); setPage(1); setDateFilterOpen(false); }}
-                                                style={{ display: 'block', width: '100%', padding: '8px 14px', textAlign: 'left', background: dateFilter === key ? '#fef2f2' : 'none', color: dateFilter === key ? '#ef4444' : '#374151', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: dateFilter === key ? 600 : 400 }}
-                                            >
-                                                {label}
-                                            </button>
-                                        ))}
-                                        <div style={{ padding: '8px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
-                                            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} style={{ border: '1px solid #e5e7eb', borderRadius: '6px', padding: '4px 8px', fontSize: '0.78rem', color: '#374151' }} />
-                                            <button onClick={() => setDateFilterOpen(false)} style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '5px 0', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>Uygula</button>
-                                        </div>
+                        {/* Date Preset Buttons — horizontal inline */}
+                        <div className="contacts-date-presets">
+                            {[
+                                { key: 'ALL', label: 'Tümü' },
+                                { key: 'TODAY', label: 'Bugün' },
+                                { key: 'WEEK', label: 'Bu Hafta' },
+                                { key: 'MONTH', label: 'Bu Ay' },
+                            ].map(({ key, label }) => (
+                                <button
+                                    key={key}
+                                    className={`date-preset-btn${dateFilter === key && dateFilter !== 'CUSTOM' ? ' active' : ''}`}
+                                    onClick={() => { setDateFilter(key); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                            <div className="date-preset-custom" ref={dateFilterRef}>
+                                <button
+                                    className={`date-preset-btn${dateFilter === 'CUSTOM' ? ' active' : ''}`}
+                                    onClick={() => setDateFilterOpen(o => !o)}
+                                >
+                                    <Calendar size={13} />
+                                    {dateFilter === 'CUSTOM' && (dateFrom || dateTo) ? `${dateFrom || '...'} — ${dateTo || '...'}` : 'Özel'}
+                                </button>
+                                {dateFilterOpen && (
+                                    <div className="date-preset-dropdown">
+                                        <label>Başlangıç</label>
+                                        <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} />
+                                        <label>Bitiş</label>
+                                        <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateFilter('CUSTOM'); setPage(1); }} />
+                                        <button className="date-preset-apply" onClick={() => setDateFilterOpen(false)}>Uygula</button>
                                     </div>
-                                );
-                            })()}
+                                )}
+                            </div>
                         </div>
                         <div className="header-right-actions">
                             <button
@@ -1240,9 +1268,11 @@ const Customers = () => {
                     {/* Compact Filter Dropdowns */}
                     <div className="contacts-filters">
                         <div className="filter-dropdowns-row">
+
+
                             {/* Hierarchical Funnel & Status Filter */}
                             <div className="filter-dropdown-item" ref={funnelFilterRef}>
-                                <label>Durum</label>
+
                                 <div className="inbox-funnel-filter contacts-funnel-filter">
                                     <button
                                         className={`funnel-filter-select ${funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' ? 'active' : ''}`}
@@ -1389,68 +1419,13 @@ const Customers = () => {
                                     )}
                                 </div>
                             </div>
-                            {/* Source Dropdown */}
-                            <div className="filter-dropdown-item">
-                                <label>Kaynak</label>
-                                <select
-                                    value={sourceFilter}
-                                    onChange={(e) => {
-                                        setSourceFilter(e.target.value);
-                                        setPage(1);
-                                    }}
-                                    className="filter-select"
-                                >
-                                    {SOURCE_OPTIONS.map(option => (
-                                        <option key={option.value} value={option.value}>
-                                            {option.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
 
 
-                            {availableTags.length > 0 && (
-                                <div className="filter-dropdown-item">
-                                    <label><Tag size={12} /> Etiket</label>
-                                    <select
-                                        value={tagFilter}
-                                        onChange={(e) => {
-                                            setTagFilter(e.target.value);
-                                            setPage(1);
-                                        }}
-                                        className="filter-select"
-                                    >
-                                        <option value="ALL">Tüm Etiketler</option>
-                                        {availableTags.map(tag => (
-                                            <option key={tag} value={tag}>{tag}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
 
-                            {/* Contact Info Filter (Phone/Email) */}
-                            <div className="filter-dropdown-item">
-                                <label><Filter size={12} /> İletişim</label>
-                                <select
-                                    value={contactInfoFilter}
-                                    onChange={(e) => {
-                                        setContactInfoFilter(e.target.value);
-                                        setPage(1);
-                                    }}
-                                    className="filter-select"
-                                >
-                                    <option value="ALL">Tümü</option>
-                                    <option value="HAS_PHONE">Numarası Olanlar</option>
-                                    <option value="HAS_EMAIL">E-postası Olanlar</option>
-                                    <option value="HAS_BOTH">İkisi de Olanlar</option>
-                                    <option value="NO_PHONE">Numarası Olmayanlar</option>
-                                    <option value="NO_EMAIL">E-postası Olmayanlar</option>
-                                </select>
-                            </div>
 
                             {/* Assignment Filter Dropdown */}
                             <div className="filter-dropdown-item">
-                                <label><Users size={12} /> Atanan</label>
+
                                 <select
                                     value={assignmentFilter}
                                     onChange={(e) => {
@@ -1503,37 +1478,95 @@ const Customers = () => {
                                 </select>
                             </div>
 
-                            {/* Sort Dropdown */}
+                            {/* Source Filter Dropdown */}
                             <div className="filter-dropdown-item">
-                                <label><ArrowUpDown size={12} /> Sıralama</label>
+
                                 <select
-                                    value={`${sortField}:${sortDir}`}
+                                    value={sourceFilter}
                                     onChange={(e) => {
-                                        const [field, dir] = e.target.value.split(':');
-                                        setSortField(field);
-                                        setSortDir(dir);
+                                        setSourceFilter(e.target.value);
                                         setPage(1);
                                     }}
                                     className="filter-select"
                                 >
-                                    <option value="createdAt:desc">Kayıt Tarihi (Yeni → Eski)</option>
-                                    <option value="createdAt:asc">Kayıt Tarihi (Eski → Yeni)</option>
-                                    <option value="lastMessageAt:desc">Son Yazışma (Yeni → Eski)</option>
-                                    <option value="lastMessageAt:asc">Son Yazışma (Eski → Yeni)</option>
-                                    <option value="firstMessageAt:desc">İlk Yazışma (Yeni → Eski)</option>
-                                    <option value="firstMessageAt:asc">İlk Yazışma (Eski → Yeni)</option>
-                                    <option value="name:asc">İsim (A → Z)</option>
-                                    <option value="name:desc">İsim (Z → A)</option>
-                                    <option value="company:asc">Firma (A → Z)</option>
-                                    <option value="company:desc">Firma (Z → A)</option>
+                                    {SOURCE_OPTIONS.map(option => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Tag Filter Dropdown */}
+                            <div className="filter-dropdown-item">
+
+                                <select
+                                    value={tagFilter}
+                                    onChange={(e) => {
+                                        setTagFilter(e.target.value);
+                                        setPage(1);
+                                    }}
+                                    className="filter-select"
+                                >
+                                    <option value="ALL">Tüm Etiketler</option>
+                                    {availableTags.map(tag => (
+                                        <option key={tag} value={tag}>{tag}</option>
+                                    ))}
                                 </select>
                             </div>
 
                         </div>
                     </div>
 
-
-
+                    {/* Quick Stats Bar */}
+                    {/* Quick Filter Buttons */}
+                    <div className="contacts-quick-stats">
+                        {[
+                            { key: 'ALL', label: 'Tümü', icon: Users, count: quickStats.totalAllTime, colorClass: 'total' },
+                            { key: 'ASSIGNED_ME', label: 'Bana Atananlar', icon: UserCheck, count: null, colorClass: 'today' },
+                            { key: 'HAS_PHONE', label: 'Numaralılar', icon: Phone, count: quickStats.withPhoneCount, colorClass: 'phone' },
+                            { key: 'AGENT_CALLS', label: 'Agent Aramaları', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
+                            { key: 'NO_ACTIVITY', label: 'İletişim Yok', icon: CircleOff, count: null, colorClass: 'no-activity' },
+                            { key: 'AI_CALLS', label: 'AI Aramaları', icon: Bot, count: quickStats.aiCalledCount, colorClass: 'ai' },
+                        ].map(btn => {
+                            const isActive = quickFilterMode === btn.key;
+                            const IconComp = btn.icon;
+                            return (
+                                <div
+                                    key={btn.key}
+                                    className={`quick-stat-card ${isActive ? 'quick-stat-active' : ''}`}
+                                    onClick={() => {
+                                        const newMode = isActive ? 'ALL' : btn.key;
+                                        setQuickFilterMode(newMode);
+                                        setPage(1);
+                                        // Reset all quick-filter-related states first
+                                        setContactInfoFilter('ALL');
+                                        setCallStatusFilter('ALL');
+                                        setAssignmentFilter('all');
+                                        // Apply the specific filter
+                                        if (newMode === 'HAS_PHONE') {
+                                            setContactInfoFilter('HAS_PHONE');
+                                        } else if (newMode === 'AGENT_CALLS') {
+                                            setCallStatusFilter('ended');
+                                        } else if (newMode === 'AI_CALLS') {
+                                            setCallStatusFilter('ai_called');
+                                        } else if (newMode === 'NO_ACTIVITY') {
+                                            setCallStatusFilter('no_call');
+                                        } else if (newMode === 'ASSIGNED_ME') {
+                                            setAssignmentFilter('mine');
+                                        }
+                                        // ALL → all filters already reset
+                                    }}
+                                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                                    title={btn.label}
+                                >
+                                    <div className={`quick-stat-icon ${btn.colorClass}`}><IconComp size={15} /></div>
+                                    {btn.count !== null && <span className="quick-stat-value">{btn.count}</span>}
+                                    <span className="quick-stat-label">{btn.label}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
 
 
                     {/* Analytics Panel - removed */}
@@ -1726,21 +1759,14 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             />
                                         </th>
                                         {[
-                                            { key: 'name', label: 'İSİM', style: { minWidth: '140px' } },
-                                            { key: null, label: '', style: { minWidth: '50px', maxWidth: '90px', textAlign: 'center' } },
-                                            { key: 'company', label: 'FİRMA', style: { minWidth: '80px', maxWidth: '120px' } },
-                                            { key: null, label: 'TELEFON', style: { minWidth: '100px', maxWidth: '130px' } },
+                                            { key: 'name', label: 'KİŞİ', style: { minWidth: '220px', maxWidth: '300px' } },
                                             { key: null, label: 'KONU', style: { minWidth: '80px', maxWidth: '140px' } },
                                             { key: 'status', label: 'DURUM', style: { minWidth: '120px', maxWidth: '200px' } },
-                                            { key: null, label: 'CASE', style: { minWidth: '80px', maxWidth: '160px' } },
                                             { key: null, label: 'ATANAN', style: { minWidth: '80px', maxWidth: '140px' } },
-                                            { key: 'source', label: 'KAYNAK', style: { minWidth: '70px', maxWidth: '100px' } },
-                                            { key: null, label: 'ETİKETLER', style: { minWidth: '80px', maxWidth: '140px' } },
-                                            { key: null, label: '#', style: { minWidth: '40px', maxWidth: '50px', textAlign: 'center' } },
-                                            { key: 'firstMessageAt', label: 'İLK YAZMA', style: { minWidth: '100px', maxWidth: '120px' } },
-                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '100px', maxWidth: '120px' } },
-                                            { key: 'createdAt', label: 'KAYIT', style: { minWidth: '90px', maxWidth: '110px' } },
+                                            { key: null, label: 'AKTİVİTELER', style: { minWidth: '120px', maxWidth: '180px' } },
                                             { key: null, label: 'SON NOT', style: { minWidth: '100px', maxWidth: '160px' } },
+                                            { key: 'createdAt', label: 'İLK YAZMA', style: { minWidth: '90px', maxWidth: '110px' } },
+                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '90px', maxWidth: '110px' } },
                                         ].map(col => (
                                             <th
                                                 key={col.label}
@@ -1758,8 +1784,8 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             >
                                                 {col.label}
                                                 {col.key && sortField === col.key && (
-                                                    <span style={{ marginLeft: '4px', fontSize: '0.7rem', opacity: 0.7 }}>
-                                                        {sortDir === 'asc' ? '▲' : '▼'}
+                                                    <span style={{ marginLeft: '4px', fontSize: '0.6rem' }}>
+                                                        {sortDir === 'asc' ? '↑' : '↓'}
                                                     </span>
                                                 )}
                                                 {col.key && sortField !== col.key && (
@@ -1793,82 +1819,40 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         style={{ cursor: 'pointer', width: '16px', height: '16px' }}
                                                     />
                                                 </td>
-                                                {/* İSİM */}
-                                                <td>
-                                                    <div className="contact-name-cell">
-                                                        <img
-                                                            src={getAvatarUrl(contact)}
-                                                            alt={contact.name}
-                                                            className="contact-avatar"
-                                                            onError={(e) => {
-                                                                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.name || 'U')}&background=ef4444&color=fff`;
-                                                            }}
-                                                        />
-                                                        <div className="contact-name-info">
-                                                            <span className="contact-name">{getDisplayName(contact)}</span>
-                                                            <span className="contact-email">{contact.email || '---'}</span>
+                                                {/* KİŞİ: İsim + Firma + Mail + Telefon */}
+                                                <td style={{ maxWidth: '300px' }}>
+                                                    <div className="contact-name-cell" style={{ maxWidth: '100%', overflow: 'hidden' }}>
+                                                        <div style={{ position: 'relative', flexShrink: 0, alignSelf: 'flex-start', marginTop: '2px' }}>
+                                                            <img
+                                                                src={getAvatarUrl(contact)}
+                                                                alt={contact.name}
+                                                                className="contact-avatar"
+                                                                onError={(e) => {
+                                                                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.name || 'U')}&background=ef4444&color=fff`;
+                                                                }}
+                                                            />
+                                                            {sourceInfo.color && (
+                                                                <span
+                                                                    className="contact-source-badge"
+                                                                    title={sourceInfo.label}
+                                                                    style={{ backgroundColor: sourceInfo.color }}
+                                                                >
+                                                                    <SourceIcon size={10} color="#fff" />
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="contact-name-info" style={{ overflow: 'hidden', minWidth: 0, flex: 1 }}>
+                                                            <span className="contact-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{getDisplayName(contact)}</span>
+                                                            {contact.company && (
+                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: '11px', color: '#6366f1', fontWeight: 500 }}>
+                                                                    <Building size={10} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '2px' }} />
+                                                                    {contact.company}
+                                                                </span>
+                                                            )}
+                                                            <span className="contact-email" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{contact.email || '---'}</span>
+                                                            <span className="contact-phone-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: '10px', color: '#6b7280' }}>{contact.phone || '---'}</span>
                                                         </div>
                                                     </div>
-                                                </td>
-                                                {/* AKTİVİTELER */}
-                                                <td style={{ maxWidth: '90px', textAlign: 'center', padding: '4px 2px' }}>
-                                                    {(() => {
-                                                        const acts = contact.activities || [];
-                                                        if (acts.length === 0) return null;
-                                                        return (
-                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                                                {acts.map((e, idx) => {
-                                                                    const done = e.status === 'COMPLETED';
-                                                                    const isCall = e.type === 'CALL';
-                                                                    const isOverdue = !done && e.dueDate && new Date(e.dueDate) < new Date();
-                                                                    const bg = done ? '#dcfce7' : (isCall && isOverdue ? '#fff7ed' : '#fee2e2');
-                                                                    const brd = done ? '#86efac' : (isCall && isOverdue ? '#fdba74' : '#fca5a5');
-                                                                    const color = done ? '#10b981' : (isCall && isOverdue ? '#f97316' : '#ef4444');
-                                                                    const dateStr = e.dueDate ? new Date(e.dueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-                                                                    const typeLabels = { CALL: 'Arama', MEETING: 'Toplantı', VISIT: 'Ziyaret', TASK: 'Görev', REMINDER: 'Hatırlatıcı', NOTE: 'Not' };
-                                                                    const statusLabel = done ? 'Tamamlandı' : (isOverdue ? 'Gecikmiş' : 'Planlandı');
-                                                                    const iconEl = {
-                                                                        NOTE: <StickyNote size={12} color={color} />,
-                                                                        CALL: <PhoneCall size={12} color={color} />,
-                                                                        MEETING: <Calendar size={12} color={color} />,
-                                                                        REMINDER: <Bell size={12} color={color} />,
-                                                                        TASK: <CheckCircle2 size={12} color={color} />,
-                                                                        VISIT: <MapPin size={12} color={color} />,
-                                                                    };
-                                                                    // AI/İnsan göstergesi
-                                                                    const isAI = e.source === 'AI' || e.source === 'RETELL' || e.assignedByType === 'AI';
-                                                                    const callerName = e.assignee?.name || e.creator?.name || '';
-                                                                    const callerLabel = isAI ? '🤖' : (callerName ? callerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : '');
-                                                                    return (
-                                                                        <span key={idx}
-                                                                            title={`${typeLabels[e.type] || e.type} - ${statusLabel}${dateStr ? ' (' + dateStr + ')' : ''}${callerName ? ' • ' + callerName : ''}${isAI ? ' • AI' : ''}`}
-                                                                            style={{
-                                                                                display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                                                                minWidth: 22, height: callerLabel ? 30 : 22, borderRadius: callerLabel ? 11 : '50%',
-                                                                                background: bg, border: `1px solid ${brd}`,
-                                                                                cursor: 'pointer', padding: callerLabel ? '1px 3px' : 0, gap: 0
-                                                                            }}
-                                                                        >
-                                                                            {iconEl[e.type] || <Bell size={12} color={color} />}
-                                                                            {callerLabel && (
-                                                                                <span style={{ fontSize: '0.45rem', lineHeight: 1, fontWeight: 700, color: isAI ? '#6366f1' : '#374151', marginTop: -1 }}>
-                                                                                    {callerLabel}
-                                                                                </span>
-                                                                            )}
-                                                                        </span>
-                                                                    );
-                                                                })}
-                                                            </span>
-                                                        );
-                                                    })()}
-                                                </td>
-                                                {/* FİRMA */}
-                                                <td className="contact-company" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                    {contact.company || '---'}
-                                                </td>
-                                                {/* TELEFON */}
-                                                <td className="contact-phone" style={{ maxWidth: '130px', fontSize: '0.8rem' }}>
-                                                    {contact.phone || '---'}
                                                 </td>
                                                 {/* KONU */}
                                                 <td className="contact-topic" title={contact.aiTopic || ''} style={{ maxWidth: '140px' }}>
@@ -1890,13 +1874,14 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         </span>
                                                     ) : <span style={{color: '#94a3b8'}}>---</span>}
                                                 </td>
-                                                {/* DURUM = Akış / Aşama */}
-                                                <td className="contact-status" style={{ maxWidth: '200px' }}>
+                                                {/* DURUM = Akış / Aşama - Tıklanabilir */}
+                                                <td className="contact-status" style={{ maxWidth: '200px', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                                                     {(() => {
                                                         let funnelName = '';
                                                         let stageName = 'Yeni';
                                                         let displayColor = '#6b7280';
                                                         let displayBg = '#6b72801a';
+                                                        let currentFunnelId = null;
 
                                                         if (contact.funnelStageId && availableFunnels.length > 0) {
                                                             for (const funnel of availableFunnels) {
@@ -1906,6 +1891,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     stageName = s.name;
                                                                     displayColor = s.color || '#6366f1';
                                                                     displayBg = `${displayColor}1a`;
+                                                                    currentFunnelId = funnel.id;
                                                                     break;
                                                                 }
                                                             }
@@ -1916,8 +1902,10 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             displayBg = statusInfo.bg;
                                                         }
 
+                                                        const isDropdownOpen = stageDropdownContactId === contact.id;
+
                                                         return (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', position: 'relative' }}>
                                                                 {funnelName && (
                                                                     <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' }}>
                                                                         {funnelName}
@@ -1925,92 +1913,160 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 )}
                                                                 <span
                                                                     className="status-badge"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setStageDropdownContactId(isDropdownOpen ? null : contact.id);
+                                                                    }}
                                                                     style={{
                                                                         backgroundColor: displayBg,
                                                                         color: displayColor,
-                                                                        border: (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none',
+                                                                        border: isDropdownOpen ? `2px solid ${displayColor}` : (funnelStageFilter !== 'ALL') ? `1px solid ${displayColor}30` : 'none',
                                                                         fontSize: '11px',
-                                                                        padding: '2px 8px'
+                                                                        padding: '2px 8px',
+                                                                        cursor: 'pointer',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '4px',
+                                                                        transition: 'all 0.15s'
                                                                     }}
                                                                 >
                                                                     {stageName}
+                                                                    <ChevronDown size={10} style={{ opacity: 0.6, transform: isDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                                                                 </span>
+                                                                {/* Stage change dropdown - two panel */}
+                                                                {isDropdownOpen && (() => {
+                                                                    const activeFunnelId = hoveredFunnelId || currentFunnelId || availableFunnels[0]?.id;
+                                                                    const activeFunnel = availableFunnels.find(f => f.id === activeFunnelId);
+                                                                    return (
+                                                                        <div
+                                                                            ref={stageDropdownRef}
+                                                                            style={{
+                                                                                position: 'absolute',
+                                                                                top: '100%',
+                                                                                left: 0,
+                                                                                zIndex: 1000,
+                                                                                display: 'flex',
+                                                                                background: '#fff',
+                                                                                border: '1px solid #e5e7eb',
+                                                                                borderRadius: '12px',
+                                                                                boxShadow: '0 12px 36px rgba(0,0,0,0.15)',
+                                                                                marginTop: '4px',
+                                                                                overflow: 'hidden'
+                                                                            }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        >
+                                                                            {/* Left panel: Funnels */}
+                                                                            <div style={{
+                                                                                minWidth: '160px',
+                                                                                borderRight: '1px solid #f3f4f6',
+                                                                                padding: '6px 0'
+                                                                            }}>
+                                                                                <div style={{
+                                                                                    padding: '6px 14px 8px',
+                                                                                    fontSize: '0.65rem',
+                                                                                    fontWeight: 700,
+                                                                                    color: '#94a3b8',
+                                                                                    textTransform: 'uppercase',
+                                                                                    letterSpacing: '0.5px'
+                                                                                }}>AKIŞ</div>
+                                                                                {availableFunnels.map(funnel => {
+                                                                                    const isActive = funnel.id === activeFunnelId;
+                                                                                    const funnelColor = funnel.stages?.[0]?.color || '#3b82f6';
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={funnel.id}
+                                                                                            onMouseEnter={() => setHoveredFunnelId(funnel.id)}
+                                                                                            style={{
+                                                                                                padding: '8px 14px',
+                                                                                                fontSize: '0.82rem',
+                                                                                                cursor: 'pointer',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                gap: '8px',
+                                                                                                background: isActive ? '#f8fafc' : 'transparent',
+                                                                                                fontWeight: isActive ? 600 : 400,
+                                                                                                color: isActive ? '#1e293b' : '#64748b',
+                                                                                                transition: 'all 0.1s'
+                                                                                            }}
+                                                                                        >
+                                                                                            <span style={{
+                                                                                                width: 9, height: 9,
+                                                                                                borderRadius: '50%',
+                                                                                                background: funnelColor,
+                                                                                                flexShrink: 0
+                                                                                            }} />
+                                                                                            <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{funnel.name}</span>
+                                                                                            <ChevronRight size={14} style={{ opacity: isActive ? 0.7 : 0.3, flexShrink: 0 }} />
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                            {/* Right panel: Stages */}
+                                                                            {activeFunnel && (
+                                                                                <div style={{
+                                                                                    minWidth: '180px',
+                                                                                    maxHeight: '340px',
+                                                                                    overflowY: 'auto',
+                                                                                    padding: '6px 0'
+                                                                                }}>
+                                                                                    <div style={{
+                                                                                        padding: '6px 14px 8px',
+                                                                                        fontSize: '0.65rem',
+                                                                                        fontWeight: 700,
+                                                                                        color: '#94a3b8',
+                                                                                        textTransform: 'uppercase',
+                                                                                        letterSpacing: '0.5px',
+                                                                                        whiteSpace: 'nowrap'
+                                                                                    }}>{activeFunnel.name}</div>
+                                                                                    {activeFunnel.stages?.map(stage => {
+                                                                                        const isCurrentStage = contact.funnelStageId === stage.id;
+                                                                                        const stageColor = stage.color || '#6366f1';
+                                                                                        return (
+                                                                                            <div
+                                                                                                key={stage.id}
+                                                                                                onClick={() => handleInlineStageChange(contact, activeFunnel.id, stage.id)}
+                                                                                                style={{
+                                                                                                    padding: '7px 14px',
+                                                                                                    fontSize: '0.82rem',
+                                                                                                    cursor: 'pointer',
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    gap: '8px',
+                                                                                                    background: isCurrentStage ? `${stageColor}12` : 'transparent',
+                                                                                                    fontWeight: isCurrentStage ? 600 : 400,
+                                                                                                    color: isCurrentStage ? stageColor : '#374151',
+                                                                                                    transition: 'background 0.1s',
+                                                                                                    whiteSpace: 'nowrap'
+                                                                                                }}
+                                                                                                onMouseEnter={(ev) => ev.currentTarget.style.background = `${stageColor}10`}
+                                                                                                onMouseLeave={(ev) => ev.currentTarget.style.background = isCurrentStage ? `${stageColor}12` : 'transparent'}
+                                                                                            >
+                                                                                                <span style={{
+                                                                                                    width: 9, height: 9,
+                                                                                                    borderRadius: '50%',
+                                                                                                    background: stageColor,
+                                                                                                    flexShrink: 0
+                                                                                                }} />
+                                                                                                <span style={{ flex: 1 }}>{stage.name}</span>
+                                                                                                {isCurrentStage && <Check size={14} style={{ color: stageColor, flexShrink: 0 }} />}
+                                                                                            </div>
+                                                                                        );
+                                                                                    })}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         );
                                                     })()}
                                                 </td>
-                                                {/* CASE KONUM */}
-                                                <td className="contact-case-stage" style={{ maxWidth: '160px' }}>
-                                                    {(() => {
-                                                        const ac = contact.activeCase;
-                                                        if (!ac || !ac.funnelStageId) return <span style={{color: '#94a3b8'}}>---</span>;
 
-                                                        let caseStageName = '';
-                                                        let caseStageColor = '#6b7280';
-                                                        let caseFunnelName = '';
-
-                                                        if (availableFunnels.length > 0) {
-                                                            for (const funnel of availableFunnels) {
-                                                                const s = funnel.stages?.find(x => x.id === ac.funnelStageId);
-                                                                if (s) {
-                                                                    caseStageName = s.name;
-                                                                    caseStageColor = s.color || '#6366f1';
-                                                                    caseFunnelName = funnel.name;
-                                                                    break;
-                                                                }
-                                                            }
-                                                        }
-
-                                                        if (!caseStageName) return <span style={{color: '#94a3b8'}}>---</span>;
-
-                                                        return (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                    {ac.caseNumber && (
-                                                                        <span style={{
-                                                                            fontSize: '9px', fontWeight: 600, color: '#94a3b8',
-                                                                            backgroundColor: '#f1f5f9', borderRadius: '3px',
-                                                                            padding: '0px 3px', lineHeight: '14px'
-                                                                        }}>
-                                                                            #{ac.caseNumber}
-                                                                        </span>
-                                                                    )}
-                                                                    <span
-                                                                        style={{
-                                                                            display: 'inline-block',
-                                                                            padding: '2px 6px',
-                                                                            backgroundColor: `${caseStageColor}1a`,
-                                                                            color: caseStageColor,
-                                                                            borderRadius: '4px',
-                                                                            fontSize: '10px',
-                                                                            fontWeight: 600,
-                                                                            maxWidth: '110px',
-                                                                            overflow: 'hidden',
-                                                                            textOverflow: 'ellipsis',
-                                                                            whiteSpace: 'nowrap'
-                                                                        }}
-                                                                    >
-                                                                        {caseStageName}
-                                                                    </span>
-                                                                </div>
-                                                                {ac.status && ac.status !== 'ACTIVE' && (
-                                                                    <span style={{
-                                                                        fontSize: '9px', fontWeight: 500,
-                                                                        color: ac.status === 'WON' ? '#10b981' : ac.status === 'LOST' ? '#ef4444' : '#64748b'
-                                                                    }}>
-                                                                        {ac.status === 'WON' ? '✅ Kazanıldı' : ac.status === 'LOST' ? '❌ Kaybedildi' : ac.status === 'CLOSED' ? '🔒 Kapatıldı' : ac.status}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </td>
                                                 {/* ATANAN */}
                                                 <td className="contact-assigned" style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                                                     {(() => {
                                                         const conv = contact.conversations?.[0];
                                                         if (!conv) return '---';
-                                                        // Önce ekip adı göster
                                                         const teamId = conv.assignedTeamId || (() => {
                                                             try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
                                                         })();
@@ -2022,64 +2078,95 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         return '---';
                                                     })()}
                                                 </td>
-                                                {/* KAYNAK */}
-                                                <td className="contact-source" style={{ maxWidth: '100px' }}>
-                                                    <div
-                                                        className="source-badge"
-                                                        style={{
-                                                            backgroundColor: sourceInfo.color ? `${sourceInfo.color}15` : '#f3f4f6',
-                                                            color: sourceInfo.color || '#6b7280',
-                                                            fontSize: '11px',
-                                                            padding: '2px 6px'
-                                                        }}
-                                                    >
-                                                        <SourceIcon size={11} />
-                                                        <span>{sourceInfo.label}</span>
-                                                    </div>
-                                                </td>
-                                                {/* ETİKETLER */}
-                                                <td className="contact-tags" style={{ maxWidth: '140px' }}>
+
+                                                {/* AKTİVİTELER */}
+                                                <td style={{ maxWidth: '180px', padding: '4px 6px', verticalAlign: 'middle' }}>
                                                     {(() => {
-                                                        try {
-                                                            let tagsArray = contact.tags;
-                                                            if (typeof tagsArray === 'string') {
-                                                                tagsArray = JSON.parse(tagsArray || '[]');
-                                                            }
-                                                            if (!Array.isArray(tagsArray) || tagsArray.length === 0) return <span style={{color: '#94a3b8'}}>-</span>;
-                                                            return (
-                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                                                                    {tagsArray.map((t, idx) => (
-                                                                        <span key={idx} style={{ padding: '1px 5px', backgroundColor: '#e2e8f0', color: '#475569', borderRadius: '3px', fontSize: '10px', fontWeight: 500 }}>
-                                                                            {t}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            );
-                                                        } catch(e) { return <span style={{color: '#94a3b8'}}>-</span>; }
+                                                        const acts = contact.activities || [];
+                                                        if (acts.length === 0) return <span style={{ color: '#d1d5db', fontSize: '0.72rem' }}>---</span>;
+                                                        const last3 = acts.slice(0, 3);
+                                                        return (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                                {last3.map((e, idx) => {
+                                                                    const done = e.status === 'COMPLETED';
+                                                                    const cancelled = e.status === 'CANCELLED';
+                                                                    const isCall = e.type === 'CALL' || e.type === 'REMINDER';
+                                                                    const isMeeting = e.type === 'MEETING';
+                                                                    const isPlanned = e.status === 'PLANNED';
+                                                                    let label = '';
+                                                                    let color = '#6b7280';
+                                                                    let bg = '#f3f4f6';
+                                                                    if (isCall && done) { label = 'Arandı'; color = '#15803d'; bg = '#f0fdf4'; }
+                                                                    else if (isCall && cancelled) { label = 'Ulaşılamadı'; color = '#dc2626'; bg = '#fef2f2'; }
+                                                                    else if (isCall && isPlanned) { label = 'Arama Bekliyor'; color = '#d97706'; bg = '#fffbeb'; }
+                                                                    else if (isMeeting && isPlanned) { label = 'Görüşme Bekliyor'; color = '#2563eb'; bg = '#eff6ff'; }
+                                                                    else if (isMeeting && done) { label = 'Görüşme Yapıldı'; color = '#15803d'; bg = '#f0fdf4'; }
+                                                                    else if (e.type === 'NOTE') { label = 'Not Eklendi'; color = '#6b7280'; bg = '#f9fafb'; }
+                                                                    else if (e.type === 'TASK' && done) { label = 'Görev Tamamlandı'; color = '#15803d'; bg = '#f0fdf4'; }
+                                                                    else if (e.type === 'TASK' && isPlanned) { label = 'Görev Bekliyor'; color = '#d97706'; bg = '#fffbeb'; }
+                                                                    else if (e.type === 'VISIT' && done) { label = 'Ziyaret Edildi'; color = '#15803d'; bg = '#f0fdf4'; }
+                                                                    else if (e.type === 'VISIT' && isPlanned) { label = 'Ziyaret Bekliyor'; color = '#2563eb'; bg = '#eff6ff'; }
+                                                                    else {
+                                                                        const typeLabels = { CALL: 'Arama', MEETING: 'Toplantı', VISIT: 'Ziyaret', TASK: 'Görev', REMINDER: 'Hatırlatıcı', NOTE: 'Not' };
+                                                                        label = typeLabels[e.type] || e.type;
+                                                                    }
+                                                                    const dateStr = e.dueDate
+                                                                        ? new Date(e.dueDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })
+                                                                        : (e.createdAt ? new Date(e.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) : '');
+                                                                    const isAI = e.source === 'AI' || e.source === 'RETELL' || e.assignedByType === 'AI';
+                                                                    const performerName = isAI ? 'AI' : (e.assignee?.name || e.creator?.name || '');
+                                                                    const shortName = performerName === 'AI' ? '🤖' : (performerName ? performerName.split(' ')[0] : '');
+                                                                    return (
+                                                                        <div key={idx} style={{
+                                                                            display: 'flex', alignItems: 'center', gap: 4,
+                                                                            padding: '1px 5px', borderRadius: 4,
+                                                                            background: bg, whiteSpace: 'nowrap'
+                                                                        }}>
+                                                                            <span style={{
+                                                                                fontSize: '0.66rem', fontWeight: 600,
+                                                                                color: color, lineHeight: 1.3
+                                                                            }}>
+                                                                                {label}
+                                                                            </span>
+                                                                            {dateStr && (
+                                                                                <span style={{
+                                                                                    fontSize: '0.58rem', color: '#94a3b8',
+                                                                                    fontWeight: 400, lineHeight: 1.3
+                                                                                }}>
+                                                                                    {dateStr}
+                                                                                </span>
+                                                                            )}
+                                                                            {shortName && (
+                                                                                <span style={{
+                                                                                    fontSize: '0.56rem', color: isAI ? '#8b5cf6' : '#64748b',
+                                                                                    fontWeight: 500, lineHeight: 1.3,
+                                                                                    opacity: 0.85
+                                                                                }}>
+                                                                                    {shortName}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        );
                                                     })()}
                                                 </td>
-                                                {/* SOHBETLER */}
-                                                <td className="contact-conversations" style={{ textAlign: 'center', maxWidth: '70px' }}>
-                                                    {contact._count?.conversations || 0}
-                                                </td>
-                                                {/* İLK YAZMA */}
-                                                <td className="contact-first-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
-                                                    {formatDate(contact.firstMessageAt)}
-                                                </td>
-                                                {/* SON YAZMA */}
-                                                <td className="contact-last-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
-                                                    {formatDate(contact.lastMessageAt)}
-                                                </td>
-                                                {/* KAYIT TARİHİ */}
-                                                <td className="contact-created" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
-                                                    {formatDate(contact.createdAt)}
-                                                </td>
+
                                                 {/* SON NOT */}
                                                 <td className="contact-last-note" style={{
                                                     maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem',
                                                     color: contact.lastNoteType === 'planned' ? '#f59e0b' : contact.lastNoteType === 'activity' ? '#3b82f6' : '#6b7280'
                                                 }}>
                                                     {contact.lastNote || '---'}
+                                                </td>
+                                                {/* İLK YAZMA */}
+                                                <td className="contact-created" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
+                                                    {formatDate(contact.createdAt)}
+                                                </td>
+                                                {/* SON YAZMA */}
+                                                <td className="contact-last-message" style={{ fontSize: '0.78rem', maxWidth: '90px' }}>
+                                                    {formatDate(contact.lastMessageAt)}
                                                 </td>
                                             </tr>
                                         );
