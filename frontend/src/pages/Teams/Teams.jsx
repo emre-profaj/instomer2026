@@ -25,7 +25,7 @@ const Teams = () => {
     // Modal Form States
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
-    const [teamAssignmentRule, setTeamAssignmentRule] = useState('POOL');
+    const [teamAssignmentRule, setTeamAssignmentRule] = useState('MANUAL');
     const [parentIdForCreate, setParentIdForCreate] = useState(null);
 
     // Member Management States
@@ -149,13 +149,13 @@ const Teams = () => {
             setSelectedTeam(team);
             setTeamName(team.name);
             setTeamDescription(team.description || '');
-            setTeamAssignmentRule(team.assignmentRule || 'POOL');
+            setTeamAssignmentRule(team.assignmentRule || 'MANUAL');
             setParentIdForCreate(null);
         } else {
             setSelectedTeam(null);
             setTeamName('');
             setTeamDescription('');
-            setTeamAssignmentRule('POOL');
+            setTeamAssignmentRule('MANUAL');
             setParentIdForCreate(parentId);
         }
         setIsCreateModalOpen(true);
@@ -166,7 +166,7 @@ const Teams = () => {
         setSelectedTeam(null);
         setTeamName('');
         setTeamDescription('');
-        setTeamAssignmentRule('POOL');
+        setTeamAssignmentRule('MANUAL');
         setParentIdForCreate(null);
     };
 
@@ -504,9 +504,9 @@ const Teams = () => {
                                     border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer'
                                 }}
                             >
-                                <option value="POOL">🏊 Havuz (İlk alan üstlenir)</option>
-                                <option value="ROUND_ROBIN">🔄 Sırayla Dağıt</option>
-                                <option value="LEAST_BUSY">📊 En Az Yoğuna Ata</option>
+                                <option value="MANUAL">✋ Elle Dağıt</option>
+                                <option value="ROUND_ROBIN">🔄 Eşit Dağıt (Tüm Üyeler)</option>
+                                <option value="ONLINE_ONLY">🟢 Sadece Online Kullanıcılara Dağıt</option>
                             </select>
                         </div>
                     </div>
@@ -529,7 +529,7 @@ const Teams = () => {
     return (
         <div className="teams-page-container">
             <div className="teams-header">
-                <h2>{t('teams.management')}</h2>
+                <h2>{t('teams.management')} <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#e0e7ff', color: '#4f46e5', fontSize: '0.75rem', fontWeight: 600, borderRadius: '10px', padding: '2px 10px', marginLeft: '8px', minWidth: '24px' }}>{teams.length}</span></h2>
                 <button className="create-team-btn" onClick={() => openCreateModal()}>
                     <Plus size={20} />
                     Yeni Takım Oluştur
@@ -616,9 +616,9 @@ const Teams = () => {
                                 </label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                                     {[
-                                        { value: 'POOL', icon: '🏊', label: 'Havuz', desc: 'Herkes görür, kim üstlenirse o alır' },
-                                        { value: 'ROUND_ROBIN', icon: '🔄', label: 'Sıralı Dağıtım', desc: 'Üyelere sırayla otomatik atar' },
-                                        { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Yoğun Olana', desc: 'En az açık görüşmesi olan üyeye atar' },
+                                        { value: 'MANUAL', icon: '✋', label: 'Elle Dağıt', desc: 'Sohbetler havuzda kalır, temsilci elle üstlenir' },
+                                        { value: 'ROUND_ROBIN', icon: '🔄', label: 'Eşit Dağıt', desc: 'Tüm takım üyeleri arasında eşit sayıda dağıtır' },
+                                        { value: 'ONLINE_ONLY', icon: '🟢', label: 'Sadece Online Dağıt', desc: 'Sadece online olan kullanıcılara otomatik atar' },
                                     ].map(rule => (
                                         <label
                                             key={rule.value}

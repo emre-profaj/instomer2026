@@ -5,7 +5,8 @@ import { appointmentAPI, retellAPI, resourceAPI } from '../../services/api';
 import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
-    Layers, Edit2, Building2, List, Grid3X3, Search
+    Layers, Edit2, Building2, List, Grid3X3, Search,
+    CalendarClock, Handshake, ListTodo, PhoneCall
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import '../../components/ContactSidebar/ContactSidebar.css';
@@ -87,6 +88,46 @@ const Calendar = () => {
 
     // Toggle for completed appointments
     const [showCompleted, setShowCompleted] = useState(true);
+
+    // Activity type filter (multi-select)
+    const [activeFilters, setActiveFilters] = useState(new Set(['calls', 'appointments', 'meetings', 'tasks']));
+    const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'pending', 'completed', 'overdue'
+
+    const toggleActivityFilter = (key) => {
+        setActiveFilters(prev => {
+            const next = new Set(prev);
+            if (key === 'all') {
+                // Toggle all
+                const allKeys = ['calls', 'appointments', 'meetings', 'tasks'];
+                if (allKeys.every(k => prev.has(k))) {
+                    return new Set();
+                } else {
+                    return new Set(allKeys);
+                }
+            }
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+        setStatusFilter('all');
+    };
+
+    // Helper: check if a type is active in multi-select
+    const isFilterActive = (key) => {
+        if (key === 'all') return ['calls', 'appointments', 'meetings', 'tasks'].every(k => activeFilters.has(k));
+        return activeFilters.has(key);
+    };
+
+    // Counts per activity type
+    const activityCounts = {
+        calls: scheduledCalls.length,
+        appointments: upcomingAppointments.filter(a => !a.isCompleted).length,
+        meetings: 0,
+        tasks: 0
+    };
 
     // List view states
     const [listFilter, setListFilter] = useState('all'); // 'all', 'appointments', 'calls'
@@ -260,6 +301,12 @@ const Calendar = () => {
     // Filter upcoming appointments based on showCompleted toggle
     const filteredUpcomingAppointments = upcomingAppointments.filter(apt => {
         if (!showCompleted && apt.isCompleted) return false;
+        // Activity type filter — hide appointments if not selected
+        if (!activeFilters.has('appointments')) return false;
+        // Status filter
+        if (statusFilter === 'pending' && (apt.isCompleted || apt.isOverdue)) return false;
+        if (statusFilter === 'completed' && !apt.isCompleted) return false;
+        if (statusFilter === 'overdue' && !apt.isOverdue) return false;
         return true;
     });
 
@@ -336,11 +383,23 @@ const Calendar = () => {
             const aptEndDate = new Date(apt.endTime);
             // Hide past appointments (end time has passed)
             if (aptEndDate < now) return false;
-            return aptDate.toDateString() === date.toDateString();
+            if (aptDate.toDateString() !== date.toDateString()) return false;
+            // Activity type filter
+            if (!activeFilters.has('appointments')) return false;
+            // Status filter
+            const isCompleted = apt.status === 'COMPLETED';
+            const isOverdue = aptEndDate < now && apt.status === 'SCHEDULED';
+            if (statusFilter === 'pending' && (isCompleted || isOverdue)) return false;
+            if (statusFilter === 'completed' && !isCompleted) return false;
+            if (statusFilter === 'overdue' && !isOverdue) return false;
+            return true;
         });
     };
 
     const getScheduledCallsForDay = (date) => {
+        if (!activeFilters.has('calls')) return [];
+        // Status filter for calls: only 'pending' calls exist (scheduled calls are always pending)
+        if (statusFilter === 'completed' || statusFilter === 'overdue') return [];
         return scheduledCalls.filter(sc => {
             return new Date(sc.scheduledAt).toDateString() === date.toDateString();
         });
@@ -545,235 +604,236 @@ const Calendar = () => {
 
     return (
         <div className={`calendar-page ${layoutMode === 'list' ? 'calendar-page-list-mode' : ''}`}>
-            {/* Upcoming Appointments Sidebar — only in calendar mode */}
-            {layoutMode === 'grid' && (
-            <div className="upcoming-sidebar">
-                <div className="upcoming-header">
-                    <Clock size={18} />
-                    <h3>{t('calendar.title')}</h3>
-                </div>
-                <div className="upcoming-toggle">
-                    <label className="toggle-label">
-                        <input
-                            type="checkbox"
-                            checked={showCompleted}
-                            onChange={(e) => setShowCompleted(e.target.checked)}
-                        />
-                        <span className="toggle-slider"></span>
-                        <span className="toggle-text">Tamamlananları Göster</span>
-                    </label>
-                </div>
-                <div className="upcoming-list">
-                    {filteredUpcomingAppointments.length === 0 && (selectedResource || scheduledCalls.length === 0) ? (
-                        <div className="upcoming-empty">
-                            <CalendarIcon size={32} />
-                            <p>No upcoming appointments</p>
-                        </div>
-                    ) : (
-                        <>
-                        {filteredUpcomingAppointments.map(apt => (
-                            <div
-                                key={apt.id}
-                                className={`upcoming-item ${apt.isCompleted ? 'completed' : ''}`}
-                                onClick={() => openEditModal(apt)}
-                            >
-                                <div className="upcoming-date-badge">
-                                    <span className="upcoming-day">{formatUpcomingDate(apt.startTime)}</span>
-                                    <span className="upcoming-time">{formatTime(apt.startTime)}</span>
-                                </div>
-                                <div className="upcoming-info">
-                                    <h4>{apt.title}</h4>
-                                    {apt.isCompleted && (
-                                        <span className="upcoming-status completed">
-                                            <Check size={12} />
-                                            {apt.isPast && apt.status !== 'COMPLETED' ? 'Geçmiş' : 'Completed'}
-                                        </span>
-                                    )}
-                                    {apt.contactName && (
-                                        <span className="upcoming-contact">
-                                            <User size={12} />
-                                            {apt.contactName}
-                                        </span>
-                                    )}
-                                    {apt.assignedTo && (
-                                        <span className="upcoming-agent">
-                                            Temsilci: {apt.assignedTo.name}
-                                        </span>
-                                    )}
-                                    {apt.resourceId && (
-                                        <span className="upcoming-resource">
-                                            <Building2 size={12} />
-                                            {getResourceName(apt.resourceId)}
-                                        </span>
-                                    )}
-                                </div>
-                                <div
-                                    className="upcoming-color-bar"
-                                    style={{ backgroundColor: apt.color || '#3b82f6' }}
-                                />
-                            </div>
-                        ))}
-                        {!selectedResource && scheduledCalls.slice(0, 8).map(sc => (
-                            <div
-                                key={sc.id}
-                                className="upcoming-item"
-                                onClick={() => openScheduledCallModal(sc)}
-                                title="Düzenle / İptal et"
-                            >
-                                <div className="upcoming-date-badge">
-                                    <span className="upcoming-day">{new Date(sc.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
-                                    <span className="upcoming-time">{formatTime(sc.scheduledAt)}</span>
-                                </div>
-                                <div className="upcoming-info" style={{ minWidth: 0 }}>
-                                    <h4 style={{ color: '#ea580c' }}>📞 Oto. Arama</h4>
-                                    <span style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block' }}>
-                                        {sc.contactName || sc.toNumber}
-                                    </span>
-                                </div>
-                                <div className="upcoming-color-bar" style={{ backgroundColor: '#f97316' }} />
-                            </div>
-                        ))}
-                        </>
-                    )}
-                </div>
-
-                {/* ─── Resources Section ─── */}
-                <div className="resources-section">
-                    <div className="resources-header">
-                        <div className="resources-title">
-                            <Layers size={16} />
-                            <h4>Kaynaklar</h4>
-                        </div>
-                        <button className="resource-add-btn" onClick={() => openResourceModal()} title="Kaynak Ekle">
-                            <Plus size={14} />
-                        </button>
-                    </div>
-
-                    {resources.length === 0 ? (
-                        <div className="resources-empty">
-                            <p>Henüz kaynak yok</p>
-                            <button className="resource-create-link" onClick={() => openResourceModal()}>
-                                <Plus size={12} /> Kaynak Oluştur
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="resources-list">
-                            <div
-                                className={`resource-item ${selectedResource === '' ? 'active' : ''}`}
-                                onClick={() => setSelectedResource('')}
-                            >
-                                <div className="resource-dot" style={{ backgroundColor: '#6b7280' }} />
-                                <span className="resource-name">{t('common.all')}</span>
-                            </div>
-                            {resources.map(resource => (
-                                <div
-                                    key={resource.id}
-                                    className={`resource-item ${selectedResource === resource.id ? 'active' : ''}`}
-                                    onClick={() => setSelectedResource(selectedResource === resource.id ? '' : resource.id)}
-                                >
-                                    <div className="resource-dot" style={{ backgroundColor: resource.color }} />
-                                    <span className="resource-name">
-                                        {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon || '📦'} {resource.name}
-                                    </span>
-                                    <div className="resource-actions">
-                                        <button
-                                            className="resource-action-btn"
-                                            onClick={(e) => { e.stopPropagation(); openResourceModal(resource); }}
-                                            title={t('common.edit')}
-                                        >
-                                            <Edit2 size={12} />
-                                        </button>
-                                        <button
-                                            className="resource-action-btn delete"
-                                            onClick={(e) => { e.stopPropagation(); handleResourceDelete(resource.id); }}
-                                            title={t('common.delete')}
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-            </div>
-            )}
-
-            {/* Main Calendar */}
-            <div className="calendar-main">
-                <div className="calendar-header">
+            {/* Full-width Header */}
+            <div className="calendar-header">
+                <div className="calendar-header-left">
                     <div className="calendar-title">
                         <CalendarIcon size={24} />
                         <h1>Aktiviteler</h1>
                     </div>
+                    <select
+                        className="agent-filter"
+                        value={selectedAgent}
+                        onChange={(e) => setSelectedAgent(e.target.value)}
+                    >
+                        <option value="">{t('common.all')} Agents</option>
+                        {agents.map(agent => (
+                            <option key={agent.id} value={agent.id}>{agent.name}</option>
+                        ))}
+                    </select>
 
-                    <div className="calendar-controls">
+                    {resources.length > 0 && (
                         <select
-                            className="agent-filter"
-                            value={selectedAgent}
-                            onChange={(e) => setSelectedAgent(e.target.value)}
+                            className="resource-filter"
+                            value={selectedResource}
+                            onChange={(e) => setSelectedResource(e.target.value)}
                         >
-                            <option value="">{t('common.all')} Agents</option>
-                            {agents.map(agent => (
-                                <option key={agent.id} value={agent.id}>{agent.name}</option>
+                            <option value="">{t('common.all')}</option>
+                            {resources.map(resource => (
+                                <option key={resource.id} value={resource.id}>
+                                    {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
+                                </option>
                             ))}
                         </select>
-
-                        {resources.length > 0 && (
-                            <select
-                                className="resource-filter"
-                                value={selectedResource}
-                                onChange={(e) => setSelectedResource(e.target.value)}
-                            >
-                                <option value="">{t('common.all')}</option>
-                                {resources.map(resource => (
-                                    <option key={resource.id} value={resource.id}>
-                                        {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
-                                    </option>
-                                ))}
-                            </select>
-                        )}
-
-                        <div className="nav-buttons">
-                            <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
-                            <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
-                            <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
-                        </div>
-
-                        <span className="current-month">
-                            {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-                        </span>
-
-                        <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
-                            <button
-                                onClick={() => setLayoutMode('grid')}
-                                style={{
-                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                    background: layoutMode === 'grid' ? 'white' : 'transparent',
-                                    color: layoutMode === 'grid' ? '#3b82f6' : '#64748b',
-                                    boxShadow: layoutMode === 'grid' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                    cursor: 'pointer', transition: 'all 0.2s'
-                                }}
-                            >Takvim</button>
-                            <button
-                                onClick={() => setLayoutMode('list')}
-                                style={{
-                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                    background: layoutMode === 'list' ? 'white' : 'transparent',
-                                    color: layoutMode === 'list' ? '#3b82f6' : '#64748b',
-                                    boxShadow: layoutMode === 'list' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                    cursor: 'pointer', transition: 'all 0.2s'
-                                }}
-                            >Liste</button>
-                        </div>
-
-                        <button className="add-appointment-btn" onClick={() => openCreateModal()}>
-                            <Plus size={18} />
-                            {t('calendar.newAppointment')}
-                        </button>
-                    </div>
+                    )}
                 </div>
+
+                <div className="activity-filters-wrapper">
+                    <div className="activity-type-filters">
+                        {[
+                            { key: 'all', label: 'Tümü', icon: Layers },
+                            { key: 'calls', label: 'Aramalar', icon: PhoneCall },
+                            { key: 'appointments', label: 'Randevular', icon: CalendarClock },
+                            { key: 'meetings', label: 'Görüşmeler', icon: Handshake },
+                            { key: 'tasks', label: 'Görevler', icon: ListTodo },
+                        ].map(f => (
+                            <label
+                                key={f.key}
+                                className={`activity-filter-checkbox ${isFilterActive(f.key) ? 'active' : ''}`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={isFilterActive(f.key)}
+                                    onChange={() => toggleActivityFilter(f.key)}
+                                />
+                                <f.icon size={14} />
+                                <span>{f.label}</span>
+                                {f.key !== 'all' && <span className="filter-count">{activityCounts[f.key] || 0}</span>}
+                            </label>
+                        ))}
+                    </div>
+
+                    {activeFilters.size > 0 && !isFilterActive('all') && (
+                        <div className="status-sub-filters">
+                            {[
+                                { key: 'all', label: 'Tümü', color: '#64748b' },
+                                { key: 'pending', label: 'Bekleyen', color: '#f59e0b' },
+                                { key: 'completed', label: 'Tamamlanan', color: '#10b981' },
+                                { key: 'overdue', label: 'Geciken', color: '#ef4444' },
+                            ].map(s => (
+                                <button
+                                    key={s.key}
+                                    className={`status-filter-btn ${statusFilter === s.key ? 'active' : ''}`}
+                                    onClick={() => setStatusFilter(s.key)}
+                                    style={statusFilter === s.key ? { '--status-color': s.color } : {}}
+                                >
+                                    <span className="status-dot" style={{ backgroundColor: s.color }} />
+                                    {s.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="calendar-header-center">
+                    <div className="nav-buttons">
+                        <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
+                        <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
+                        <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
+                    </div>
+                    <span className="current-month">
+                        {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+                    </span>
+                </div>
+
+                <div className="calendar-header-right">
+                    <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                        <button
+                            onClick={() => setLayoutMode('grid')}
+                            style={{
+                                padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                background: layoutMode === 'grid' ? 'white' : 'transparent',
+                                color: layoutMode === 'grid' ? '#3b82f6' : '#64748b',
+                                boxShadow: layoutMode === 'grid' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                        >Takvim</button>
+                        <button
+                            onClick={() => setLayoutMode('list')}
+                            style={{
+                                padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                background: layoutMode === 'list' ? 'white' : 'transparent',
+                                color: layoutMode === 'list' ? '#3b82f6' : '#64748b',
+                                boxShadow: layoutMode === 'list' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                cursor: 'pointer', transition: 'all 0.2s'
+                            }}
+                        >Liste</button>
+                    </div>
+
+                    <button className="add-appointment-btn" onClick={() => openCreateModal()}>
+                        <Plus size={18} />
+                        {t('calendar.newAppointment')}
+                    </button>
+                </div>
+            </div>
+
+            {/* Content: Sidebar + Calendar */}
+            <div className="calendar-content">
+                {/* Upcoming Appointments Sidebar — always visible */}
+                <div className="upcoming-sidebar">
+                    <div className="upcoming-header">
+                        <Clock size={18} />
+                        <h3>{t('calendar.title')}</h3>
+                    </div>
+                    <div className="upcoming-toggle">
+                        <label className="toggle-label">
+                            <input
+                                type="checkbox"
+                                checked={showCompleted}
+                                onChange={(e) => setShowCompleted(e.target.checked)}
+                            />
+                            <span className="toggle-slider"></span>
+                            <span className="toggle-text">Tamamlananları Göster</span>
+                        </label>
+                    </div>
+                    <div className="upcoming-list">
+                        {filteredUpcomingAppointments.length === 0 && (selectedResource || scheduledCalls.length === 0) ? (
+                            <div className="upcoming-empty">
+                                <CalendarIcon size={32} />
+                                <p>No upcoming appointments</p>
+                            </div>
+                        ) : (
+                            <>
+                            {filteredUpcomingAppointments.map(apt => (
+                                <div
+                                    key={apt.id}
+                                    className={`upcoming-item ${apt.isCompleted ? 'completed' : ''}`}
+                                    onClick={() => openEditModal(apt)}
+                                >
+                                    <div className="upcoming-date-badge">
+                                        <span className="upcoming-day">{formatUpcomingDate(apt.startTime)}</span>
+                                        <span className="upcoming-time">{formatTime(apt.startTime)}</span>
+                                    </div>
+                                    <div className="upcoming-info">
+                                        <h4>{apt.title}</h4>
+                                        {apt.isCompleted && (
+                                            <span className="upcoming-status completed">
+                                                <Check size={12} />
+                                                {apt.isPast && apt.status !== 'COMPLETED' ? 'Geçmiş' : 'Completed'}
+                                            </span>
+                                        )}
+                                        {apt.contactName && (
+                                            <span className="upcoming-contact">
+                                                <User size={12} />
+                                                {apt.contactName}
+                                            </span>
+                                        )}
+                                        {apt.assignedTo && (
+                                            <span className="upcoming-agent">
+                                                👤 Temsilci: {apt.assignedTo.name}
+                                            </span>
+                                        )}
+                                        {apt.createdBy && (
+                                            <span className="upcoming-creator">
+                                                📋 Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}
+                                            </span>
+                                        )}
+                                        {apt.doctorName && (
+                                            <span className="upcoming-doctor">
+                                                🩺 Dr. {apt.doctorName}
+                                            </span>
+                                        )}
+                                        {apt.resourceId && (
+                                            <span className="upcoming-resource">
+                                                <Building2 size={12} />
+                                                {getResourceName(apt.resourceId)}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div
+                                        className="upcoming-color-bar"
+                                        style={{ backgroundColor: apt.color || '#3b82f6' }}
+                                    />
+                                </div>
+                            ))}
+                            {!selectedResource && activeFilters.has('calls') && scheduledCalls.slice(0, 8).map(sc => (
+                                <div
+                                    key={sc.id}
+                                    className="upcoming-item"
+                                    onClick={() => openScheduledCallModal(sc)}
+                                    title="Düzenle / İptal et"
+                                >
+                                    <div className="upcoming-date-badge">
+                                        <span className="upcoming-day">{new Date(sc.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+                                        <span className="upcoming-time">{formatTime(sc.scheduledAt)}</span>
+                                    </div>
+                                    <div className="upcoming-info" style={{ minWidth: 0 }}>
+                                        <h4 style={{ color: '#ea580c' }}>📞 Oto. Arama</h4>
+                                        <span style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block' }}>
+                                            {sc.contactName || sc.toNumber}
+                                        </span>
+                                    </div>
+                                    <div className="upcoming-color-bar" style={{ backgroundColor: '#f97316' }} />
+                                </div>
+                            ))}
+                            </>
+                        )}
+                    </div>
+
+                </div>
+
+                {/* Main Calendar */}
+                <div className="calendar-main">
 
                 {layoutMode === 'grid' ? (
                 <div className="calendar-grid">
@@ -839,6 +899,18 @@ const Calendar = () => {
                                                             <div className="tooltip-row tooltip-agent">
                                                                 <User size={14} />
                                                                 <span>Temsilci: {apt.assignedTo.name}</span>
+                                                            </div>
+                                                        )}
+                                                        {apt.createdBy && (
+                                                            <div className="tooltip-row" style={{ color: '#8b5cf6' }}>
+                                                                <User size={14} />
+                                                                <span>Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span>
+                                                            </div>
+                                                        )}
+                                                        {apt.doctorName && (
+                                                            <div className="tooltip-row" style={{ color: '#059669' }}>
+                                                                <User size={14} />
+                                                                <span>🩺 Dr. {apt.doctorName}</span>
                                                             </div>
                                                         )}
                                                         {aptResource && (
@@ -1094,6 +1166,7 @@ const Calendar = () => {
                     </div>
                 )}
             </div> {/* End calendar-main */}
+            </div> {/* End calendar-content */}
 
             {/* Appointment Modal */}
             {isModalOpen && (

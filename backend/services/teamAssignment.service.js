@@ -35,8 +35,9 @@ export async function assignToTeamMember(teamId, conversationId) {
 
         switch (rule) {
             case 'POOL':
-                // Havuz: Kimseye otomatik atama yok, ekip havuzunda kalır
-                console.log(`🏊 [TeamAssign] "${team.name}" → HAVUZ modu, konuşma havuzda`);
+            case 'MANUAL':
+                // Elle dağıt: Kimseye otomatik atama yok, ekip havuzunda kalır
+                console.log(`✋ [TeamAssign] "${team.name}" → ELLE DAĞIT modu, konuşma havuzda`);
                 // Sadece takım ataması yap
                 await prisma.conversation.update({
                     where: { id: conversationId },
@@ -79,6 +80,31 @@ export async function assignToTeamMember(teamId, conversationId) {
 
                 assignedUserId = leastBusyMember.userId;
                 console.log(`📊 [TeamAssign] "${team.name}" → EN AZ YOĞUN → ${leastBusyMember.user.name} (${minCount} açık)`);
+                break;
+
+            case 'ONLINE_ONLY':
+                // Sadece online kullanıcılara sırayla dağıt
+                const onlineMembers = humanMembers.filter(m => m.user && m.user.isOnline);
+                if (onlineMembers.length > 0) {
+                    const onIndex = (team.roundRobinIndex || 0) % onlineMembers.length;
+                    const onMember = onlineMembers[onIndex];
+                    assignedUserId = onMember.userId;
+
+                    await prisma.team.update({
+                        where: { id: teamId },
+                        data: { roundRobinIndex: (team.roundRobinIndex || 0) + 1 }
+                    });
+
+                    console.log(`🟢 [TeamAssign] "${team.name}" → ONLINE ONLY → ${onMember.user.name} (index: ${onIndex}, ${onlineMembers.length} online)`);
+                } else {
+                    // Hiç kimse online değilse havuzda kal
+                    console.log(`🟢 [TeamAssign] "${team.name}" → ONLINE ONLY → kimse online değil, havuzda kalıyor`);
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { assignedTeamId: teamId }
+                    });
+                    return null;
+                }
                 break;
 
             default:

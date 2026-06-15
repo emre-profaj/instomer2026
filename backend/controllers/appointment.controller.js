@@ -51,15 +51,18 @@ export const getAppointments = async (req, res) => {
 
         // Get agent details for each appointment (filter out nulls to prevent Prisma error)
         const agentIds = [...new Set(appointments.map(a => a.assignedToId).filter(id => id))];
-        const agents = await prisma.user.findMany({
-            where: { id: { in: agentIds } },
+        const creatorIds = [...new Set(appointments.map(a => a.createdById).filter(id => id))];
+        const allUserIds = [...new Set([...agentIds, ...creatorIds])];
+        const users = await prisma.user.findMany({
+            where: { id: { in: allUserIds } },
             select: { id: true, name: true, avatar: true }
         });
-        const agentMap = Object.fromEntries(agents.map(a => [a.id, a]));
+        const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
         const enrichedAppointments = appointments.map(appointment => ({
             ...appointment,
-            assignedTo: agentMap[appointment.assignedToId] || null
+            assignedTo: userMap[appointment.assignedToId] || null,
+            createdBy: userMap[appointment.createdById] || null
         }));
 
         res.json({ appointments: enrichedAppointments });

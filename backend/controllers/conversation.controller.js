@@ -2854,7 +2854,7 @@ export const smartAssignConversation = async (req, res) => {
                     const allMembers = team.members.filter(m => m.user && m.userId).map(m => m.user);
                     const rule = team.assignmentRule || 'POOL';
 
-                    if (rule === 'POOL') {
+                    if (rule === 'POOL' || rule === 'MANUAL') {
                         resolvedAgentId = null;
                     } else if (rule === 'ROUND_ROBIN') {
                         if (allMembers.length > 0) {
@@ -2873,13 +2873,15 @@ export const smartAssignConversation = async (req, res) => {
                             counts.sort((a, b) => a.count - b.count);
                             resolvedAgentId = counts[0].id;
                         }
-                    } else if (rule === 'ONLINE_ROUND_ROBIN') {
+                    } else if (rule === 'ONLINE_ONLY') {
                         const onlineMembers = allMembers.filter(m => m.isOnline);
-                        const pool = onlineMembers.length > 0 ? onlineMembers : allMembers;
+                        const pool = onlineMembers.length > 0 ? onlineMembers : [];
                         if (pool.length > 0) {
                             const nextIdx = (team.roundRobinIndex || 0) % pool.length;
                             resolvedAgentId = pool[nextIdx].id;
                             await prisma.team.update({ where: { id: teamId }, data: { roundRobinIndex: nextIdx + 1 } });
+                        } else {
+                            resolvedAgentId = null; // Kimse online değil, havuzda kal
                         }
                     }
                 }

@@ -6873,8 +6873,8 @@
 
 /* ── Panel Section ── */
 .fp-section {
-    padding: 6px 10px;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 10px 16px;
+    border-bottom: none;
 }
 .fp-section:last-child {
     border-bottom: none;
@@ -7112,22 +7112,24 @@
 
 /* ── Reset Button ── */
 .fp-reset {
-    padding: 4px 10px 8px;
+    padding: 6px 16px 10px;
     text-align: center;
 }
 .fp-reset-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 5px 12px;
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 16px;
     border: 1px solid #fca5a5;
-    border-radius: 6px;
+    border-radius: 8px;
     background: #fff;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 600;
     color: #ef4444;
     cursor: pointer;
     transition: all 0.15s;
+    width: 100%;
 }
 .fp-reset-btn:hover {
     background: #fef2f2;
@@ -7229,17 +7231,18 @@
 /* Filter Panel — positioned absolute under the toggle button */
 .inbox-compact-actions .inbox-filter-panel {
     position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    width: 300px;
-    max-height: 420px;
+    top: calc(100% + 6px);
+    right: -8px;
+    width: 320px;
+    max-height: 480px;
     overflow-y: auto;
     background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
     z-index: 200;
     animation: fpSlideDown 0.15s ease;
+    padding: 8px 0;
 }
 
 /* Badge for active filter count */
@@ -7265,8 +7268,8 @@
     font-weight: 700;
     color: #94a3b8;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 4px;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -7291,23 +7294,23 @@
 .fp-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 6px;
 }
 
 /* Individual chip */
 .fp-chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
+    gap: 5px;
+    padding: 5px 12px;
     border: 1px solid #e5e7eb;
-    border-radius: 14px;
+    border-radius: 16px;
     background: #fff;
-    font-size: 11px;
+    font-size: 11.5px;
     font-weight: 500;
     color: #64748b;
     cursor: pointer;
-    transition: all 0.12s ease;
+    transition: all 0.15s ease;
 }
 .fp-chip:hover {
     background: #f8fafc;
@@ -7322,19 +7325,24 @@
 /* Divider */
 .fp-divider {
     height: 1px;
-    background: #f1f5f9;
-    margin: 0;
+    background: #e9edf3;
+    margin: 2px 16px;
 }
 
 /* Toggle items */
+.fp-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 .fp-toggle-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 4px;
-    border-radius: 5px;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 7px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 12.5px;
     color: #374151;
     transition: background 0.1s;
 }
@@ -7342,8 +7350,8 @@
     background: #f3f4f6;
 }
 .fp-toggle-item input[type="checkbox"] {
-    width: 14px;
-    height: 14px;
+    width: 15px;
+    height: 15px;
     accent-color: #2563eb;
     cursor: pointer;
     flex-shrink: 0;
@@ -7352,15 +7360,21 @@
 /* Select dropdown inside filter panel */
 .fp-select {
     width: 100%;
-    padding: 6px 8px;
+    padding: 8px 10px;
     border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
     color: #1e293b;
     background: #fff;
     outline: none;
     cursor: pointer;
     transition: border-color 0.15s;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
 }
 .fp-select:focus {
     border-color: #3b82f6;

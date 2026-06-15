@@ -3250,7 +3250,7 @@ const Inbox = () => {
                                 <div className="fp-divider" />
 
                                 {/* Sıfırla */}
-                                <div className="fp-section" style={{ padding: '4px 0' }}>
+                                <div className="fp-section">
                                     <button
                                         className="fp-reset-btn"
                                         onClick={() => {

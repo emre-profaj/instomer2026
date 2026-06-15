@@ -1,20 +1,29 @@
 .calendar-page {
     display: flex;
-    gap: 24px;
+    flex-direction: column;
     padding: 24px;
     background: var(--bg-secondary);
     min-height: 100vh;
 }
 
-.calendar-main {
+.calendar-content {
+    display: flex;
+    align-items: stretch;
+    gap: 16px;
     flex: 1;
+}
+
+.calendar-main {
+    flex: 5;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Upcoming Appointments Sidebar */
 .upcoming-sidebar {
-    width: 280px;
-    min-width: 280px;
+    flex: 2;
+    min-width: 0;
     background: white;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -22,11 +31,7 @@
     /* Make sidebar a flex column to distribute height */
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 48px);
     overflow: hidden;
-    
-    position: sticky;
-    top: 24px;
 }
 
 .upcoming-header {
@@ -179,11 +184,32 @@
 .upcoming-agent {
     display: block;
     font-size: 11px;
-    color: #9ca3af;
+    color: #3b82f6;
     margin-top: 2px;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+
+.upcoming-creator {
+    display: block;
+    font-size: 11px;
+    color: #8b5cf6;
+    margin-top: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.upcoming-doctor {
+    display: block;
+    font-size: 11px;
+    color: #059669;
+    margin-top: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-weight: 600;
 }
 
 .upcoming-info > span {
@@ -282,14 +308,14 @@
     color: #059669;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
     .calendar-page {
         flex-direction: column;
     }
 
     .upcoming-sidebar {
         width: 100%;
-        min-width: 100%;
+        max-height: 300px;
     }
 
     .upcoming-list {
@@ -308,9 +334,175 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
+    margin-bottom: 16px;
     gap: 16px;
+    flex-wrap: wrap;
+}
+
+.calendar-header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.activity-filters-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.activity-type-filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #f1f5f9;
+    padding: 4px;
+    border-radius: 10px;
+}
+
+.activity-filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border: none;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.activity-filter-btn:hover {
+    color: #334155;
+    background: rgba(255,255,255,0.6);
+}
+
+.activity-filter-btn.active {
+    background: white;
+    color: #3b82f6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.activity-filter-btn svg {
+    flex-shrink: 0;
+}
+
+/* Checkbox-based activity filter */
+.activity-filter-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.activity-filter-checkbox input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #3b82f6;
+    cursor: pointer;
+    margin: 0;
+}
+
+.activity-filter-checkbox:hover {
+    color: #334155;
+    background: rgba(255,255,255,0.6);
+}
+
+.activity-filter-checkbox.active {
+    background: white;
+    color: #3b82f6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.activity-filter-checkbox svg {
+    flex-shrink: 0;
+}
+
+.filter-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #e0e7ff;
+    color: #4f46e5;
+    margin-left: 2px;
+}
+
+.status-sub-filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: #f8fafc;
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.status-filter-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.status-filter-btn:hover {
+    background: rgba(255,255,255,0.8);
+    color: #334155;
+}
+
+.status-filter-btn.active {
+    background: white;
+    color: var(--status-color, #3b82f6);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.calendar-header-center {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.calendar-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .calendar-title {
@@ -328,13 +520,6 @@
 
 .calendar-title svg {
     color: var(--primary);
-}
-
-.calendar-controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
 }
 
 .agent-filter {
@@ -411,6 +596,10 @@
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     overflow: hidden;
+    table-layout: fixed;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .calendar-weekdays {
@@ -432,6 +621,8 @@
 .calendar-days {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
+    flex: 1;
+    grid-auto-rows: 1fr;
 }
 
 .calendar-day {
@@ -441,6 +632,8 @@
     border-bottom: 1px solid var(--border-color);
     cursor: pointer;
     transition: background 0.2s;
+    overflow: hidden;
+    min-width: 0;
 }
 
 .calendar-day:nth-child(7n) {
@@ -485,6 +678,8 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    overflow: hidden;
+    min-width: 0;
 }
 
 /* Appointment Pill with Tooltip */
@@ -503,6 +698,10 @@
     cursor: pointer;
     transition: all 0.2s;
     overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .appointment-pill:hover {

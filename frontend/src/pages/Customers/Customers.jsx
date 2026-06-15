@@ -2311,21 +2311,21 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                     </div>
 
                     {/* Pagination + Limit + Import/Export — tek satır */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 0 6px', borderTop: '1px solid #f3f4f6' }}>
+                    <div className="customers-footer-bar">
                         {/* Sol: Limit seçici */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: '#6b7280' }}>
+                        <div className="customers-footer-limit">
                             <span>Göster:</span>
                             {[20, 50, 100, 'Tümü'].map(val => (
                                 <button
                                     key={val}
+                                    className={`customers-limit-btn ${limit === (val === 'Tümü' ? 999999 : val) ? 'active' : ''}`}
                                     onClick={() => { setLimit(val === 'Tümü' ? 999999 : val); setPage(1); }}
-                                    style={{ padding: '3px 8px', borderRadius: '5px', border: '1px solid', borderColor: limit === (val === 'Tümü' ? 999999 : val) ? '#ef4444' : '#e5e7eb', background: limit === (val === 'Tümü' ? 999999 : val) ? '#fef2f2' : '#fff', color: limit === (val === 'Tümü' ? 999999 : val) ? '#ef4444' : '#6b7280', fontWeight: limit === (val === 'Tümü' ? 999999 : val) ? 700 : 400, fontSize: '0.75rem', cursor: 'pointer' }}
                                 >{val}</button>
                             ))}
                         </div>
 
                         {/* Orta: Sayfa navigasyon */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '0 auto' }}>
+                        <div className="customers-footer-pagination">
                             <button
                                 className="pagination-btn"
                                 disabled={page === 1}
@@ -2346,7 +2346,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                         </div>
 
                         {/* Sağ: İçe / Dışa Aktar */}
-                        <div style={{ display: 'flex', gap: '6px' }}>
+                        <div className="customers-footer-actions">
                             <button
                                 className="export-csv-btn import-csv-btn"
                                 onClick={() => { setShowImportModal(true); setImportData([]); setImportResult(null); setImportFileName(''); setImportTag(''); }}
