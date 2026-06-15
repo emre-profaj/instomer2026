@@ -44,9 +44,15 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
                 });
             } catch {}
 
+            // Stage yoksa akış ataması yapma
+            if (!firstStage) {
+                console.log(`⚠️ [AutoFunnel] "${defaultFunnel.name}" has no stages — skipping assignment`);
+                return null;
+            }
+
             const updateData = {
                 funnelType: funnelId,
-                ...(firstStage && { funnelStageId: firstStage.id })
+                funnelStageId: firstStage.id
             };
 
             await prisma.conversation.update({
@@ -54,7 +60,7 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
                 data: updateData
             });
 
-            console.log(`✅ [AutoFunnel] "${defaultFunnel.name}" → conversation ${conversationId}`);
+            console.log(`✅ [AutoFunnel] "${defaultFunnel.name}" / "${firstStage.name}" → conversation ${conversationId}`);
         }
 
         // 2) Akışın takımını OVERRIDE et (her zaman çalışır)

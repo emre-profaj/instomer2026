@@ -1228,6 +1228,7 @@ model FunnelStage {
   assignedBotId  String?
   assignedBot    AIBot?   @relation("FunnelStageBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
   isClosing      Boolean  @default(false) // true = kapanış aşaması (Satış, Kayıp, Kapandı vb.)
+  statusType     String?  // WON, LOST, CLOSED — null = ACTIVE (açık aşama). Case durumunu otomatik günceller.
   createdAt      DateTime @default(now())
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 

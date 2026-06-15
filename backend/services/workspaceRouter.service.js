@@ -91,12 +91,18 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
             console.error(`🚦 [ROUTER:MOVE] Aşama sorgusu hatası:`, stageErr.message);
         }
 
+        // Stage yoksa akış ataması yapma
+        if (!firstStage?.id) {
+            console.log(`⚠️ [ROUTER:MOVE] Funnel "${funnel.name}" has no stages — skipping assignment`);
+            return null;
+        }
+
         // Sadece kesinlikle var olan kolonları güncelle
         const updateData = {
             funnelType: funnelId,
+            funnelStageId: firstStage.id,
             updatedAt: new Date()
         };
-        if (firstStage?.id) updateData.funnelStageId = firstStage.id;
 
         // ── Atama mantığı: Manuel atanmış konuşmaları EZMEMELİ ──
         if (skipAssignment) {

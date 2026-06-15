@@ -173,16 +173,23 @@ export const getContacts = async (req, res) => {
         } else if (funnelTypes && funnelTypes !== 'ALL') {
             // Multi-funnel: comma-separated IDs → OR filter
             const ids = funnelTypes.split(',').map(id => id.trim()).filter(Boolean);
-            if (ids.length === 1) {
-                where = { AND: [where, { funnelType: ids[0] }] };
-            } else if (ids.length > 1) {
-                where = { AND: [where, { OR: ids.map(id => ({ funnelType: id })) }] };
+            const funnels = await prisma.funnel.findMany({
+                where: { id: { in: ids } }
+            });
+            const names = funnels.map(f => f.name).filter(Boolean);
+            const allTerms = [...ids, ...names];
+            if (allTerms.length > 0) {
+                where = { AND: [where, { OR: allTerms.map(term => ({ funnelType: term })) }] };
             }
         } else if (funnelType && funnelType !== 'ALL') {
+            const funnel = await prisma.funnel.findFirst({
+                where: { id: funnelType }
+            });
+            const names = funnel ? [funnelType, funnel.name] : [funnelType];
             where = { 
                 AND: [
                     where, 
-                    { funnelType: funnelType }
+                    { OR: names.map(term => ({ funnelType: term })) }
                 ] 
             };
         }
@@ -366,38 +373,91 @@ export const getContacts = async (req, res) => {
             ]
         };
 
-        // Filter by AI call status (join with retellCall table)
+        // Filter by call status
         if (callStatus && callStatus !== 'ALL') {
-            let callWhere = { workspaceId };
-
-            if (callStatus === 'not_connected') {
-                callWhere.status = 'not_connected';
-            } else if (callStatus === 'ended') {
-                callWhere.status = 'ended';
-            } else if (callStatus === 'positive') {
-                callWhere.sentiment = 'Positive';
-            } else if (callStatus === 'negative') {
-                callWhere.sentiment = 'Negative';
-            } else if (callStatus === 'no_call') {
-                // Contacts with NO calls at all - handled below
-                callWhere = null;
-            }
-
-            if (callStatus === 'no_call') {
-                // Get all contacts that have at least one call
-                const calledContacts = await prisma.retellCall.findMany({
-                    where: { workspaceId, contactId: { not: null } },
+            if (callStatus === 'ended') {
+                // Agent Aramaları: contacts with phone numbers who have human calls
+                const humanCalledActivities = await prisma.contactActivity.findMany({
+                    where: {
+                        workspaceId,
+                        type: 'CALL',
+                        status: 'COMPLETED',
+                        contact: {
+                            phone: { not: '' },
+                            NOT: { phone: null },
+                            isDeleted: false,
+                            isArchived: false
+                        }
+                    },
                     select: { contactId: true },
                     distinct: ['contactId']
                 });
-                const calledIds = calledContacts.map(c => c.contactId).filter(Boolean);
+                const matchedIds = humanCalledActivities.map(a => a.contactId).filter(Boolean);
                 where = {
                     AND: [
                         where,
+                        { id: { in: matchedIds } }
+                    ]
+                };
+            } else if (callStatus === 'ai_called') {
+                // AI Aramaları: contacts with phone numbers who have AI calls
+                const contactsWithPhone = await prisma.contact.findMany({
+                    where: {
+                        workspaceId,
+                        phone: { not: '' },
+                        NOT: { phone: null },
+                        isDeleted: false,
+                        isArchived: false
+                    },
+                    select: { id: true }
+                });
+                const contactIdsWithPhone = contactsWithPhone.map(c => c.id);
+
+                const aiCalls = await prisma.retellCall.findMany({
+                    where: {
+                        workspaceId,
+                        contactId: { in: contactIdsWithPhone }
+                    },
+                    select: { contactId: true },
+                    distinct: ['contactId']
+                });
+                const matchedIds = aiCalls.map(c => c.contactId).filter(Boolean);
+                where = {
+                    AND: [
+                        where,
+                        { id: { in: matchedIds } }
+                    ]
+                };
+            } else if (callStatus === 'no_call') {
+                // İletişim Yok: contacts with phone numbers who have NOT been called by humans
+                const humanCalledActivities = await prisma.contactActivity.findMany({
+                    where: {
+                        workspaceId,
+                        type: 'CALL',
+                        status: 'COMPLETED'
+                    },
+                    select: { contactId: true },
+                    distinct: ['contactId']
+                });
+                const calledIds = humanCalledActivities.map(a => a.contactId).filter(Boolean);
+                where = {
+                    AND: [
+                        where,
+                        { phone: { not: '' }, NOT: { phone: null } },
                         { id: { notIn: calledIds } }
                     ]
                 };
             } else {
+                // Handle fallback retellCall status if needed (e.g. not_connected, positive, negative)
+                let callWhere = { workspaceId };
+                if (callStatus === 'not_connected') {
+                    callWhere.status = 'not_connected';
+                } else if (callStatus === 'positive') {
+                    callWhere.sentiment = 'Positive';
+                } else if (callStatus === 'negative') {
+                    callWhere.sentiment = 'Negative';
+                }
+
                 const matchingCalls = await prisma.retellCall.findMany({
                     where: callWhere,
                     select: { contactId: true },
@@ -406,7 +466,6 @@ export const getContacts = async (req, res) => {
                 const matchedIds = matchingCalls.map(c => c.contactId).filter(Boolean);
 
                 if (matchedIds.length === 0) {
-                    // No contacts match - return empty
                     return res.json({ contacts: [], total: 0, allImportGroups: [], allTags: [] });
                 }
 
@@ -456,7 +515,10 @@ export const getContacts = async (req, res) => {
                 ?.filter(c => c.status === 'ACTIVE')
                 ?.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
                 ?.[0];
-            const caseTopic = lastActiveCase?.title || null;
+            const GENERIC_CASE_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case'];
+            const rawCaseTopic = lastActiveCase?.title || null;
+            // Generic kanal etiketi case title'larını atla
+            const caseTopic = (rawCaseTopic && !GENERIC_CASE_TITLES.includes(rawCaseTopic.trim())) ? rawCaseTopic : null;
             // Generic source labels that should NOT be used as topic
             const GENERIC_LABELS = ['form', 'web widget', 'web_widget', 'whatsapp', 'instagram', 'facebook', 'messenger', 'email', 'manual'];
             let rawConvAiTopic = contact.conversations
@@ -808,7 +870,11 @@ export const getContacts = async (req, res) => {
         });
 
         // ── Quick Stats (use same date range as the main query) ──
-        const baseWhere = { workspaceId, isArchived: false, isDeleted: false };
+        const baseWhere = {
+            workspaceId,
+            isDeleted: false,
+            ...(showArchived !== 'true' ? { isArchived: false } : {})
+        };
 
         // Build the date range for stats from the same dateFilter params
         let statsDateFilter = {};
@@ -839,51 +905,130 @@ export const getContacts = async (req, res) => {
         const periodContactWhere = hasDateRange
             ? { ...baseWhere, createdAt: statsDateFilter }
             : baseWhere;
-        // When date range active, get period contact IDs for sub-filtering
-        let periodContactIds = null;
-        if (hasDateRange) {
-            const periodContacts = await prisma.contact.findMany({
-                where: periodContactWhere,
-                select: { id: true }
-            });
-            periodContactIds = periodContacts.map(c => c.id);
-        }
+
+        // Fetch contacts matching the period query to query their calls/activities
+        const matchingContacts = await prisma.contact.findMany({
+            where: {
+                ...periodContactWhere,
+                phone: { not: '' },
+                NOT: { phone: null }
+            },
+            select: { id: true }
+        });
+        const contactIdsWithPhone = matchingContacts.map(c => c.id);
 
         const retellCallWhere = {
             workspaceId,
-            ...(periodContactIds ? { contactId: { in: periodContactIds } } : {})
+            contactId: { in: contactIdsWithPhone }
         };
         const humanCallWhere = {
             workspaceId,
             type: 'CALL',
             status: 'COMPLETED',
-            ...(periodContactIds ? { contactId: { in: periodContactIds } } : {})
+            contactId: { in: contactIdsWithPhone }
         };
 
         const hasRetellModel = !!prisma.retellCall;
-        const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime] = await Promise.all([
+        const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime, funnelCountsRaw, assignedToMeCount] = await Promise.all([
             prisma.contact.count({ where: periodContactWhere }),
             prisma.contact.count({ where: { ...periodContactWhere, phone: { not: '' }, NOT: { phone: null } } }),
             // 1) Retell AI calls — distinct contacts
-            hasRetellModel ? prisma.retellCall.findMany({
+            hasRetellModel && contactIdsWithPhone.length > 0 ? prisma.retellCall.findMany({
                 where: retellCallWhere,
                 select: { contactId: true },
                 distinct: ['contactId']
             }) : Promise.resolve([]),
             // 2) Human / manual completed calls (ContactActivity type=CALL)
-            hasActivitiesModel ? prisma.contactActivity.findMany({
+            hasActivitiesModel && contactIdsWithPhone.length > 0 ? prisma.contactActivity.findMany({
                 where: humanCallWhere,
                 select: { contactId: true },
                 distinct: ['contactId']
             }) : Promise.resolve([]),
-            prisma.contact.count({ where: baseWhere })
+            // totalAllTime now also respects date filter
+            prisma.contact.count({ where: periodContactWhere }),
+            prisma.contact.groupBy({
+                by: ['funnelType'],
+                where: periodContactWhere,
+                _count: {
+                    _all: true
+                }
+            }),
+            // "Bana Atananlar" count — contacts with conversations assigned to current user
+            prisma.contact.count({
+                where: {
+                    ...periodContactWhere,
+                    conversations: {
+                        some: {
+                            workspaceId,
+                            assignedToId: req.user.id
+                        }
+                    }
+                }
+            })
         ]);
         // Deduplicate: each contact counted at most once
         const uniqueHumanCalledSet = new Set(humanCalledIds.map(r => r.contactId).filter(Boolean));
+        const uniqueAiCalledSet = new Set(retellCalledIds.map(r => r.contactId).filter(Boolean));
         const agentCalledCount = uniqueHumanCalledSet.size;
-        const aiCalledCount = new Set(retellCalledIds.map(r => r.contactId).filter(Boolean)).size;
+        const aiCalledCount = uniqueAiCalledSet.size;
+        // noActivityCount = contacts with phone numbers that have never been called by agents (human)
+        const noActivityCount = Math.max(0, withPhoneCount - agentCalledCount);
 
-        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, totalAllTime } });
+        const funnelCounts = {};
+        let nullOrGenelCount = 0;
+
+        // Resolve all funnelType values to actual funnel records for proper ID/name mapping
+        const uniqueFunnelTypes = funnelCountsRaw.map(item => item.funnelType).filter(Boolean);
+        let funnelLookup = {};
+        if (uniqueFunnelTypes.length > 0) {
+            const funnelRecords = await prisma.funnel.findMany({
+                where: {
+                    workspaceId,
+                    OR: [
+                        { id: { in: uniqueFunnelTypes } },
+                        { name: { in: uniqueFunnelTypes } }
+                    ]
+                }
+            });
+            funnelRecords.forEach(f => {
+                funnelLookup[f.id] = f;
+                funnelLookup[f.name] = f;
+            });
+        }
+
+        funnelCountsRaw.forEach(item => {
+            const fType = item.funnelType;
+            const count = item._count?._all || 0;
+            if (!fType || fType === 'Genel') {
+                nullOrGenelCount += count;
+            } else {
+                const resolved = funnelLookup[fType];
+                if (resolved) {
+                    // Store under both ID and name so frontend always finds it
+                    funnelCounts[resolved.id] = (funnelCounts[resolved.id] || 0) + count;
+                    funnelCounts[resolved.name] = (funnelCounts[resolved.name] || 0) + count;
+                } else {
+                    // Orphaned funnelType (deleted/renamed funnel) → count under Genel
+                    nullOrGenelCount += count;
+                }
+            }
+        });
+        funnelCounts['Genel'] = nullOrGenelCount;
+
+        // Stage-level counts (grouped by funnelStageId)
+        const funnelStageCountsRaw = await prisma.contact.groupBy({
+            by: ['funnelStageId'],
+            where: periodContactWhere,
+            _count: { _all: true }
+        });
+        const funnelStageCounts = {};
+        funnelStageCountsRaw.forEach(item => {
+            if (item.funnelStageId) {
+                funnelStageCounts[item.funnelStageId] = item._count?._all || 0;
+            }
+        });
+
+        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, assignedToMeCount } });
     } catch (error) {
         console.error('Get contacts error:', error?.message || error);
         console.error('Get contacts error stack:', error?.stack);
@@ -985,7 +1130,7 @@ export const getContacts = async (req, res) => {
                 };
             });
             console.log(`✅ [Get Contacts] Fallback query succeeded -> ${totalCount} total, showing ${finalContacts.length}`);
-            return res.json({ contacts: finalContacts, total: totalCount, allImportGroups: [], allTags: [], quickStats: { periodCount: totalCount, withPhoneCount, agentCalledCount: 0, aiCalledCount: 0, totalAllTime: totalCount } });
+            return res.json({ contacts: finalContacts, total: totalCount, allImportGroups: [], allTags: [], quickStats: { periodCount: totalCount, withPhoneCount, agentCalledCount: 0, aiCalledCount: 0, noActivityCount: totalCount, totalAllTime: totalCount } });
         } catch (fallbackError) {
             console.error('Get contacts fallback error:', fallbackError);
             return res.status(500).json({ error: 'Failed to fetch contacts' });
@@ -1077,6 +1222,73 @@ export const updateContact = async (req, res) => {
             where: { id },
             data: updateData
         });
+
+        // ── Auto-update Case status based on stage's statusType ──
+        if (funnelStageId !== undefined && funnelStageId !== existing.funnelStageId) {
+            try {
+                // Look up the new stage to check its statusType
+                const newStage = funnelStageId ? await prisma.funnelStage.findUnique({
+                    where: { id: funnelStageId }
+                }) : null;
+
+                if (newStage?.statusType) {
+                    // Find active cases for this contact in this workspace
+                    const activeCases = await prisma.case.findMany({
+                        where: { workspaceId, contactId: id, status: 'ACTIVE' }
+                    });
+
+                    const now = new Date();
+                    for (const activeCase of activeCases) {
+                        const caseUpdateData = {
+                            status: newStage.statusType,
+                            funnelStageId: funnelStageId,
+                            funnelType: updateData.funnelType || activeCase.funnelType
+                        };
+
+                        if (newStage.statusType === 'WON') {
+                            caseUpdateData.wonAt = now;
+                            caseUpdateData.closedAt = now;
+                        } else if (newStage.statusType === 'LOST') {
+                            caseUpdateData.lostAt = now;
+                            caseUpdateData.closedAt = now;
+                        } else if (newStage.statusType === 'CLOSED') {
+                            caseUpdateData.closedAt = now;
+                        }
+
+                        await prisma.case.update({
+                            where: { id: activeCase.id },
+                            data: caseUpdateData
+                        });
+                        console.log(`🏷️ [Case] Auto-updated case ${activeCase.caseNumber || activeCase.id} → ${newStage.statusType} (stage: ${newStage.name})`);
+                    }
+                } else if (newStage && !newStage.isClosing) {
+                    // Moving to an open (non-closing) stage — reopen closed cases
+                    const closedCases = await prisma.case.findMany({
+                        where: { workspaceId, contactId: id, status: { in: ['WON', 'LOST', 'CLOSED'] } },
+                        orderBy: { updatedAt: 'desc' },
+                        take: 1
+                    });
+
+                    for (const closedCase of closedCases) {
+                        await prisma.case.update({
+                            where: { id: closedCase.id },
+                            data: {
+                                status: 'ACTIVE',
+                                funnelStageId: funnelStageId,
+                                funnelType: updateData.funnelType || closedCase.funnelType,
+                                closedAt: null,
+                                wonAt: null,
+                                lostAt: null,
+                                lostReason: null
+                            }
+                        });
+                        console.log(`🔄 [Case] Reopened case ${closedCase.caseNumber || closedCase.id} → ACTIVE (stage: ${newStage.name})`);
+                    }
+                }
+            } catch (caseErr) {
+                console.error('⚠️ [Case] Auto-status update error:', caseErr.message);
+            }
+        }
 
         // Emit socket event for real-time update (workspace-specific)
         // Find workspaces this contact belongs to

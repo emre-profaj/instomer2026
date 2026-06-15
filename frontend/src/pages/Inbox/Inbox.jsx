@@ -12,7 +12,7 @@ import {
     Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConversationPopup from '../../components/ConversationPopup/ConversationPopup';
@@ -433,6 +433,12 @@ const Inbox = () => {
     const [quickFilter, setQuickFilter] = useState(null); // 'today' | 'week' | 'month' | 'unread'
     const [quickFilterOpen, setQuickFilterOpen] = useState(false);
     const quickFilterRef = useRef(null);
+    const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+    const filterPanelRef = useRef(null);
+    const [customDateStart, setCustomDateStart] = useState(null);
+    const [customDateEnd, setCustomDateEnd] = useState(null);
+    const [closingDropdownOpen, setClosingDropdownOpen] = useState(false);
+    const closingDropdownRef = useRef(null);
 
     // Funnel options — loaded dynamically from API
     const [funnelOptions, setFunnelOptions] = useState(FUNNEL_TYPE_OPTIONS_DEFAULT);
@@ -495,7 +501,7 @@ const Inbox = () => {
                     icon: f.icon,
                     assignedTeamId: f.assignedTeamId || null,
                     stages: (f.stages && f.stages.length > 0)
-                        ? f.stages.map(s => ({ value: s.id, label: s.name, color: s.color }))
+                        ? f.stages.map(s => ({ value: s.id, label: s.name, color: s.color, isClosing: s.isClosing || false, statusType: s.statusType || null }))
                         : getDefaultStagesForFunnel(f.name)
                 }))
             ]);
@@ -547,6 +553,12 @@ const Inbox = () => {
             if (agentFilterRef.current && !agentFilterRef.current.contains(event.target)) {
                 setAgentFilterOpen(false);
             }
+            if (filterPanelRef.current && !filterPanelRef.current.contains(event.target)) {
+                setFilterPanelOpen(false);
+            }
+            if (closingDropdownRef.current && !closingDropdownRef.current.contains(event.target)) {
+                setClosingDropdownOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -577,6 +589,16 @@ const Inbox = () => {
                     return itemDate >= start;
                 } else if (quickFilter === 'unread') {
                     return item.unreadCount > 0;
+                } else if (quickFilter === 'custom') {
+                    if (customDateStart) {
+                        const start = new Date(customDateStart); start.setHours(0, 0, 0, 0);
+                        if (itemDate < start) return false;
+                    }
+                    if (customDateEnd) {
+                        const end = new Date(customDateEnd); end.setHours(23, 59, 59, 999);
+                        if (itemDate > end) return false;
+                    }
+                    return true;
                 }
                 return true;
             });
@@ -605,7 +627,7 @@ const Inbox = () => {
             }
             return true;
         });
-    }, [inboxItems, searchTerm, quickFilter]);
+    }, [inboxItems, searchTerm, quickFilter, customDateStart, customDateEnd]);
 
     const [selectedItem, setSelectedItem] = useState(null);
     const [selectedItemType, setSelectedItemType] = useState(null);
@@ -846,6 +868,18 @@ const Inbox = () => {
         window.addEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
         return () => window.removeEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
     }, [funnelOptions]);
+
+    // Case title sidebar'dan değiştiğinde Inbox topic'ini de güncelle
+    useEffect(() => {
+        const handler = (e) => {
+            const { conversationId: convId, title } = e.detail || {};
+            if (!convId || !title) return;
+            setSelectedItem(prev => prev?.id === convId ? { ...prev, aiTopic: title } : prev);
+            setInboxItems(prev => prev.map(item => item.id === convId ? { ...item, aiTopic: title } : item));
+        };
+        window.addEventListener('case_title_updated', handler);
+        return () => window.removeEventListener('case_title_updated', handler);
+    }, []);
 
     // URL ?tab= parametresinden assignment tab'ı oku ve set et
     useEffect(() => {
@@ -2779,18 +2813,21 @@ const Inbox = () => {
         }
     };
 
-    const handleConversationStatusChange = async (conversationId, newStatus) => {
-        console.log(`🔄 Attempting to update conversation ${conversationId} to status: ${newStatus}`);
+    const handleConversationStatusChange = async (conversationId, newStatus, closingStageId = null) => {
+        console.log(`🔄 Attempting to update conversation ${conversationId} to status: ${newStatus}${closingStageId ? ` (closingStage: ${closingStageId})` : ''}`);
         console.log(`📌 Workspace ID: ${currentWorkspace?.id}`);
         try {
-            const response = await conversationAPI.updateStatus(currentWorkspace.id, conversationId, { status: newStatus });
+            const payload = { status: newStatus };
+            if (closingStageId) payload.closingStageId = closingStageId;
+            const response = await conversationAPI.updateStatus(currentWorkspace.id, conversationId, payload);
             console.log('📡 API Response:', response);
             setInboxItems(prev => prev.map(i =>
-                i.id === conversationId ? { ...i, status: newStatus } : i
+                i.id === conversationId ? { ...i, status: newStatus, ...(closingStageId ? { funnelStageId: closingStageId } : {}) } : i
             ));
             if (selectedItem?.id === conversationId) {
-                setSelectedItem(prev => ({ ...prev, status: newStatus }));
+                setSelectedItem(prev => ({ ...prev, status: newStatus, ...(closingStageId ? { funnelStageId: closingStageId } : {}) }));
             }
+            setClosingDropdownOpen(false);
             loadInboxItems(false);
             console.log(`✅ Conversation ${conversationId} status updated to ${newStatus}`);
         } catch (error) {
@@ -2983,42 +3020,52 @@ const Inbox = () => {
                             </button>
                         </div>
                     </div>
-                {/* Pipeline embed — shown when toggled to Pipeline view */}
+                </div>
                 {viewMode === 'pipeline' && (
                     <div className="inbox-pipeline-embed">
                         <PipelineView />
                     </div>
                 )}
-                {/* Filter Row — hidden in pipeline mode via CSS */}
-                <div className={`inbox-filter-row${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
-                    {/* Row 1: Channel filter — full width */}
-                    <div className="inbox-filter-row-top">
-                        {/* Filter Dropdown */}
-                        <div className="inbox-filter-multiselect" ref={filterDropdownRef}>
-                            <button
-                                className={`filter-multiselect-trigger ${showResolved ? 'has-resolved' : ''}`}
-                                onClick={() => setFilterDropdownOpen(!filterDropdownOpen)}
-                            >
-                                <Filter size={16} />
-                                <span>
-                                    {activeFilters.length === allFilters.length && !showResolved
-                                        ? 'Tümü'
-                                        : activeFilters.length === allFilters.length && showResolved
-                                            ? 'Çözülenler dahil'
-                                            : allFilters.length - activeFilters.length === 1
-                                                ? `1 kanal gizli`
-                                                : `${allFilters.length - activeFilters.length} kanal gizli`
-                                    }
-                                </span>
-                                <ChevronDown size={16} className={`chevron ${filterDropdownOpen ? 'open' : ''}`} />
-                            </button>
+                {/* ── Compact Bar: Search + Filtreler ── */}
+                <div className={`inbox-compact-bar${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
+                    <div className="inbox-compact-search">
+                        <Search size={15} className="search-icon" />
+                        <input
+                            type="text"
+                            placeholder="Ara..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <div className="inbox-compact-actions" ref={filterPanelRef}>
+                        <button
+                            className={`inbox-filter-toggle-btn ${filterPanelOpen ? 'active' : ''}`}
+                            onClick={() => setFilterPanelOpen(prev => !prev)}
+                        >
+                            <SlidersHorizontal size={15} />
+                            <span>Filtreler</span>
+                            {(() => {
+                                let count = 0;
+                                if (activeFilters.length < allFilters.length) count += (allFilters.length - activeFilters.length);
+                                if (showResolved) count++;
+                                if (showOnlyAssigned) count++;
+                                if (showAssignedToMe) count++;
+                                if (statusFilter) count++;
+                                if (agentFilter) count++;
+                                if (quickFilter) count++;
+                                return count > 0 ? <span className="fp-badge">{count}</span> : null;
+                            })()}
+                        </button>
 
-                            {filterDropdownOpen && (
-                                <div className="filter-dropdown-menu">
-                                    <div className="filter-section-title">
+                        {/* ── Filter Panel (açılır) ── */}
+                        {filterPanelOpen && (
+                            <div className="inbox-filter-panel">
+                                {/* Kanal Filtreleri */}
+                                <div className="fp-section">
+                                    <div className="fp-section-title">
                                         Kanallar
                                         <button
-                                            className="filter-section-toggle"
+                                            className="fp-toggle-all"
                                             onClick={() => {
                                                 const channelFilters = ['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes'];
                                                 const allChecked = channelFilters.every(f => activeFilters.includes(f));
@@ -3032,356 +3079,205 @@ const Inbox = () => {
                                             {['whatsapp', 'facebook', 'instagram', 'web_widget', 'web_form', 'emails', 'leads', 'phone_calls', 'notes'].every(f => activeFilters.includes(f)) ? 'Kaldır' : 'Seç'}
                                         </button>
                                     </div>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('whatsapp')}
-                                            onChange={() => toggleFilter('whatsapp')}
-                                        />
-                                        <MessageCircle size={18} className="icon-whatsapp" />
-                                        <span>WhatsApp</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('facebook')}
-                                            onChange={() => toggleFilter('facebook')}
-                                        />
-                                        <Facebook size={18} className="icon-facebook" />
-                                        <span>Facebook</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('instagram')}
-                                            onChange={() => toggleFilter('instagram')}
-                                        />
-                                        <Instagram size={18} className="icon-instagram" />
-                                        <span>Instagram</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('web_widget')}
-                                            onChange={() => toggleFilter('web_widget')}
-                                        />
-                                        <MessageSquare size={18} className="icon-widget" />
-                                        <span>Web Widget</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('web_form')}
-                                            onChange={() => toggleFilter('web_form')}
-                                        />
-                                        <FileText size={18} className="icon-form" />
-                                        <span>{t('inbox.webForms')}</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('emails')}
-                                            onChange={() => toggleFilter('emails')}
-                                        />
-                                        <Mail size={18} className="icon-email" />
-                                        <span>E-postalar</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('leads')}
-                                            onChange={() => toggleFilter('leads')}
-                                        />
-                                        <UserCheck size={18} className="icon-leads" />
-                                        <span>Leads</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('phone_calls')}
-                                            onChange={() => toggleFilter('phone_calls')}
-                                        />
-                                        <Phone size={18} className="icon-phone" />
-                                        <span>Aramalar</span>
-                                    </label>
-                                    <div className="filter-divider" />
-                                    <div className="filter-section-title">
-                                        Yorumlar
-                                        <button
-                                            className="filter-section-toggle"
-                                            onClick={() => {
-                                                const commentFilters = ['fb_comments', 'ig_comments'];
-                                                const allChecked = commentFilters.every(f => activeFilters.includes(f));
-                                                if (allChecked) {
-                                                    setActiveFilters(prev => prev.filter(f => !commentFilters.includes(f)));
-                                                } else {
-                                                    setActiveFilters(prev => [...new Set([...prev, ...commentFilters])]);
-                                                }
-                                            }}
-                                        >
-                                            {['fb_comments', 'ig_comments'].every(f => activeFilters.includes(f)) ? 'Kaldır' : 'Seç'}
-                                        </button>
-                                    </div>
-
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('fb_comments')}
-                                            onChange={() => toggleFilter('fb_comments')}
-                                        />
-                                        <Facebook size={18} className="icon-facebook" />
-                                        <span>{t('inbox.fbComments')}</span>
-                                    </label>
-                                    <label className="filter-option">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeFilters.includes('ig_comments')}
-                                            onChange={() => toggleFilter('ig_comments')}
-                                        />
-                                        <Instagram size={18} className="icon-instagram" />
-                                        <span>IG Yorumları</span>
-                                    </label>
-
-
-
-                                    <div className="filter-divider" />
-
-                                    <label className="filter-option resolved-toggle">
-                                        <input
-                                            type="checkbox"
-                                            checked={showResolved}
-                                            onChange={() => setShowResolved(!showResolved)}
-                                        />
-                                        <Check size={18} className="icon-resolved" />
-                                        <span>Arşivlenenleri Göster</span>
-                                    </label>
-
-                                    <label className="filter-option resolved-toggle">
-                                        <input
-                                            type="checkbox"
-                                            checked={showOnlyAssigned}
-                                            onChange={() => setShowOnlyAssigned(!showOnlyAssigned)}
-                                        />
-                                        <UserCheck size={18} className="icon-resolved" />
-                                        <span>Atanmayanları Göster</span>
-                                    </label>
-
-                                    <label className="filter-option resolved-toggle">
-                                        <input
-                                            type="checkbox"
-                                            checked={showAssignedToMe}
-                                            onChange={() => setShowAssignedToMe(!showAssignedToMe)}
-                                        />
-                                        <User size={18} className="icon-resolved" />
-                                        <span>Bana Atananlar</span>
-                                    </label>
-
-                                    {(activeFilters.length < allFilters.length || showResolved || showOnlyAssigned || showAssignedToMe) && (
-                                        <button
-                                            className="filter-clear-btn"
-                                            onClick={() => {
-                                                setActiveFilters(allFilters);
-                                                setShowResolved(false);
-                                                setShowOnlyAssigned(false);
-                                                setShowAssignedToMe(false);
-                                                setStatusFilter(null);
-                                                setAgentFilter(null);
-                                                setSearchTerm('');
-                                            }}
-                                        >
-                                            Filtreleri Sıfırla
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Agent Filter — only for owners, side by side with Tümü */}
-                        {isOwner && members.length > 0 && (
-                            <div className="inbox-agent-filter" ref={agentFilterRef}>
-                                <button
-                                    className={`agent-filter-select${agentFilter ? ' active' : ''}`}
-                                    onClick={() => setAgentFilterOpen(prev => !prev)}
-                                >
-                                    <span>
-                                        {agentFilter
-                                            ? agentFilter === '__unassigned__'
-                                                ? 'Atanmamış'
-                                                : (members.find(m => m.user?.id === agentFilter)?.user?.name || 'Tüm Temsilciler')
-                                            : 'Tüm Temsilciler'
-                                        }
-                                    </span>
-                                    <ChevronDown size={14} style={{ marginLeft: 'auto', transform: agentFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                                </button>
-                                {agentFilterOpen && (
-                                    <div className="agent-filter-dropdown">
-                                        <button
-                                            className={`agent-filter-item${!agentFilter ? ' selected' : ''}`}
-                                            onClick={() => { setAgentFilter(null); setAgentFilterOpen(false); }}
-                                        >
-                                            Tüm Temsilciler
-                                        </button>
-                                        <button
-                                            className={`agent-filter-item${agentFilter === '__unassigned__' ? ' selected' : ''}`}
-                                            onClick={() => { setAgentFilter('__unassigned__'); setAgentFilterOpen(false); }}
-                                        >
-                                            <span className="agent-filter-dot" style={{ background: '#94a3b8' }} />
-                                            Atanmamış
-                                        </button>
-                                        {members.map(member => (
+                                    <div className="fp-chips">
+                                        {[
+                                            { key: 'whatsapp', label: 'WhatsApp', icon: <MessageCircle size={13} className="icon-whatsapp" /> },
+                                            { key: 'facebook', label: 'Facebook', icon: <Facebook size={13} className="icon-facebook" /> },
+                                            { key: 'instagram', label: 'Instagram', icon: <Instagram size={13} className="icon-instagram" /> },
+                                            { key: 'web_widget', label: 'Widget', icon: <MessageSquare size={13} className="icon-widget" /> },
+                                            { key: 'web_form', label: 'Form', icon: <FileText size={13} className="icon-form" /> },
+                                            { key: 'emails', label: 'E-posta', icon: <Mail size={13} className="icon-email" /> },
+                                            { key: 'leads', label: 'Leads', icon: <UserCheck size={13} className="icon-leads" /> },
+                                            { key: 'phone_calls', label: 'Arama', icon: <Phone size={13} className="icon-phone" /> },
+                                        ].map(ch => (
                                             <button
-                                                key={member.user?.id}
-                                                className={`agent-filter-item${agentFilter === member.user?.id ? ' selected' : ''}`}
-                                                onClick={() => { setAgentFilter(member.user?.id); setAgentFilterOpen(false); }}
+                                                key={ch.key}
+                                                className={`fp-chip ${activeFilters.includes(ch.key) ? 'active' : ''}`}
+                                                onClick={() => toggleFilter(ch.key)}
                                             >
-                                                <span className="agent-filter-dot" style={{ background: '#3b82f6' }} />
-                                                {member.user?.name}
-                                                <span className="agent-filter-role">{member.role === 'OWNER' ? 'Owner' : 'Agent'}</span>
+                                                {ch.icon}
+                                                <span>{ch.label}</span>
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+
+                                {/* Yorum Filtreleri */}
+                                <div className="fp-section">
+                                    <div className="fp-section-title">Yorumlar</div>
+                                    <div className="fp-chips">
+                                        {[
+                                            { key: 'fb_comments', label: 'FB Yorum', icon: <Facebook size={13} className="icon-facebook" /> },
+                                            { key: 'ig_comments', label: 'IG Yorum', icon: <Instagram size={13} className="icon-instagram" /> },
+                                        ].map(ch => (
+                                            <button
+                                                key={ch.key}
+                                                className={`fp-chip ${activeFilters.includes(ch.key) ? 'active' : ''}`}
+                                                onClick={() => toggleFilter(ch.key)}
+                                            >
+                                                {ch.icon}
+                                                <span>{ch.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="fp-divider" />
+
+                                {/* Toggle'lar */}
+                                <div className="fp-section">
+                                    <div className="fp-toggles">
+                                        <label className="fp-toggle-item">
+                                            <input type="checkbox" checked={showResolved} onChange={() => setShowResolved(!showResolved)} />
+                                            <span>Arşivlenenleri Göster</span>
+                                        </label>
+                                        <label className="fp-toggle-item">
+                                            <input type="checkbox" checked={showOnlyAssigned} onChange={() => setShowOnlyAssigned(!showOnlyAssigned)} />
+                                            <span>Atanmayanları Göster</span>
+                                        </label>
+                                        <label className="fp-toggle-item">
+                                            <input type="checkbox" checked={showAssignedToMe} onChange={() => setShowAssignedToMe(!showAssignedToMe)} />
+                                            <span>Bana Atananlar</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="fp-divider" />
+
+                                {/* Temsilci Filtresi (sadece OWNER) */}
+                                {isOwner && members.length > 0 && (
+                                    <div className="fp-section">
+                                        <div className="fp-section-title">Temsilci</div>
+                                        <select
+                                            className="fp-select"
+                                            value={agentFilter || ''}
+                                            onChange={(e) => setAgentFilter(e.target.value || null)}
+                                        >
+                                            <option value="">Tüm Temsilciler</option>
+                                            <option value="__unassigned__">Atanmamış</option>
+                                            {members.map(m => (
+                                                <option key={m.user?.id} value={m.user?.id}>{m.user?.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 )}
+
+                                {/* Durum Filtresi */}
+                                <div className="fp-section">
+                                    <div className="fp-section-title">Durum / Aşama</div>
+                                    <select
+                                        className="fp-select"
+                                        value={statusFilter ? `${funnelFilter || ''}::${statusFilter}` : ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (!val) {
+                                                setStatusFilter(null);
+                                                setFunnelFilter(null);
+                                            } else {
+                                                const [fv, sv] = val.split('::');
+                                                setFunnelFilter(fv || null);
+                                                setStatusFilter(sv);
+                                            }
+                                            currentPageRef.current = 1;
+                                            setCurrentPage(1);
+                                        }}
+                                    >
+                                        <option value="">Tüm Durumlar</option>
+                                        {funnelOptions.filter(f => f.value && f.stages).map(funnel => (
+                                            <optgroup key={funnel.value} label={funnel.label}>
+                                                {funnel.stages.map(stage => (
+                                                    <option key={stage.value} value={`${funnel.value}::${stage.value}`}>
+                                                        {stage.label}
+                                                    </option>
+                                                ))}
+                                            </optgroup>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="fp-divider" />
+
+                                {/* Tarih */}
+                                <div className="fp-section">
+                                    <div className="fp-section-title">Tarih</div>
+                                    <div className="fp-chips">
+                                        {[
+                                            { key: null, label: 'Tümü' },
+                                            { key: 'today', label: 'Bugün' },
+                                            { key: 'week', label: 'Bu Hafta' },
+                                            { key: 'month', label: 'Bu Ay' },
+                                            { key: 'unread', label: 'Okunmamış' },
+                                            { key: 'custom', label: 'Özel Tarih' },
+                                        ].map(p => (
+                                            <button
+                                                key={p.key || 'ALL'}
+                                                className={`fp-chip ${quickFilter === p.key ? 'active' : ''}`}
+                                                onClick={() => {
+                                                    setQuickFilter(quickFilter === p.key ? null : p.key);
+                                                    if (p.key !== 'custom') {
+                                                        setCustomDateStart(null);
+                                                        setCustomDateEnd(null);
+                                                    }
+                                                }}
+                                            >
+                                                <span>{p.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {quickFilter === 'custom' && (
+                                        <div className="fp-custom-dates" style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                                            <DatePicker
+                                                selected={customDateStart}
+                                                onChange={(date) => setCustomDateStart(date)}
+                                                placeholderText="Başlangıç"
+                                                dateFormat="dd/MM/yyyy"
+                                                className="fp-date-input"
+                                                isClearable
+                                            />
+                                            <span style={{ color: '#94a3b8', fontSize: 12 }}>→</span>
+                                            <DatePicker
+                                                selected={customDateEnd}
+                                                onChange={(date) => setCustomDateEnd(date)}
+                                                placeholderText="Bitiş"
+                                                dateFormat="dd/MM/yyyy"
+                                                className="fp-date-input"
+                                                isClearable
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="fp-divider" />
+
+                                {/* Sıfırla */}
+                                <div className="fp-section" style={{ padding: '4px 0' }}>
+                                    <button
+                                        className="fp-reset-btn"
+                                        onClick={() => {
+                                            setActiveFilters(allFilters);
+                                            setShowResolved(false);
+                                            setShowOnlyAssigned(false);
+                                            setShowAssignedToMe(false);
+                                            setStatusFilter(null);
+                                            setFunnelFilter(null);
+                                            setAgentFilter(null);
+                                            setQuickFilter(null);
+                                            setCustomDateStart(null);
+                                            setCustomDateEnd(null);
+                                            setSearchTerm('');
+                                            setFilterPanelOpen(false);
+                                        }}
+                                    >
+                                        Filtreleri Sıfırla
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
-
-                    {/* Row 2: Status filter — full width */}
-                    <div className="inbox-filter-row-bottom">
-                        <div className="inbox-status-filters" ref={stageFilterRef}>
-                            <button
-                                className={`status-filter-select${statusFilter ? ' active' : ''}`}
-                                onClick={() => setStageFilterOpen(prev => !prev)}
-                            >
-                                {(() => {
-                                    if (!statusFilter) return 'Tüm Durumlar';
-                                    for (const f of funnelOptions) {
-                                        if (!f.stages) continue;
-                                        if (funnelFilter && f.value !== funnelFilter) continue;
-                                        const s = f.stages.find(s => s.value === statusFilter);
-                                        if (s) return s.label;
-                                    }
-                                    return 'Tüm Durumlar';
-                                })()}
-                                <ChevronDown size={14} style={{ marginLeft: 'auto', transform: stageFilterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                            </button>
-                            {stageFilterOpen && (
-                                <div className="stage-filter-dropdown">
-                                    <button
-                                        className={`stage-filter-item${!statusFilter ? ' selected' : ''}`}
-                                        onClick={() => { setStatusFilter(null); setFunnelFilter(null); setStageFilterOpen(false); currentPageRef.current = 1; setCurrentPage(1); }}
-                                    >
-                                        Tüm Durumlar
-                                    </button>
-                                    {funnelOptions.filter(f => f.value && f.stages).map(funnel => (
-                                        <div key={funnel.value} className="stage-filter-funnel">
-                                            <div className="stage-filter-funnel-label">
-                                                <span className="stage-filter-dot" style={{ background: funnel.color || '#9ca3af' }} />
-                                                {funnel.label}
-                                                <ChevronDown size={12} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
-                                            </div>
-                                            <div className="stage-filter-submenu">
-                                                {funnel.stages.map(stage => (
-                                                    <button
-                                                        key={stage.value}
-                                                        className={`stage-filter-item${statusFilter === stage.value && funnelFilter === funnel.value ? ' selected' : ''}`}
-                                                        onClick={() => { setStatusFilter(stage.value); setFunnelFilter(funnel.value); setStageFilterOpen(false); currentPageRef.current = 1; setCurrentPage(1); }}
-                                                    >
-                                                        <span className="stage-filter-dot" style={{ background: stage.color || '#6366f1' }} />
-                                                        {stage.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-
-
-                    {/* Search */}
-                    <div className={`inbox-search${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
-                        <Search size={16} className="search-icon" />
-                        <input
-                            type="text"
-                            placeholder="Ara..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-
-                    {/* Channel filters (only for messages) */}
-                    {(activeFilters.length === 0 || activeFilters.includes('messages')) && (
-                        <div className="inbox-channel-filters">
-                            <button
-                                className={`channel-btn ${activeChannel === null ? 'active' : ''}`}
-                                onClick={() => setActiveChannel(null)}
-                            >
-                                Tümü
-                            </button>
-                            <button
-                                className={`channel-btn whatsapp ${activeChannel === 'WHATSAPP' ? 'active' : ''}`}
-                                onClick={() => setActiveChannel('WHATSAPP')}
-                            >
-                                <MessageCircle size={14} />
-                            </button>
-                            <button
-                                className={`channel-btn facebook ${activeChannel === 'FACEBOOK' ? 'active' : ''}`}
-                                onClick={() => setActiveChannel('FACEBOOK')}
-                            >
-                                <Facebook size={14} />
-                            </button>
-                            <button
-                                className={`channel-btn instagram ${activeChannel === 'INSTAGRAM' ? 'active' : ''}`}
-                                onClick={() => setActiveChannel('INSTAGRAM')}
-                            >
-                                <Instagram size={14} />
-                            </button>
-                            <button
-                                className={`channel-btn widget ${activeChannel === 'WIDGET' ? 'active' : ''}`}
-                                onClick={() => setActiveChannel('WIDGET')}
-                            >
-                                <Globe size={14} />
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Assignment tabs (only for messages) */}
-                    {(activeFilters.length === 0 || activeFilters.includes('messages')) && (
-                        <div className="inbox-assignment-tabs">
-                            <button
-                                className={`assignment-tab ${assignmentTab === 'ALL' ? 'active' : ''}`}
-                                onClick={() => setAssignmentTab('ALL')}
-                            >
-                                Hepsi
-                            </button>
-                            <button
-                                className={`assignment-tab ${assignmentTab === 'MINE_OR_UNASSIGNED' ? 'active' : ''}`}
-                                onClick={() => setAssignmentTab('MINE_OR_UNASSIGNED')}
-                                title="Bana atananlar + Havuzdakiler"
-                            >
-                                Havuzum
-                            </button>
-                            <button
-                                className={`assignment-tab ${assignmentTab === 'MINE' ? 'active' : ''}`}
-                                onClick={() => setAssignmentTab('MINE')}
-                            >
-                                Bana Atanan
-                            </button>
-                            <button
-                                className={`assignment-tab ${assignmentTab === 'PENDING' ? 'active' : ''}`}
-                                onClick={() => setAssignmentTab('PENDING')}
-                            >
-                                Atanmamışlar
-                            </button>
-                        </div>
-                    )}
                 </div>
 
                 {/* Bulk Selection Toolbar */}
-                <div className="bulk-selection-toolbar">
+                <div className={`bulk-selection-toolbar${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
                     <div className="toolbar-row">
 
                         {/* Toplu Seç butonu + açılan dropdown */}
@@ -3454,25 +3350,7 @@ const Inbox = () => {
                         </div>
 
                     </div>
-                    {/* Date Preset Buttons */}
-                    <div className="sales-date-presets" style={{ padding: '0 10px' }}>
-                        {[
-                            { key: null, label: 'Tümü' },
-                            { key: 'today', label: 'Bugün' },
-                            { key: 'week', label: 'Bu Hafta' },
-                            { key: 'month', label: 'Bu Ay' },
-                            { key: 'unread', label: 'Okunmamış' },
-                        ].map(p => (
-                            <button
-                                key={p.key || 'ALL'}
-                                className={`sales-date-preset-btn ${quickFilter === p.key ? 'active' : ''}`}
-                                onClick={() => setQuickFilter(quickFilter === p.key ? null : p.key)}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
-                    </div>
-                    </div>
+                </div>
 
                 {/* Inbox Items List */}
                 <div className={`inbox-items${viewMode === 'pipeline' ? ' hidden-in-pipeline' : ''}`}>
@@ -3912,6 +3790,10 @@ const Inbox = () => {
                                                                     setInboxItems(prev => prev.map(item =>
                                                                         item.id === selectedItem.id ? { ...item, aiTopic: newTopic } : item
                                                                     ));
+                                                                    // Case title'ı da senkronize et (Yazışma konusu = Case konusu)
+                                                                    if (selectedItem.caseId) {
+                                                                        await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { title: newTopic });
+                                                                    }
                                                                 } catch (err) { console.error('Topic update error:', err); }
                                                             }}
                                                         />
@@ -3939,6 +3821,10 @@ const Inbox = () => {
                                                                                 setInboxItems(prev => prev.map(item =>
                                                                                     item.id === selectedItem.id ? { ...item, aiTopic: topic } : item
                                                                                 ));
+                                                                                // Case title'ı da senkronize et (Yazışma konusu = Case konusu)
+                                                                                if (selectedItem.caseId) {
+                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { title: topic });
+                                                                                }
                                                                             } catch (err) { console.error('Topic update error:', err); }
                                                                         }}
                                                                     >
@@ -4185,23 +4071,156 @@ const Inbox = () => {
                                                 );
                                             })()}
 
-                                            {/* Durum toggle + Sil — konu başlığının yanında */}
+                                            {/* Konuşma Durumu — Aktif stili pill dropdown */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
                                                 <>
-                                                    <button
-                                                        className={`conv-status-toggle ${selectedItem.status === 'RESOLVED' ? 'resolved' : 'open'}`}
-                                                        onClick={() => handleConversationStatusChange(selectedItem.id, selectedItem.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED')}
-                                                        title={selectedItem.status === 'RESOLVED' ? 'Arşivden Çıkar' : 'Arşivle'}
-                                                    >
-                                                        <span className="conv-status-toggle-track">
-                                                            <span className="conv-status-toggle-thumb">
-                                                                {selectedItem.status === 'RESOLVED' ? <CheckCircle2 size={11} /> : <Circle size={11} />}
-                                                            </span>
-                                                        </span>
-                                                        <span className="conv-status-toggle-label">
-                                                            {selectedItem.status === 'RESOLVED' ? 'Arşivlendi' : 'Arşivle'}
-                                                        </span>
-                                                    </button>
+                                                    <div className="closing-dropdown-wrapper" ref={closingDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
+                                                        {(() => {
+                                                            const isResolved = selectedItem.status === 'RESOLVED';
+                                                            const pillStyle = isResolved
+                                                                ? { bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db', dotColor: '#94a3b8' }
+                                                                : { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0', dotColor: '#22c55e' };
+                                                            const label = isResolved ? 'Kapatıldı' : 'Aktif';
+                                                            return (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => setClosingDropdownOpen(prev => !prev)}
+                                                                        style={{
+                                                                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                                            padding: '5px 12px', borderRadius: 8,
+                                                                            border: `1.5px solid ${pillStyle.border}`,
+                                                                            background: pillStyle.bg, color: pillStyle.color,
+                                                                            fontSize: '0.78rem', fontWeight: 700,
+                                                                            cursor: 'pointer', whiteSpace: 'nowrap',
+                                                                            transition: 'all 0.15s'
+                                                                        }}
+                                                                    >
+                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: pillStyle.dotColor, flexShrink: 0 }} />
+                                                                        {label}
+                                                                        <ChevronDown size={13} style={{
+                                                                            transition: 'transform 0.2s',
+                                                                            transform: closingDropdownOpen ? 'rotate(180deg)' : 'none',
+                                                                            opacity: 0.6
+                                                                        }} />
+                                                                    </button>
+                                                                    {closingDropdownOpen && (
+                                                                        <div
+                                                                            style={{
+                                                                                position: 'fixed', top: closingDropdownRef.current?.getBoundingClientRect?.().bottom + 4 || 0, left: closingDropdownRef.current?.getBoundingClientRect?.().left || 0, zIndex: 99999,
+                                                                                background: '#fff', border: '1px solid #e5e7eb',
+                                                                                borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                                                minWidth: 200, overflow: 'hidden', padding: '4px 0'
+                                                                            }}
+                                                                            onClick={e => e.stopPropagation()}
+                                                                        >
+                                                                            {/* AKTİF seçeneği */}
+                                                                            <div
+                                                                                onClick={() => {
+                                                                                    if (isResolved) {
+                                                                                        handleConversationStatusChange(selectedItem.id, 'OPEN');
+                                                                                    }
+                                                                                    setClosingDropdownOpen(false);
+                                                                                }}
+                                                                                style={{
+                                                                                    padding: '10px 14px', cursor: isResolved ? 'pointer' : 'default',
+                                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                                    fontSize: '0.82rem', fontWeight: 700,
+                                                                                    color: '#16a34a',
+                                                                                    background: !isResolved ? '#f0fdf4' : 'transparent',
+                                                                                    transition: 'background 0.1s',
+                                                                                    textTransform: 'uppercase', letterSpacing: '0.3px'
+                                                                                }}
+                                                                                onMouseEnter={e => { if (isResolved) e.currentTarget.style.background = '#f0fdf4'; }}
+                                                                                onMouseLeave={e => { if (isResolved) e.currentTarget.style.background = 'transparent'; }}
+                                                                            >
+                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                                                                                AKTİF
+                                                                                {!isResolved && (
+                                                                                    <span style={{ marginLeft: 'auto' }}>
+                                                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            {/* Kapanış aşamaları — sadece konuşmanın akışından */}
+                                                                            {(() => {
+                                                                                const currentFunnelId = selectedItem.funnelType || '';
+                                                                                const currentFunnel = funnelOptions.find(f => f.value === currentFunnelId);
+                                                                                const closingStages = [];
+                                                                                if (currentFunnel && currentFunnel.stages) {
+                                                                                    currentFunnel.stages.forEach(s => {
+                                                                                        if (s.isClosing) {
+                                                                                            closingStages.push(s);
+                                                                                        }
+                                                                                    });
+                                                                                }
+                                                                                if (closingStages.length === 0) {
+                                                                                    // Kapanış aşaması yoksa genel "KAPANDI" göster
+                                                                                    return (
+                                                                                        <div
+                                                                                            onClick={() => {
+                                                                                                handleConversationStatusChange(selectedItem.id, 'RESOLVED');
+                                                                                                setClosingDropdownOpen(false);
+                                                                                            }}
+                                                                                            style={{
+                                                                                                padding: '10px 14px', cursor: 'pointer',
+                                                                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                                                                fontSize: '0.82rem', fontWeight: 700,
+                                                                                                color: '#6b7280',
+                                                                                                background: isResolved ? '#f3f4f6' : 'transparent',
+                                                                                                transition: 'background 0.1s',
+                                                                                                textTransform: 'uppercase', letterSpacing: '0.3px'
+                                                                                            }}
+                                                                                            onMouseEnter={e => { if (!isResolved) e.currentTarget.style.background = '#f9fafb'; }}
+                                                                                            onMouseLeave={e => { if (!isResolved) e.currentTarget.style.background = 'transparent'; }}
+                                                                                        >
+                                                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#94a3b8', flexShrink: 0 }} />
+                                                                                            KAPANDI
+                                                                                            {isResolved && (
+                                                                                                <span style={{ marginLeft: 'auto' }}>
+                                                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                }
+                                                                                return closingStages.map(stage => {
+                                                                                    const isActiveStage = isResolved && (selectedItem.funnelStageId === stage.value || selectedItem._effectiveStageId === stage.value);
+                                                                                    return (
+                                                                                        <div
+                                                                                            key={stage.value}
+                                                                                            onClick={() => {
+                                                                                                handleConversationStatusChange(selectedItem.id, 'RESOLVED', stage.value);
+                                                                                                setClosingDropdownOpen(false);
+                                                                                            }}
+                                                                                            style={{
+                                                                                                padding: '10px 14px', cursor: 'pointer',
+                                                                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                                                                fontSize: '0.82rem', fontWeight: 700,
+                                                                                                color: stage.color || '#6b7280',
+                                                                                                background: isActiveStage ? '#f3f4f6' : 'transparent',
+                                                                                                transition: 'background 0.1s',
+                                                                                                textTransform: 'uppercase', letterSpacing: '0.3px'
+                                                                                            }}
+                                                                                            onMouseEnter={e => { if (!isActiveStage) e.currentTarget.style.background = '#f9fafb'; }}
+                                                                                            onMouseLeave={e => { if (!isActiveStage) e.currentTarget.style.background = isActiveStage ? '#f3f4f6' : 'transparent'; }}
+                                                                                        >
+                                                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#6366f1', flexShrink: 0 }} />
+                                                                                            {stage.label.toUpperCase()}
+                                                                                            {isActiveStage && (
+                                                                                                <span style={{ marginLeft: 'auto' }}>
+                                                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={stage.color || '#6b7280'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                });
+                                                                            })()}
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
                                                     <button
                                                         className="profile-action-btn delete"
                                                         onClick={() => handleDeleteItem(selectedItem)}
@@ -4305,6 +4324,15 @@ const Inbox = () => {
                                                         }, 2000);
                                                     } catch (err) { console.error('Stage update error:', err); }
                                                 };
+                                                // Compute stage & funnel conversation counts from inboxItems
+                                                const stageCounts = {};
+                                                const funnelCountMap = {};
+                                                (inboxItems || []).forEach(item => {
+                                                    const sid = item._effectiveStageId || item.funnelStageId || item.contact?.funnelStageId;
+                                                    const fid = item.funnelType || '';
+                                                    if (sid) stageCounts[sid] = (stageCounts[sid] || 0) + 1;
+                                                    if (fid) funnelCountMap[fid] = (funnelCountMap[fid] || 0) + 1;
+                                                });
                                                 return (
                                                     <>
                                                         {/* Tek Kutucuk: Mega Menü Trigger */}
@@ -4377,6 +4405,11 @@ const Inbox = () => {
                                                                                 >
                                                                                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: funnel.color || '#6366f1', flexShrink: 0 }} />
                                                                                     {funnel.label}
+                                                                                    {funnelCountMap[funnel.value] > 0 && (
+                                                                                        <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#94a3b8', marginLeft: 2 }}>
+                                                                                            {funnelCountMap[funnel.value]}
+                                                                                        </span>
+                                                                                    )}
                                                                                     <svg width="12" height="12" viewBox="0 0 12 12" style={{ marginLeft: 'auto', opacity: 0.4 }}><path d="M4.5 3L7.5 6L4.5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
                                                                                 </button>
                                                                             );
@@ -4416,7 +4449,14 @@ const Inbox = () => {
                                                                                         >
                                                                                             <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: stage.color || '#6366f1' }} />
                                                                                             {stage.label || stage.name}
-                                                                                            {isActive && <span style={{ marginLeft: 'auto', fontSize: '0.7rem' }}>✓</span>}
+                                                                                            <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                                                {stageCounts[stage.value] > 0 && (
+                                                                                                    <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#94a3b8', background: '#f1f5f9', borderRadius: 6, padding: '1px 5px', minWidth: 18, textAlign: 'center' }}>
+                                                                                                        {stageCounts[stage.value]}
+                                                                                                    </span>
+                                                                                                )}
+                                                                                                {isActive && <span style={{ fontSize: '0.7rem', color: stage.color || '#6366f1' }}>✓</span>}
+                                                                                            </span>
                                                                                         </button>
                                                                                     );
                                                                                 })}
@@ -5905,6 +5945,8 @@ const Inbox = () => {
                         onActivitySaved={handleActivitySaved}
                         onClose={() => setShowContactSidebar(false)}
                         onOpenConversationPopup={(convId, channel) => setConvPopup({ conversationId: convId, channel })}
+                        onConversationStatusChange={handleConversationStatusChange}
+                        funnelOptions={funnelOptions}
                     />
                 </div>
             )}

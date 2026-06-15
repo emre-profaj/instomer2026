@@ -3293,9 +3293,8 @@
     font-weight: 700;
     color: #334155;
     letter-spacing: 0.04em;
-    margin-bottom: 14px;
-    padding-bottom: 8px;
-    border-bottom: 1px dashed #cbd5e1;
+    margin-bottom: 10px;
+    padding-bottom: 0;
 }
 
 .journey-header-top-row {
@@ -3485,3 +3484,4 @@
 .journey-step.clickable:active {
     opacity: 0.5;
 }
+

@@ -202,25 +202,43 @@ export const getContactCases = async (req, res) => {
         });
 
         // ── AUTO-SYNC: Case funnelStageId boşsa ama bağlı conversation'da doluysa, case'i güncelle ──
+        // + Case title generic kanal etiketi ise ama conversation'da aiTopic varsa, case title'ı güncelle
+        const GENERIC_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case'];
         for (const c of cases) {
+            let needsUpdate = false;
+            const updateData = {};
+
+            // Funnel stage sync
             if (!c.funnelStageId && c.conversations?.length > 0) {
                 const convWithStage = c.conversations.find(cv => cv.funnelStageId);
                 if (convWithStage) {
-                    try {
-                        await prisma.case.update({
-                            where: { id: c.id },
-                            data: {
-                                funnelStageId: convWithStage.funnelStageId,
-                                funnelType: convWithStage.funnelType || null
-                            }
-                        });
-                        // Reflect in local object for response
-                        c.funnelStageId = convWithStage.funnelStageId;
-                        c.funnelType = convWithStage.funnelType || null;
-                        console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} funnelStageId from conversation ${convWithStage.id}`);
-                    } catch (syncErr) {
-                        console.warn(`⚠️ [AutoSync] Failed for case ${c.id}:`, syncErr.message);
-                    }
+                    updateData.funnelStageId = convWithStage.funnelStageId;
+                    updateData.funnelType = convWithStage.funnelType || null;
+                    c.funnelStageId = convWithStage.funnelStageId;
+                    c.funnelType = convWithStage.funnelType || null;
+                    needsUpdate = true;
+                    console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} funnelStageId from conversation`);
+                }
+            }
+
+            // Title sync: generic kanal etiketi → conversation aiTopic
+            if (c.conversations?.length > 0 && (!c.title || GENERIC_TITLES.includes(c.title.trim()))) {
+                const convWithTopic = c.conversations
+                    .filter(cv => cv.aiTopic && !GENERIC_TITLES.includes(cv.aiTopic.trim()))
+                    .sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0))[0];
+                if (convWithTopic) {
+                    updateData.title = convWithTopic.aiTopic.trim().substring(0, 200);
+                    c.title = updateData.title;
+                    needsUpdate = true;
+                    console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} title: "${updateData.title}"`);
+                }
+            }
+
+            if (needsUpdate) {
+                try {
+                    await prisma.case.update({ where: { id: c.id }, data: updateData });
+                } catch (syncErr) {
+                    console.warn(`⚠️ [AutoSync] Failed for case ${c.id}:`, syncErr.message);
                 }
             }
         }

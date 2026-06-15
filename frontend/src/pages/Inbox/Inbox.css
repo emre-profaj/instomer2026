@@ -1381,6 +1381,7 @@
     border-bottom: 1px solid #e2e8f0;
     background: #ffffff;
     position: relative;
+    z-index: 20;
 }
 
 /* Profile Bar */
@@ -1474,14 +1475,16 @@
 /* Dates row */
 .profile-dates-row {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10.5px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    font-size: 9.5px;
     color: #9ca3af;
+    line-height: 1.3;
 }
 
 .profile-dates-sep {
-    color: #d1d5db;
+    display: none;
 }
 
 
@@ -1529,7 +1532,9 @@
     font-weight: 500;
     color: #374151;
     outline: none;
-    width: 145px;
+    width: 220px;
+    min-width: 180px;
+    flex: 1;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
@@ -6756,3 +6761,733 @@
     background: #15803d;
     box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   COMPACT FILTER BAR + EXPANDABLE PANEL
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Compact Top Bar (Search + Filtreler button) ── */
+.inbox-compact-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    flex-shrink: 0;
+}
+
+.inbox-search-compact {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f3f4f6;
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 0;
+}
+.inbox-search-compact .search-icon {
+    color: #9ca3af;
+    flex-shrink: 0;
+}
+.inbox-search-compact input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: #1e293b;
+    min-width: 0;
+}
+.inbox-search-compact input::placeholder {
+    color: #9ca3af;
+}
+
+/* Filtreler toggle button */
+.inbox-filter-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.inbox-filter-toggle-btn:hover {
+    background: #f8fafc;
+    border-color: #d1d5db;
+}
+.inbox-filter-toggle-btn.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+.inbox-filter-toggle-btn.has-active {
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+.inbox-filter-toggle-btn.has-active:not(.active) {
+    background: #f0f9ff;
+}
+
+/* Active filter count badge */
+.filter-badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* ── Expandable Filter Panel ── */
+.inbox-filter-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fafbfc;
+    animation: fpSlideDown 0.15s ease;
+    max-height: 380px;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+@keyframes fpSlideDown {
+    from { opacity: 0; max-height: 0; }
+    to { opacity: 1; max-height: 380px; }
+}
+
+/* ── Panel Section ── */
+.fp-section {
+    padding: 6px 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fp-section:last-child {
+    border-bottom: none;
+}
+
+.fp-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.fp-section-toggle {
+    background: none;
+    border: none;
+    font-size: 10px;
+    font-weight: 600;
+    color: #3b82f6;
+    cursor: pointer;
+    padding: 0;
+}
+.fp-section-toggle:hover {
+    color: #2563eb;
+    text-decoration: underline;
+}
+
+/* ── Quick Date Filters ── */
+.fp-quick-filters {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    padding: 7px 10px;
+}
+
+.fp-quick-btn {
+    padding: 4px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.fp-quick-btn:hover {
+    background: #f8fafc;
+    border-color: #d1d5db;
+}
+.fp-quick-btn.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+}
+
+/* ── Tab Row (used by Assignment + Channel) ── */
+.fp-tab-row {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+}
+
+.fp-tab-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 6px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.fp-tab-btn:hover {
+    background: #f3f4f6;
+}
+.fp-tab-btn.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+    font-weight: 600;
+}
+
+/* ── Channel Quick Buttons ── */
+.fp-channel-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.12s;
+    gap: 3px;
+}
+.fp-channel-btn:hover {
+    background: #f3f4f6;
+}
+.fp-channel-btn.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+.fp-channel-btn.whatsapp.active {
+    background: #ecfdf5;
+    border-color: #86efac;
+    color: #16a34a;
+}
+.fp-channel-btn.facebook.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+.fp-channel-btn.instagram.active {
+    background: #fdf2f8;
+    border-color: #f9a8d4;
+    color: #db2777;
+}
+.fp-channel-btn.widget.active {
+    background: #eef2ff;
+    border-color: #a5b4fc;
+    color: #4f46e5;
+}
+
+/* ── Inline Row (Status + Agent side by side) ── */
+.fp-inline-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.fp-inline-row .inbox-status-filters {
+    flex: 1;
+    min-width: 120px;
+}
+.fp-inline-row .inbox-agent-filter {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* ── Channel Checkboxes Grid ── */
+.fp-check-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2px 8px;
+}
+
+.fp-check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 4px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #374151;
+    transition: background 0.1s;
+}
+.fp-check:hover {
+    background: #f3f4f6;
+}
+.fp-check input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #2563eb;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.fp-check svg {
+    flex-shrink: 0;
+}
+.fp-check span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Visibility Toggles ── */
+.fp-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.fp-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #374151;
+    transition: background 0.1s;
+}
+.fp-toggle-row:hover {
+    background: #f3f4f6;
+}
+.fp-toggle-row input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #2563eb;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+.fp-toggle-row svg {
+    flex-shrink: 0;
+    color: #9ca3af;
+}
+
+/* ── Bulk Section (inside panel) ── */
+.fp-bulk {
+    padding: 6px 10px;
+}
+.fp-bulk .bulk-toggle-wrapper {
+    position: relative;
+}
+.fp-bulk .bulk-select-toggle {
+    width: 100%;
+    justify-content: center;
+}
+
+/* ── Reset Button ── */
+.fp-reset {
+    padding: 4px 10px 8px;
+    text-align: center;
+}
+.fp-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 12px;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    color: #ef4444;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.fp-reset-btn:hover {
+    background: #fef2f2;
+    border-color: #f87171;
+}
+
+/* ── Custom Date Range Picker ── */
+.fp-custom-date {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 10px 12px;
+}
+
+.fp-date-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.fp-date-field {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fp-date-field label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.fp-date-field input[type="date"] {
+    padding: 6px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #1e293b;
+    background: #fff;
+    outline: none;
+    transition: all 0.15s ease;
+    width: 100%;
+}
+
+.fp-date-field input[type="date"]:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.fp-date-sep {
+    color: #94a3b8;
+    align-self: flex-end;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════
+   Compact Bar — new class names used by JSX
+   ═══════════════════════════════════════════════════ */
+
+/* Search (JSX uses .inbox-compact-search) */
+.inbox-compact-search {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f3f4f6;
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 0;
+}
+.inbox-compact-search .search-icon {
+    color: #9ca3af;
+    flex-shrink: 0;
+}
+.inbox-compact-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 13px;
+    color: #1e293b;
+    min-width: 0;
+}
+.inbox-compact-search input::placeholder {
+    color: #9ca3af;
+}
+
+/* Actions wrapper */
+.inbox-compact-actions {
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* Filter Panel — positioned absolute under the toggle button */
+.inbox-compact-actions .inbox-filter-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    width: 300px;
+    max-height: 420px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 200;
+    animation: fpSlideDown 0.15s ease;
+}
+
+/* Badge for active filter count */
+.fp-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    margin-left: 2px;
+}
+
+/* Section title */
+.fp-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Toggle all (Seç/Kaldır) */
+.fp-toggle-all {
+    background: none;
+    border: none;
+    font-size: 10px;
+    font-weight: 600;
+    color: #3b82f6;
+    cursor: pointer;
+    padding: 0;
+}
+.fp-toggle-all:hover {
+    color: #2563eb;
+    text-decoration: underline;
+}
+
+/* Chips container */
+.fp-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* Individual chip */
+.fp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    background: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.12s ease;
+}
+.fp-chip:hover {
+    background: #f8fafc;
+    border-color: #d1d5db;
+}
+.fp-chip.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #2563eb;
+}
+
+/* Divider */
+.fp-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 0;
+}
+
+/* Toggle items */
+.fp-toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #374151;
+    transition: background 0.1s;
+}
+.fp-toggle-item:hover {
+    background: #f3f4f6;
+}
+.fp-toggle-item input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: #2563eb;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* Select dropdown inside filter panel */
+.fp-select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #1e293b;
+    background: #fff;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.fp-select:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+}
+
+/* Date input in filter panel */
+.fp-date-input {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #1e293b;
+    background: #fff;
+    outline: none;
+}
+.fp-date-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.1);
+}
+
+/* ═══════════════════════════════════════════════════
+   Closing Dropdown (Kapat ▾)
+   ═══════════════════════════════════════════════════ */
+
+.closing-dropdown-wrapper {
+    position: relative;
+    display: inline-flex;
+}
+
+.conv-close-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    color: #16a34a;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+.conv-close-btn:hover {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+.conv-close-btn.active {
+    background: #dcfce7;
+    border-color: #86efac;
+}
+.conv-close-btn .chevron {
+    transition: transform 0.2s;
+}
+.conv-close-btn .chevron.open {
+    transform: rotate(180deg);
+}
+
+.closing-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 220px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 300;
+    padding: 6px 0;
+    animation: fpSlideDown 0.12s ease;
+}
+
+.closing-dropdown-title {
+    padding: 4px 12px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.closing-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 12px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e293b;
+    cursor: pointer;
+    transition: background 0.1s;
+    text-align: left;
+}
+.closing-dropdown-item:hover {
+    background: #f8fafc;
+}
+.closing-dropdown-item.plain {
+    color: #64748b;
+    font-weight: 400;
+}
+
+.closing-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.closing-funnel-tag {
+    margin-left: auto;
+    font-size: 10px;
+    font-weight: 500;
+    color: #94a3b8;
+    background: #f1f5f9;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.closing-dropdown-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 4px 0;
+}
+

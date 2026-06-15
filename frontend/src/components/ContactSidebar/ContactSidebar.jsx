@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import CaseCards from './CaseCards';
@@ -123,7 +123,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
     );
 };
 
-const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null, onOpenConversationPopup = null }) => {
+const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null, onOpenConversationPopup = null, onConversationStatusChange = null, funnelOptions = [] }) => {
     const { currentWorkspace, onlineUsers, user } = useAuth();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
@@ -175,6 +175,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [funnelStage, setFunnelStage] = useState(null); // { name, color } of the current funnel stage
     const [activeCaseInfo, setActiveCaseInfo] = useState(null); // { caseNumber, caseId, title } from CaseCards
     const [showExtraFields, setShowExtraFields] = useState(false);
+    const [caseStatusDropdownOpen, setCaseStatusDropdownOpen] = useState(false);
+
 
     // Reminder states
     const [showReminderModal, setShowReminderModal] = useState(false);
@@ -567,6 +569,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             setActivityFunnels(Array.isArray(res.data) ? res.data : (res.data?.funnels || []));
         } catch { }
     };
+
+    // Sidebar açıldığında funnelleri otomatik yükle (case status select için gerekli)
+    useEffect(() => {
+        loadActivityFunnels();
+    }, [currentWorkspace?.id]);
 
     // Aktivite modalını konuşmanın mevcut atamasıyla aç
     const openActivityModal = (type) => {
@@ -1809,6 +1816,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                 </button>
                             </div>
 
+
+
                             {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
                             {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
                             {activeConv && (
@@ -1828,33 +1837,102 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             )}
                                             <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
                                                 {activeCaseInfo?.status && (() => {
-                                                    const STATUS_LABELS_MAP = {
-                                                        ACTIVE: { label: 'Aktif', color: '#3b82f6', bg: '#eff6ff' },
-                                                        WON: { label: 'Kazandı', color: '#10b981', bg: '#ecfdf5' },
-                                                        LOST: { label: 'Kaybetti', color: '#ef4444', bg: '#fef2f2' },
-                                                        CLOSED: { label: 'Kapandı', color: '#6b7280', bg: '#f3f4f6' }
-                                                    };
-                                                    const si = STATUS_LABELS_MAP[activeCaseInfo.status] || STATUS_LABELS_MAP.ACTIVE;
+                                                    const convFunnelType = localConvOverride?.funnelType || activeConv?.funnelType || conversationData?.funnelType || '';
+                                                    const currentFunnel = activityFunnels.find(f => f.id === convFunnelType);
+
+                                                    let statusOptions = [{ value: 'ACTIVE', label: 'Aktif', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', dotColor: '#22c55e' }];
+
+                                                    if (currentFunnel && currentFunnel.stages) {
+                                                        const closingStages = currentFunnel.stages.filter(s => s.isClosing || s.statusType);
+                                                        closingStages.forEach(s => {
+                                                            const st = s.statusType || 'CLOSED';
+                                                            const colors = {
+                                                                WON: { color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0' },
+                                                                LOST: { color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
+                                                                CLOSED: { color: '#6b7280', bg: '#f3f4f6', border: '#d1d5db' }
+                                                            };
+                                                            const c = colors[st] || colors.CLOSED;
+                                                            statusOptions.push({ value: st, label: s.name, color: c.color, bg: c.bg, border: c.border, dotColor: s.color || c.color, stageId: s.id });
+                                                        });
+                                                    }
+
+                                                    if (statusOptions.length === 1) {
+                                                        statusOptions.push(
+                                                            { value: 'WON', label: 'Kazandı', color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0', dotColor: '#10b981' },
+                                                            { value: 'LOST', label: 'Kaybetti', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' },
+                                                            { value: 'CLOSED', label: 'Kapandı', color: '#6b7280', bg: '#f3f4f6', border: '#d1d5db', dotColor: '#6b7280' }
+                                                        );
+                                                    }
+
+                                                    const currentOpt = statusOptions.find(o => o.value === activeCaseInfo.status) || statusOptions[0];
                                                     return (
-                                                        <select
-                                                            value={activeCaseInfo.status}
-                                                            onChange={async (e) => {
-                                                                const newStatus = e.target.value;
-                                                                try {
-                                                                    await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: newStatus });
-                                                                    setActiveCaseInfo(prev => ({ ...prev, status: newStatus }));
-                                                                } catch (err) { console.error('Status update error:', err); }
-                                                            }}
-                                                            style={{
-                                                                fontSize: '0.56rem', fontWeight: 700, padding: '1px 4px',
-                                                                borderRadius: 4, border: 'none', cursor: 'pointer',
-                                                                color: si.color, background: si.bg, flexShrink: 0
-                                                            }}
-                                                        >
-                                                            {Object.entries(STATUS_LABELS_MAP).map(([k, v]) => (
-                                                                <option key={k} value={k}>{v.label}</option>
-                                                            ))}
-                                                        </select>
+                                                        <div style={{ position: 'relative', display: 'inline-flex' }}>
+                                                            <button
+                                                                onClick={() => setCaseStatusDropdownOpen(prev => !prev)}
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                                    padding: '5px 12px', borderRadius: 8,
+                                                                    border: `1.5px solid ${currentOpt.border || '#bbf7d0'}`,
+                                                                    background: currentOpt.bg, color: currentOpt.color,
+                                                                    fontSize: '0.78rem', fontWeight: 700,
+                                                                    cursor: 'pointer', whiteSpace: 'nowrap',
+                                                                    transition: 'all 0.15s'
+                                                                }}
+                                                            >
+                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: currentOpt.dotColor || currentOpt.color, flexShrink: 0 }} />
+                                                                {currentOpt.label}
+                                                                <ChevronDown size={13} style={{
+                                                                    transition: 'transform 0.2s',
+                                                                    transform: caseStatusDropdownOpen ? 'rotate(180deg)' : 'none',
+                                                                    opacity: 0.6
+                                                                }} />
+                                                            </button>
+
+                                                            {caseStatusDropdownOpen && (
+                                                                <>
+                                                                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCaseStatusDropdownOpen(false)} />
+                                                                <div
+                                                                    style={{
+                                                                        position: 'absolute', top: '100%', right: 0, zIndex: 9999,
+                                                                        background: '#fff', border: '1px solid #e5e7eb',
+                                                                        borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                                        minWidth: 180, marginTop: 4, overflow: 'hidden'
+                                                                    }}
+                                                                    onClick={e => e.stopPropagation()}
+                                                                >
+                                                                    {statusOptions.map((o, i) => {
+                                                                        const isActive = activeCaseInfo.status === o.value;
+                                                                        return (
+                                                                            <div
+                                                                                key={i}
+                                                                                onClick={async () => {
+                                                                                    try {
+                                                                                        await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: o.value });
+                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: o.value }));
+                                                                                    } catch (err) { console.error('Status update error:', err); }
+                                                                                    setCaseStatusDropdownOpen(false);
+                                                                                }}
+                                                                                style={{
+                                                                                    padding: '9px 14px', cursor: 'pointer',
+                                                                                    display: 'flex', alignItems: 'center', gap: 8,
+                                                                                    fontSize: '0.8rem', fontWeight: isActive ? 700 : 500,
+                                                                                    color: isActive ? o.color : '#374151',
+                                                                                    background: isActive ? o.bg : 'transparent',
+                                                                                    transition: 'background 0.1s'
+                                                                                }}
+                                                                                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f9fafb'; }}
+                                                                                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isActive ? o.bg : 'transparent'; }}
+                                                                            >
+                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: o.dotColor || o.color, flexShrink: 0 }} />
+                                                                                {o.label}
+                                                                                {isActive && <CheckCircle2 size={13} style={{ marginLeft: 'auto', color: o.color }} />}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                                </>
+                                                            )}
+                                                        </div>
                                                     );
                                                 })()}
                                             </div>
@@ -1871,6 +1949,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     try {
                                                         await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { title: newTitle });
                                                         setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle }));
+                                                        // Inbox header topic input'unu da güncelle
+                                                        window.dispatchEvent(new CustomEvent('case_title_updated', {
+                                                            detail: { caseId: activeCaseInfo.caseId, title: newTitle, conversationId }
+                                                        }));
                                                     } catch (err) { console.error('Title update error:', err); }
                                                 }}
                                                 onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
@@ -2442,9 +2524,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
                                         return (
                                             <>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 12px 4px' }}>
-                                                    <span className="journey-count">{milestones.length} adım</span>
-                                                </div>
                                                 <div className="journey-steps">
                                                     {milestones.map((m, idx) => {
                                                         const isClickable = m._sourceItems || m._dealData;

@@ -1223,15 +1223,19 @@ export const updateConversationStatus = async (req, res) => {
         }
 
         const { workspaceId, conversationId } = req.params;
-        const { status } = req.body;
+        const { status, closingStageId } = req.body;
         const userId = req.user?.id;
 
         console.log(`   Conversation ID: ${conversationId}`);
         console.log(`   New Status: ${status}`);
+        console.log(`   Closing Stage ID: ${closingStageId || 'none'}`);
         console.log(`   Resolved By: ${userId}`);
 
         // Verify conversation belongs to this workspace
-        const existing = await prisma.conversation.findFirst({ where: { id: conversationId, workspaceId } });
+        const existing = await prisma.conversation.findFirst({
+            where: { id: conversationId, workspaceId },
+            include: { contact: { select: { id: true, funnelStageId: true, funnelType: true } } }
+        });
         if (!existing) {
             return res.status(404).json({ error: 'Conversation not found' });
         }
@@ -1243,10 +1247,28 @@ export const updateConversationStatus = async (req, res) => {
         if (status === 'RESOLVED') {
             updateData.resolvedAt = new Date();
             updateData.resolvedById = userId;
+            updateData.botEnabled = false;
         } else {
             // Clear resolvedAt if reopening
             updateData.resolvedAt = null;
             updateData.resolvedById = null;
+        }
+
+        // ── Closing Stage Logic: kapanış aşaması seçildiyse cascade uygula ──
+        let closingStage = null;
+        if (status === 'RESOLVED' && closingStageId) {
+            closingStage = await prisma.funnelStage.findUnique({
+                where: { id: closingStageId },
+                include: { funnel: { select: { id: true, name: true } } }
+            });
+
+            if (closingStage) {
+                // Konuşmanın funnelStageId'sini güncelle
+                updateData.funnelStageId = closingStageId;
+                updateData.funnelType = closingStage.funnel?.id || existing.funnelType;
+
+                console.log(`   📌 Closing stage: ${closingStage.name} (statusType: ${closingStage.statusType})`);
+            }
         }
 
         const conversation = await prisma.conversation.update({
@@ -1257,22 +1279,82 @@ export const updateConversationStatus = async (req, res) => {
         console.log(`✅ [Conversation Status] ${conversationId} -> ${status}${status === 'RESOLVED' ? ` (resolvedAt set, resolvedBy: ${userId})` : ''}`);
         console.log(`   Updated conversation:`, conversation.id, conversation.status);
 
+        // ── Cascade to Contact & Case when closing ──
+        if (closingStage && existing.contact?.id) {
+            const contactId = existing.contact.id;
+            const now = new Date();
+
+            try {
+                // 1. Contact'ın funnelStageId'sini güncelle
+                await prisma.contact.update({
+                    where: { id: contactId },
+                    data: {
+                        funnelStageId: closingStageId,
+                        funnelType: closingStage.funnel?.id || existing.funnelType
+                    }
+                });
+                console.log(`   🔄 Contact ${contactId} → stage ${closingStage.name}`);
+
+                // 2. Case durumunu güncelle (statusType varsa)
+                if (closingStage.statusType) {
+                    const activeCases = await prisma.case.findMany({
+                        where: { workspaceId, contactId, status: 'ACTIVE' }
+                    });
+
+                    for (const activeCase of activeCases) {
+                        const caseUpdateData = {
+                            status: closingStage.statusType,
+                            funnelStageId: closingStageId,
+                            funnelType: closingStage.funnel?.id || activeCase.funnelType,
+                            closedAt: now
+                        };
+
+                        if (closingStage.statusType === 'WON') caseUpdateData.wonAt = now;
+                        if (closingStage.statusType === 'LOST') caseUpdateData.lostAt = now;
+
+                        await prisma.case.update({
+                            where: { id: activeCase.id },
+                            data: caseUpdateData
+                        });
+                        console.log(`   📦 Case ${activeCase.caseNumber} → ${closingStage.statusType}`);
+                    }
+                }
+
+                // 3. Emit contact_updated for real-time UI updates
+                emitToWorkspace(workspaceId, 'contact_updated', {
+                    workspaceId,
+                    contactId,
+                    updatedFields: {
+                        funnelStageId: closingStageId,
+                        funnelType: closingStage.funnel?.id || existing.funnelType
+                    }
+                });
+            } catch (cascadeErr) {
+                console.error('⚠️ [ClosingCascade] Error (non-blocking):', cascadeErr.message);
+            }
+        }
+
         // Log status change event
+        const eventTitle = closingStage
+            ? `Konuşma <b>${closingStage.name}</b> olarak kapatıldı`
+            : (status === 'RESOLVED' ? 'Konuşma <b>çözüldü</b>' : 'Konuşma <b>yeniden açıldı</b>');
+
         logEvent({
             conversationId,
             workspaceId,
             eventType: 'STATUS_CHANGED',
-            title: status === 'RESOLVED' ? 'Konuşma <b>çözüldü</b>' : 'Konuşma <b>yeniden açıldı</b>',
+            title: eventTitle,
             actorId: userId,
             actorType: 'USER'
         }).catch(() => {});
 
-        res.json({ conversation });
+        res.json({ conversation, closingStage: closingStage ? { name: closingStage.name, statusType: closingStage.statusType } : null });
     } catch (error) {
         console.error('❌ Update conversation status error:', error);
         res.status(500).json({ error: 'Failed to update conversation status' });
     }
 };
+
 export const deleteConversation = async (req, res) => {
     try {
         const { workspaceId, conversationId } = req.params;

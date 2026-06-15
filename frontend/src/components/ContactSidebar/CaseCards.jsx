@@ -39,6 +39,10 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [funnels, setFunnels] = useState([]);
     const [editingCaseId, setEditingCaseId] = useState(null);
     const [assigningCaseId, setAssigningCaseId] = useState(null);
+    const [showInlineCreate, setShowInlineCreate] = useState(false);
+    const [inlineNewTitle, setInlineNewTitle] = useState('');
+    const [inlineCreating, setInlineCreating] = useState(false);
+    const [showCaseSwitch, setShowCaseSwitch] = useState(false);
 
     // Mega menü state (inline mode) — must be before any early returns to respect Rules of Hooks
     const [megaOpen, setMegaOpen] = useState(false);
@@ -111,6 +115,24 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             alert('Case oluşturulamadı');
         } finally {
             setCreating(false);
+        }
+    };
+
+    const handleInlineCreate = async () => {
+        if (!inlineNewTitle.trim()) return;
+        setInlineCreating(true);
+        try {
+            await caseAPI.create(workspaceId, contactId, {
+                title: inlineNewTitle.trim(),
+                conversationId: conversationId || null
+            });
+            setInlineNewTitle('');
+            setShowInlineCreate(false);
+            fetchCases();
+        } catch (err) {
+            console.error('Inline case create error:', err);
+        } finally {
+            setInlineCreating(false);
         }
     };
 
@@ -374,6 +396,107 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                         )}
                     </div>
                 </div>
+
+                {/* ── Yeni Case / Case Değiştir ── */}
+                <div style={{ padding: '0 12px 4px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={() => { setShowInlineCreate(v => !v); setShowCaseSwitch(false); }}
+                        style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            fontSize: '0.68rem', fontWeight: 600, color: '#8b5cf6',
+                            display: 'flex', alignItems: 'center', gap: 3, padding: '2px 4px'
+                        }}
+                    >
+                        <Plus size={11} /> Yeni Case
+                    </button>
+                    {cases.filter(c => c.id !== displayCase?.id && c.status === 'ACTIVE').length > 0 && (
+                        <button
+                            onClick={() => { setShowCaseSwitch(v => !v); setShowInlineCreate(false); }}
+                            style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                fontSize: '0.68rem', fontWeight: 500, color: '#6b7280',
+                                display: 'flex', alignItems: 'center', gap: 3, padding: '2px 4px'
+                            }}
+                        >
+                            ↔ Değiştir
+                        </button>
+                    )}
+                </div>
+
+                {/* Yeni Case Form */}
+                {showInlineCreate && (
+                    <div style={{ padding: '0 12px 6px', display: 'flex', gap: 6 }}>
+                        <input
+                            type="text"
+                            value={inlineNewTitle}
+                            onChange={e => setInlineNewTitle(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && inlineNewTitle.trim()) {
+                                    handleInlineCreate();
+                                } else if (e.key === 'Escape') {
+                                    setShowInlineCreate(false);
+                                    setInlineNewTitle('');
+                                }
+                            }}
+                            placeholder="Case başlığı..."
+                            autoFocus
+                            style={{
+                                flex: 1, fontSize: '0.74rem', padding: '4px 8px',
+                                border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none'
+                            }}
+                        />
+                        <button
+                            onClick={() => handleInlineCreate()}
+                            disabled={inlineCreating || !inlineNewTitle.trim()}
+                            style={{
+                                background: '#8b5cf6', color: '#fff', border: 'none',
+                                borderRadius: 6, padding: '4px 10px', cursor: 'pointer',
+                                fontSize: '0.72rem', fontWeight: 600, opacity: inlineCreating ? 0.6 : 1
+                            }}
+                        >
+                            {inlineCreating ? '...' : 'Oluştur'}
+                        </button>
+                    </div>
+                )}
+
+                {/* Case Değiştir Dropdown */}
+                {showCaseSwitch && (
+                    <div style={{
+                        padding: '4px 12px 6px', display: 'flex', flexDirection: 'column', gap: 2
+                    }}>
+                        <div style={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>
+                            Diğer Case'ler
+                        </div>
+                        {cases.filter(c => c.id !== displayCase?.id && c.status === 'ACTIVE').map(c => (
+                            <button
+                                key={c.id}
+                                onClick={async () => {
+                                    try {
+                                        await caseAPI.linkConversation(workspaceId, c.id, conversationId);
+                                        await fetchCases();
+                                        setShowCaseSwitch(false);
+                                    } catch (err) { console.error('Case switch error:', err); }
+                                }}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                                    borderRadius: 6, padding: '5px 8px', cursor: 'pointer',
+                                    fontSize: '0.72rem', fontWeight: 500, color: '#374151',
+                                    textAlign: 'left', width: '100%'
+                                }}
+                            >
+                                <Briefcase size={11} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                                <span style={{ fontSize: '0.6rem', color: '#a1a1aa', fontFamily: 'monospace' }}>{c.caseNumber}</span>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
+                            </button>
+                        ))}
+                        {cases.filter(c => c.id !== displayCase?.id && c.status === 'ACTIVE').length === 0 && (
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '4px 0' }}>
+                                Başka aktif case yok
+                            </div>
+                        )}
+                    </div>
+                )}
             </>
         );
     }

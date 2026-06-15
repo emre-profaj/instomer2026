@@ -1321,6 +1321,23 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                         }
                     });
 
+                    // aiTopic güncellenince bağlı case'in başlığını da güncelle
+                    if (extractedTopic) {
+                        try {
+                            const updatedConv = await prisma.conversation.findUnique({
+                                where: { id: conversationId },
+                                select: { caseId: true }
+                            });
+                            if (updatedConv?.caseId) {
+                                await prisma.case.update({
+                                    where: { id: updatedConv.caseId },
+                                    data: { title: extractedTopic.trim().substring(0, 200) }
+                                });
+                                console.log(`🔄 [Classifier] Case title synced: "${extractedTopic}" → case ${updatedConv.caseId}`);
+                            }
+                        } catch (_) {}
+                    }
+
                     // Aksiyonları çalıştır: Lead olduysa VEYA telefon numarası varsa
                     // Contact.phone'u taze oku — executePhoneCaptureRule tarafından güncellenmiş olabilir
                     const freshContact = await prisma.contact.findUnique({ where: { id: conv.contactId }, select: { phone: true } });

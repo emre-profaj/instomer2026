@@ -13,8 +13,8 @@ const DEFAULT_FUNNELS = [
         stages: [
             { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
             { name: 'Randevu Verildi',      color: '#8b5cf6', order: 1 },
-            { name: 'Randevu Tamamlandı',   color: '#10b981', order: 2, isClosing: true },
-            { name: 'Randevu İptal',        color: '#ef4444', order: 3, isClosing: true }
+            { name: 'Randevu Tamamlandı',   color: '#10b981', order: 2, isClosing: true, statusType: 'WON' },
+            { name: 'Randevu İptal',        color: '#ef4444', order: 3, isClosing: true, statusType: 'LOST' }
         ]
     },
     {
@@ -29,9 +29,9 @@ const DEFAULT_FUNNELS = [
             { name: 'Sıcak Fırsat',         color: '#f97316', order: 3 },
             { name: 'Görüşme Planlandı',    color: '#14b8a6', order: 4 },
             { name: 'Teklif Aşaması',       color: '#ec4899', order: 5 },
-            { name: 'Satış',                color: '#10b981', order: 6, isClosing: true },
+            { name: 'Satış',                color: '#10b981', order: 6, isClosing: true, statusType: 'WON' },
             { name: 'Ulaşılamadı',          color: '#94a3b8', order: 7 },
-            { name: 'Kayıp',                color: '#ef4444', order: 8, isClosing: true }
+            { name: 'Kayıp',                color: '#ef4444', order: 8, isClosing: true, statusType: 'LOST' }
         ]
     },
     {
@@ -43,8 +43,8 @@ const DEFAULT_FUNNELS = [
             { name: 'Yeni Başvuru',    color: '#3b82f6', order: 0 },
             { name: 'Değerlendirmede', color: '#f59e0b', order: 1 },
             { name: 'Mülakat',         color: '#8b5cf6', order: 2 },
-            { name: 'İşe Alındı',      color: '#10b981', order: 3, isClosing: true },
-            { name: 'Red',             color: '#ef4444', order: 4, isClosing: true }
+            { name: 'İşe Alındı',      color: '#10b981', order: 3, isClosing: true, statusType: 'WON' },
+            { name: 'Red',             color: '#ef4444', order: 4, isClosing: true, statusType: 'LOST' }
         ]
     },
     {
@@ -56,8 +56,8 @@ const DEFAULT_FUNNELS = [
             { name: 'Yeni Talep',      color: '#3b82f6', order: 0 },
             { name: 'İnceleniyor',      color: '#f59e0b', order: 1 },
             { name: 'İşlemde',          color: '#8b5cf6', order: 2 },
-            { name: 'Çözüldü',         color: '#10b981', order: 3, isClosing: true },
-            { name: 'Kapandı',          color: '#64748b', order: 4, isClosing: true }
+            { name: 'Çözüldü',         color: '#10b981', order: 3, isClosing: true, statusType: 'WON' },
+            { name: 'Kapandı',          color: '#64748b', order: 4, isClosing: true, statusType: 'CLOSED' }
         ]
     },
 ];
@@ -602,7 +602,7 @@ export const deleteFunnel = async (req, res) => {
 export const createStage = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color, assignedUserId, assignedTeamId, isClosing } = req.body;
+        const { name, color, assignedUserId, assignedTeamId, isClosing, statusType } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'Durum adı zorunludur' });
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
@@ -619,7 +619,8 @@ export const createStage = async (req, res) => {
                 order: nextOrder,
                 assignedUserId: assignedUserId || null,
                 assignedTeamId: assignedTeamId || null,
-                isClosing: isClosing || false
+                isClosing: isClosing || false,
+                statusType: statusType || null
             }
         });
         res.status(201).json({ stage });
@@ -633,7 +634,7 @@ export const createStage = async (req, res) => {
 export const updateStage = async (req, res) => {
     try {
         const { workspaceId, funnelId, stageId } = req.params;
-        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing } = req.body;
+        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType } = req.body;
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
@@ -650,7 +651,8 @@ export const updateStage = async (req, res) => {
                 ...(assignedUserId !== undefined && { assignedUserId }),
                 ...(assignedTeamId !== undefined && { assignedTeamId }),
                 ...(assignedBotId !== undefined && { assignedBotId }),
-                ...(isClosing !== undefined && { isClosing })
+                ...(isClosing !== undefined && { isClosing }),
+                ...(statusType !== undefined && { statusType: statusType || null })
             }
         });
         res.json({ stage });

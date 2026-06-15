@@ -43,26 +43,28 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
             return defaultResult;
         }
 
-        // Workspace akışlarını ve giriş kriterlerini yükle
+        // Workspace akışlarını, stage'lerini ve giriş kriterlerini yükle
         const funnels = await prisma.funnel.findMany({
             where: { workspaceId },
-            select: { id: true, name: true, icon: true, classificationCriteria: true }
+            select: {
+                id: true, name: true, icon: true, classificationCriteria: true,
+                stages: { orderBy: { order: 'asc' }, select: { id: true, name: true } }
+            }
         });
 
         // Özel akış kriterlerini hazırla
         let customFunnelContext = '';
         if (funnels.length > 0) {
-            customFunnelContext = '\n\n### MEVCUT AKIŞLAR ###\nAşağıdaki akışlar tanımlı. Konuşma en uygun akışın ID\'sini matchedFunnelId olarak döndür.\n';
+            customFunnelContext = '\n\n### MEVCUT AKIŞLAR ###\nAşağıdaki akışlar tanımlı. Konuşma en uygun akışın ID\'sini matchedFunnelId olarak MUTLAKA döndür.\n⚠️ "Genel" isimli akışı SADECE hiçbir kritere uymuyorsa döndür. Spesifik akışları tercih et.\n';
             for (const f of funnels) {
-                customFunnelContext += `\nAkış: "${f.name}" (ID: ${f.id}, İkon: ${f.icon || '📁'})`;
+                const stageNames = f.stages?.map(s => s.name).join(', ') || '-';
+                customFunnelContext += `\nAkış: "${f.name}" (ID: ${f.id}) | Aşamalar: [${stageNames}]`;
                 if (f.classificationCriteria) {
-                    // Hem düz metin hem JSON destekle
                     try {
                         const criteria = JSON.parse(f.classificationCriteria);
                         if (criteria.keywords) customFunnelContext += `\n  Anahtar kelimeler: ${criteria.keywords}`;
                         if (criteria.aiDescription) customFunnelContext += `\n  Açıklama: ${criteria.aiDescription}`;
                     } catch (e) {
-                        // Düz metin olarak kullan
                         customFunnelContext += `\n  Giriş kriterleri: ${f.classificationCriteria}`;
                     }
                 }
@@ -124,7 +126,7 @@ ${customFunnelContext}
    - requestedDate: Talep edilen tarih (ISO format: "2026-06-05", null ise bugün)
    - branchInfo: Şube veya branş bilgisi (varsa)
 
-3. matchedFunnelId: Özel akış kriterleriyle eşleşen akışın ID'si (yoksa null)
+3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz. Hiçbirine uymuyorsa null yaz ama emin değilsen en yakın olanı seç.
 
 SADECE JSON döndür, başka bir şey yazma:
 {
@@ -294,83 +296,22 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         }
 
         // --- Akış atama (skipFunnelAssignment false ise) ---
+        // AI'ın matchedFunnelId'sini kullan (akışlardaki classificationCriteria'ya göre eşleşir)
         let targetFunnelId = skipFunnelAssignment ? null : matchedFunnelId;
         let targetStageId = null;
 
-        // matchedFunnelId varsa, sınıflandırma türüyle uyumlu mu kontrol et
-        // AI "Genel Akış"ı matchlediyse ama classification RANDEVU/FIRSAT/DESTEK ise → override et
-        if (targetFunnelId && classification !== 'GENEL') {
-            try {
-                const matchedFunnel = await prisma.funnel.findUnique({
-                    where: { id: targetFunnelId },
-                    select: { name: true }
-                });
-                if (matchedFunnel && /^genel/i.test(matchedFunnel.name)) {
-                    console.log(`⚠️ [Classifier] AI "Genel Akış" matchledi ama classification=${classification} — override ediliyor`);
-                    targetFunnelId = null; // fallback'e düşür
-                }
-            } catch (_) {}
-        }
-
-        if (!targetFunnelId && classification !== 'GENEL') {
-            // Varsayılan akış eşleşmesi (fallback)
-            const funnelMap = {
-                'FIRSAT': 'Satış',
-                'RANDEVU': 'Randevu',
-                'DESTEK': 'Destek',
-                'IS_BASVURUSU': 'İş ve Taşeron',
-                'SIKAYET': 'Destek'
-            };
-
-            // ⚠️ FIRSAT sınıflandırması için kalifikasyon kontrolü:
-            // Kişi sadece bilgi alıyorsa (telefon yok, geri aranma isteği yok)
-            // → Satışa düşürmüyoruz, Genel akışta kalıyor
-            if (classification === 'FIRSAT' && !isQualifiedLead) {
-                console.log(`🚫 [Classifier] FIRSAT sınıflandırması ama kalifiye değil (isQualifiedLead: false) — Satış akışına atanmıyor. Genel'de kalacak.`);
-                // Sınıflamayı conversation'a kaydet ama akış ataması yapma
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { classification: classification }
-                }).catch(() => {}); // classification column yoksa sessizce geç
-                // Akış ataması yapma ama fonksiyondan ÇIKMA — aşağıda aktivite oluşturma devam etsin
-                targetFunnelId = null;
-            }
-
-            const targetFunnelName = funnelMap[classification];
-            if (targetFunnelName) {
-                const funnel = await prisma.funnel.findFirst({
-                    where: { workspaceId, name: { contains: targetFunnelName } },
-                    include: { stages: { orderBy: { order: 'asc' }, take: 1 } }
-                });
-                if (funnel) {
-                    targetFunnelId = funnel.id;
-                    targetStageId = funnel.stages[0]?.id;
-                    console.log(`📊 [Classifier] funnelMap fallback: ${classification} → "${funnel.name}" (${funnel.id})`);
-                }
-            }
-        }
-
-
-        if (targetFunnelId && !targetStageId) {
+        // matchedFunnelId varsa → akışın ilk stage'ini bul
+        if (targetFunnelId) {
             const funnel = await prisma.funnel.findUnique({
                 where: { id: targetFunnelId },
-                include: { stages: { orderBy: { order: 'asc' } } }
+                include: { stages: { orderBy: { order: 'asc' }, take: 1 } }
             });
             if (funnel?.stages?.length > 0) {
-                if (isQualifiedLead) {
-                    // Lead ise "Fırsat" veya "Lead" aşamasını bul, yoksa 2. aşamayı kullan
-                    const opportunityStage = funnel.stages.find(s =>
-                        s.name.toLowerCase().includes('fırsat') ||
-                        s.name.toLowerCase().includes('firsat') ||
-                        s.name.toLowerCase().includes('lead') ||
-                        s.name.toLowerCase().includes('opportunity')
-                    );
-                    targetStageId = opportunityStage?.id || funnel.stages[1]?.id || funnel.stages[0]?.id;
-                    console.log(`🎯 [Classifier] Lead → Fırsat aşaması: ${opportunityStage?.name || funnel.stages[1]?.name || funnel.stages[0]?.name}`);
-                } else {
-                    // Lead değilse ilk aşamaya ata (Yeni Başvuru)
-                    targetStageId = funnel.stages[0]?.id;
-                }
+                targetStageId = funnel.stages[0].id;
+                console.log(`📊 [Classifier] AI matchedFunnelId → "${funnel.name}" / "${funnel.stages[0].name}"`);
+            } else {
+                console.log(`⚠️ [Classifier] matchedFunnelId=${targetFunnelId} ama stage yok — akış ataması yapılmıyor`);
+                targetFunnelId = null;
             }
         }
 
@@ -397,7 +338,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 } catch (_) {}
             }
 
-            if (shouldAssign) {
+            if (shouldAssign && targetStageId) {
                 await prisma.conversation.update({
                     where: { id: conversationId },
                     data: { funnelType: targetFunnelId, funnelStageId: targetStageId }

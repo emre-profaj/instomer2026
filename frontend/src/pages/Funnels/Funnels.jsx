@@ -446,32 +446,50 @@ const Funnels = () => {
                                                                 {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                                             </select>
 
-                                                            {/* Kapanış toggle — anında kaydeder */}
-                                                            <button
-                                                                className="funnels-btn-sm"
+                                                            {/* Durum Tipi — Açık / Kazanıldı / Kaybedildi / Kapandı */}
+                                                            <select
+                                                                className="funnels-input funnels-stage-input"
                                                                 style={{
-                                                                    background: stage.isClosing ? '#dcfce7' : '#f3f4f6',
-                                                                    color: stage.isClosing ? '#166534' : '#9ca3af',
-                                                                    border: `1px solid ${stage.isClosing ? '#86efac' : '#e5e7eb'}`,
-                                                                    fontSize: '11px', padding: '3px 8px',
-                                                                    borderRadius: '12px', cursor: 'pointer', whiteSpace: 'nowrap'
+                                                                    width: '120px', fontSize: '11px', padding: '3px 6px',
+                                                                    borderRadius: '12px', cursor: 'pointer',
+                                                                    background: stage.statusType === 'WON' ? '#dcfce7'
+                                                                        : stage.statusType === 'LOST' ? '#fee2e2'
+                                                                        : stage.statusType === 'CLOSED' ? '#f1f5f9'
+                                                                        : '#f3f4f6',
+                                                                    color: stage.statusType === 'WON' ? '#166534'
+                                                                        : stage.statusType === 'LOST' ? '#991b1b'
+                                                                        : stage.statusType === 'CLOSED' ? '#475569'
+                                                                        : '#9ca3af',
+                                                                    border: `1px solid ${
+                                                                        stage.statusType === 'WON' ? '#86efac'
+                                                                        : stage.statusType === 'LOST' ? '#fca5a5'
+                                                                        : stage.statusType === 'CLOSED' ? '#cbd5e1'
+                                                                        : '#e5e7eb'
+                                                                    }`,
+                                                                    fontWeight: stage.statusType ? 600 : 400
                                                                 }}
-                                                                onClick={async () => {
+                                                                value={stage.statusType || ''}
+                                                                onChange={async (e) => {
                                                                     try {
-                                                                        const newVal = !stage.isClosing;
+                                                                        const newStatusType = e.target.value || null;
+                                                                        const newIsClosing = !!newStatusType;
                                                                         const res = await funnelAPI.updateStage(
-                                                                            currentWorkspace.id, funnel.id, stage.id, { isClosing: newVal }
+                                                                            currentWorkspace.id, funnel.id, stage.id,
+                                                                            { statusType: newStatusType, isClosing: newIsClosing }
                                                                         );
                                                                         setFunnels(prev => prev.map(f => {
                                                                             if (f.id !== funnel.id) return f;
                                                                             return { ...f, stages: f.stages.map(s => s.id === stage.id ? res.data.stage : s) };
                                                                         }));
-                                                                    } catch (err) { console.error('isClosing error:', err); }
+                                                                    } catch (err) { console.error('statusType error:', err); }
                                                                 }}
-                                                                title={stage.isClosing ? 'Kapanış — tıkla kaldır' : 'Kapanış olarak işaretle'}
+                                                                title="Aşama sonucu: Case durumunu otomatik günceller"
                                                             >
-                                                                {stage.isClosing ? '✅ Kapanış' : '⬜ Kapanış'}
-                                                            </button>
+                                                                <option value="">⚪ Açık</option>
+                                                                <option value="WON">🟢 Kazanıldı</option>
+                                                                <option value="LOST">🔴 Kaybedildi</option>
+                                                                <option value="CLOSED">⚫ Kapandı</option>
+                                                            </select>
 
                                                             {/* Kaydet (sadece değişiklik yapıldıysa) */}
                                                             {isEditingThis && (
