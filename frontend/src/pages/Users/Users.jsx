@@ -702,6 +702,47 @@ const UsersTeams = () => {
                                     : <><UserCircle2 size={13} /> Kullanıcı / Asistanı sürükle</>}
                         </div>
                     </div>
+
+                    {/* Assignment Rule */}
+                    <div style={{
+                        display: 'flex', flexDirection: 'column', gap: '6px',
+                        padding: '8px 10px', marginTop: '6px',
+                        background: '#f8fafc', borderRadius: '8px',
+                        border: '1px solid #e2e8f0'
+                    }}>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+                            Havuzdakilere ne yapılsın?
+                        </span>
+                        <select
+                            value={team.assignmentRule || 'POOL'}
+                            onChange={async (e) => {
+                                const newRule = e.target.value;
+                                try {
+                                    await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: newRule });
+                                    const updateNested = (list) => list.map(t => {
+                                        if (t.id === team.id) return { ...t, assignmentRule: newRule };
+                                        if (t.children) return { ...t, children: updateNested(t.children) };
+                                        return t;
+                                    });
+                                    setTeams(prev => updateNested(prev));
+                                } catch (err) {
+                                    console.error('Assignment rule update error:', err);
+                                }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                width: '100%', fontSize: '0.72rem', padding: '5px 8px', borderRadius: '6px',
+                                border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer',
+                                fontWeight: 500, color: '#334155', outline: 'none'
+                            }}
+                        >
+                            <option value="POOL">🗂️ Havuzda Beklet</option>
+                            <option value="ROUND_ROBIN">🔄 Sırayla Dağıt (Round Robin)</option>
+                            <option value="LEAST_BUSY">📊 En Az Görüşmesi Olana Dağıt</option>
+                            <option value="ONLINE_ONLY">🟢 Sadece Online Olanlara Dağıt</option>
+                            <option value="PHONE_ONLY">📞 Telefon Numarası Olanları Dağıt</option>
+                        </select>
+                    </div>
                 </div>
 
                 {/* Children */}

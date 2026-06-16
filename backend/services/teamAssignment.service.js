@@ -107,6 +107,34 @@ export async function assignToTeamMember(teamId, conversationId) {
                 }
                 break;
 
+            case 'PHONE_ONLY':
+                // Sadece telefon numarası olan kişileri sırayla dağıt
+                const conversation = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    include: { contact: true }
+                });
+                const phone = conversation?.contact?.phone || conversation?.contact?.phoneNumber || '';
+                if (phone && phone.trim().length > 0) {
+                    const phIndex = (team.roundRobinIndex || 0) % humanMembers.length;
+                    const phMember = humanMembers[phIndex];
+                    assignedUserId = phMember.userId;
+
+                    await prisma.team.update({
+                        where: { id: teamId },
+                        data: { roundRobinIndex: (team.roundRobinIndex || 0) + 1 }
+                    });
+
+                    console.log(`📞 [TeamAssign] "${team.name}" → PHONE ONLY → ${phMember.user.name} (telefon: ${phone})`);
+                } else {
+                    console.log(`📞 [TeamAssign] "${team.name}" → PHONE ONLY → telefon numarası yok, havuzda kalıyor`);
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { assignedTeamId: teamId }
+                    });
+                    return null;
+                }
+                break;
+
             default:
                 console.log(`⚠️ [TeamAssign] Bilinmeyen kural: ${rule}, havuzda kalıyor`);
                 return null;

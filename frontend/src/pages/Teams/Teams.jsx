@@ -25,7 +25,7 @@ const Teams = () => {
     // Modal Form States
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
-    const [teamAssignmentRule, setTeamAssignmentRule] = useState('MANUAL');
+    const [teamAssignmentRule, setTeamAssignmentRule] = useState('POOL');
     const [parentIdForCreate, setParentIdForCreate] = useState(null);
 
     // Member Management States
@@ -504,9 +504,10 @@ const Teams = () => {
                                     border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer'
                                 }}
                             >
-                                <option value="MANUAL">✋ Elle Dağıt</option>
-                                <option value="ROUND_ROBIN">🔄 Eşit Dağıt (Tüm Üyeler)</option>
-                                <option value="ONLINE_ONLY">🟢 Sadece Online Kullanıcılara Dağıt</option>
+                                <option value="POOL">🗂️ Havuzda Beklet</option>
+                                <option value="ROUND_ROBIN">🔄 Sırayla Dağıt (Round Robin)</option>
+                                <option value="LEAST_BUSY">📊 En Az Görüşmesi Olana Dağıt</option>
+                                <option value="ONLINE_ONLY">🟢 Sadece Online Olanlara Dağıt</option>
                             </select>
                         </div>
                     </div>
@@ -616,9 +617,10 @@ const Teams = () => {
                                 </label>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                                     {[
-                                        { value: 'MANUAL', icon: '✋', label: 'Elle Dağıt', desc: 'Sohbetler havuzda kalır, temsilci elle üstlenir' },
-                                        { value: 'ROUND_ROBIN', icon: '🔄', label: 'Eşit Dağıt', desc: 'Tüm takım üyeleri arasında eşit sayıda dağıtır' },
-                                        { value: 'ONLINE_ONLY', icon: '🟢', label: 'Sadece Online Dağıt', desc: 'Sadece online olan kullanıcılara otomatik atar' },
+                                        { value: 'POOL', icon: '🗂️', label: 'Havuzda Beklet', desc: 'Sohbetler havuzda kalır, temsilci elle üstlenir' },
+                                        { value: 'ROUND_ROBIN', icon: '🔄', label: 'Sırayla Dağıt (Round Robin)', desc: 'Tüm takım üyeleri arasında sırayla ve eşit dağıtır' },
+                                        { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Görüşmesi Olana Dağıt', desc: 'Açık görüşmesi en az olan üyeye otomatik atar' },
+                                        { value: 'ONLINE_ONLY', icon: '🟢', label: 'Sadece Online Olanlara Dağıt', desc: 'Sadece online olan üyelere sırayla atar, kimse yoksa havuzda bekler' },
                                     ].map(rule => (
                                         <label
                                             key={rule.value}

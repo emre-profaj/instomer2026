@@ -59,7 +59,7 @@ function makeStep(type) {
     if (type === 'WA_SEND')        base.config = { templateName: '' };
     if (type === 'SEND_MESSAGE')   base.config = { message: '' };
     if (type === 'ASSIGN_AGENT')   base.config = { agentId: '', agentName: '' };
-    if (type === 'ASSIGN_TEAM')    base.config = { teamId: '', teamName: '' };
+    if (type === 'ASSIGN_TEAM')    base.config = { teamId: '', teamName: '', assignMode: 'ROUND_ROBIN' };
     if (type === 'ASSIGN_BOT')     base.config = { botId: '', botName: '' };
     if (type === 'NO_REPLY')       base.config = { amount: 1, unit: 'saat' };
     if (type === 'STAGE_CHANGED')  base.config = { fromStage: '', toStage: '' };
@@ -127,7 +127,7 @@ function StepCard({ step, isSelected, onClick, onDelete, branchKey, depth = 0 })
                             : step.type === 'FLOW_ENTERED'
                             ? (step.config.funnelName || 'Akış seçin')
                             : step.type === 'ASSIGN_TEAM'
-                            ? (step.config.teamName || 'Ekip seçin')
+                            ? ((step.config.teamName || 'Ekip seçin') + (step.config.assignMode === 'MANUAL' ? ' · Manuel' : step.config.assignMode === 'PHONE_ROUND_ROBIN' ? ' · Tel. Sıralı' : ' · Sıralı'))
                             : step.type === 'ASSIGN_BOT'
                             ? (step.config.botName || 'Bot seçin')
                             : step.type === 'CONVERT_TO_OPP'
@@ -529,44 +529,94 @@ function SettingsPanel({ step, onChange, onClose, templates = [], flows = [], fu
                         </p>
                     )}
 
-                    {/* Round-Robin Toggle */}
-                    <div style={{
-                        display: 'flex', alignItems: 'center', gap: '10px',
-                        marginTop: '12px', padding: '10px 12px',
-                        background: step.config.useRoundRobin ? '#f0fdf4' : '#f9fafb',
-                        border: `1px solid ${step.config.useRoundRobin ? '#86efac' : '#e5e7eb'}`,
-                        borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s'
-                    }}
-                        onClick={() => onChange({ ...step.config, useRoundRobin: !step.config.useRoundRobin })}
-                    >
-                        <div style={{
-                            width: '36px', height: '20px', borderRadius: '10px', flexShrink: 0,
-                            background: step.config.useRoundRobin ? '#10b981' : '#d1d5db',
-                            position: 'relative', transition: 'background 0.2s'
-                        }}>
-                            <div style={{
-                                position: 'absolute', top: '3px',
-                                left: step.config.useRoundRobin ? '18px' : '3px',
-                                width: '14px', height: '14px', borderRadius: '50%',
-                                background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                            }} />
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '13px', fontWeight: '600', color: step.config.useRoundRobin ? '#065f46' : '#374151' }}>
-                                🔄 Ekibe Sırayla Ata
-                            </div>
-                            <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-                                {step.config.useRoundRobin
-                                    ? 'Aktif — Takım üyelerine sırayla atanır'
-                                    : 'Pasif — Sadece takıma atanır, kişi belirlenmez'}
-                            </div>
-                        </div>
+                    {/* Assignment Mode Cards */}
+                    <label style={{ marginTop: 14, marginBottom: 6, display: 'block' }}>Atama Modu</label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {/* Round Robin */}
+                        {(() => {
+                            const mode = step.config.assignMode || (step.config.useRoundRobin ? 'ROUND_ROBIN' : 'ROUND_ROBIN');
+                            const modes = [
+                                {
+                                    key: 'ROUND_ROBIN',
+                                    icon: '🔄',
+                                    title: 'Ekibe Sırayla Ata',
+                                    desc: 'Takım üyelerine sırayla ve eşit şekilde dağıtılır',
+                                    activeColor: '#10b981',
+                                    activeBg: '#f0fdf4',
+                                    activeBorder: '#86efac'
+                                },
+                                {
+                                    key: 'MANUAL',
+                                    icon: '✋',
+                                    title: 'Manuel Elle Aktar',
+                                    desc: 'Takıma bildirim gider, üyeler kendileri alır',
+                                    activeColor: '#3b82f6',
+                                    activeBg: '#eff6ff',
+                                    activeBorder: '#93c5fd'
+                                },
+                                {
+                                    key: 'PHONE_ROUND_ROBIN',
+                                    icon: '📞',
+                                    title: 'Numaralı Sırayla Ata',
+                                    desc: 'Sadece telefon numarası olan kişiler sırayla atanır',
+                                    activeColor: '#f59e0b',
+                                    activeBg: '#fffbeb',
+                                    activeBorder: '#fcd34d'
+                                }
+                            ];
+                            return modes.map(m => {
+                                const isActive = mode === m.key;
+                                return (
+                                    <div
+                                        key={m.key}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '10px',
+                                            padding: '10px 12px',
+                                            background: isActive ? m.activeBg : '#f9fafb',
+                                            border: `2px solid ${isActive ? m.activeBorder : '#e5e7eb'}`,
+                                            borderRadius: '8px', cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            boxShadow: isActive ? `0 0 0 1px ${m.activeBorder}40` : 'none'
+                                        }}
+                                        onClick={() => onChange({ ...step.config, assignMode: m.key, useRoundRobin: m.key === 'ROUND_ROBIN' || m.key === 'PHONE_ROUND_ROBIN' })}
+                                    >
+                                        {/* Radio circle */}
+                                        <div style={{
+                                            width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
+                                            border: `2px solid ${isActive ? m.activeColor : '#d1d5db'}`,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            transition: 'border-color 0.2s'
+                                        }}>
+                                            {isActive && (
+                                                <div style={{
+                                                    width: '10px', height: '10px', borderRadius: '50%',
+                                                    background: m.activeColor
+                                                }} />
+                                            )}
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontSize: '13px', fontWeight: '600', color: isActive ? m.activeColor : '#374151' }}>
+                                                {m.icon} {m.title}
+                                            </div>
+                                            <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
+                                                {m.desc}
+                                            </div>
+                                        </div>
+                                        {isActive && (
+                                            <span style={{ fontSize: '14px' }}>✓</span>
+                                        )}
+                                    </div>
+                                );
+                            });
+                        })()}
                     </div>
 
-                    <p className="fb-hint" style={{ marginTop: 6 }}>
-                        {step.config.useRoundRobin
+                    <p className="fb-hint" style={{ marginTop: 8 }}>
+                        {(step.config.assignMode || 'ROUND_ROBIN') === 'ROUND_ROBIN'
                             ? '👥 Sohbet, takım üyelerine eşit şekilde dağıtılır.'
-                            : 'Konuşma bu takıma atanır.'}
+                            : (step.config.assignMode === 'MANUAL'
+                                ? '🔔 Takıma bildirim gönderilir, ilk alan üye konuşmayı üstlenir.'
+                                : '📱 Sadece telefon numarası olan kişiler takım üyelerine sırayla dağıtılır.')}
                     </p>
                 </div>
             )}
@@ -1024,10 +1074,19 @@ export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImp
                 });
                 flow = res.data.flow;
             }
+            // Ensure steps is parsed as array
+            if (typeof flow.steps === 'string') {
+                try { flow.steps = JSON.parse(flow.steps); } catch { flow.steps = []; }
+            }
+            flow.steps = flow.steps || [];
             setFlows(prev => [...prev, flow]);
             setCurrentFlow(flow);
             setNewFlowName('');
             setShowNewFlow(false);
+            // Auto-expand main flow to show newly created child
+            if (mainFlow?.id && flow.parentId === mainFlow.id) {
+                setExpandedFlows(prev => ({ ...prev, [mainFlow.id]: true }));
+            }
         } catch (err) {
             console.error('Create flow error:', err);
             alert('Akış oluşturulamadı.');
@@ -1093,7 +1152,9 @@ export default function FlowBuilder({ workspaceId, isTemplateMode = false, onImp
                             : flows.filter(f => !f.parentId);
                         const renderFlowItem = (f, depth = 0) => {
                             const isMain = f.flowType === 'MAIN';
-                            const children = f.children || flows.filter(c => c.parentId === f.id);
+                            // Always derive children from flows state to reflect real-time changes
+                            const childrenFromState = flows.filter(c => c.parentId === f.id && c.id !== f.id);
+                            const children = childrenFromState.length > 0 ? childrenFromState : (f.children || []);
                             const hasChildren = children.length > 0;
                             const isExpanded = expandedFlows[f.id];
                             return (
