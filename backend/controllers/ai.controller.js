@@ -2313,62 +2313,92 @@ ${systemPrompt}${appointmentContextPrompt}`;
         if (isDirectTransferRequest && type === 'CHATS' && conversationId) {
             console.log(`🔄 [HANDOFF] Direct transfer request detected from user: "${userMessage}"`);
 
-            // 🔍 Find online agents
-            const onlineMembers = await prisma.workspaceMember.findMany({
-                where: { workspaceId, user: { isOnline: true } },
-                include: { user: { select: { id: true, name: true } } }
-            });
-            const onlineAgents = onlineMembers.filter(m => m.user);
+            // --- AGENT BULMA: 1) Takım üyeleri → 2) Online agent → 3) Herhangi bir workspace üyesi ---
+            let directAgent = null;
+            let directSource = '';
 
-            if (onlineAgents.length > 0) {
-                const assignedAgent = onlineAgents[0];
-                console.log(`🎯 [HANDOFF] Direct routing to: ${assignedAgent.user.name}`);
+            // 1) Conversation'ın takımındaki üyeleri dene
+            if (conversation?.teamIds) {
+                try {
+                    const teamIds = JSON.parse(conversation.teamIds);
+                    if (teamIds.length > 0) {
+                        const teamMembers = await prisma.teamMember.findMany({
+                            where: { teamId: teamIds[0], userId: { not: null } },
+                            include: { user: { select: { id: true, name: true, isOnline: true } } },
+                            orderBy: { createdAt: 'asc' }
+                        });
+                        const validMembers = teamMembers.filter(m => m.user);
+                        if (validMembers.length > 0) {
+                            const onlineMember = validMembers.find(m => m.user.isOnline);
+                            directAgent = onlineMember ? onlineMember.user : validMembers[0].user;
+                            directSource = onlineMember ? 'Direct-TeamOnline' : 'Direct-TeamOffline';
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            // 2) Online workspace üyesi
+            if (!directAgent) {
+                const onlineMembers = await prisma.workspaceMember.findMany({
+                    where: { workspaceId, user: { isOnline: true } },
+                    include: { user: { select: { id: true, name: true } } }
+                });
+                const onlineAgents = onlineMembers.filter(m => m.user);
+                if (onlineAgents.length > 0) {
+                    directAgent = onlineAgents[0].user;
+                    directSource = 'Direct-OnlineAgent';
+                }
+            }
+
+            // 3) Offline fallback
+            if (!directAgent) {
+                const anyMember = await prisma.workspaceMember.findFirst({
+                    where: { workspaceId, role: { not: 'VIEWER' } },
+                    include: { user: { select: { id: true, name: true } } },
+                    orderBy: { createdAt: 'asc' }
+                });
+                if (anyMember?.user) {
+                    directAgent = anyMember.user;
+                    directSource = 'Direct-OfflineFallback';
+                }
+            }
+
+            if (directAgent) {
+                console.log(`🎯 [HANDOFF] Direct routing to: ${directAgent.name} (${directSource})`);
 
                 await incrementAiUsage(workspaceId);
                 releaseAiReplyLock(conversationId);
 
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
+                    data: { botPausedUntil: new Date(Date.now() + 60 * 60 * 1000), handoffPending: false, assignedToId: directAgent.id }
                 });
 
                 // Cascade: Case + siblings + activities
                 try {
                     const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
-                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.user.id, source: 'Handoff-Direct' });
+                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: directAgent.id, source: directSource });
                 } catch (_) {}
 
                 try {
                     const { emitToWorkspace } = await import('../socket.js');
                     emitToWorkspace(workspaceId, 'bot_handoff', {
                         conversationId, workspaceId,
-                        assignedToId: assignedAgent.user.id,
-                        assignedToName: assignedAgent.user.name,
-                        message: `Müşteri ${assignedAgent.user.name.trim().split(' ')[0]} adlı temsilciye yönlendirildi.`,
+                        assignedToId: directAgent.id,
+                        assignedToName: directAgent.name,
+                        message: `🔔 Müşteri temsilciye aktarıldı → ${directAgent.name.trim().split(' ')[0]}`,
                         botName: activeBot.name
                     });
                     emitToWorkspace(workspaceId, 'conversation_updated', {
-                        conversationId, assignedToId: assignedAgent.user.id
+                        conversationId, assignedToId: directAgent.id
                     });
                 } catch (socketErr) {
                     console.error('Socket emit error for handoff:', socketErr);
                 }
 
-                return `Sizi müşteri temsilcimiz ${assignedAgent.user.name.trim().split(' ')[0]} ile bağlıyorum. Kısa süre içinde size yardımcı olacaktır. 🙏`;
+                return `Sizi müşteri temsilcimiz ${directAgent.name.trim().split(' ')[0]} ile bağlıyorum. Kısa süre içinde size yardımcı olacaktır. 🙏`;
             } else {
-                console.log(`⚠️ [HANDOFF] No online agents for direct transfer. Bot will continue responding.`);
-
-                try {
-                    const { emitToWorkspace } = await import('../socket.js');
-                    emitToWorkspace(workspaceId, 'bot_handoff', {
-                        conversationId, workspaceId,
-                        message: 'Müşteri temsilciye yönlendirilmek istiyor ama şu anda online temsilci yok.',
-                        botName: activeBot.name
-                    });
-                } catch (socketErr) {
-                    console.error('Socket emit error for handoff:', socketErr);
-                }
-
+                console.log(`⚠️ [HANDOFF] No agents found at all for direct transfer.`);
                 // Don't return early — let AI continue responding below
             }
         }
@@ -2378,50 +2408,81 @@ ${systemPrompt}${appointmentContextPrompt}`;
             if (confirmPhrases.some(phrase => userMessageLower.includes(phrase))) {
                 console.log(`✅ [HANDOFF] User confirmed handoff for conversation: ${conversationId}`);
 
-                // 🔍 Find online agents in this workspace FIRST
-                const onlineMembers = await prisma.workspaceMember.findMany({
-                    where: {
-                        workspaceId,
-                        user: { isOnline: true }
-                    },
-                    include: {
-                        user: { select: { id: true, name: true } }
+                // --- AGENT BULMA: 1) Takım üyeleri → 2) Online agent → 3) Herhangi bir workspace üyesi ---
+                let confirmAgent = null;
+                let confirmSource = '';
+
+                // 1) Conversation'ın takımındaki üyeleri dene
+                if (conversation?.teamIds) {
+                    try {
+                        const teamIds = JSON.parse(conversation.teamIds);
+                        if (teamIds.length > 0) {
+                            const teamMembers = await prisma.teamMember.findMany({
+                                where: { teamId: teamIds[0], userId: { not: null } },
+                                include: { user: { select: { id: true, name: true, isOnline: true } } },
+                                orderBy: { createdAt: 'asc' }
+                            });
+                            const validMembers = teamMembers.filter(m => m.user);
+                            if (validMembers.length > 0) {
+                                const onlineMember = validMembers.find(m => m.user.isOnline);
+                                confirmAgent = onlineMember ? onlineMember.user : validMembers[0].user;
+                                confirmSource = onlineMember ? 'Confirm-TeamOnline' : 'Confirm-TeamOffline';
+                            }
+                        }
+                    } catch (_) {}
+                }
+
+                // 2) Online workspace üyesi
+                if (!confirmAgent) {
+                    const onlineMembers = await prisma.workspaceMember.findMany({
+                        where: { workspaceId, user: { isOnline: true } },
+                        include: { user: { select: { id: true, name: true } } }
+                    });
+                    const onlineAgents = onlineMembers.filter(m => m.user);
+                    if (onlineAgents.length > 0) {
+                        confirmAgent = onlineAgents[0].user;
+                        confirmSource = 'Confirm-OnlineAgent';
                     }
-                });
+                }
 
-                // Filter out bots — only real users
-                const onlineAgents = onlineMembers.filter(m => m.user);
+                // 3) Offline fallback
+                if (!confirmAgent) {
+                    const anyMember = await prisma.workspaceMember.findFirst({
+                        where: { workspaceId, role: { not: 'VIEWER' } },
+                        include: { user: { select: { id: true, name: true } } },
+                        orderBy: { createdAt: 'asc' }
+                    });
+                    if (anyMember?.user) {
+                        confirmAgent = anyMember.user;
+                        confirmSource = 'Confirm-OfflineFallback';
+                    }
+                }
 
-                if (onlineAgents.length > 0) {
-                    // Agent found — NOW disable bot and assign
-                    const assignedAgent = onlineAgents[0];
-                    console.log(`🎯 [HANDOFF] Assigning to online agent: ${assignedAgent.user.name} (${assignedAgent.user.id})`);
+                if (confirmAgent) {
+                    console.log(`🎯 [HANDOFF] Confirmed → ${confirmAgent.name} (${confirmSource})`);
 
                     await prisma.conversation.update({
                         where: { id: conversationId },
-                        data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
+                        data: { botPausedUntil: new Date(Date.now() + 60 * 60 * 1000), handoffPending: false, assignedToId: confirmAgent.id }
                     });
 
                     // Cascade: Case + siblings + activities
                     try {
                         const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
-                        await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.user.id, source: 'Handoff-Online' });
+                        await cascadeAssignment(conversationId, workspaceId, { assignedToId: confirmAgent.id, source: confirmSource });
                     } catch (_) {}
 
-                    // Emit socket event to notify team
                     try {
                         const { emitToWorkspace } = await import('../socket.js');
                         emitToWorkspace(workspaceId, 'bot_handoff', {
-                            conversationId,
-                            workspaceId,
-                            assignedToId: assignedAgent.user.id,
-                            assignedToName: assignedAgent.user.name,
-                            message: `Müşteri ${assignedAgent.user.name.trim().split(' ')[0]} adlı temsilciye yönlendirildi.`,
+                            conversationId, workspaceId,
+                            assignedToId: confirmAgent.id,
+                            assignedToName: confirmAgent.name,
+                            message: `🔔 Müşteri temsilciye aktarıldı → ${confirmAgent.name.trim().split(' ')[0]}`,
                             botName: activeBot.name
                         });
                         emitToWorkspace(workspaceId, 'conversation_updated', {
-                            conversationId,
-                            assignedToId: assignedAgent.user.id
+                            conversationId, assignedToId: confirmAgent.id
                         });
                     } catch (socketErr) {
                         console.error('Socket emit error for handoff:', socketErr);
@@ -2429,29 +2490,14 @@ ${systemPrompt}${appointmentContextPrompt}`;
 
                     await incrementAiUsage(workspaceId);
                     releaseAiReplyLock(conversationId);
-                    return `Sizi müşteri temsilcimiz ${assignedAgent.user.name.trim().split(' ')[0]} ile bağlıyorum. Kısa süre içinde size yardımcı olacaktır. 🙏`;
+                    return `Sizi müşteri temsilcimiz ${confirmAgent.name.trim().split(' ')[0]} ile bağlıyorum. Kısa süre içinde size yardımcı olacaktır. 🙏`;
                 } else {
-                    // No agent available — keep bot ACTIVE, only clear handoffPending
-                    console.log(`⚠️ [HANDOFF] No online agents found in workspace: ${workspaceId}. Bot will continue responding.`);
-
+                    // Edge case: hiç üye yok
+                    console.log(`⚠️ [HANDOFF] Workspace'te üye bulunamadı.`);
                     await prisma.conversation.update({
                         where: { id: conversationId },
                         data: { handoffPending: false }
                     });
-
-                    // Emit socket event anyway so team sees it when they come online
-                    try {
-                        const { emitToWorkspace } = await import('../socket.js');
-                        emitToWorkspace(workspaceId, 'bot_handoff', {
-                            conversationId,
-                            workspaceId,
-                            message: 'Müşteri temsilciye yönlendirilmek istiyor ama şu anda online temsilci yok.',
-                            botName: activeBot.name
-                        });
-                    } catch (socketErr) {
-                        console.error('Socket emit error for handoff:', socketErr);
-                    }
-
                     // Don't return early — let AI continue responding below
                 }
             } else if (declinePhrases.some(phrase => userMessageLower.includes(phrase))) {
@@ -2478,67 +2524,125 @@ ${systemPrompt}${appointmentContextPrompt}`;
             // Strip [HANDOFF] tag from the bot's own response before returning it
             const cleanedResponse = responseText.replace(/\[HANDOFF\]/gi, '').trim();
 
-            // 🔍 Find online agents in this workspace
-            const onlineMembers = await prisma.workspaceMember.findMany({
-                where: {
-                    workspaceId,
-                    user: { isOnline: true }
-                },
-                include: {
-                    user: { select: { id: true, name: true } }
-                }
-            });
-            const onlineAgents = onlineMembers.filter(m => m.user);
-
             // 📊 AI Kullanım sayacını artır
             await incrementAiUsage(workspaceId);
             releaseAiReplyLock(conversationId);
 
-            if (onlineAgents.length > 0) {
-                const assignedAgent = onlineAgents[0];
-                console.log(`🎯 [HANDOFF] Routing to online agent: ${assignedAgent.user.name}`);
+            // --- AGENT BULMA: 1) Takım üyeleri → 2) Online agent → 3) Herhangi bir workspace üyesi ---
+            let assignedAgent = null;
+            let assignmentSource = '';
 
-                // Disable bot and assign to agent in background
+            // 1) Conversation'ın takımındaki üyeleri dene (round-robin)
+            if (conversation?.teamIds) {
+                try {
+                    const teamIds = JSON.parse(conversation.teamIds);
+                    if (teamIds.length > 0) {
+                        const teamMembers = await prisma.teamMember.findMany({
+                            where: { teamId: teamIds[0], userId: { not: null } },
+                            include: { user: { select: { id: true, name: true, isOnline: true } } },
+                            orderBy: { createdAt: 'asc' }
+                        });
+                        const validMembers = teamMembers.filter(m => m.user);
+
+                        if (validMembers.length > 0) {
+                            // Online olanları öncelikle dene
+                            const onlineTeamMember = validMembers.find(m => m.user.isOnline);
+                            if (onlineTeamMember) {
+                                assignedAgent = onlineTeamMember.user;
+                                assignmentSource = 'Handoff-TeamOnline';
+                            } else {
+                                // Round-robin: Son atanan kişinin bir sonrakisine at
+                                const lastConv = await prisma.conversation.findFirst({
+                                    where: { workspaceId, teamIds: { contains: teamIds[0] }, assignedToId: { not: null } },
+                                    orderBy: { updatedAt: 'desc' },
+                                    select: { assignedToId: true }
+                                });
+                                if (lastConv?.assignedToId) {
+                                    const lastIdx = validMembers.findIndex(m => m.user.id === lastConv.assignedToId);
+                                    const nextIdx = (lastIdx === -1 || lastIdx === validMembers.length - 1) ? 0 : lastIdx + 1;
+                                    assignedAgent = validMembers[nextIdx].user;
+                                } else {
+                                    assignedAgent = validMembers[0].user;
+                                }
+                                assignmentSource = 'Handoff-TeamRoundRobin';
+                            }
+                            console.log(`🎯 [HANDOFF] Takım üyesine atandı: ${assignedAgent.name} (${assignmentSource})`);
+                        }
+                    }
+                } catch (e) { console.error('HANDOFF team parse error:', e); }
+            }
+
+            // 2) Takım bulunamadıysa → Online workspace üyesine ata
+            if (!assignedAgent) {
+                const onlineMembers = await prisma.workspaceMember.findMany({
+                    where: { workspaceId, user: { isOnline: true } },
+                    include: { user: { select: { id: true, name: true } } }
+                });
+                const onlineAgents = onlineMembers.filter(m => m.user);
+                if (onlineAgents.length > 0) {
+                    assignedAgent = onlineAgents[0].user;
+                    assignmentSource = 'Handoff-OnlineAgent';
+                    console.log(`🎯 [HANDOFF] Online agent'a atandı: ${assignedAgent.name}`);
+                }
+            }
+
+            // 3) Hiç online yoksa → Workspace'in ilk üyesine ata (offline bile olsa)
+            if (!assignedAgent) {
+                const anyMember = await prisma.workspaceMember.findFirst({
+                    where: { workspaceId, role: { not: 'VIEWER' } },
+                    include: { user: { select: { id: true, name: true } } },
+                    orderBy: { createdAt: 'asc' }
+                });
+                if (anyMember?.user) {
+                    assignedAgent = anyMember.user;
+                    assignmentSource = 'Handoff-OfflineFallback';
+                    console.log(`⚠️ [HANDOFF] Online agent yok → Offline üyeye atandı: ${assignedAgent.name}`);
+                }
+            }
+
+            // --- ATAMA UYGULA ---
+            if (assignedAgent) {
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
+                    data: {
+                        botPausedUntil: new Date(Date.now() + 60 * 60 * 1000), // 1 saat bot dursun
+                        handoffPending: false,
+                        assignedToId: assignedAgent.id
+                    }
                 });
 
                 // Cascade: Case + siblings + activities
                 try {
                     const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
-                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.user.id, source: 'Handoff-Background' });
+                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.id, source: assignmentSource });
                 } catch (_) {}
 
+                // Socket bildirim — tüm workspace'e
                 try {
                     const { emitToWorkspace } = await import('../socket.js');
                     emitToWorkspace(workspaceId, 'bot_handoff', {
                         conversationId, workspaceId,
-                        assignedToId: assignedAgent.user.id,
-                        assignedToName: assignedAgent.user.name,
-                        message: `Müşteri ${assignedAgent.user.name.trim().split(' ')[0]} adlı temsilciye yönlendirildi.`,
+                        assignedToId: assignedAgent.id,
+                        assignedToName: assignedAgent.name,
+                        message: `🔔 Müşteri temsilciye aktarıldı → ${assignedAgent.name.trim().split(' ')[0]}`,
                         botName: activeBot.name
                     });
                     emitToWorkspace(workspaceId, 'conversation_updated', {
                         conversationId,
-                        assignedToId: assignedAgent.user.id
+                        assignedToId: assignedAgent.id
                     });
                 } catch (socketErr) {
                     console.error('Socket emit error for handoff:', socketErr);
                 }
+
+                console.log(`✅ [HANDOFF] Tamamlandı: ${assignedAgent.name} (${assignmentSource}) — Bot 1 saat duraklatıldı`);
             } else {
-                // No agent available
-                console.log(`⚠️ [HANDOFF] No online agents, bot will continue responding.`);
-                try {
-                    const { emitToWorkspace } = await import('../socket.js');
-                    emitToWorkspace(workspaceId, 'bot_handoff', {
-                        conversationId, workspaceId,
-                        message: 'Müşteri temsilciye yönlendirilmek istiyor ama şu anda online temsilci yok.',
-                        botName: activeBot.name
-                    });
-                } catch (socketErr) {
-                    console.error('Socket emit error for handoff:', socketErr);
-                }
+                // Workspace'te hiç üye yok (edge case)
+                console.log(`❌ [HANDOFF] Workspace'te hiç atanacak üye bulunamadı!`);
+                await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { handoffPending: true }
+                });
             }
 
             // Always return the bot's own response (with [HANDOFF] tag removed)
