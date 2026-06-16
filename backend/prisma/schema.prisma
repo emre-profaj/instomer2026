@@ -251,6 +251,9 @@ model AIBot {
   // Linked Automations
   automations String? // JSON array of automation IDs: ["id1", "id2"]
 
+  // Handoff: Custom message when bot can't answer and transfers to agent
+  handoffMessage String? // e.g. "Bu konuda tam emin değilim. Sizi bir temsilcimize aktarmayı deneyeceğim..."
+
   // Health System API integrations assigned to this bot
   apiIntegrations ApiIntegration[] @relation("ApiIntegrationBot")
   funnelStages    FunnelStage[]    @relation("FunnelStageBot")

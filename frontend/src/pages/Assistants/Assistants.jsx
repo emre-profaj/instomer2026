@@ -144,6 +144,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
     };
 
     const [prompt, setPrompt] = useState(bot.prompt || '');
+    const [handoffMessage, setHandoffMessage] = useState(bot.handoffMessage || '');
     const [updating, setUpdating] = useState(false);
 
     // Automations state
@@ -207,6 +208,7 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         setName(bot.name || '');
         setRole(bot.role || '');
         setPrompt(bot.prompt || '');
+        setHandoffMessage(bot.handoffMessage || '');
         setSchedulerEnabled(bot.schedulerEnabled || false);
         setScheduleStartTime(bot.scheduleStartTime || '09:00');
         setScheduleEndTime(bot.scheduleEndTime || '18:00');
@@ -298,7 +300,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 routingConditionalEnabled: routingConfig.routingConditionalEnabled,
                 routingRules: routingConfig.routingConditionalEnabled ? JSON.stringify(routingConfig.routingRules) : null,
                 // Linked automations
-                automations: selectedAutomations.length > 0 ? selectedAutomations : null
+                automations: selectedAutomations.length > 0 ? selectedAutomations : null,
+                // Handoff message
+                handoffMessage: handoffMessage || null
             });
             alert('Bot ayarları güncellendi!');
             if (onRefresh) onRefresh();
@@ -442,6 +446,24 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     placeholder="Örn: Sen yardımsever bir teknik destek uzmanısın. Müşterilere kibar dille yanıt ver..."
+                />
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <MessageSquare size={14} />
+                    {t('assistants.handoffMessage', 'Handoff Mesajı')}
+                </label>
+                <p className="section-description" style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#888' }}>
+                    Bot cevabından emin olmadığında müşteriye gönderilecek mesaj. Boş bırakırsanız varsayılan mesaj kullanılır.
+                </p>
+                <textarea
+                    className="input-modern"
+                    rows="3"
+                    value={handoffMessage}
+                    onChange={(e) => setHandoffMessage(e.target.value)}
+                    placeholder="Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır..."
+                    style={{ fontSize: '13px' }}
                 />
             </div>
 

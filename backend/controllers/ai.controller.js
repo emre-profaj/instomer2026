@@ -1727,6 +1727,11 @@ Bu kuralı ihlal edersen işten atılırsın.
 `)
             : '';
 
+        // Handoff message: use bot-specific or default
+        const defaultHandoffMsgTR = 'Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır. Dilerseniz telefon numaranızı paylaşırsanız sizi geri aramamızı da sağlayabilirim. 🤝';
+        const defaultHandoffMsgEN = "I'm not entirely sure about the answer to your message. I'll notify our team so they can get back to you as soon as possible. If you'd like, you can share your phone number and we'll call you back. 🤝";
+        const handoffMsg = activeBot.handoffMessage || (isEnglish ? defaultHandoffMsgEN : defaultHandoffMsgTR);
+
         const fullSystemInstruction = isEnglish
             ? `${contactWarning}### CURRENT DATE AND TIME ###
 Today: ${currentDay}, ${currentDate}
@@ -1744,7 +1749,7 @@ ${documentContext || "Knowledge base is empty."}
 
 ### RESPONSE RULES ###
 1. ONLY respond using the information above.
-2. **IMPORTANT**: If the knowledge base does NOT contain information about the topic asked AND it is not a simple greeting, write [HANDOFF] at the beginning of your response and then say "I'm unable to help with this topic. Would you like me to connect you with a representative? 🤝". Never write [HANDOFF] for greetings or introductions (hi, hello, hey, good morning, etc.) — just greet them warmly.
+2. **IMPORTANT**: If the knowledge base does NOT contain information about the topic asked AND it is not a simple greeting, write [HANDOFF] at the beginning of your response and then say "${handoffMsg}". Never write [HANDOFF] for greetings or introductions (hi, hello, hey, good morning, etc.) — just greet them warmly.
 3. Keep your responses short, clear and professional.
 4. Respond in English.
 5. Always try to help the customer.
@@ -1769,7 +1774,7 @@ ${documentContext || "Bilgi bankası boş."}
 
 ### YANITLAMA KURALLARI ###
 1. SADECE yukarıdaki bilgileri kullanarak yanıt ver.
-2. **ÖNEMLİ**: Eğer bilgi bankasında sorulan konuyla ilgili BİLGİ YOKSA VE mesaj sadece selamlama/tanışma değilse, yanıtının başına [HANDOFF] yaz ve ardından "Bu konuda size daha iyi yardımcı olabilecek müşteri temsilcimize aktarıyorum. En kısa sürede size dönüş yapacağız." mesajını ver. Selamlama mesajlarına (selam, merhaba, iyi günler, nasılsınız, vs.) ASLA [HANDOFF] yazma, nazikçe karşıla.
+2. **ÖNEMLİ**: Eğer bilgi bankasında sorulan konuyla ilgili BİLGİ YOKSA VE mesaj sadece selamlama/tanışma değilse, yanıtının başına [HANDOFF] yaz ve ardından "${handoffMsg}" mesajını ver. Selamlama mesajlarına (selam, merhaba, iyi günler, nasılsınız, vs.) ASLA [HANDOFF] yazma, nazikçe karşıla.
 3. Yanıtların kısa, net ve profesyonel olsun.
 4. Türkçe yanıt ver.
 5. Müşteriye her zaman yardımcı olmaya çalış.
@@ -2713,7 +2718,9 @@ export const createBot = async (req, res) => {
             routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
             routingConditionalEnabled, routingRules,
             // Linked automations
-            automations
+            automations,
+            // Handoff message
+            handoffMessage
         } = req.body;
 
         const bot = await prisma.aIBot.create({
@@ -2746,7 +2753,9 @@ export const createBot = async (req, res) => {
                 routingConditionalEnabled: !!routingConditionalEnabled,
                 routingRules: routingRules || null,
                 // Automations
-                automations: automations ? JSON.stringify(automations) : null
+                automations: automations ? JSON.stringify(automations) : null,
+                // Handoff message
+                handoffMessage: handoffMessage || null
             }
         });
         res.status(201).json({ bot });
@@ -2965,7 +2974,9 @@ export const updateBot = async (req, res) => {
             routingEnabled, routingQuestions, routingDefaultTeamId, routingDefaultUserId,
             routingConditionalEnabled, routingRules,
             // Linked automations
-            automations
+            automations,
+            // Handoff message
+            handoffMessage
         } = req.body;
 
         // Verify bot belongs to this workspace
@@ -3016,7 +3027,9 @@ export const updateBot = async (req, res) => {
                 routingConditionalEnabled: !!routingConditionalEnabled,
                 routingRules: routingRules || null,
                 // Automations
-                automations: automations ? JSON.stringify(automations) : null
+                automations: automations ? JSON.stringify(automations) : null,
+                // Handoff message
+                ...(handoffMessage !== undefined && { handoffMessage: handoffMessage || null })
             }
         });
         res.json({ bot });
