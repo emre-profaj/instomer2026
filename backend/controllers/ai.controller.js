@@ -2329,7 +2329,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
 
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: { botEnabled: false, handoffPending: false, assignedToId: assignedAgent.user.id }
+                    data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
                 });
 
                 try {
@@ -2393,7 +2393,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
 
                     await prisma.conversation.update({
                         where: { id: conversationId },
-                        data: { botEnabled: false, handoffPending: false, assignedToId: assignedAgent.user.id }
+                        data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
                     });
 
                     // Emit socket event to notify team
@@ -2489,7 +2489,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 // Disable bot and assign to agent in background
                 await prisma.conversation.update({
                     where: { id: conversationId },
-                    data: { botEnabled: false, handoffPending: false, assignedToId: assignedAgent.user.id }
+                    data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
                 });
 
                 try {

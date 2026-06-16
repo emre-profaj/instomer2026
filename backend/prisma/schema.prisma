@@ -380,8 +380,9 @@ model Conversation {
   lastMessageAt         DateTime  @default(now())
   resolvedAt            DateTime? // When conversation was marked as RESOLVED
   resolvedById          String? // Who resolved the conversation
-  botEnabled            Boolean   @default(true) // Bot enabled for this conversation
+  botEnabled            Boolean   @default(true) // Bot enabled for this conversation (false = kalıcı kapatma)
   botDelayedUntil       DateTime? // Bot will not respond until this time (for 30sec delay)
+  botPausedUntil        DateTime? // Agent yazdığında geçici duraklama — süre dolunca bot devam eder
   assignedTeamId        String? // Team assigned to this conversation
   aiTopic               String? // AI-generated conversation topic
   aiSummary             String? // AI-generated conversation summary

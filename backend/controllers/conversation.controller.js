@@ -703,19 +703,19 @@ export const sendMessage = async (req, res) => {
             }
         }
 
-        // Update conversation last message time AND disable bot (human took over)
+        // Update conversation last message time AND pause bot temporarily (15 min)
         await prisma.conversation.update({
             where: { id: conversationId },
             data: {
                 lastMessageAt: new Date(),
-                // 🚀 Kullanıcı manuel mesaj gönderdiğinde bot'u kapat
-                botEnabled: false,
+                // 🟡 Agent yazdığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
+                botPausedUntil: new Date(Date.now() + 15 * 60 * 1000),
                 botDelayedUntil: null,
                 assignedToId: req.user.id // Otomatik olarak bu kullanıcıya ata
             }
         });
 
-        console.log(`👤 [SendMessage] User ${req.user.name} sent message, bot disabled for conversation ${conversationId}`);
+        console.log(`🟡 [SendMessage] User ${req.user.name} sent message, bot PAUSED 15min for conversation ${conversationId}`);
 
         // --- AUTO EXTRACT START ---
         try {
@@ -816,11 +816,11 @@ export const assignConversation = async (req, res) => {
                     return res.status(400).json({ error: 'Seçilen kişi bu çalışma alanının üyesi değil.' });
                 }
                 updateData.assignedToId = userId;
-                // Agent üstlendiğinde bot'u devre dışı bırak
-                updateData.botEnabled = false;
+                // 🟡 Agent atandığında botu 15dk geçici duraklat (kalıcı kapatma DEĞİL)
+                updateData.botPausedUntil = new Date(Date.now() + 15 * 60 * 1000);
                 updateData.botDelayedUntil = null;
 
-                console.log(`👤 [Assign] Agent ${userId} taking over, disabling bot`);
+                console.log(`🟡 [Assign] Agent ${userId} taking over, bot PAUSED 15min`);
             }
         }
 
@@ -1138,12 +1138,13 @@ export const takeOverConversation = async (req, res) => {
             });
         }
 
-        // Konuşmayı üstlen - bot'u devre dışı bırak
+        // Konuşmayı üstlen - bot'u 15dk geçici duraklat
         const updatedConversation = await prisma.conversation.update({
             where: { id: conversationId },
             data: {
                 assignedToId: userId,
-                botEnabled: false,
+                // 🟡 Üstlenme = geçici duraklama, kalıcı kapatma DEĞİL
+                botPausedUntil: new Date(Date.now() + 15 * 60 * 1000),
                 botDelayedUntil: null
             },
             include: {
@@ -2989,7 +2990,8 @@ export const claimConversation = async (req, res) => {
         // Build update data — sadece assignedToId değiştir, teamIds'e dokunma
         const updateData = {
             assignedToId: userId,
-            botEnabled: false,
+            // 🟡 Claim = geçici duraklama, kalıcı kapatma DEĞİL
+            botPausedUntil: new Date(Date.now() + 15 * 60 * 1000),
             botDelayedUntil: null
         };
 

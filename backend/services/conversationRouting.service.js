@@ -283,6 +283,7 @@ export async function canBotRespond(conversationId) {
             select: {
                 botEnabled: true,
                 botDelayedUntil: true,
+                botPausedUntil: true,
                 assignedToId: true
             }
         });
@@ -291,19 +292,20 @@ export async function canBotRespond(conversationId) {
             return false;
         }
 
-        // Bot devre dışıysa cevap verme
+        // Bot kalıcı olarak kapatılmışsa (manuel "Oto Pilot Kapat") cevap verme
         if (!conversation.botEnabled) {
-            console.log(`🤖 [Bot] Bot disabled for conversation ${conversationId}`);
+            console.log(`🔴 [Bot] Bot KALICI KAPALI for conversation ${conversationId}`);
             return false;
         }
 
-        // Bir agent üstlendiyse bot cevap vermesin
-        if (conversation.assignedToId) {
-            console.log(`🤖 [Bot] Agent assigned to conversation ${conversationId}, bot will not respond`);
+        // Agent geçici duraklama süresi dolmamışsa bot sussun
+        if (conversation.botPausedUntil && new Date() < conversation.botPausedUntil) {
+            const remainingMin = Math.ceil((conversation.botPausedUntil - new Date()) / 60000);
+            console.log(`🟡 [Bot] Agent duraklama aktif — ${remainingMin} dk kaldı (conversation ${conversationId})`);
             return false;
         }
 
-        // Gecikme süresi dolmamışsa cevap verme
+        // Gecikme süresi dolmamışsa cevap verme (ilk 30sn gecikme)
         if (conversation.botDelayedUntil && new Date() < conversation.botDelayedUntil) {
             const remainingSeconds = Math.ceil((conversation.botDelayedUntil - new Date()) / 1000);
             console.log(`🤖 [Bot] Bot delayed for ${remainingSeconds} more seconds for conversation ${conversationId}`);
