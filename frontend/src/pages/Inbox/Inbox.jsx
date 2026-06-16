@@ -881,6 +881,84 @@ const Inbox = () => {
         return () => window.removeEventListener('case_title_updated', handler);
     }, []);
 
+    // Case updated from sidebar — sync status/assignment/funnel to conversation header
+    useEffect(() => {
+        const handleCaseUpdated = (e) => {
+            const { caseId, changes } = e.detail || {};
+            if (!caseId || !changes) return;
+
+            // Update all conversations linked to this case
+            setInboxItems(prev => prev.map(item => {
+                if (item.caseId !== caseId) return item;
+                const updates = {};
+                if (changes.funnelType !== undefined) updates.funnelType = changes.funnelType;
+                if (changes.funnelStageId !== undefined) {
+                    updates.funnelStageId = changes.funnelStageId;
+                    updates._effectiveStageId = changes.funnelStageId;
+                }
+                if (changes.title !== undefined) updates.aiTopic = changes.title;
+                if (changes.status === 'CLOSED' || changes.status === 'WON' || changes.status === 'LOST') {
+                    updates.status = 'RESOLVED';
+                } else if (changes.status === 'ACTIVE') {
+                    updates.status = 'OPEN';
+                }
+                return Object.keys(updates).length > 0 ? { ...item, ...updates } : item;
+            }));
+
+            // Update selected item if linked to this case
+            setSelectedItem(prev => {
+                if (!prev || prev.caseId !== caseId) return prev;
+                const updates = {};
+                if (changes.funnelType !== undefined) updates.funnelType = changes.funnelType;
+                if (changes.funnelStageId !== undefined) {
+                    updates.funnelStageId = changes.funnelStageId;
+                    updates._effectiveStageId = changes.funnelStageId;
+                }
+                if (changes.title !== undefined) updates.aiTopic = changes.title;
+                if (changes.status === 'CLOSED' || changes.status === 'WON' || changes.status === 'LOST') {
+                    updates.status = 'RESOLVED';
+                } else if (changes.status === 'ACTIVE') {
+                    updates.status = 'OPEN';
+                }
+                return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+            });
+        };
+
+        const handleCaseAssignment = (e) => {
+            const { caseId, assignedToId, assignedTeamId } = e.detail || {};
+            if (!caseId) return;
+
+            setInboxItems(prev => prev.map(item => {
+                if (item.caseId !== caseId) return item;
+                const updates = {};
+                if (assignedToId !== undefined) updates.assignedToId = assignedToId;
+                if (assignedTeamId !== undefined) {
+                    updates.assignedTeamId = assignedTeamId;
+                    updates.teamIds = assignedTeamId ? JSON.stringify([assignedTeamId]) : '[]';
+                }
+                return Object.keys(updates).length > 0 ? { ...item, ...updates } : item;
+            }));
+
+            setSelectedItem(prev => {
+                if (!prev || prev.caseId !== caseId) return prev;
+                const updates = {};
+                if (assignedToId !== undefined) updates.assignedToId = assignedToId;
+                if (assignedTeamId !== undefined) {
+                    updates.assignedTeamId = assignedTeamId;
+                    updates.teamIds = assignedTeamId ? JSON.stringify([assignedTeamId]) : '[]';
+                }
+                return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+            });
+        };
+
+        window.addEventListener('websocket:case_updated', handleCaseUpdated);
+        window.addEventListener('websocket:case_assignment_updated', handleCaseAssignment);
+        return () => {
+            window.removeEventListener('websocket:case_updated', handleCaseUpdated);
+            window.removeEventListener('websocket:case_assignment_updated', handleCaseAssignment);
+        };
+    }, []);
+
     // URL ?tab= parametresinden assignment tab'ı oku ve set et
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -1352,7 +1430,7 @@ const Inbox = () => {
         // Listen for general conversation assignment updates
         socket.on('conversation_assigned', (data) => {
             console.log('📋 Conversation assigned:', data);
-            const { conversationId, assignedToId, assignedToName, botEnabled, teamIds, funnelType, funnelStageId } = data;
+            const { conversationId, assignedToId, assignedToName, botEnabled, teamIds, funnelType, funnelStageId, status } = data;
 
             // Update local state instead of reloading to preserve pagination
             setInboxItems(prev => prev.map(item =>
@@ -1364,7 +1442,8 @@ const Inbox = () => {
                         assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
                         botEnabled,
                         ...(funnelType !== undefined ? { funnelType } : {}),
-                        ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {})
+                        ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {}),
+                        ...(status !== undefined ? { status } : {})
                     }
                     : item
             ));
@@ -1378,7 +1457,8 @@ const Inbox = () => {
                     assignedTo: assignedToId ? { id: assignedToId, name: assignedToName } : null,
                     botEnabled,
                     ...(funnelType !== undefined ? { funnelType } : {}),
-                    ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {})
+                    ...(funnelStageId !== undefined ? { funnelStageId, _effectiveStageId: funnelStageId } : {}),
+                    ...(status !== undefined ? { status } : {})
                 }));
                 setBotEnabled(botEnabled);
             }

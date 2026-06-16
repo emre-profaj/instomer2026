@@ -81,6 +81,34 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         return () => window.removeEventListener('websocket:funnel_stage_updated', handler);
     }, [conversationId, funnels]);
 
+    // Refresh cases when case_updated or case_cards_refresh is received
+    useEffect(() => {
+        const handleCaseUpdated = (e) => {
+            const { caseId, changes } = e.detail || {};
+            if (!caseId) return;
+            // Update matching case locally
+            setCases(prev => prev.map(c => {
+                if (c.id !== caseId) return c;
+                const updates = {};
+                if (changes?.title !== undefined) updates.title = changes.title;
+                if (changes?.status !== undefined) updates.status = changes.status;
+                if (changes?.funnelType !== undefined) updates.funnelType = changes.funnelType;
+                if (changes?.funnelStageId !== undefined) updates.funnelStageId = changes.funnelStageId;
+                if (changes?.assignedToId !== undefined) updates.assignedToId = changes.assignedToId;
+                if (changes?.assignedTeamId !== undefined) updates.assignedTeamId = changes.assignedTeamId;
+                return Object.keys(updates).length > 0 ? { ...c, ...updates } : c;
+            }));
+        };
+        const handleRefresh = () => { fetchCases(); };
+
+        window.addEventListener('websocket:case_updated', handleCaseUpdated);
+        window.addEventListener('case_cards_refresh', handleRefresh);
+        return () => {
+            window.removeEventListener('websocket:case_updated', handleCaseUpdated);
+            window.removeEventListener('case_cards_refresh', handleRefresh);
+        };
+    }, [workspaceId, contactId]);
+
     const fetchCases = async () => {
         try {
             const res = await caseAPI.getByContact(workspaceId, contactId);

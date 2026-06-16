@@ -371,7 +371,7 @@ export const createCase = async (req, res) => {
 export const updateCase = async (req, res) => {
     try {
         const { workspaceId, caseId } = req.params;
-        const { title, description, status, priority, funnelType, funnelStageId, lostReason } = req.body;
+        const { title, description, status, priority, funnelType, funnelStageId, lostReason, assignedToId, assignedTeamId } = req.body;
 
         const updateData = {};
         if (title !== undefined) updateData.title = title.trim();
@@ -379,6 +379,8 @@ export const updateCase = async (req, res) => {
         if (priority !== undefined) updateData.priority = priority;
         if (funnelType !== undefined) updateData.funnelType = funnelType;
         if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
+        if (assignedToId !== undefined) updateData.assignedToId = assignedToId || null;
+        if (assignedTeamId !== undefined) updateData.assignedTeamId = assignedTeamId || null;
 
         // Status değişiklikleri
         if (status !== undefined) {
@@ -389,6 +391,7 @@ export const updateCase = async (req, res) => {
                 if (lostReason) updateData.lostReason = lostReason;
             }
             if (status === 'CLOSED') updateData.closedAt = new Date();
+            if (status === 'ACTIVE') { updateData.closedAt = null; updateData.wonAt = null; updateData.lostAt = null; }
         }
 
         const updated = await prisma.case.update({
@@ -403,6 +406,50 @@ export const updateCase = async (req, res) => {
                 data: { aiTopic: title.trim() || null }
             });
             console.log(`🔄 [CaseUpdate] Cascaded title → aiTopic for conversations of case ${caseId}`);
+        }
+
+        // CASCADE: assignedToId/assignedTeamId değiştiyse conversation + activities güncelle
+        if (assignedToId !== undefined || assignedTeamId !== undefined) {
+            const convAssignUpdate = {};
+            if (assignedToId !== undefined) convAssignUpdate.assignedToId = assignedToId || null;
+            if (assignedTeamId !== undefined) {
+                convAssignUpdate.assignedTeamId = assignedTeamId || null;
+                convAssignUpdate.teamIds = assignedTeamId ? JSON.stringify([assignedTeamId]) : '[]';
+            }
+
+            await prisma.conversation.updateMany({
+                where: { caseId, status: { not: 'RESOLVED' } },
+                data: convAssignUpdate
+            });
+
+            // Açık aktiviteleri de güncelle
+            if (assignedToId !== undefined) {
+                await prisma.contactActivity.updateMany({
+                    where: { caseId, status: { in: ['PLANNED', 'IN_PROGRESS'] } },
+                    data: { assignedToId: assignedToId || null }
+                });
+            }
+            console.log(`🔄 [CaseUpdate] Cascaded assignment to conversations+activities of case ${caseId}`);
+        }
+
+        // CASCADE: status değiştiyse conversation'ları da güncelle
+        if (status !== undefined) {
+            const closedStatuses = ['CLOSED', 'WON', 'LOST'];
+            if (closedStatuses.includes(status)) {
+                // Case kapatıldı → açık conversation'ları da kapat
+                await prisma.conversation.updateMany({
+                    where: { caseId, status: { not: 'RESOLVED' } },
+                    data: { status: 'RESOLVED', resolvedAt: new Date(), botEnabled: false }
+                });
+                console.log(`🔄 [CaseUpdate] Case ${status} → conversations RESOLVED`);
+            } else if (status === 'ACTIVE') {
+                // Case yeniden açıldı → conversation'ları da aç
+                await prisma.conversation.updateMany({
+                    where: { caseId, status: 'RESOLVED' },
+                    data: { status: 'OPEN', resolvedAt: null }
+                });
+                console.log(`🔄 [CaseUpdate] Case ACTIVE → conversations OPEN`);
+            }
         }
 
         // CASCADE: funnelStageId veya funnelType değiştiyse bağlı conversation'ları da güncelle
@@ -441,11 +488,11 @@ export const updateCase = async (req, res) => {
                 changes: updateData
             });
 
-            // funnelStageId değişikliğini Inbox'a da bildir: bağlı conversation'lar için emit et
-            if (funnelType !== undefined || funnelStageId !== undefined) {
+            // funnelStageId veya atama değişikliğini Inbox'a da bildir
+            if (funnelType !== undefined || funnelStageId !== undefined || assignedToId !== undefined || assignedTeamId !== undefined || status !== undefined) {
                 const linkedConvs = await prisma.conversation.findMany({
                     where: { caseId },
-                    select: { id: true, assignedToId: true, assignedTeamId: true, teamIds: true, botEnabled: true }
+                    select: { id: true, assignedToId: true, assignedTeamId: true, teamIds: true, botEnabled: true, status: true, funnelType: true, funnelStageId: true }
                 });
                 for (const conv of linkedConvs) {
                     io.to(`workspace:${workspaceId}`).emit('conversation_assigned', {
@@ -454,12 +501,13 @@ export const updateCase = async (req, res) => {
                         assignedToName: null,
                         botEnabled: conv.botEnabled,
                         teamIds: conv.teamIds,
-                        funnelType: funnelType ?? updated.funnelType,
-                        funnelStageId: funnelStageId ?? updated.funnelStageId
+                        funnelType: conv.funnelType,
+                        funnelStageId: conv.funnelStageId,
+                        status: conv.status
                     });
                 }
 
-                // Contact güncellemesini de bildir — Kişiler tablosu gerçek zamanlı güncellensin
+                // Contact güncellemesini de bildir
                 if (updated.contactId) {
                     io.to(`workspace:${workspaceId}`).emit('contact_updated', {
                         contactId: updated.contactId,

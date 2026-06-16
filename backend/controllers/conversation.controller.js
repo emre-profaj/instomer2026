@@ -1349,6 +1349,33 @@ export const updateConversationStatus = async (req, res) => {
             actorType: 'USER'
         }).catch(() => {});
 
+        // ── Case Status Cascade: kapanış aşaması olmasa bile Case durumunu senkronize et ──
+        if (existing.caseId && !closingStage) {
+            try {
+                if (status === 'RESOLVED') {
+                    // Konuşma kapatıldı → Case'i de CLOSED yap
+                    await prisma.case.update({
+                        where: { id: existing.caseId },
+                        data: { status: 'CLOSED', closedAt: new Date() }
+                    });
+                    console.log(`📦 [StatusCascade] Case ${existing.caseId} → CLOSED (no closing stage)`);
+                } else if (status === 'OPEN') {
+                    // Konuşma yeniden açıldı → Case'i de ACTIVE yap
+                    await prisma.case.update({
+                        where: { id: existing.caseId },
+                        data: { status: 'ACTIVE', closedAt: null }
+                    });
+                    console.log(`📦 [StatusCascade] Case ${existing.caseId} → ACTIVE (reopened)`);
+                }
+                emitToWorkspace(workspaceId, 'case_updated', {
+                    caseId: existing.caseId,
+                    changes: { status: status === 'RESOLVED' ? 'CLOSED' : 'ACTIVE' }
+                });
+            } catch (caseErr) {
+                console.error('⚠️ [StatusCascade] Error:', caseErr.message);
+            }
+        }
+
         res.json({ conversation, closingStage: closingStage ? { name: closingStage.name, statusType: closingStage.statusType } : null });
     } catch (error) {
         console.error('❌ Update conversation status error:', error);

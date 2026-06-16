@@ -448,6 +448,35 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         return () => window.removeEventListener('websocket:funnel_stage_updated', handler);
     }, [conversationId, currentWorkspace?.id]);
 
+    // Case updated (status, title, funnel) — sync sidebar activeCaseInfo
+    useEffect(() => {
+        const handleCaseUpdated = (e) => {
+            const { caseId, changes } = e.detail || {};
+            if (!caseId || !activeCaseInfo || activeCaseInfo.caseId !== caseId) return;
+            setActiveCaseInfo(prev => {
+                if (!prev) return prev;
+                const updates = {};
+                if (changes.title !== undefined) updates.title = changes.title;
+                if (changes.status !== undefined) updates.status = changes.status;
+                return { ...prev, ...updates };
+            });
+        };
+
+        const handleCaseAssignment = (e) => {
+            const { caseId } = e.detail || {};
+            if (!caseId || !activeCaseInfo || activeCaseInfo.caseId !== caseId) return;
+            // Trigger CaseCards refresh by dispatching a custom event
+            window.dispatchEvent(new CustomEvent('case_cards_refresh', { detail: { caseId } }));
+        };
+
+        window.addEventListener('websocket:case_updated', handleCaseUpdated);
+        window.addEventListener('websocket:case_assignment_updated', handleCaseAssignment);
+        return () => {
+            window.removeEventListener('websocket:case_updated', handleCaseUpdated);
+            window.removeEventListener('websocket:case_assignment_updated', handleCaseAssignment);
+        };
+    }, [activeCaseInfo?.caseId]);
+
     const fetchProfile = async () => {
         setLoading(true);
         setError(null);
