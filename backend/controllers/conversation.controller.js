@@ -2445,10 +2445,25 @@ export const updateFunnel = async (req, res) => {
         const currentAssignedToId = existing.assignedToId;
         const isAlreadyAssigned = !!currentAssignedToId;
 
+        // ─── Mevcut atanan kişi yeni takımda mı kontrol et ───
+        let currentUserInNewTeam = true; // Varsayılan: takımda (takım yoksa dokunma)
+        if (isAlreadyAssigned && suggestedTeamId) {
+            try {
+                const membership = await prisma.teamMember.findFirst({
+                    where: { teamId: suggestedTeamId, userId: currentAssignedToId }
+                });
+                currentUserInNewTeam = !!membership;
+                if (!currentUserInNewTeam) {
+                    console.log(`🔄 [FunnelSwitch] Mevcut atanan ${currentAssignedToId} yeni takımda (${suggestedTeamId}) DEĞİL — yeniden atama yapılacak`);
+                }
+            } catch (_) {}
+        }
+
         // ─── Çakışma Kontrolü ve Onay Talebi ───
         // Takım ataması ASLA onaya bağlı değil — her zaman akışın takımına geçer.
-        // Sadece KİŞİ ataması onay gerektirir.
-        if (isAlreadyAssigned && suggestedUserId && suggestedUserId !== currentAssignedToId && confirmAssignmentUpdate === undefined) {
+        // Mevcut kişi yeni takımda DEĞİLSE → onay sorma, doğrudan ata.
+        // Mevcut kişi yeni takımda İSE → onay sor (farklı kişi öneriliyorsa).
+        if (isAlreadyAssigned && suggestedUserId && suggestedUserId !== currentAssignedToId && currentUserInNewTeam && confirmAssignmentUpdate === undefined) {
             const currentUser = await prisma.user.findUnique({ where: { id: currentAssignedToId }, select: { name: true } }).catch(() => null);
             const suggestedUser = await prisma.user.findUnique({ where: { id: suggestedUserId }, select: { name: true } }).catch(() => null);
             
@@ -2504,13 +2519,16 @@ export const updateFunnel = async (req, res) => {
                     updateData.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
                     console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId} (funnel: "${targetFunnel.name}")`);
                 }
-                // Kişi ataması: confirm true ise veya henüz atanmamışsa
-                if (!isAlreadyAssigned || confirmAssignmentUpdate === true) {
+                // Kişi ataması: confirm true ise, henüz atanmamışsa VEYA mevcut kişi yeni takımda değilse
+                if (!isAlreadyAssigned || confirmAssignmentUpdate === true || !currentUserInNewTeam) {
                     if (suggestedUserId) {
                         updateData.assignedToId = suggestedUserId;
+                        if (!currentUserInNewTeam) {
+                            console.log(`🔄 [FunnelSwitch] Mevcut kişi yeni takımda değil → ${suggestedUserId}'ye yeniden atandı`);
+                        }
                     }
                 } else {
-                    console.log(`🔒 [FunnelSwitch] Konuşma zaten ${currentAssignedToId}'ye atanmış — kişi ataması korunuyor`);
+                    console.log(`🔒 [FunnelSwitch] Konuşma zaten ${currentAssignedToId}'ye atanmış ve takımda — kişi ataması korunuyor`);
                 }
             }
         } else if (stageChanged || (funnelChanged && hasValidStageId)) {
@@ -2545,13 +2563,16 @@ export const updateFunnel = async (req, res) => {
                     updateData.botEnabled = true;
                 }
 
-                // Kişi ataması — sadece henüz atanmamışsa veya onaylanmışsa
-                if (!isAlreadyAssigned || confirmAssignmentUpdate === true) {
+                // Kişi ataması — henüz atanmamışsa, onaylanmışsa VEYA mevcut kişi yeni takımda değilse
+                if (!isAlreadyAssigned || confirmAssignmentUpdate === true || !currentUserInNewTeam) {
                     if (suggestedUserId) {
                         updateData.assignedToId = suggestedUserId;
+                        if (!currentUserInNewTeam) {
+                            console.log(`🔄 [StageSwitch] Mevcut kişi yeni takımda değil → ${suggestedUserId}'ye yeniden atandı`);
+                        }
                     }
                 } else {
-                    console.log(`🔒 [StageSwitch] Konuşma zaten ${currentAssignedToId}'ye atanmış — kişi ataması korunuyor`);
+                    console.log(`🔒 [StageSwitch] Konuşma zaten ${currentAssignedToId}'ye atanmış ve takımda — kişi ataması korunuyor`);
                 }
             }
         }
