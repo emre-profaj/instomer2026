@@ -3092,6 +3092,49 @@ export const claimConversation = async (req, res) => {
             actorType: 'USER'
         }).catch(() => {});
 
+        // ═══════════════════════════════════════════════════════════
+        // UPWARD CASCADE: Claim → Case → Siblings + Activities
+        // Conversation = Case = aynı sorumlular
+        // ═══════════════════════════════════════════════════════════
+        if (conversation.caseId) {
+            try {
+                // 1. Case'i güncelle
+                await prisma.case.update({
+                    where: { id: conversation.caseId },
+                    data: { assignedToId: userId }
+                });
+
+                // 2. Kardeş conversation'ları güncelle
+                await prisma.conversation.updateMany({
+                    where: {
+                        caseId: conversation.caseId,
+                        id: { not: conversationId },
+                        status: { not: 'RESOLVED' }
+                    },
+                    data: { assignedToId: userId }
+                });
+
+                // 3. Açık aktiviteleri güncelle
+                await prisma.contactActivity.updateMany({
+                    where: {
+                        caseId: conversation.caseId,
+                        status: { in: ['PLANNED', 'IN_PROGRESS'] }
+                    },
+                    data: { assignedToId: userId }
+                });
+
+                console.log(`🔄 [ClaimCascade] Case ${conversation.caseId} + siblings + activities → agent:${userId}`);
+
+                // 4. Socket
+                emitToWorkspace(workspaceId, 'case_assignment_updated', {
+                    caseId: conversation.caseId,
+                    assignedToId: userId
+                });
+            } catch (cascadeErr) {
+                console.error('⚠️ [ClaimCascade] Error (non-blocking):', cascadeErr.message);
+            }
+        }
+
         res.json({ success: true, conversation: updated });
     } catch (error) {
         console.error('Claim Conversation Error:', error);

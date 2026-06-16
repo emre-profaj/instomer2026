@@ -2332,6 +2332,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
                     data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
                 });
 
+                // Cascade: Case + siblings + activities
+                try {
+                    const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
+                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.user.id, source: 'Handoff-Direct' });
+                } catch (_) {}
+
                 try {
                     const { emitToWorkspace } = await import('../socket.js');
                     emitToWorkspace(workspaceId, 'bot_handoff', {
@@ -2395,6 +2401,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
                         where: { id: conversationId },
                         data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
                     });
+
+                    // Cascade: Case + siblings + activities
+                    try {
+                        const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
+                        await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.user.id, source: 'Handoff-Online' });
+                    } catch (_) {}
 
                     // Emit socket event to notify team
                     try {
@@ -2491,6 +2503,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
                     where: { id: conversationId },
                     data: { botPausedUntil: new Date(Date.now() + 15 * 60 * 1000), handoffPending: false, assignedToId: assignedAgent.user.id }
                 });
+
+                // Cascade: Case + siblings + activities
+                try {
+                    const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
+                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.user.id, source: 'Handoff-Background' });
+                } catch (_) {}
 
                 try {
                     const { emitToWorkspace } = await import('../socket.js');
