@@ -2621,31 +2621,72 @@ export const updateFunnel = async (req, res) => {
                 if (funnelType !== undefined) caseFunnelUpdate.funnelType = conversation.funnelType;
                 if (conversation.funnelStageId !== undefined) caseFunnelUpdate.funnelStageId = conversation.funnelStageId;
 
+                // ─── Atama cascade: Conversation = Case = aynı sorumlular ───
+                const newAssignedToId = updateData.assignedToId || null;
+                const newAssignedTeamId = updateData.assignedTeamId || null;
+                if (newAssignedToId) caseFunnelUpdate.assignedToId = newAssignedToId;
+                if (newAssignedTeamId) caseFunnelUpdate.assignedTeamId = newAssignedTeamId;
+
                 if (Object.keys(caseFunnelUpdate).length > 0) {
-                    // 1. Case'i güncelle
+                    // 1. Case'i güncelle (funnel + atama)
                     await prisma.case.update({
                         where: { id: conversation.caseId },
                         data: caseFunnelUpdate
                     });
-                    console.log(`🔄 [FunnelCascade] Case ${conversation.caseId} funnel synced:`, caseFunnelUpdate);
+                    console.log(`🔄 [FunnelCascade] Case ${conversation.caseId} synced:`, caseFunnelUpdate);
 
                     // 2. Kardeş conversation'ları güncelle (bu conversation hariç)
-                    await prisma.conversation.updateMany({
-                        where: {
-                            caseId: conversation.caseId,
-                            id: { not: conversationId },
-                            status: { not: 'RESOLVED' }
-                        },
-                        data: caseFunnelUpdate
-                    });
-                    console.log(`🔄 [FunnelCascade] Sibling conversations synced`);
+                    const siblingUpdate = {};
+                    if (caseFunnelUpdate.funnelType !== undefined) siblingUpdate.funnelType = caseFunnelUpdate.funnelType;
+                    if (caseFunnelUpdate.funnelStageId !== undefined) siblingUpdate.funnelStageId = caseFunnelUpdate.funnelStageId;
+                    if (newAssignedToId) siblingUpdate.assignedToId = newAssignedToId;
+                    if (newAssignedTeamId) {
+                        siblingUpdate.assignedTeamId = newAssignedTeamId;
+                        siblingUpdate.teamIds = JSON.stringify([newAssignedTeamId]);
+                    }
 
-                    // 3. Socket: Case güncellemesini bildir
+                    if (Object.keys(siblingUpdate).length > 0) {
+                        await prisma.conversation.updateMany({
+                            where: {
+                                caseId: conversation.caseId,
+                                id: { not: conversationId },
+                                status: { not: 'RESOLVED' }
+                            },
+                            data: siblingUpdate
+                        });
+                        console.log(`🔄 [FunnelCascade] Sibling conversations synced:`, siblingUpdate);
+                    }
+
+                    // 3. Açık görevleri (aktiviteleri) yeni kişiye ata
+                    if (newAssignedToId) {
+                        try {
+                            const updatedActivities = await prisma.contactActivity.updateMany({
+                                where: {
+                                    caseId: conversation.caseId,
+                                    status: { in: ['PLANNED', 'IN_PROGRESS'] }
+                                },
+                                data: { assignedToId: newAssignedToId }
+                            });
+                            if (updatedActivities.count > 0) {
+                                console.log(`🔄 [FunnelCascade] ${updatedActivities.count} açık görev ${newAssignedToId}'ye atandı`);
+                            }
+                        } catch (actErr) {
+                            console.error('⚠️ [FunnelCascade] Activity update error:', actErr.message);
+                        }
+                    }
+
+                    // 4. Socket: Case güncellemesini bildir
                     try {
                         emitToWorkspace(workspaceId, 'case_updated', {
                             caseId: conversation.caseId,
                             changes: caseFunnelUpdate
                         });
+                        if (newAssignedToId) {
+                            emitToWorkspace(workspaceId, 'case_assignment_updated', {
+                                caseId: conversation.caseId,
+                                assignedToId: newAssignedToId
+                            });
+                        }
                     } catch (_) {}
                 }
             } catch (cascadeErr) {
