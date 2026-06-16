@@ -1215,6 +1215,7 @@ model Funnel {
   children               Funnel[]      @relation("FunnelHierarchy")
   assignedUserId         String?
   assignedTeamId         String?
+  qualifiedLeadStageId   String?       // Nitelikli talepler (telefonu olan lead'ler) bu aşamaya düşer
   classificationCriteria String?       @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
   createdAt              DateTime      @default(now())
   workspace              Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

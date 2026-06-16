@@ -102,6 +102,7 @@ const Funnels = () => {
                 color: editingFunnel.color,
                 assignedTeamId: editingFunnel.assignedTeamId || null,
                 assignedUserId: editingFunnel.assignedUserId || null,
+                qualifiedLeadStageId: editingFunnel.qualifiedLeadStageId || null,
                 classificationCriteria: editingFunnel.classificationCriteria || null
             });
             setFunnels(prev => prev.map(f => f.id === editingFunnel.id ? res.data.funnel : f));
@@ -307,6 +308,16 @@ const Funnels = () => {
                                                 <option value="">Kişi Ata</option>
                                                 {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                             </select>
+                                            {editingFunnel.stages?.length > 0 && (
+                                                <select
+                                                    className="funnels-input funnels-input-edit"
+                                                    value={editingFunnel.qualifiedLeadStageId || ''}
+                                                    onChange={e => setEditingFunnel(p => ({ ...p, qualifiedLeadStageId: e.target.value }))}
+                                                >
+                                                    <option value="">🎯 Nitelikli Talepler → (İlk aşamaya düşer)</option>
+                                                    {editingFunnel.stages.map(s => <option key={s.id} value={s.id}>🎯 Nitelikli Talepler → {s.name}</option>)}
+                                                </select>
+                                            )}
                                             <div style={{ width: '100%', marginTop: '8px' }}>
                                                 <textarea
                                                     className="funnels-input"

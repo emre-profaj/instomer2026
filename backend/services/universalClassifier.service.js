@@ -300,18 +300,51 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         let targetFunnelId = skipFunnelAssignment ? null : matchedFunnelId;
         let targetStageId = null;
 
-        // matchedFunnelId varsa → akışın ilk stage'ini bul
+        // matchedFunnelId varsa → stage belirle
         if (targetFunnelId) {
             const funnel = await prisma.funnel.findUnique({
                 where: { id: targetFunnelId },
-                include: { stages: { orderBy: { order: 'asc' }, take: 1 } }
+                include: { stages: { orderBy: { order: 'asc' } } }
             });
             if (funnel?.stages?.length > 0) {
-                targetStageId = funnel.stages[0].id;
-                console.log(`📊 [Classifier] AI matchedFunnelId → "${funnel.name}" / "${funnel.stages[0].name}"`);
+                // isQualifiedLead + qualifiedLeadStageId varsa → oraya at
+                if (isQualifiedLead && funnel.qualifiedLeadStageId) {
+                    const qualifiedStage = funnel.stages.find(s => s.id === funnel.qualifiedLeadStageId);
+                    if (qualifiedStage) {
+                        targetStageId = qualifiedStage.id;
+                        console.log(`🎯 [Classifier] Nitelikli Lead → "${funnel.name}" / "${qualifiedStage.name}" (qualifiedLeadStageId)`);
+                    } else {
+                        // qualifiedLeadStageId artık geçersiz (silinmiş olabilir) → ilk stage'e fallback
+                        targetStageId = funnel.stages[0].id;
+                        console.log(`⚠️ [Classifier] qualifiedLeadStageId geçersiz → "${funnel.name}" / "${funnel.stages[0].name}" (fallback)`);
+                    }
+                } else {
+                    // Lead değil veya qualifiedLeadStageId yok → ilk stage
+                    targetStageId = funnel.stages[0].id;
+                    console.log(`📊 [Classifier] AI matchedFunnelId → "${funnel.name}" / "${funnel.stages[0].name}"`);
+                }
             } else {
                 console.log(`⚠️ [Classifier] matchedFunnelId=${targetFunnelId} ama stage yok — akış ataması yapılmıyor`);
                 targetFunnelId = null;
+            }
+        }
+
+        // --- FALLBACK: AI akışı eşleştiremedi ama isQualifiedLead → qualifiedLeadStageId olan akışı bul ---
+        if (!targetFunnelId && !skipFunnelAssignment && isQualifiedLead) {
+            const qualifiedFunnel = await prisma.funnel.findFirst({
+                where: { workspaceId, qualifiedLeadStageId: { not: null } },
+                include: { stages: { orderBy: { order: 'asc' } } }
+            });
+            if (qualifiedFunnel?.stages?.length > 0) {
+                targetFunnelId = qualifiedFunnel.id;
+                const qualifiedStage = qualifiedFunnel.stages.find(s => s.id === qualifiedFunnel.qualifiedLeadStageId);
+                if (qualifiedStage) {
+                    targetStageId = qualifiedStage.id;
+                    console.log(`🎯 [Classifier] Lead Fallback → "${qualifiedFunnel.name}" / "${qualifiedStage.name}" (qualifiedLeadStageId)`);
+                } else {
+                    targetStageId = qualifiedFunnel.stages[0].id;
+                    console.log(`🎯 [Classifier] Lead Fallback → "${qualifiedFunnel.name}" / "${qualifiedFunnel.stages[0].name}" (ilk stage)`);
+                }
             }
         }
 

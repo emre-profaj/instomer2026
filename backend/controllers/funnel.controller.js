@@ -547,7 +547,7 @@ export const createFunnel = async (req, res) => {
 export const updateFunnel = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color, icon, order, assignedUserId, assignedTeamId, classificationCriteria } = req.body;
+        const { name, color, icon, order, assignedUserId, assignedTeamId, qualifiedLeadStageId, classificationCriteria } = req.body;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
 
@@ -558,6 +558,7 @@ export const updateFunnel = async (req, res) => {
             ...(order !== undefined && { order }),
             ...(assignedUserId !== undefined && { assignedUserId }),
             ...(assignedTeamId !== undefined && { assignedTeamId }),
+            ...(qualifiedLeadStageId !== undefined && { qualifiedLeadStageId: qualifiedLeadStageId || null }),
             ...(classificationCriteria !== undefined && { classificationCriteria })
         };
 
