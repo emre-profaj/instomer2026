@@ -3209,7 +3209,7 @@ const Inbox = () => {
                                     <div className="fp-toggles">
                                         <label className="fp-toggle-item">
                                             <input type="checkbox" checked={showResolved} onChange={() => setShowResolved(!showResolved)} />
-                                            <span>Arşivlenenleri Göster</span>
+                                            <span>Kapatılanları Göster</span>
                                         </label>
                                         <label className="fp-toggle-item">
                                             <input type="checkbox" checked={showOnlyAssigned} onChange={() => setShowOnlyAssigned(!showOnlyAssigned)} />
@@ -3465,7 +3465,7 @@ const Inbox = () => {
                                     className="show-resolved-btn"
                                     onClick={() => setShowResolved(true)}
                                 >
-                                    Arşivlenenleri Göster
+                                    Kapatılanları Göster
                                 </button>
                             )}
                         </div>
