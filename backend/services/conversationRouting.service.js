@@ -189,7 +189,10 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
         // Bot gecikmesi sadece YENİ konuşmalarda
         if (isNewConversation && routing.botEnabled) {
             updateData.botDelayedUntil = botDelayedUntil;
-            updateData.assignedToId = null; // Agent üstlenene kadar null
+            // 🛡️ Sadece henüz kimseye atanmamışsa null yap — mevcut atamayı silme
+            if (!existingConversation?.assignedToId) {
+                updateData.assignedToId = null; // Agent üstlenene kadar null
+            }
         }
 
         const updatedConversation = await prisma.conversation.update({

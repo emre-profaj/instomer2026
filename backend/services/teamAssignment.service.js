@@ -4,6 +4,16 @@ import prisma from '../lib/prisma.js';
  * Dağıtım metoduna göre uygun üyeyi seç ve ata
  */
 async function distributeByMethod(team, conversationId, method) {
+    // 🛡️ GUARD: Konuşma zaten birine atanmışsa dağıtım yapma
+    const existingConv = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { assignedToId: true }
+    });
+    if (existingConv?.assignedToId) {
+        console.log(`🛡️ [Distribute] Konuşma zaten ${existingConv.assignedToId}'ye atanmış — dağıtım yapılmıyor`);
+        return existingConv.assignedToId; // Mevcut atamayı koru
+    }
+
     const humanMembers = team.members.filter(m => m.userId && m.user);
     if (humanMembers.length === 0) return null;
 
@@ -56,6 +66,16 @@ async function distributeByMethod(team, conversationId, method) {
  */
 export async function assignToTeamMember(teamId, conversationId) {
     try {
+        // 🛡️ GUARD: Konuşma zaten birine atanmışsa atamayı değiştirme
+        const existingConv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { assignedToId: true }
+        });
+        if (existingConv?.assignedToId) {
+            console.log(`🛡️ [TeamAssign] Konuşma zaten ${existingConv.assignedToId}'ye atanmış — atama korunuyor`);
+            return existingConv.assignedToId;
+        }
+
         const team = await prisma.team.findUnique({
             where: { id: teamId },
             include: {

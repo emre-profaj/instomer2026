@@ -391,7 +391,10 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                             await prisma.conversation.update({ where: { id: conversationId }, data: assignUpdate });
                             console.log(`👥 [Classifier] Stage ekip/kişi atandı:`, assignUpdate, alreadyAssigned ? '(kişi atama korundu)' : '');
                         }
-                        if (stage.assignedTeamId && !stage.assignedUserId && !alreadyAssigned) {
+                        // 🛡️ DB'den güncel atama durumunu tekrar oku (yukardaki update assignedToId yazmış olabilir)
+                        const freshConv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { assignedToId: true } });
+                        const stillAssignedAfterUpdate = !!freshConv?.assignedToId;
+                        if (stage.assignedTeamId && !stage.assignedUserId && !stillAssignedAfterUpdate) {
                             await assignToTeamMember(stage.assignedTeamId, conversationId);
                         }
                     }
