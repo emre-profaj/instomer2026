@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { teamAPI, workspaceAPI, aiAPI, retellAPI } from '../../services/api';
-import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical, Bot, Phone } from 'lucide-react';
+import { Plus, Users, Edit2, Trash2, X, UserPlus, ChevronDown, ChevronRight, GitBranch, GripVertical, Bot, Phone, Clock, Mail, Calendar, Zap } from 'lucide-react';
 import './Teams.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 
@@ -27,6 +27,14 @@ const Teams = () => {
     const [teamDescription, setTeamDescription] = useState('');
     const [teamAssignmentRule, setTeamAssignmentRule] = useState('POOL');
     const [parentIdForCreate, setParentIdForCreate] = useState(null);
+
+    // Distribution (Havuz Dağıtım) States
+    const [distributionMode, setDistributionMode] = useState('POOL');
+    const [distributionMethod, setDistributionMethod] = useState('ROUND_ROBIN');
+    const [triggerOnPhone, setTriggerOnPhone] = useState(false);
+    const [triggerOnEmail, setTriggerOnEmail] = useState(false);
+    const [triggerOnAppointment, setTriggerOnAppointment] = useState(false);
+    const [triggerTimeoutMinutes, setTriggerTimeoutMinutes] = useState('');
 
     // Member Management States
     const [workspaceMembers, setWorkspaceMembers] = useState([]);
@@ -92,16 +100,25 @@ const Teams = () => {
 
     const handleCreateTeam = async (e) => {
         e.preventDefault();
+        const distPayload = {
+            distributionMode,
+            distributionMethod,
+            triggerOnPhone,
+            triggerOnEmail,
+            triggerOnAppointment,
+            triggerTimeoutMinutes: triggerTimeoutMinutes ? parseInt(triggerTimeoutMinutes, 10) : null,
+        };
         try {
             if (selectedTeam) {
                 // Update
                 const response = await teamAPI.update(currentWorkspace.id, selectedTeam.id, {
                     name: teamName,
                     description: teamDescription,
-                    assignmentRule: teamAssignmentRule
+                    assignmentRule: teamAssignmentRule,
+                    ...distPayload
                 });
                 if (response.data && response.data.team) {
-                    loadTeams(); // Reload to get hierarchy
+                    loadTeams();
                 }
             } else {
                 // Create
@@ -109,11 +126,11 @@ const Teams = () => {
                     name: teamName,
                     description: teamDescription,
                     assignmentRule: teamAssignmentRule,
-                    parentId: parentIdForCreate || null
+                    parentId: parentIdForCreate || null,
+                    ...distPayload
                 });
                 if (response.data && response.data.team) {
-                    loadTeams(); // Reload to get hierarchy
-                    // Auto-expand parent if creating sub-team
+                    loadTeams();
                     if (parentIdForCreate) {
                         setExpandedTeams(prev => ({ ...prev, [parentIdForCreate]: true }));
                     }
@@ -144,18 +161,34 @@ const Teams = () => {
         });
     };
 
+    const resetDistributionState = () => {
+        setDistributionMode('POOL');
+        setDistributionMethod('ROUND_ROBIN');
+        setTriggerOnPhone(false);
+        setTriggerOnEmail(false);
+        setTriggerOnAppointment(false);
+        setTriggerTimeoutMinutes('');
+    };
+
     const openCreateModal = (team = null, parentId = null) => {
         if (team) {
             setSelectedTeam(team);
             setTeamName(team.name);
             setTeamDescription(team.description || '');
-            setTeamAssignmentRule(team.assignmentRule || 'MANUAL');
+            setTeamAssignmentRule(team.assignmentRule || 'POOL');
+            setDistributionMode(team.distributionMode || 'POOL');
+            setDistributionMethod(team.distributionMethod || 'ROUND_ROBIN');
+            setTriggerOnPhone(team.triggerOnPhone || false);
+            setTriggerOnEmail(team.triggerOnEmail || false);
+            setTriggerOnAppointment(team.triggerOnAppointment || false);
+            setTriggerTimeoutMinutes(team.triggerTimeoutMinutes ? String(team.triggerTimeoutMinutes) : '');
             setParentIdForCreate(null);
         } else {
             setSelectedTeam(null);
             setTeamName('');
             setTeamDescription('');
-            setTeamAssignmentRule('MANUAL');
+            setTeamAssignmentRule('POOL');
+            resetDistributionState();
             setParentIdForCreate(parentId);
         }
         setIsCreateModalOpen(true);
@@ -166,7 +199,8 @@ const Teams = () => {
         setSelectedTeam(null);
         setTeamName('');
         setTeamDescription('');
-        setTeamAssignmentRule('MANUAL');
+        setTeamAssignmentRule('POOL');
+        resetDistributionState();
         setParentIdForCreate(null);
     };
 
@@ -481,35 +515,58 @@ const Teams = () => {
                                 {team.children.length} alt takım
                             </span>
                         )}
-                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Atama Kuralı:</span>
-                            <select
-                                value={team.assignmentRule || 'POOL'}
-                                onChange={async (e) => {
-                                    try {
-                                        await teamAPI.update(currentWorkspace.id, team.id, { assignmentRule: e.target.value });
-                                        const updateNested = (list) => list.map(t => {
-                                            if (t.id === team.id) return { ...t, assignmentRule: e.target.value };
-                                            if (t.children) return { ...t, children: updateNested(t.children) };
-                                            return t;
-                                        });
-                                        setTeams(prev => updateNested(prev));
-                                    } catch (err) {
-                                        console.error('Assignment rule update error:', err);
-                                    }
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                style={{
-                                    fontSize: '0.75rem', padding: '3px 8px', borderRadius: '6px',
-                                    border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer'
-                                }}
-                            >
-                                <option value="POOL">🗂️ Havuzda Beklet</option>
-                                <option value="ROUND_ROBIN">🔄 Sırayla Dağıt (Round Robin)</option>
-                                <option value="LEAST_BUSY">📊 En Az Görüşmesi Olana Dağıt</option>
-                                <option value="ONLINE_ONLY">🟢 Sadece Online Olanlara Dağıt</option>
-                            </select>
+                    </div>
+
+                    {/* Distribution Mode — Inline pills */}
+                    <div className="dist-section">
+                        <span className="dist-label">Havuzdakilere ne yapılsın?</span>
+                        <div className="dist-pills">
+                            {[
+                                { value: 'POOL', icon: '📂', label: 'Beklet' },
+                                { value: 'DISTRIBUTE', icon: '🔄', label: 'Dağıt' },
+                                { value: 'CONDITIONAL', icon: '⚡', label: 'Koşullu' },
+                            ].map(m => (
+                                <button
+                                    key={m.value}
+                                    className={`dist-pill ${(team.distributionMode || 'POOL') === m.value ? 'active' : ''}`}
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        try {
+                                            await teamAPI.update(currentWorkspace.id, team.id, { distributionMode: m.value });
+                                            const updateNested = (list) => list.map(t => {
+                                                if (t.id === team.id) return { ...t, distributionMode: m.value };
+                                                if (t.children) return { ...t, children: updateNested(t.children) };
+                                                return t;
+                                            });
+                                            setTeams(prev => updateNested(prev));
+                                        } catch (err) { console.error(err); }
+                                    }}
+                                >
+                                    <span>{m.icon}</span> {m.label}
+                                </button>
+                            ))}
                         </div>
+                        {/* Show method badge if DISTRIBUTE or CONDITIONAL */}
+                        {(team.distributionMode === 'DISTRIBUTE' || team.distributionMode === 'CONDITIONAL') && (
+                            <div className="dist-method-badge">
+                                {team.distributionMethod === 'ROUND_ROBIN' && '🔁 Sırayla'}
+                                {team.distributionMethod === 'LEAST_BUSY' && '📊 En az yoğun'}
+                                {team.distributionMethod === 'ONLINE_ONLY' && '🟢 Online'}
+                                {!team.distributionMethod && '🔁 Sırayla'}
+                            </div>
+                        )}
+                        {/* Show trigger badges if CONDITIONAL */}
+                        {team.distributionMode === 'CONDITIONAL' && (
+                            <div className="dist-triggers-inline">
+                                {team.triggerOnPhone && <span className="trigger-badge phone">📱 Numara</span>}
+                                {team.triggerOnEmail && <span className="trigger-badge email">📧 E-posta</span>}
+                                {team.triggerOnAppointment && <span className="trigger-badge appt">📅 Randevu</span>}
+                                {team.triggerTimeoutMinutes > 0 && <span className="trigger-badge timeout">⏰ {team.triggerTimeoutMinutes} dk</span>}
+                                {!team.triggerOnPhone && !team.triggerOnEmail && !team.triggerOnAppointment && !team.triggerTimeoutMinutes && (
+                                    <span className="trigger-badge none">Tetikleyici ayarlanmamış</span>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     <button className="manage-members-btn" onClick={() => openMembersModal(team)}>
@@ -611,47 +668,129 @@ const Teams = () => {
                                     rows={3}
                                 />
                             </div>
+                            {/* Havuz Dağıtım Kuralları */}
                             <div className="form-group">
-                                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    Atama Kuralı
+                                <label className="dist-modal-label">
+                                    <Zap size={14} /> Havuzdakilere ne yapılsın?
                                 </label>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+
+                                {/* 3 Mode Pill Selector */}
+                                <div className="dist-mode-selector">
                                     {[
-                                        { value: 'POOL', icon: '🗂️', label: 'Havuzda Beklet', desc: 'Sohbetler havuzda kalır, temsilci elle üstlenir' },
-                                        { value: 'ROUND_ROBIN', icon: '🔄', label: 'Sırayla Dağıt (Round Robin)', desc: 'Tüm takım üyeleri arasında sırayla ve eşit dağıtır' },
-                                        { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Görüşmesi Olana Dağıt', desc: 'Açık görüşmesi en az olan üyeye otomatik atar' },
-                                        { value: 'ONLINE_ONLY', icon: '🟢', label: 'Sadece Online Olanlara Dağıt', desc: 'Sadece online olan üyelere sırayla atar, kimse yoksa havuzda bekler' },
-                                    ].map(rule => (
+                                        { value: 'POOL', icon: '📂', label: 'Havuzda Beklet', desc: 'Ekip üyeleri manuel olarak üzerine alır' },
+                                        { value: 'DISTRIBUTE', icon: '🔄', label: 'Hemen Dağıt', desc: 'Her gelen yazışma anında dağıtılır' },
+                                        { value: 'CONDITIONAL', icon: '⚡', label: 'Koşullu Dağıt', desc: 'Koşul oluşana kadar bekle, sonra dağıt' },
+                                    ].map(mode => (
                                         <label
-                                            key={rule.value}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'flex-start',
-                                                gap: 10,
-                                                padding: '10px 12px',
-                                                borderRadius: 8,
-                                                border: `2px solid ${teamAssignmentRule === rule.value ? '#6366f1' : '#e5e7eb'}`,
-                                                background: teamAssignmentRule === rule.value ? '#f0f0ff' : '#fafafa',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.15s',
-                                            }}
+                                            key={mode.value}
+                                            className={`dist-mode-card ${distributionMode === mode.value ? 'active' : ''}`}
                                         >
                                             <input
                                                 type="radio"
-                                                name="assignmentRule"
-                                                value={rule.value}
-                                                checked={teamAssignmentRule === rule.value}
-                                                onChange={() => setTeamAssignmentRule(rule.value)}
-                                                style={{ marginTop: 2 }}
+                                                name="distributionMode"
+                                                value={mode.value}
+                                                checked={distributionMode === mode.value}
+                                                onChange={() => setDistributionMode(mode.value)}
                                             />
-                                            <span style={{ fontSize: 18 }}>{rule.icon}</span>
-                                            <div>
-                                                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1f2937' }}>{rule.label}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 2 }}>{rule.desc}</div>
+                                            <div className="dist-mode-card-inner">
+                                                <span className="dist-mode-icon">{mode.icon}</span>
+                                                <div className="dist-mode-text">
+                                                    <div className="dist-mode-title">{mode.label}</div>
+                                                    <div className="dist-mode-desc">{mode.desc}</div>
+                                                </div>
                                             </div>
                                         </label>
                                     ))}
                                 </div>
+
+                                {/* Distribution Method (shown for DISTRIBUTE & CONDITIONAL) */}
+                                {(distributionMode === 'DISTRIBUTE' || distributionMode === 'CONDITIONAL') && (
+                                    <div className="dist-method-section">
+                                        <label className="dist-sub-label">Dağıtım Yöntemi</label>
+                                        <div className="dist-method-options">
+                                            {[
+                                                { value: 'ROUND_ROBIN', icon: '🔁', label: 'Sırayla (Round Robin)', desc: 'Üyeler arasında sırayla ve eşit dağıtır' },
+                                                { value: 'LEAST_BUSY', icon: '📊', label: 'En Az Yoğuna', desc: 'Açık yazışması en az olana atar' },
+                                                { value: 'ONLINE_ONLY', icon: '🟢', label: 'Online Olanlara', desc: 'Sadece aktif üyelere, yoksa havuzda bekler' },
+                                            ].map(method => (
+                                                <label
+                                                    key={method.value}
+                                                    className={`dist-method-card ${distributionMethod === method.value ? 'active' : ''}`}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="distributionMethod"
+                                                        value={method.value}
+                                                        checked={distributionMethod === method.value}
+                                                        onChange={() => setDistributionMethod(method.value)}
+                                                    />
+                                                    <span className="dist-method-icon">{method.icon}</span>
+                                                    <div>
+                                                        <div className="dist-method-title">{method.label}</div>
+                                                        <div className="dist-method-desc">{method.desc}</div>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Conditional Triggers (only for CONDITIONAL) */}
+                                {distributionMode === 'CONDITIONAL' && (
+                                    <div className="dist-triggers-section">
+                                        <label className="dist-sub-label">Dağıtımı Tetikleyen Koşullar</label>
+                                        <p className="dist-triggers-hint">Aşağıdakilerden biri oluştuğunda havuzdan dağıtılır:</p>
+
+                                        <div className="dist-trigger-options">
+                                            <label className={`dist-trigger-card ${triggerOnPhone ? 'active' : ''}`}>
+                                                <input type="checkbox" checked={triggerOnPhone} onChange={(e) => setTriggerOnPhone(e.target.checked)} />
+                                                <Phone size={16} className="trigger-icon phone" />
+                                                <div>
+                                                    <div className="trigger-title">Numara verildiğinde</div>
+                                                    <div className="trigger-desc">Kişi telefon numarası paylaştığında</div>
+                                                </div>
+                                            </label>
+
+                                            <label className={`dist-trigger-card ${triggerOnEmail ? 'active' : ''}`}>
+                                                <input type="checkbox" checked={triggerOnEmail} onChange={(e) => setTriggerOnEmail(e.target.checked)} />
+                                                <Mail size={16} className="trigger-icon email" />
+                                                <div>
+                                                    <div className="trigger-title">E-posta verildiğinde</div>
+                                                    <div className="trigger-desc">Kişi e-posta adresi paylaştığında</div>
+                                                </div>
+                                            </label>
+
+                                            <label className={`dist-trigger-card ${triggerOnAppointment ? 'active' : ''}`}>
+                                                <input type="checkbox" checked={triggerOnAppointment} onChange={(e) => setTriggerOnAppointment(e.target.checked)} />
+                                                <Calendar size={16} className="trigger-icon appt" />
+                                                <div>
+                                                    <div className="trigger-title">Görüşme planlandığında</div>
+                                                    <div className="trigger-desc">Randevu veya arama planlandığında</div>
+                                                </div>
+                                            </label>
+
+                                            <label className={`dist-trigger-card timeout ${triggerTimeoutMinutes ? 'active' : ''}`}>
+                                                <Clock size={16} className="trigger-icon timeout" />
+                                                <div style={{ flex: 1 }}>
+                                                    <div className="trigger-title">Süre dolduğunda</div>
+                                                    <div className="trigger-desc">Havuzda belli süre bekledikten sonra</div>
+                                                </div>
+                                                <div className="timeout-input-wrap">
+                                                    <input
+                                                        type="number"
+                                                        className="timeout-input"
+                                                        value={triggerTimeoutMinutes}
+                                                        onChange={(e) => setTriggerTimeoutMinutes(e.target.value)}
+                                                        placeholder="—"
+                                                        min="1"
+                                                        max="1440"
+                                                    />
+                                                    <span className="timeout-unit">dk</span>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <div className="teams-modal-actions">
                                 <button type="button" className="btn-secondary" onClick={closeCreateModal}>Cancel</button>

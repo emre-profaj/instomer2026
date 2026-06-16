@@ -1338,6 +1338,33 @@ export const updateContact = async (req, res) => {
                 executeAutoCallPlanning(contactWorkspaceId, id, 'TELEFON_EKLENDI').catch(e =>
                     console.error('❌ [RULE:AUTO_CALL] Phone added error:', e.message)
                 );
+
+                // Koşullu dağıtım tetikle — telefon eklendi
+                try {
+                    const { checkAndDistributeByTrigger } = await import('../services/teamAssignment.service.js');
+                    const convs = await prisma.conversation.findMany({ where: { contactId: id, workspaceId: contactWorkspaceId, assignedToId: null, status: 'OPEN' } });
+                    for (const c of convs) {
+                        await checkAndDistributeByTrigger(c.id, 'PHONE');
+                    }
+                } catch (triggerErr) { console.error('Conditional distribution trigger error:', triggerErr); }
+            }
+        }
+
+        // 🔥 EMAIL Koşullu dağıtım tetikleyicisi: e-posta yeni eklendiğinde
+        const hadEmail = !!(existing.email && existing.email.trim());
+        const nowHasEmail = !!(contact.email && contact.email.trim());
+        if (!hadEmail && nowHasEmail) {
+            const emailWorkspaceId = workspaceId ||
+                (await prisma.conversation.findFirst({ where: { contactId: id }, select: { workspaceId: true } }))?.workspaceId;
+            if (emailWorkspaceId) {
+                // Koşullu dağıtım tetikle — email eklendi
+                try {
+                    const { checkAndDistributeByTrigger } = await import('../services/teamAssignment.service.js');
+                    const convs = await prisma.conversation.findMany({ where: { contactId: id, workspaceId: emailWorkspaceId, assignedToId: null, status: 'OPEN' } });
+                    for (const c of convs) {
+                        await checkAndDistributeByTrigger(c.id, 'EMAIL');
+                    }
+                } catch (triggerErr) { console.error('Conditional distribution trigger error:', triggerErr); }
             }
         }
 

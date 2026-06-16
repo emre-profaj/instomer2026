@@ -21,6 +21,12 @@ export const createTeam = async (req, res) => {
             assignedBotId: req.body.assignedBotId || null,
             parentId: parentId || null,
             assignmentRule: req.body.assignmentRule || 'POOL',
+            distributionMode: req.body.distributionMode || 'POOL',
+            distributionMethod: req.body.distributionMethod || 'ROUND_ROBIN',
+            triggerOnPhone: req.body.triggerOnPhone || false,
+            triggerOnEmail: req.body.triggerOnEmail || false,
+            triggerOnAppointment: req.body.triggerOnAppointment || false,
+            triggerTimeoutMinutes: req.body.triggerTimeoutMinutes || null,
             members: {
                 create: {
                     userId: req.user.id,
@@ -236,6 +242,12 @@ export const updateTeam = async (req, res) => {
                 ...(req.body.hasOwnProperty('assignedBotId') && { assignedBotId: req.body.assignedBotId }),
                 ...(req.body.hasOwnProperty('parentId') && { parentId: req.body.parentId || null }),
                 ...(req.body.assignmentRule && { assignmentRule: req.body.assignmentRule }),
+                ...(req.body.distributionMode && { distributionMode: req.body.distributionMode }),
+                ...(req.body.distributionMethod && { distributionMethod: req.body.distributionMethod }),
+                ...(req.body.hasOwnProperty('triggerOnPhone') && { triggerOnPhone: req.body.triggerOnPhone }),
+                ...(req.body.hasOwnProperty('triggerOnEmail') && { triggerOnEmail: req.body.triggerOnEmail }),
+                ...(req.body.hasOwnProperty('triggerOnAppointment') && { triggerOnAppointment: req.body.triggerOnAppointment }),
+                ...(req.body.hasOwnProperty('triggerTimeoutMinutes') && { triggerTimeoutMinutes: req.body.triggerTimeoutMinutes }),
             },
             include: {
                 _count: { select: { members: true } },

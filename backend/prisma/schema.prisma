@@ -620,8 +620,16 @@ model Team {
   parentId        String?
   parent          Team?   @relation("TeamHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children        Team[]  @relation("TeamHierarchy")
-  assignmentRule  String  @default("POOL") // POOL | ROUND_ROBIN | LEAST_BUSY
+  assignmentRule  String  @default("POOL") // Legacy — uyumluluk için kalıyor
   roundRobinIndex Int     @default(0)
+
+  // Havuz Dağıtım Kuralları
+  distributionMode      String  @default("POOL")        // POOL | DISTRIBUTE | CONDITIONAL
+  distributionMethod    String  @default("ROUND_ROBIN")  // ROUND_ROBIN | LEAST_BUSY | ONLINE_ONLY
+  triggerOnPhone        Boolean @default(false)
+  triggerOnEmail        Boolean @default(false)
+  triggerOnAppointment  Boolean @default(false)
+  triggerTimeoutMinutes Int?                              // null = süre yok
 
   // AI Devralma Ayarları (takım seviyesi — workspace'i override eder)
   aiFallbackEnabled      Boolean? // null = workspace ayarını kullan, true/false = override
