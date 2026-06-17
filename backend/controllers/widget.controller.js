@@ -328,6 +328,10 @@ export const handleWidgetChat = async (req, res) => {
             }
         }
 
+        // Capture poll anchor BEFORE any messages are created
+        // So widget polling catches everything from this point forward
+        const pollAnchor = new Date(Date.now() - 1000).toISOString(); // 1 second buffer
+
         // 3. Save Visitor Message
         const visitorMessage = await prisma.message.create({
             data: {
@@ -442,10 +446,10 @@ export const handleWidgetChat = async (req, res) => {
                 console.error('❌ [Widget] Bot message socket emit error:', socketError);
             }
 
-            return res.json({ reply: aiResponse, conversationId: conversation.id, botMessageId: botMessage.id, serverTime: new Date().toISOString() });
+            return res.json({ reply: aiResponse, conversationId: conversation.id, botMessageId: botMessage.id, serverTime: pollAnchor });
         }
 
-        res.json({ reply: null, conversationId: conversation.id, serverTime: new Date().toISOString() });
+        res.json({ reply: null, conversationId: conversation.id, serverTime: pollAnchor });
     } catch (error) {
         console.error('Widget chat error:', error);
         res.status(500).json({ error: 'Mesaj gönderilemedi.' });

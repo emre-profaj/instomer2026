@@ -698,12 +698,18 @@
                 typingIndicator.style.display = 'none';
 
                 // Store conversationId and start polling
-                if (data.conversationId && !currentConversationId) {
-                    currentConversationId = data.conversationId;
-                    // Use server time as the polling anchor
-                    lastPollTime = data.serverTime || new Date().toISOString();
+                if (data.conversationId) {
+                    if (!currentConversationId) {
+                        currentConversationId = data.conversationId;
+                        console.log('[Widget] Conversation ID set:', currentConversationId);
+                    }
+                    // Always use server's pollAnchor time — it's set BEFORE messages are created
+                    // so polling will catch everything (bot replies + agent messages)
+                    if (data.serverTime && !lastPollTime) {
+                        lastPollTime = data.serverTime;
+                    }
                     startPolling();
-                    console.log('[Widget] Polling started for conversation:', currentConversationId);
+                    console.log('[Widget] Polling active for conversation:', currentConversationId);
                 }
 
                 if (data.reply) {
@@ -713,8 +719,8 @@
                         seenMessageIds.add(data.botMessageId);
                     }
                     addMessage(data.reply, 'bot', data.botMessageId || null);
-                    // Update poll anchor to server time
-                    if (data.serverTime) lastPollTime = data.serverTime;
+                    // Do NOT update lastPollTime here — keep it at pollAnchor
+                    // so polling still catches any messages we might have missed
                 } else if (!handoffShown) {
                     console.log('[Widget] No reply, showing handoff message');
                     addMessage('Yazışmayı temsilcimiz devralıyor. Mesajınızı en kısa zamanda yanıtlayacağız. 🤝', 'bot', null);
