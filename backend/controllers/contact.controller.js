@@ -158,11 +158,14 @@ export const getContacts = async (req, res) => {
                 gte = new Date(now); gte.setHours(0, 0, 0, 0);
                 lte = new Date(now); lte.setHours(23, 59, 59, 999);
             } else if (dateFilter === 'WEEK') {
-                gte = new Date(now); gte.setDate(now.getDate() - now.getDay()); gte.setHours(0, 0, 0, 0);
-                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+                // Monday to Sunday (ISO week)
+                const day = now.getDay(); // 0=Sun, 1=Mon, ...
+                const diffToMonday = day === 0 ? 6 : day - 1; // Sunday -> 6 days back, else day-1
+                gte = new Date(now); gte.setDate(now.getDate() - diffToMonday); gte.setHours(0, 0, 0, 0);
+                lte = new Date(gte); lte.setDate(gte.getDate() + 6); lte.setHours(23, 59, 59, 999);
             } else if (dateFilter === 'MONTH') {
-                gte = new Date(now.getFullYear(), now.getMonth(), 1);
-                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+                gte = new Date(now.getFullYear(), now.getMonth(), 1); gte.setHours(0, 0, 0, 0);
+                lte = new Date(now.getFullYear(), now.getMonth() + 1, 0); lte.setHours(23, 59, 59, 999);
             } else if (dateFilter === 'CUSTOM') {
                 if (dateFrom) { gte = new Date(dateFrom); gte.setHours(0, 0, 0, 0); }
                 if (dateTo)   { lte = new Date(dateTo);   lte.setHours(23, 59, 59, 999); }
