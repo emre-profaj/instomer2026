@@ -619,7 +619,7 @@
 
         // Track conversation and polling state
         let currentConversationId = null;
-        let lastMessageTime = null;
+        let lastPollTime = null; // Server time from last response
         let seenMessageIds = new Set();
         let pollInterval = null;
         let handoffShown = false;
@@ -636,14 +636,14 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        // Poll for new agent messages
+        // Poll for new agent/bot messages
         async function pollMessages() {
             if (!currentConversationId) return;
 
             try {
                 let url = `${apiBaseUrl}/messages/${currentConversationId}`;
-                if (lastMessageTime) {
-                    url += `?since=${encodeURIComponent(lastMessageTime)}`;
+                if (lastPollTime) {
+                    url += `?since=${encodeURIComponent(lastPollTime)}`;
                 }
 
                 const response = await fetch(url);
@@ -653,28 +653,20 @@
                 if (data.messages && data.messages.length > 0) {
                     for (const msg of data.messages) {
                         if (!seenMessageIds.has(msg.id)) {
-                            const senderName = msg.sender?.name;
-                            const displayType = senderName ? 'bot' : 'bot';
-                            addMessage(msg.content, displayType, msg.id);
-                            lastMessageTime = msg.createdAt;
+                            addMessage(msg.content, 'bot', msg.id);
+                            // Use the message's server-side createdAt as the new poll anchor
+                            lastPollTime = msg.createdAt;
                         }
                     }
                 }
             } catch (err) {
-                // Silent fail — polling hataları widget'ı bozmamalı
+                // Silent fail — polling errors shouldn't break the widget
             }
         }
 
         function startPolling() {
             if (pollInterval) return;
             pollInterval = setInterval(pollMessages, 3000);
-        }
-
-        function stopPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
         }
 
         async function sendMessage() {
@@ -705,15 +697,19 @@
                 // Store conversationId and start polling
                 if (data.conversationId && !currentConversationId) {
                     currentConversationId = data.conversationId;
-                    lastMessageTime = new Date().toISOString();
+                    // Use server time as the polling anchor
+                    lastPollTime = data.serverTime || new Date().toISOString();
                     startPolling();
                 }
 
                 if (data.reply) {
-                    // Bot reply came via HTTP response — track it
-                    addMessage(data.reply, 'bot', null);
-                    // Update lastMessageTime so polling doesn't re-fetch this
-                    lastMessageTime = new Date().toISOString();
+                    // Bot reply — track its ID so polling won't re-show it
+                    if (data.botMessageId) {
+                        seenMessageIds.add(data.botMessageId);
+                    }
+                    addMessage(data.reply, 'bot', data.botMessageId || null);
+                    // Update poll anchor to server time
+                    if (data.serverTime) lastPollTime = data.serverTime;
                 } else if (!handoffShown) {
                     addMessage('Yazışmayı temsilcimiz devralıyor. Mesajınızı en kısa zamanda yanıtlayacağız. 🤝', 'bot', null);
                     handoffShown = true;
