@@ -53,5 +53,6 @@ router.get('/public/:workspaceId/widget', widgetController.getWidgetSettings);
 router.get('/public/widget/:widgetId', widgetController.getWidgetByWidgetId);
 router.post('/public/chat', widgetController.handleWidgetChat);
 router.post('/public/prechat', widgetController.handlePrechat);
+router.get('/public/messages/:conversationId', widgetController.getWidgetMessages);
 
 export default router;

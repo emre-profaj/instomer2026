@@ -617,7 +617,17 @@
             if (e.key === 'Enter') handleFormSubmit();
         };
 
-        function addMessage(text, type) {
+        // Track conversation and polling state
+        let currentConversationId = null;
+        let lastMessageTime = null;
+        let seenMessageIds = new Set();
+        let pollInterval = null;
+
+        function addMessage(text, type, messageId) {
+            // Prevent duplicate messages
+            if (messageId && seenMessageIds.has(messageId)) return;
+            if (messageId) seenMessageIds.add(messageId);
+
             const msg = document.createElement('div');
             msg.className = `ag-message ${type}`;
             msg.innerText = text;
@@ -625,12 +635,53 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
+        // Poll for new agent messages
+        async function pollMessages() {
+            if (!currentConversationId) return;
+
+            try {
+                let url = `${apiBaseUrl}/messages/${currentConversationId}`;
+                if (lastMessageTime) {
+                    url += `?since=${encodeURIComponent(lastMessageTime)}`;
+                }
+
+                const response = await fetch(url);
+                if (!response.ok) return;
+
+                const data = await response.json();
+                if (data.messages && data.messages.length > 0) {
+                    for (const msg of data.messages) {
+                        if (!seenMessageIds.has(msg.id)) {
+                            const senderName = msg.sender?.name;
+                            const displayType = senderName ? 'bot' : 'bot';
+                            addMessage(msg.content, displayType, msg.id);
+                            lastMessageTime = msg.createdAt;
+                        }
+                    }
+                }
+            } catch (err) {
+                // Silent fail — polling hataları widget'ı bozmamalı
+            }
+        }
+
+        function startPolling() {
+            if (pollInterval) return;
+            pollInterval = setInterval(pollMessages, 3000);
+        }
+
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
         async function sendMessage() {
             const text = input.value.trim();
             if (!text) return;
 
             input.value = '';
-            addMessage(text, 'user');
+            addMessage(text, 'user', null);
 
             typingIndicator.style.display = 'block';
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -649,15 +700,26 @@
                 const data = await response.json();
 
                 typingIndicator.style.display = 'none';
+
+                // Store conversationId and start polling
+                if (data.conversationId && !currentConversationId) {
+                    currentConversationId = data.conversationId;
+                    lastMessageTime = new Date().toISOString();
+                    startPolling();
+                }
+
                 if (data.reply) {
-                    addMessage(data.reply, 'bot');
+                    // Bot reply came via HTTP response — track it
+                    addMessage(data.reply, 'bot', null);
+                    // Update lastMessageTime so polling doesn't re-fetch this
+                    lastMessageTime = new Date().toISOString();
                 } else {
-                    addMessage('Mesajınız alındı. Kısa süre içinde size geri döneceğiz. 🙏', 'bot');
+                    addMessage('Mesajınız alındı. Kısa süre içinde size geri döneceğiz. 🙏', 'bot', null);
                 }
             } catch (err) {
                 console.error('Widget send error:', err);
                 typingIndicator.style.display = 'none';
-                addMessage('Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.', 'bot');
+                addMessage('Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.', 'bot', null);
             }
         }
 

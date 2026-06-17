@@ -147,6 +147,47 @@ export const updateWidgetSettings = async (req, res) => {
     }
 };
 
+// Poll for new messages (agent replies) from widget
+export const getWidgetMessages = async (req, res) => {
+    try {
+        const { conversationId } = req.params;
+        const since = req.query.since; // ISO timestamp
+
+        if (!conversationId) {
+            return res.status(400).json({ error: 'conversationId gerekli.' });
+        }
+
+        const whereClause = {
+            conversationId,
+            isFromContact: false
+        };
+
+        if (since) {
+            whereClause.createdAt = { gt: new Date(since) };
+        }
+
+        const messages = await prisma.message.findMany({
+            where: whereClause,
+            orderBy: { createdAt: 'asc' },
+            take: 20,
+            select: {
+                id: true,
+                content: true,
+                createdAt: true,
+                isFromContact: true,
+                sender: {
+                    select: { name: true }
+                }
+            }
+        });
+
+        res.json({ messages });
+    } catch (error) {
+        console.error('Widget getMessages error:', error);
+        res.status(500).json({ error: 'Mesajlar alınamadı.' });
+    }
+};
+
 // Handle public chat from widget
 export const handleWidgetChat = async (req, res) => {
     try {
@@ -402,10 +443,10 @@ export const handleWidgetChat = async (req, res) => {
                 console.error('❌ [Widget] Bot message socket emit error:', socketError);
             }
 
-            return res.json({ reply: aiResponse });
+            return res.json({ reply: aiResponse, conversationId: conversation.id });
         }
 
-        res.json({ reply: null });
+        res.json({ reply: null, conversationId: conversation.id });
     } catch (error) {
         console.error('Widget chat error:', error);
         res.status(500).json({ error: 'Mesaj gönderilemedi.' });
