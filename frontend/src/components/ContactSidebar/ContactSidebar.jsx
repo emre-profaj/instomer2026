@@ -1875,32 +1875,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             )}
                                             <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
                                                 {activeCaseInfo?.status && (() => {
-                                                    const convFunnelType = localConvOverride?.funnelType || activeConv?.funnelType || conversationData?.funnelType || '';
-                                                    const currentFunnel = activityFunnels.find(f => f.id === convFunnelType);
-
-                                                    let statusOptions = [{ value: 'ACTIVE', label: 'Aktif', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', dotColor: '#22c55e' }];
-
-                                                    if (currentFunnel && currentFunnel.stages) {
-                                                        const closingStages = currentFunnel.stages.filter(s => s.isClosing || s.statusType);
-                                                        closingStages.forEach(s => {
-                                                            const st = s.statusType || 'CLOSED';
-                                                            const colors = {
-                                                                WON: { color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0' },
-                                                                LOST: { color: '#ef4444', bg: '#fef2f2', border: '#fecaca' },
-                                                                CLOSED: { color: '#6b7280', bg: '#f3f4f6', border: '#d1d5db' }
-                                                            };
-                                                            const c = colors[st] || colors.CLOSED;
-                                                            statusOptions.push({ value: st, label: s.name, color: c.color, bg: c.bg, border: c.border, dotColor: s.color || c.color, stageId: s.id });
-                                                        });
-                                                    }
-
-                                                    if (statusOptions.length === 1) {
-                                                        statusOptions.push(
-                                                            { value: 'WON', label: 'Satış', color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0', dotColor: '#10b981' },
-                                                            { value: 'LOST', label: 'Ulaşılamadı', color: '#64748b', bg: '#f8fafc', border: '#cbd5e1', dotColor: '#64748b' },
-                                                            { value: 'CLOSED', label: 'Kayıp', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' }
-                                                        );
-                                                    }
+                                                    // Sabit status seçenekleri — chat header ile aynı
+                                                    const statusOptions = [
+                                                        { value: 'ACTIVE', label: 'Aktif', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', dotColor: '#22c55e' },
+                                                        { value: 'WON', label: 'Satış', color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0', dotColor: '#10b981' },
+                                                        { value: 'LOST', label: 'Ulaşılamadı', color: '#64748b', bg: '#f8fafc', border: '#cbd5e1', dotColor: '#64748b' },
+                                                        { value: 'CLOSED', label: 'Kayıp', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' }
+                                                    ];
 
                                                     const currentOpt = statusOptions.find(o => o.value === activeCaseInfo.status) || statusOptions[0];
                                                     return (
