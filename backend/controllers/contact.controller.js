@@ -117,50 +117,6 @@ export const getContacts = async (req, res) => {
             };
         }
 
-        // Add contactInfo filter (phone/email presence)
-        if (contactInfo && contactInfo !== 'ALL') {
-            if (contactInfo === 'HAS_PHONE') {
-                where = {
-                    AND: [
-                        where,
-                        { phone: { not: null } },
-                        { NOT: { phone: '' } }
-                    ]
-                };
-            } else if (contactInfo === 'HAS_EMAIL') {
-                where = {
-                    AND: [
-                        where,
-                        { email: { not: null } },
-                        { NOT: { email: '' } }
-                    ]
-                };
-            } else if (contactInfo === 'HAS_BOTH') {
-                where = {
-                    AND: [
-                        where,
-                        { phone: { not: null } },
-                        { NOT: { phone: '' } },
-                        { email: { not: null } },
-                        { NOT: { email: '' } }
-                    ]
-                };
-            } else if (contactInfo === 'NO_PHONE') {
-                where = {
-                    AND: [
-                        where,
-                        { OR: [{ phone: null }, { phone: '' }] }
-                    ]
-                };
-            } else if (contactInfo === 'NO_EMAIL') {
-                where = {
-                    AND: [
-                        where,
-                        { OR: [{ email: null }, { email: '' }] }
-                    ]
-                };
-            }
-        }
 
         // Add funnel/stage filter — filter directly on Contact model
         if (funnelStageId && funnelStageId !== 'ALL') {
@@ -372,6 +328,55 @@ export const getContacts = async (req, res) => {
                 { isDeleted: false }
             ]
         };
+
+        // ── Snapshot for Quick Stats: captures all filters EXCEPT contactInfo & callStatus ──
+        // This ensures pill numbers reflect funnel, date, assignment, search, source filters
+        const statsWhere = JSON.parse(JSON.stringify(where));
+
+        // Add contactInfo filter (phone/email presence) — applied AFTER statsWhere snapshot
+        if (contactInfo && contactInfo !== 'ALL') {
+            if (contactInfo === 'HAS_PHONE') {
+                where = {
+                    AND: [
+                        where,
+                        { phone: { not: null } },
+                        { NOT: { phone: '' } }
+                    ]
+                };
+            } else if (contactInfo === 'HAS_EMAIL') {
+                where = {
+                    AND: [
+                        where,
+                        { email: { not: null } },
+                        { NOT: { email: '' } }
+                    ]
+                };
+            } else if (contactInfo === 'HAS_BOTH') {
+                where = {
+                    AND: [
+                        where,
+                        { phone: { not: null } },
+                        { NOT: { phone: '' } },
+                        { email: { not: null } },
+                        { NOT: { email: '' } }
+                    ]
+                };
+            } else if (contactInfo === 'NO_PHONE') {
+                where = {
+                    AND: [
+                        where,
+                        { OR: [{ phone: null }, { phone: '' }] }
+                    ]
+                };
+            } else if (contactInfo === 'NO_EMAIL') {
+                where = {
+                    AND: [
+                        where,
+                        { OR: [{ email: null }, { email: '' }] }
+                    ]
+                };
+            }
+        }
 
         // Filter by call status
         if (callStatus && callStatus !== 'ALL') {
@@ -869,49 +874,16 @@ export const getContacts = async (req, res) => {
             } catch { }
         });
 
-        // ── Quick Stats (use same date range as the main query) ──
-        const baseWhere = {
-            workspaceId,
-            isDeleted: false,
-            ...(showArchived !== 'true' ? { isArchived: false } : {})
-        };
+        // ── Quick Stats (uses statsWhere which inherits ALL active filters except contactInfo & callStatus) ──
 
-        // Build the date range for stats from the same dateFilter params
-        let statsDateFilter = {};
-        if (dateFilter && dateFilter !== 'ALL') {
-            const now = new Date();
-            let gte, lte;
-            if (dateFilter === 'TODAY') {
-                gte = new Date(now); gte.setHours(0, 0, 0, 0);
-                lte = new Date(now); lte.setHours(23, 59, 59, 999);
-            } else if (dateFilter === 'WEEK') {
-                gte = new Date(now); gte.setDate(now.getDate() - now.getDay()); gte.setHours(0, 0, 0, 0);
-                lte = new Date(now); lte.setHours(23, 59, 59, 999);
-            } else if (dateFilter === 'MONTH') {
-                gte = new Date(now.getFullYear(), now.getMonth(), 1);
-                lte = new Date(now); lte.setHours(23, 59, 59, 999);
-            } else if (dateFilter === 'CUSTOM') {
-                if (dateFrom) { gte = new Date(dateFrom); gte.setHours(0, 0, 0, 0); }
-                if (dateTo)   { lte = new Date(dateTo);   lte.setHours(23, 59, 59, 999); }
-            }
-            if (gte || lte) {
-                statsDateFilter = {};
-                if (gte) statsDateFilter.gte = gte;
-                if (lte) statsDateFilter.lte = lte;
-            }
-        }
-
-        const hasDateRange = Object.keys(statsDateFilter).length > 0;
-        const periodContactWhere = hasDateRange
-            ? { ...baseWhere, createdAt: statsDateFilter }
-            : baseWhere;
-
-        // Fetch contacts matching the period query to query their calls/activities
+        // Fetch contacts matching statsWhere + has phone to query their calls/activities
         const matchingContacts = await prisma.contact.findMany({
             where: {
-                ...periodContactWhere,
-                phone: { not: '' },
-                NOT: { phone: null }
+                AND: [
+                    statsWhere,
+                    { phone: { not: '' } },
+                    { NOT: { phone: null } }
+                ]
             },
             select: { id: true }
         });
@@ -930,8 +902,8 @@ export const getContacts = async (req, res) => {
 
         const hasRetellModel = !!prisma.retellCall;
         const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime, funnelCountsRaw, noPhoneCount] = await Promise.all([
-            prisma.contact.count({ where: periodContactWhere }),
-            prisma.contact.count({ where: { ...periodContactWhere, phone: { not: '' }, NOT: { phone: null } } }),
+            prisma.contact.count({ where: statsWhere }),
+            prisma.contact.count({ where: { AND: [statsWhere, { phone: { not: '' } }, { NOT: { phone: null } }] } }),
             // 1) Retell AI calls — distinct contacts
             hasRetellModel && contactIdsWithPhone.length > 0 ? prisma.retellCall.findMany({
                 where: retellCallWhere,
@@ -944,11 +916,11 @@ export const getContacts = async (req, res) => {
                 select: { contactId: true },
                 distinct: ['contactId']
             }) : Promise.resolve([]),
-            // totalAllTime now also respects date filter
-            prisma.contact.count({ where: periodContactWhere }),
+            // totalAllTime
+            prisma.contact.count({ where: statsWhere }),
             prisma.contact.groupBy({
                 by: ['funnelType'],
-                where: periodContactWhere,
+                where: statsWhere,
                 _count: {
                     _all: true
                 }
@@ -956,10 +928,9 @@ export const getContacts = async (req, res) => {
             // "Numarasız Başvurular" count — contacts without a phone number
             prisma.contact.count({
                 where: {
-                    ...periodContactWhere,
-                    OR: [
-                        { phone: null },
-                        { phone: '' }
+                    AND: [
+                        statsWhere,
+                        { OR: [{ phone: null }, { phone: '' }] }
                     ]
                 }
             })
@@ -1002,11 +973,9 @@ export const getContacts = async (req, res) => {
             } else {
                 const resolved = funnelLookup[fType];
                 if (resolved) {
-                    // Store under both ID and name so frontend always finds it
                     funnelCounts[resolved.id] = (funnelCounts[resolved.id] || 0) + count;
                     funnelCounts[resolved.name] = (funnelCounts[resolved.name] || 0) + count;
                 } else {
-                    // Orphaned funnelType (deleted/renamed funnel) → count under Genel
                     nullOrGenelCount += count;
                 }
             }
@@ -1016,7 +985,7 @@ export const getContacts = async (req, res) => {
         // Stage-level counts (grouped by funnelStageId)
         const funnelStageCountsRaw = await prisma.contact.groupBy({
             by: ['funnelStageId'],
-            where: periodContactWhere,
+            where: statsWhere,
             _count: { _all: true }
         });
         const funnelStageCounts = {};
