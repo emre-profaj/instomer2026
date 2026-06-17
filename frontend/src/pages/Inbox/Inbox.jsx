@@ -2902,10 +2902,10 @@ const Inbox = () => {
             const response = await conversationAPI.updateStatus(currentWorkspace.id, conversationId, payload);
             console.log('📡 API Response:', response);
             setInboxItems(prev => prev.map(i =>
-                i.id === conversationId ? { ...i, status: newStatus, ...(closingStageId ? { funnelStageId: closingStageId } : {}) } : i
+                i.id === conversationId ? { ...i, status: newStatus, closingStatus: closingStageId, ...(closingStageId ? { funnelStageId: closingStageId } : {}) } : i
             ));
             if (selectedItem?.id === conversationId) {
-                setSelectedItem(prev => ({ ...prev, status: newStatus, ...(closingStageId ? { funnelStageId: closingStageId } : {}) }));
+                setSelectedItem(prev => ({ ...prev, status: newStatus, closingStatus: closingStageId, ...(closingStageId ? { funnelStageId: closingStageId } : {}) }));
             }
             setClosingDropdownOpen(false);
 
@@ -4256,7 +4256,6 @@ const Inbox = () => {
                                                                                         key={opt.value}
                                                                                         onClick={() => {
                                                                                             handleConversationStatusChange(selectedItem.id, 'RESOLVED', opt.value);
-                                                                                            setSelectedItem(prev => ({ ...prev, closingStatus: opt.value }));
                                                                                             setClosingDropdownOpen(false);
                                                                                         }}
                                                                                         style={{
