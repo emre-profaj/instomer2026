@@ -622,6 +622,7 @@
         let lastMessageTime = null;
         let seenMessageIds = new Set();
         let pollInterval = null;
+        let handoffShown = false;
 
         function addMessage(text, type, messageId) {
             // Prevent duplicate messages
@@ -713,8 +714,9 @@
                     addMessage(data.reply, 'bot', null);
                     // Update lastMessageTime so polling doesn't re-fetch this
                     lastMessageTime = new Date().toISOString();
-                } else {
-                    addMessage('Mesajınız alındı. Kısa süre içinde size geri döneceğiz. 🙏', 'bot', null);
+                } else if (!handoffShown) {
+                    addMessage('Yazışmayı temsilcimiz devralıyor. Mesajınızı en kısa zamanda yanıtlayacağız. 🤝', 'bot', null);
+                    handoffShown = true;
                 }
             } catch (err) {
                 console.error('Widget send error:', err);
