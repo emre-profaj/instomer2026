@@ -6,7 +6,8 @@ import {
     updateLeadStatus,
     getLeadForms,
     deleteLead,
-    getLeadStats
+    getLeadStats,
+    exportLeads
 } from '../controllers/leads.controller.js';
 
 const router = express.Router();
@@ -19,6 +20,9 @@ router.get('/:workspaceId', requireWorkspaceAccess, getLeads);
 
 // Get lead statistics
 router.get('/:workspaceId/stats', requireWorkspaceAccess, getLeadStats);
+
+// Export leads for CSV download
+router.get('/:workspaceId/export', requireWorkspaceAccess, exportLeads);
 
 // Sync leads from Facebook
 router.post('/:workspaceId/sync', requireWorkspaceAccess, syncLeads);

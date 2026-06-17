@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI } from '../../services/api';
+import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI } from '../../services/api';
 import * as XLSX from 'xlsx';
 import {
     User,
@@ -184,6 +184,7 @@ const Customers = () => {
     const [exportStartDate, setExportStartDate] = useState('');
     const [exportEndDate, setExportEndDate] = useState('');
     const [exporting, setExporting] = useState(false);
+    const [exportingLeads, setExportingLeads] = useState(false);
 
     // Bulk WhatsApp Template state
     const [showBulkWA, setShowBulkWA] = useState(false);
@@ -588,6 +589,60 @@ const Customers = () => {
             console.error('Error deleting note:', error);
         } finally {
             setSavingNotes(false);
+        }
+    };
+
+    // Export Facebook Leads to CSV
+    const handleExportLeads = async () => {
+        setExportingLeads(true);
+        try {
+            const response = await leadsAPI.exportAll(currentWorkspace.id);
+            const leads = response.data.leads || [];
+
+            if (leads.length === 0) {
+                alert('Dışa aktarılacak lead bulunamadı.');
+                setExportingLeads(false);
+                return;
+            }
+
+            // Fixed columns
+            const headerRow = ['Lead Adı', 'İsim', 'E-posta', 'Telefon', 'Tercih Ettiği Konut Tipi', 'Proje Adı', 'Tarih'];
+
+            const rows = leads.map(lead => {
+                const createdAt = lead.createdAt
+                    ? new Date(lead.createdAt).toLocaleDateString('tr-TR') + ' ' + new Date(lead.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+                    : '';
+
+                return [
+                    lead.formName || '',
+                    lead.name || '',
+                    lead.email || '',
+                    lead.phone || '',
+                    lead.konutTipi || '',
+                    lead.projeAdi || '',
+                    createdAt
+                ];
+            });
+
+            const csvContent = [
+                headerRow.join(','),
+                ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            ].join('\n');
+
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `facebook_leads_${new Date().toISOString().slice(0, 10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (error) {
+            console.error('Lead export error:', error);
+            alert('Lead dışa aktarma hatası: ' + (error.response?.data?.error || error.message));
+        } finally {
+            setExportingLeads(false);
         }
     };
 
@@ -2361,6 +2416,17 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                             >
                                 <Download size={14} /> Dışa Aktar
                             </button>
+                            {currentWorkspace?.id === 'dbdb6e87-9769-4975-ad57-a984a1e8b995' && (
+                                <button
+                                    className="export-csv-btn"
+                                    onClick={handleExportLeads}
+                                    disabled={exportingLeads}
+                                    title="Facebook Lead Dışa Aktar"
+                                    style={{ background: '#7c3aed', color: '#fff' }}
+                                >
+                                    {exportingLeads ? <Loader size={14} className="spin" /> : <Download size={14} />} Lead Dışa Aktar
+                                </button>
+                            )}
                         </div>
                     </div>
 

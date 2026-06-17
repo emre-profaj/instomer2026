@@ -89,7 +89,7 @@ export const syncLeads = async (req, res) => {
                     {
                         params: {
                             access_token: page.pageAccessToken,
-                            fields: 'id,name,status,leads_count'
+                            fields: 'id,name,status,leads_count,questions'
                         }
                     }
                 );
@@ -116,7 +116,21 @@ export const syncLeads = async (req, res) => {
                             const fieldData = {};
                             if (lead.field_data) {
                                 for (const field of lead.field_data) {
-                                    fieldData[field.name] = field.values?.[0] || '';
+                                    let value = field.values?.[0] || '';
+                                    
+                                    // Find if this field matches a question with options
+                                    const question = (form.questions || []).find(q => q.key === field.name || q.label === field.name);
+                                    if (question && question.options && question.options.length > 0) {
+                                        const matchedOption = question.options.find(opt => opt.key === value || opt.value === value);
+                                        if (matchedOption) {
+                                            value = matchedOption.value || value;
+                                        }
+                                    } else if (value && typeof value === 'string' && value.includes('_') && !value.includes('@') && !value.includes('/') && !value.includes('http')) {
+                                        // Fallback formatting for snake_case values (like dropdown keys)
+                                        value = value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                    }
+                                    
+                                    fieldData[field.name] = value;
                                 }
                             }
 
@@ -355,3 +369,76 @@ export const getLeadStats = async (req, res) => {
     }
 };
 
+// Export all leads for a workspace (for CSV download)
+export const exportLeads = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate, pageId, formId } = req.query;
+
+        const where = { workspaceId };
+        if (pageId) where.facebookPageId = pageId;
+        if (formId) where.formId = formId;
+
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate) {
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                where.createdAt.lte = end;
+            }
+        }
+
+        const leads = await prisma.facebookLead.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                facebookPage: {
+                    select: { pageName: true, pageId: true }
+                }
+            }
+        });
+
+        // Parse field_data and extract structured columns
+        const exportData = leads.map(lead => {
+            let parsedFields = {};
+            try {
+                parsedFields = JSON.parse(lead.fieldData || '{}');
+            } catch (e) { /* ignore */ }
+
+            // Find konut tipi field (look for keys containing 'konut', 'tip', 'daire' etc.)
+            let konutTipiRaw = '';
+            for (const [key, value] of Object.entries(parsedFields)) {
+                const lowerKey = key.toLowerCase();
+                if (lowerKey.includes('konut') || lowerKey.includes('tip') || lowerKey.includes('daire') || lowerKey.includes('oda')) {
+                    konutTipiRaw = value || '';
+                    break;
+                }
+            }
+
+            // Split "Mia Port 5+1" → projeAdi: "Mia Port", konutTipi: "5+1"
+            let projeAdi = '';
+            let konutTipi = konutTipiRaw;
+            const roomMatch = konutTipiRaw.match(/^(.+?)\s*(\d\+\d+)$/);
+            if (roomMatch) {
+                projeAdi = roomMatch[1].trim();
+                konutTipi = roomMatch[2];
+            }
+
+            return {
+                formName: lead.formName || '',
+                name: lead.name || '',
+                email: lead.email || '',
+                phone: lead.phone || '',
+                konutTipi,
+                projeAdi,
+                createdAt: lead.createdAt
+            };
+        });
+
+        res.json({ leads: exportData, total: exportData.length });
+    } catch (error) {
+        console.error('Export leads error:', error);
+        res.status(500).json({ error: 'Failed to export leads' });
+    }
+};

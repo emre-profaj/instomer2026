@@ -442,7 +442,8 @@ export const leadsAPI = {
     sync: (workspaceId, pageId) => api.post(`/leads/${workspaceId}/sync`, { pageId }),
     getForms: (pageId) => api.get(`/leads/forms/${pageId}`),
     updateStatus: (leadId, data) => api.patch(`/leads/${leadId}`, data),
-    delete: (leadId) => api.delete(`/leads/${leadId}`)
+    delete: (leadId) => api.delete(`/leads/${leadId}`),
+    exportAll: (workspaceId, params) => api.get(`/leads/${workspaceId}/export`, { params })
 };
 
 export const knowledgeBaseAPI = {
