@@ -153,7 +153,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 conversationData.assignedToId !== localConvOverride.assignedToId ||
                 conversationData.teamIds !== localConvOverride.teamIds ||
                 conversationData.funnelStageId !== localConvOverride.funnelStageId ||
-                conversationData.funnelType !== localConvOverride.funnelType;
+                conversationData.funnelType !== localConvOverride.funnelType ||
+                conversationData.status !== localConvOverride.status;
             if (changed) {
                 setLocalConvOverride(prev => ({
                     ...prev,
@@ -161,11 +162,19 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                     assignedTo: conversationData.assignedTo,
                     teamIds: conversationData.teamIds,
                     funnelStageId: conversationData.funnelStageId,
-                    funnelType: conversationData.funnelType
+                    funnelType: conversationData.funnelType,
+                    status: conversationData.status
                 }));
+                // Sync case status when conversation status changes from header
+                if (conversationData.status && activeCaseInfo?.caseId && currentWorkspace?.id) {
+                    const newCaseStatus = conversationData.status === 'OPEN' ? 'ACTIVE' : 'CLOSED';
+                    if (activeCaseInfo.status !== newCaseStatus) {
+                        setActiveCaseInfo(prev => prev ? { ...prev, status: newCaseStatus } : prev);
+                    }
+                }
             }
         }
-    }, [conversationData?.assignedToId, conversationData?.teamIds, conversationData?.funnelStageId, conversationData?.funnelType]);
+    }, [conversationData?.assignedToId, conversationData?.teamIds, conversationData?.funnelStageId, conversationData?.funnelType, conversationData?.status]);
 
     const [newNote, setNewNote] = useState('');
     const [savingNote, setSavingNote] = useState(false);
@@ -1938,6 +1947,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                     try {
                                                                                         await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: o.value });
                                                                                         setActiveCaseInfo(prev => ({ ...prev, status: o.value }));
+                                                                                        // Sync conversation status with chat header
+                                                                                        if (onConversationStatusChange && conversationId) {
+                                                                                            if (o.value === 'ACTIVE') {
+                                                                                                onConversationStatusChange(conversationId, 'OPEN');
+                                                                                            } else {
+                                                                                                onConversationStatusChange(conversationId, 'RESOLVED', o.stageId || null);
+                                                                                            }
+                                                                                        }
                                                                                     } catch (err) { console.error('Status update error:', err); }
                                                                                     setCaseStatusDropdownOpen(false);
                                                                                 }}

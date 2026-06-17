@@ -2908,6 +2908,25 @@ const Inbox = () => {
                 setSelectedItem(prev => ({ ...prev, status: newStatus, ...(closingStageId ? { funnelStageId: closingStageId } : {}) }));
             }
             setClosingDropdownOpen(false);
+
+            // Sync case status with sidebar — map conversation status to case status
+            const targetItem = selectedItem?.id === conversationId ? selectedItem : inboxItems.find(i => i.id === conversationId);
+            if (targetItem?.caseId && currentWorkspace?.id) {
+                try {
+                    let caseStatus = 'ACTIVE';
+                    if (newStatus === 'RESOLVED') {
+                        // Find the closing stage to determine WON/LOST/CLOSED
+                        const currentFunnel = funnelOptions.find(f => f.value === (targetItem.funnelType || ''));
+                        const closingStage = currentFunnel?.stages?.find(s => s.value === closingStageId);
+                        caseStatus = closingStage?.statusType || 'CLOSED';
+                    }
+                    await caseAPI.update(currentWorkspace.id, targetItem.caseId, { status: caseStatus });
+                    console.log(`✅ Case ${targetItem.caseId} status synced to ${caseStatus}`);
+                } catch (caseErr) {
+                    console.error('⚠️ Case status sync failed:', caseErr.message);
+                }
+            }
+
             loadInboxItems(false);
             console.log(`✅ Conversation ${conversationId} status updated to ${newStatus}`);
         } catch (error) {
