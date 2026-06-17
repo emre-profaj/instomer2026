@@ -4246,91 +4246,43 @@ const Inbox = () => {
                                                                                     </span>
                                                                                 )}
                                                                             </div>
-                                                                            {/* Kapanış aşamaları — sadece konuşmanın akışından */}
-                                                                            {(() => {
-                                                                                const currentFunnelId = selectedItem.funnelType || '';
-                                                                                const currentFunnel = funnelOptions.find(f => f.value === currentFunnelId);
-                                                                                const closingStages = [];
-                                                                                if (currentFunnel && currentFunnel.stages) {
-                                                                                    currentFunnel.stages.forEach(s => {
-                                                                                        if (s.isClosing) {
-                                                                                            closingStages.push(s);
-                                                                                        }
-                                                                                    });
-                                                                                }
-                                                                                if (closingStages.length === 0) {
-                                                                                    // Kapanış aşaması yoksa varsayılan seçenekleri göster
-                                                                                    const defaultClosing = [
-                                                                                        { value: 'WON', label: 'SATIŞ', color: '#10b981', dotColor: '#10b981' },
-                                                                                        { value: 'LOST', label: 'ULAŞILAMADI', color: '#64748b', dotColor: '#64748b' },
-                                                                                        { value: 'CLOSED', label: 'KAYIP', color: '#ef4444', dotColor: '#ef4444' },
-                                                                                    ];
-                                                                                    return defaultClosing.map(opt => {
-                                                                                        const isActiveOpt = isResolved && (selectedItem.closingStatus === opt.value);
-                                                                                        return (
-                                                                                            <div
-                                                                                                key={opt.value}
-                                                                                                onClick={() => {
-                                                                                                    handleConversationStatusChange(selectedItem.id, 'RESOLVED', null);
-                                                                                                    // Store closing sub-status
-                                                                                                    setSelectedItem(prev => ({ ...prev, closingStatus: opt.value }));
-                                                                                                    setClosingDropdownOpen(false);
-                                                                                                }}
-                                                                                                style={{
-                                                                                                    padding: '10px 14px', cursor: 'pointer',
-                                                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                                                    fontSize: '0.82rem', fontWeight: 700,
-                                                                                                    color: opt.color,
-                                                                                                    background: isActiveOpt ? '#f3f4f6' : 'transparent',
-                                                                                                    transition: 'background 0.1s',
-                                                                                                    textTransform: 'uppercase', letterSpacing: '0.3px'
-                                                                                                }}
-                                                                                                onMouseEnter={e => { if (!isActiveOpt) e.currentTarget.style.background = '#f9fafb'; }}
-                                                                                                onMouseLeave={e => { if (!isActiveOpt) e.currentTarget.style.background = isActiveOpt ? '#f3f4f6' : 'transparent'; }}
-                                                                                            >
-                                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: opt.dotColor, flexShrink: 0 }} />
-                                                                                                {opt.label}
-                                                                                                {isActiveOpt && (
-                                                                                                    <span style={{ marginLeft: 'auto' }}>
-                                                                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={opt.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                                                                                    </span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        );
-                                                                                    });
-                                                                                }
-                                                                                return closingStages.map(stage => {
-                                                                                    const isActiveStage = isResolved && (selectedItem.funnelStageId === stage.value || selectedItem._effectiveStageId === stage.value);
-                                                                                    return (
-                                                                                        <div
-                                                                                            key={stage.value}
-                                                                                            onClick={() => {
-                                                                                                handleConversationStatusChange(selectedItem.id, 'RESOLVED', stage.value);
-                                                                                                setClosingDropdownOpen(false);
-                                                                                            }}
-                                                                                            style={{
-                                                                                                padding: '10px 14px', cursor: 'pointer',
-                                                                                                display: 'flex', alignItems: 'center', gap: 8,
-                                                                                                fontSize: '0.82rem', fontWeight: 700,
-                                                                                                color: stage.color || '#6b7280',
-                                                                                                background: isActiveStage ? '#f3f4f6' : 'transparent',
-                                                                                                transition: 'background 0.1s',
-                                                                                                textTransform: 'uppercase', letterSpacing: '0.3px'
-                                                                                            }}
-                                                                                            onMouseEnter={e => { if (!isActiveStage) e.currentTarget.style.background = '#f9fafb'; }}
-                                                                                            onMouseLeave={e => { if (!isActiveStage) e.currentTarget.style.background = isActiveStage ? '#f3f4f6' : 'transparent'; }}
-                                                                                        >
-                                                                                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#6366f1', flexShrink: 0 }} />
-                                                                                            {stage.label.toUpperCase()}
-                                                                                            {isActiveStage && (
-                                                                                                <span style={{ marginLeft: 'auto' }}>
-                                                                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={stage.color || '#6b7280'} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    );
-                                                                                });
-                                                                            })()}
+                                                                            {/* Sabit kapanış seçenekleri: Satış, Ulaşılamadı, Kayıp */}
+                                                                            {[
+                                                                                { value: 'WON', label: 'SATIŞ', color: '#10b981', dotColor: '#10b981' },
+                                                                                { value: 'LOST', label: 'ULAŞILAMADI', color: '#64748b', dotColor: '#64748b' },
+                                                                                { value: 'CLOSED', label: 'KAYIP', color: '#ef4444', dotColor: '#ef4444' },
+                                                                            ].map(opt => {
+                                                                                const isActiveOpt = isResolved && (selectedItem.closingStatus === opt.value);
+                                                                                return (
+                                                                                    <div
+                                                                                        key={opt.value}
+                                                                                        onClick={() => {
+                                                                                            handleConversationStatusChange(selectedItem.id, 'RESOLVED', null);
+                                                                                            setSelectedItem(prev => ({ ...prev, closingStatus: opt.value }));
+                                                                                            setClosingDropdownOpen(false);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '10px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.82rem', fontWeight: 700,
+                                                                                            color: opt.color,
+                                                                                            background: isActiveOpt ? '#f3f4f6' : 'transparent',
+                                                                                            transition: 'background 0.1s',
+                                                                                            textTransform: 'uppercase', letterSpacing: '0.3px'
+                                                                                        }}
+                                                                                        onMouseEnter={e => { if (!isActiveOpt) e.currentTarget.style.background = '#f9fafb'; }}
+                                                                                        onMouseLeave={e => { if (!isActiveOpt) e.currentTarget.style.background = isActiveOpt ? '#f3f4f6' : 'transparent'; }}
+                                                                                    >
+                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: opt.dotColor, flexShrink: 0 }} />
+                                                                                        {opt.label}
+                                                                                        {isActiveOpt && (
+                                                                                            <span style={{ marginLeft: 'auto' }}>
+                                                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={opt.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     )}
                                                                 </>
