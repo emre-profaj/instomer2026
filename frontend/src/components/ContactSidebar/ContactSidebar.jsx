@@ -1955,6 +1955,28 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 })()}
                                             </div>
                                         </div>
+
+                                        {/* ── Yeni Case / Değiştir actions under Case Number ── */}
+                                        {profile?.id && currentWorkspace?.id && (
+                                            <div style={{ margin: '2px 0 6px 0' }}>
+                                                <CaseCards
+                                                    workspaceId={currentWorkspace.id}
+                                                    contactId={profile.id}
+                                                    members={members}
+                                                    teams={teams}
+                                                    conversationId={conversationId}
+                                                    inline={true}
+                                                    showOnly="actions"
+                                                    onCaseInfo={(info) => setActiveCaseInfo(prev => {
+                                                        if (!prev || prev.caseId !== info.caseId) {
+                                                            return { ...info, _savedTitle: info.title };
+                                                        }
+                                                        return { ...prev, caseNumber: info.caseNumber, status: info.status };
+                                                    })}
+                                                />
+                                            </div>
+                                        )}
+
                                         {/* Alt satır: Büyük düzenlenebilir başlık */}
                                         {activeCaseInfo && (
                                             <input
@@ -1999,6 +2021,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             teams={teams}
                                             conversationId={conversationId}
                                             inline={true}
+                                            showOnly="stages"
                                             onCaseInfo={(info) => setActiveCaseInfo(prev => {
                                                 // İlk set veya case değişti: tamamen yaz
                                                 if (!prev || prev.caseId !== info.caseId) {
