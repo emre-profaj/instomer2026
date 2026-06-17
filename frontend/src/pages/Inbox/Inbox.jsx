@@ -584,13 +584,20 @@ const Inbox = () => {
                     const start = new Date(now); start.setHours(0, 0, 0, 0);
                     return itemDate >= start;
                 } else if (quickFilter === 'week') {
+                    // Monday to Sunday (ISO week)
+                    const day = now.getDay();
+                    const diffToMonday = day === 0 ? 6 : day - 1;
                     const start = new Date(now);
-                    start.setDate(now.getDate() - now.getDay());
+                    start.setDate(now.getDate() - diffToMonday);
                     start.setHours(0, 0, 0, 0);
-                    return itemDate >= start;
+                    const end = new Date(start);
+                    end.setDate(start.getDate() + 6);
+                    end.setHours(23, 59, 59, 999);
+                    return itemDate >= start && itemDate <= end;
                 } else if (quickFilter === 'month') {
                     const start = new Date(now.getFullYear(), now.getMonth(), 1);
-                    return itemDate >= start;
+                    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                    return itemDate >= start && itemDate <= end;
                 } else if (quickFilter === 'unread') {
                     return item.unreadCount > 0;
                 } else if (quickFilter === 'custom') {
@@ -1749,11 +1756,15 @@ const Inbox = () => {
                             const start = new Date(now); start.setHours(0,0,0,0);
                             if (convDate < start) return false;
                         } else if (quickFilter === 'week') {
-                            const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-                            if (convDate < start) return false;
+                            const day = now.getDay();
+                            const diffToMonday = day === 0 ? 6 : day - 1;
+                            const start = new Date(now); start.setDate(now.getDate() - diffToMonday); start.setHours(0,0,0,0);
+                            const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+                            if (convDate < start || convDate > end) return false;
                         } else if (quickFilter === 'month') {
                             const start = new Date(now.getFullYear(), now.getMonth(), 1);
-                            if (convDate < start) return false;
+                            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                            if (convDate < start || convDate > end) return false;
                         } else if (quickFilter === 'unread') {
                             if (conv.unreadCount === 0 || !conv.unreadCount) return false;
                         }
@@ -2050,11 +2061,15 @@ const Inbox = () => {
                                 const start = new Date(now); start.setHours(0,0,0,0);
                                 if (convDate < start) return;
                             } else if (quickFilter === 'week') {
-                                const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-                                if (convDate < start) return;
+                                const day = now.getDay();
+                                const diffToMonday = day === 0 ? 6 : day - 1;
+                                const start = new Date(now); start.setDate(now.getDate() - diffToMonday); start.setHours(0,0,0,0);
+                                const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+                                if (convDate < start || convDate > end) return;
                             } else if (quickFilter === 'month') {
                                 const start = new Date(now.getFullYear(), now.getMonth(), 1);
-                                if (convDate < start) return;
+                                const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                                if (convDate < start || convDate > end) return;
                             } else if (quickFilter === 'unread') {
                                 if (conv.unreadCount === 0 || !conv.unreadCount) return;
                             }
