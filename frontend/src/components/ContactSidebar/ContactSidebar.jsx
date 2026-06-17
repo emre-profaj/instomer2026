@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote } from 'lucide-react';
+import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import CaseCards from './CaseCards';
@@ -1855,14 +1855,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     <div className="journey-header">
                                         {/* Üst satır: ikon + case no (küçük) + durum */}
                                         <div className="journey-header-top-row">
-                                            <TrendingUp size={13} />
                                             {activeCaseInfo?.caseNumber && (
-                                                <span style={{
-                                                    fontSize: '0.56rem', color: '#a1a1aa', fontWeight: 500, fontFamily: 'monospace',
-                                                    letterSpacing: '0.02em', flexShrink: 0, opacity: 0.7
+                                                <div style={{
+                                                    background: '#f5f3ff',
+                                                    border: '1px solid #c4b5fd',
+                                                    borderRadius: 6,
+                                                    padding: '3px 6px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 4,
+                                                    color: '#7c3aed',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 500,
+                                                    fontFamily: 'monospace'
                                                 }}>
-                                                    {activeCaseInfo.caseNumber}
-                                                </span>
+                                                    <Briefcase size={12} style={{ color: '#7c3aed' }} />
+                                                    <span>{activeCaseInfo.caseNumber}</span>
+                                                </div>
                                             )}
                                             <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
                                                 {activeCaseInfo?.status && (() => {
