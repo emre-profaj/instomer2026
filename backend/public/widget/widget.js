@@ -714,10 +714,7 @@
 
                 if (data.reply) {
                     console.log('[Widget] Bot reply received, showing message');
-                    // Bot reply — track its ID so polling won't re-show it
-                    if (data.botMessageId) {
-                        seenMessageIds.add(data.botMessageId);
-                    }
+                    // addMessage internally tracks the ID to prevent polling duplicates
                     addMessage(data.reply, 'bot', data.botMessageId || null);
                     // Do NOT update lastPollTime here — keep it at pollAnchor
                     // so polling still catches any messages we might have missed
