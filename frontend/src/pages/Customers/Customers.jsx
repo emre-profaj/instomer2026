@@ -312,7 +312,7 @@ const Customers = () => {
         if (currentWorkspace) {
             loadContacts();
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -355,6 +355,7 @@ const Customers = () => {
                 funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
                 funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
+                onlyOpenCases: onlyOpenCases.toString(),
                 assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
                 sortField,
                 sortDir,
@@ -378,7 +379,7 @@ const Customers = () => {
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
-    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter]);
+    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter]);
 
     useEffect(() => {
         const handleContactUpdate = (event) => {
@@ -457,6 +458,7 @@ const Customers = () => {
                 funnelTypes: selectedFunnelIds.length > 0 ? selectedFunnelIds.join(',') : (mergedFunnelIds ? mergedFunnelIds.join(',') : undefined),
                 funnelStageId: funnelStageFilter,
                 showArchived: showArchived.toString(),
+                onlyOpenCases: onlyOpenCases.toString(),
                 assignmentFilter: assignmentFilter !== 'all' ? assignmentFilter : undefined,
                 sortField,
                 sortDir,
@@ -795,6 +797,7 @@ const Customers = () => {
                 tag: tagFilter,
                 callStatus: callStatusFilter,
                 showArchived: showArchived.toString(),
+                onlyOpenCases: onlyOpenCases.toString(),
                 limit: 10000,
                 offset: 0
             });
@@ -1973,19 +1976,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(() => {
-                                        // Build closing stage IDs set for onlyOpenCases filter
-                                        const closingStageIds = new Set();
-                                        if (onlyOpenCases) {
-                                            for (const f of availableFunnels) {
-                                                for (const s of (f.stages || [])) {
-                                                    if (s.isClosing || s.statusType) closingStageIds.add(s.id);
-                                                }
-                                            }
-                                        }
-                                        return contacts
-                                            .filter(c => !onlyOpenCases || !c.funnelStageId || !closingStageIds.has(c.funnelStageId));
-                                    })().map((contact) => {
+                                    {contacts.map((contact) => {
                                         const sourceInfo = getSourceInfo(contact.source);
                                         const SourceIcon = sourceInfo.icon;
                                         return (

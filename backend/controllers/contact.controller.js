@@ -9,7 +9,7 @@ import { ensureCaseForConversation } from './case.controller.js';
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo } = req.query;
+        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -328,6 +328,37 @@ export const getContacts = async (req, res) => {
                 { isDeleted: false }
             ]
         };
+
+        // ── "Sadece Aktifleri Göster" / onlyOpenCases filter ──
+        // Exclude contacts whose funnelStageId is a closing stage (isClosing=true or has statusType)
+        // This must be applied BEFORE the statsWhere snapshot so pill counts match the visible list.
+        if (onlyOpenCases === 'true' || onlyOpenCases === undefined) {
+            // Fetch all closing stage IDs for this workspace
+            const closingStages = await prisma.funnelStage.findMany({
+                where: {
+                    funnel: { workspaceId },
+                    OR: [
+                        { isClosing: true },
+                        { statusType: { not: null } }
+                    ]
+                },
+                select: { id: true }
+            });
+            const closingStageIds = closingStages.map(s => s.id);
+            if (closingStageIds.length > 0) {
+                where = {
+                    AND: [
+                        where,
+                        {
+                            OR: [
+                                { funnelStageId: null },
+                                { funnelStageId: { notIn: closingStageIds } }
+                            ]
+                        }
+                    ]
+                };
+            }
+        }
 
         // ── Snapshot for Quick Stats: captures all filters EXCEPT contactInfo & callStatus ──
         // Deep clone that preserves Date objects (JSON.parse/stringify breaks Dates,
@@ -761,7 +792,6 @@ export const getContacts = async (req, res) => {
             console.log(`✅ [Get Contacts] Source filter '${source}' -> ${totalCount} total, showing ${finalContacts.length} (offset: ${parsedOffset})`);
         } else {
             // NO SOURCE FILTER: Use normal DB pagination
-            console.log(`📊 [MainQuery Debug] where=${JSON.stringify(where).substring(0, 500)}`);
             const contacts = await prisma.contact.findMany({
                 where,
                 include: {
@@ -1008,10 +1038,7 @@ export const getContacts = async (req, res) => {
         });
 
 
-        console.log(`📊 [QuickStats Debug] periodCount=${periodCount}, withPhoneCount=${withPhoneCount}, noPhoneCount=${noPhoneCount}, agentCalledCount=${agentCalledCount}, aiCalledCount=${aiCalledCount}, noActivityCount=${noActivityCount}`);
-        console.log(`📊 [QuickStats Debug] totalCount(list)=${totalCount}, contactIdsWithPhone.length=${contactIdsWithPhone.length}`);
-        console.log(`📊 [QuickStats Debug] filters: contactInfo=${contactInfo}, callStatus=${callStatus}, dateFilter=${dateFilter}, funnelType=${funnelType}, funnelTypes=${funnelTypes}`);
-        console.log(`📊 [QuickStats Debug] statsWhere=${JSON.stringify(statsWhere).substring(0, 500)}`);
+
 
         res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, noPhoneCount } });
     } catch (error) {
