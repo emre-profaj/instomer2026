@@ -680,6 +680,7 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
             try {
+                console.log('[Widget] Sending message to:', `${apiBaseUrl}/chat`);
                 const response = await fetch(`${apiBaseUrl}/chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -690,7 +691,9 @@
                         message: text
                     })
                 });
+                console.log('[Widget] Response status:', response.status);
                 const data = await response.json();
+                console.log('[Widget] Response data:', JSON.stringify(data).substring(0, 500));
 
                 typingIndicator.style.display = 'none';
 
@@ -700,9 +703,11 @@
                     // Use server time as the polling anchor
                     lastPollTime = data.serverTime || new Date().toISOString();
                     startPolling();
+                    console.log('[Widget] Polling started for conversation:', currentConversationId);
                 }
 
                 if (data.reply) {
+                    console.log('[Widget] Bot reply received, showing message');
                     // Bot reply — track its ID so polling won't re-show it
                     if (data.botMessageId) {
                         seenMessageIds.add(data.botMessageId);
@@ -711,11 +716,14 @@
                     // Update poll anchor to server time
                     if (data.serverTime) lastPollTime = data.serverTime;
                 } else if (!handoffShown) {
+                    console.log('[Widget] No reply, showing handoff message');
                     addMessage('Yazışmayı temsilcimiz devralıyor. Mesajınızı en kısa zamanda yanıtlayacağız. 🤝', 'bot', null);
                     handoffShown = true;
+                } else {
+                    console.log('[Widget] No reply, handoff already shown');
                 }
             } catch (err) {
-                console.error('Widget send error:', err);
+                console.error('[Widget] Send error:', err);
                 typingIndicator.style.display = 'none';
                 addMessage('Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.', 'bot', null);
             }
