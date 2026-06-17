@@ -1896,9 +1896,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
                                                     if (statusOptions.length === 1) {
                                                         statusOptions.push(
-                                                            { value: 'WON', label: 'Kazandı', color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0', dotColor: '#10b981' },
-                                                            { value: 'LOST', label: 'Kaybetti', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' },
-                                                            { value: 'CLOSED', label: 'Kapandı', color: '#6b7280', bg: '#f3f4f6', border: '#d1d5db', dotColor: '#6b7280' }
+                                                            { value: 'WON', label: 'Satış', color: '#10b981', bg: '#ecfdf5', border: '#a7f3d0', dotColor: '#10b981' },
+                                                            { value: 'LOST', label: 'Ulaşılamadı', color: '#64748b', bg: '#f8fafc', border: '#cbd5e1', dotColor: '#64748b' },
+                                                            { value: 'CLOSED', label: 'Kayıp', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' }
                                                         );
                                                     }
 
