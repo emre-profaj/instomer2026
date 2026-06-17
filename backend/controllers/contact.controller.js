@@ -761,6 +761,7 @@ export const getContacts = async (req, res) => {
             console.log(`✅ [Get Contacts] Source filter '${source}' -> ${totalCount} total, showing ${finalContacts.length} (offset: ${parsedOffset})`);
         } else {
             // NO SOURCE FILTER: Use normal DB pagination
+            console.log(`📊 [MainQuery Debug] where=${JSON.stringify(where).substring(0, 500)}`);
             const contacts = await prisma.contact.findMany({
                 where,
                 include: {
