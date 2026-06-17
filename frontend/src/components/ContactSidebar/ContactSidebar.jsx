@@ -154,7 +154,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 conversationData.teamIds !== localConvOverride.teamIds ||
                 conversationData.funnelStageId !== localConvOverride.funnelStageId ||
                 conversationData.funnelType !== localConvOverride.funnelType ||
-                conversationData.status !== localConvOverride.status;
+                conversationData.status !== localConvOverride.status ||
+                conversationData.closingStatus !== localConvOverride.closingStatus;
             if (changed) {
                 setLocalConvOverride(prev => ({
                     ...prev,
@@ -163,18 +164,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                     teamIds: conversationData.teamIds,
                     funnelStageId: conversationData.funnelStageId,
                     funnelType: conversationData.funnelType,
-                    status: conversationData.status
+                    status: conversationData.status,
+                    closingStatus: conversationData.closingStatus
                 }));
                 // Sync case status when conversation status changes from header
                 if (conversationData.status && activeCaseInfo?.caseId && currentWorkspace?.id) {
-                    const newCaseStatus = conversationData.status === 'OPEN' ? 'ACTIVE' : 'CLOSED';
+                    let newCaseStatus = 'ACTIVE';
+                    if (conversationData.status === 'RESOLVED') {
+                        // Use closingStatus (WON/LOST/CLOSED) from header selection
+                        newCaseStatus = conversationData.closingStatus || 'CLOSED';
+                    }
                     if (activeCaseInfo.status !== newCaseStatus) {
                         setActiveCaseInfo(prev => prev ? { ...prev, status: newCaseStatus } : prev);
                     }
                 }
             }
         }
-    }, [conversationData?.assignedToId, conversationData?.teamIds, conversationData?.funnelStageId, conversationData?.funnelType, conversationData?.status]);
+    }, [conversationData?.assignedToId, conversationData?.teamIds, conversationData?.funnelStageId, conversationData?.funnelType, conversationData?.status, conversationData?.closingStatus]);
 
     const [newNote, setNewNote] = useState('');
     const [savingNote, setSavingNote] = useState(false);
