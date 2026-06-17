@@ -137,7 +137,7 @@ const Customers = () => {
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
     const [limit, setLimit] = useState(100);
-    const [quickStats, setQuickStats] = useState({ periodCount: 0, withPhoneCount: 0, agentCalledCount: 0, aiCalledCount: 0, noActivityCount: 0, totalAllTime: 0 });
+    const [quickStats, setQuickStats] = useState({ periodCount: 0, withPhoneCount: 0, agentCalledCount: 0, aiCalledCount: 0, noActivityCount: 0, noPhoneCount: 0, totalAllTime: 0 });
 
     // Column sorting
     const [sortField, setSortField] = useState('createdAt');
@@ -1700,7 +1700,7 @@ const Customers = () => {
 
                         {/* Hızlı Filtre Pill'leri — Tümü yok, diğerleri pill */}
                         {[
-                            { key: 'ASSIGNED_ME', label: 'Bana Atananlar', icon: UserCheck, count: quickStats.assignedToMeCount, colorClass: 'today' },
+                            { key: 'NO_PHONE', label: 'Numarasız Başvurular', icon: PhoneOff, count: quickStats.noPhoneCount, colorClass: 'today' },
                             { key: 'HAS_PHONE', label: 'Numaralılar', icon: Phone, count: quickStats.withPhoneCount, colorClass: 'phone' },
                             { key: 'AGENT_CALLS', label: 'Agent Aramaları', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
                             { key: 'NO_ACTIVITY', label: 'İletişim Yok', icon: CircleOff, count: quickStats.noActivityCount, colorClass: 'no-activity' },
@@ -1729,8 +1729,8 @@ const Customers = () => {
                                             setCallStatusFilter('ai_called');
                                         } else if (newMode === 'NO_ACTIVITY') {
                                             setCallStatusFilter('no_call');
-                                        } else if (newMode === 'ASSIGNED_ME') {
-                                            setAssignmentFilter('mine');
+                                        } else if (newMode === 'NO_PHONE') {
+                                            setContactInfoFilter('NO_PHONE');
                                         }
                                         // ALL → all filters already reset
                                     }}

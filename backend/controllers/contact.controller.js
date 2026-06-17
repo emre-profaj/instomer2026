@@ -929,7 +929,7 @@ export const getContacts = async (req, res) => {
         };
 
         const hasRetellModel = !!prisma.retellCall;
-        const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime, funnelCountsRaw, assignedToMeCount] = await Promise.all([
+        const [periodCount, withPhoneCount, retellCalledIds, humanCalledIds, totalAllTime, funnelCountsRaw, noPhoneCount] = await Promise.all([
             prisma.contact.count({ where: periodContactWhere }),
             prisma.contact.count({ where: { ...periodContactWhere, phone: { not: '' }, NOT: { phone: null } } }),
             // 1) Retell AI calls — distinct contacts
@@ -953,16 +953,14 @@ export const getContacts = async (req, res) => {
                     _all: true
                 }
             }),
-            // "Bana Atananlar" count — contacts with conversations assigned to current user
+            // "Numarasız Başvurular" count — contacts without a phone number
             prisma.contact.count({
                 where: {
                     ...periodContactWhere,
-                    conversations: {
-                        some: {
-                            workspaceId,
-                            assignedToId: req.user.id
-                        }
-                    }
+                    OR: [
+                        { phone: null },
+                        { phone: '' }
+                    ]
                 }
             })
         ]);
@@ -1028,7 +1026,7 @@ export const getContacts = async (req, res) => {
             }
         });
 
-        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, assignedToMeCount } });
+        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, noPhoneCount } });
     } catch (error) {
         console.error('Get contacts error:', error?.message || error);
         console.error('Get contacts error stack:', error?.stack);
