@@ -330,10 +330,19 @@ export const getContacts = async (req, res) => {
         };
 
         // ── Snapshot for Quick Stats: captures all filters EXCEPT contactInfo & callStatus ──
-        // Safe to use a direct reference because `where` is always reassigned via
-        // `where = { AND: [where, ...] }` which creates a NEW object, leaving the old one intact.
-        // JSON.parse(JSON.stringify()) was breaking Date objects in nested Prisma queries.
-        const statsWhere = where;
+        // Deep clone that preserves Date objects (JSON.parse/stringify breaks Dates,
+        // and direct reference fails because Prisma may mutate the where during query execution)
+        function deepCloneWhere(obj) {
+            if (obj === null || typeof obj !== 'object') return obj;
+            if (obj instanceof Date) return new Date(obj.getTime());
+            if (Array.isArray(obj)) return obj.map(deepCloneWhere);
+            const result = {};
+            for (const key of Object.keys(obj)) {
+                result[key] = deepCloneWhere(obj[key]);
+            }
+            return result;
+        }
+        const statsWhere = deepCloneWhere(where);
 
         // Add contactInfo filter (phone/email presence) — applied AFTER statsWhere snapshot
         if (contactInfo && contactInfo !== 'ALL') {
@@ -1001,6 +1010,7 @@ export const getContacts = async (req, res) => {
         console.log(`📊 [QuickStats Debug] periodCount=${periodCount}, withPhoneCount=${withPhoneCount}, noPhoneCount=${noPhoneCount}, agentCalledCount=${agentCalledCount}, aiCalledCount=${aiCalledCount}, noActivityCount=${noActivityCount}`);
         console.log(`📊 [QuickStats Debug] totalCount(list)=${totalCount}, contactIdsWithPhone.length=${contactIdsWithPhone.length}`);
         console.log(`📊 [QuickStats Debug] filters: contactInfo=${contactInfo}, callStatus=${callStatus}, dateFilter=${dateFilter}, funnelType=${funnelType}, funnelTypes=${funnelTypes}`);
+        console.log(`📊 [QuickStats Debug] statsWhere=${JSON.stringify(statsWhere).substring(0, 500)}`);
 
         res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, noPhoneCount } });
     } catch (error) {
