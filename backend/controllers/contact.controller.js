@@ -157,6 +157,9 @@ export const getContacts = async (req, res) => {
             if (dateFilter === 'TODAY') {
                 gte = new Date(now); gte.setHours(0, 0, 0, 0);
                 lte = new Date(now); lte.setHours(23, 59, 59, 999);
+            } else if (dateFilter === 'YESTERDAY') {
+                gte = new Date(now); gte.setDate(now.getDate() - 1); gte.setHours(0, 0, 0, 0);
+                lte = new Date(now); lte.setDate(now.getDate() - 1); lte.setHours(23, 59, 59, 999);
             } else if (dateFilter === 'WEEK') {
                 // Monday to Sunday (ISO week)
                 const day = now.getDay(); // 0=Sun, 1=Mon, ...

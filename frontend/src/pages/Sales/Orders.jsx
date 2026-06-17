@@ -14,6 +14,11 @@ const getDateRange = (preset) => {
     switch (preset) {
         case 'TODAY':
             return { from: startOfDay, to: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1) };
+        case 'YESTERDAY': {
+            const yStart = new Date(startOfDay); yStart.setDate(yStart.getDate() - 1);
+            const yEnd = new Date(yStart); yEnd.setHours(23, 59, 59, 999);
+            return { from: yStart, to: yEnd };
+        }
         case 'THIS_WEEK': {
             const day = now.getDay();
             const diffToMonday = day === 0 ? 6 : day - 1;
@@ -362,6 +367,7 @@ const Orders = () => {
                             {[
                                 { key: 'ALL', label: 'Tümü' },
                                 { key: 'TODAY', label: 'Bugün' },
+                                { key: 'YESTERDAY', label: 'Dün' },
                                 { key: 'THIS_WEEK', label: 'Bu Hafta' },
                                 { key: 'THIS_MONTH', label: 'Bu Ay' },
                                 { key: 'CUSTOM', label: 'Özel' },

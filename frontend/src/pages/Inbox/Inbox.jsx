@@ -583,6 +583,10 @@ const Inbox = () => {
                 if (quickFilter === 'today') {
                     const start = new Date(now); start.setHours(0, 0, 0, 0);
                     return itemDate >= start;
+                } else if (quickFilter === 'yesterday') {
+                    const start = new Date(now); start.setDate(now.getDate() - 1); start.setHours(0, 0, 0, 0);
+                    const end = new Date(now); end.setDate(now.getDate() - 1); end.setHours(23, 59, 59, 999);
+                    return itemDate >= start && itemDate <= end;
                 } else if (quickFilter === 'week') {
                     // Monday to Sunday (ISO week)
                     const day = now.getDay();
@@ -1755,6 +1759,10 @@ const Inbox = () => {
                         if (quickFilter === 'today') {
                             const start = new Date(now); start.setHours(0,0,0,0);
                             if (convDate < start) return false;
+                        } else if (quickFilter === 'yesterday') {
+                            const start = new Date(now); start.setDate(now.getDate() - 1); start.setHours(0,0,0,0);
+                            const end = new Date(now); end.setDate(now.getDate() - 1); end.setHours(23,59,59,999);
+                            if (convDate < start || convDate > end) return false;
                         } else if (quickFilter === 'week') {
                             const day = now.getDay();
                             const diffToMonday = day === 0 ? 6 : day - 1;
@@ -2060,6 +2068,10 @@ const Inbox = () => {
                             if (quickFilter === 'today') {
                                 const start = new Date(now); start.setHours(0,0,0,0);
                                 if (convDate < start) return;
+                            } else if (quickFilter === 'yesterday') {
+                                const start = new Date(now); start.setDate(now.getDate() - 1); start.setHours(0,0,0,0);
+                                const end = new Date(now); end.setDate(now.getDate() - 1); end.setHours(23,59,59,999);
+                                if (convDate < start || convDate > end) return;
                             } else if (quickFilter === 'week') {
                                 const day = now.getDay();
                                 const diffToMonday = day === 0 ? 6 : day - 1;
@@ -3324,6 +3336,7 @@ const Inbox = () => {
                                         {[
                                             { key: null, label: 'Tümü' },
                                             { key: 'today', label: 'Bugün' },
+                                            { key: 'yesterday', label: 'Dün' },
                                             { key: 'week', label: 'Bu Hafta' },
                                             { key: 'month', label: 'Bu Ay' },
                                             { key: 'unread', label: 'Okunmamış' },

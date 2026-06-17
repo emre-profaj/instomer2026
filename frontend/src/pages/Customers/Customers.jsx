@@ -1570,6 +1570,7 @@ const Customers = () => {
                             {[
                                 { key: 'ALL', label: 'Tümü' },
                                 { key: 'TODAY', label: 'Bugün' },
+                                { key: 'YESTERDAY', label: 'Dün' },
                                 { key: 'WEEK', label: 'Bu Hafta' },
                                 { key: 'MONTH', label: 'Bu Ay' },
                             ].map(({ key, label }) => (
