@@ -1400,6 +1400,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     id: true,
                     handoffPending: true,
                     botEnabled: true,
+                    botPausedUntil: true,
                     teamIds: true,
                     routingState: true,
                     appointmentState: true,
@@ -1457,9 +1458,15 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             console.log(`   └─ Conversation ID: ${conversationId}, botEnabled: ${conversation?.botEnabled}`);
 
             // If bot is disabled for this conversation (human took over), skip
-            // Exception: widget channel always respects conversation's assignedBot
-            if (conversation?.botEnabled === false && channel?.toLowerCase() !== 'widget') {
+            if (conversation?.botEnabled === false) {
                 console.log(`⏸️ Bot disabled for conversation ${conversationId} (human took over)`);
+                if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
+                return null;
+            }
+
+            // If bot is temporarily paused (agent replied), skip
+            if (conversation?.botPausedUntil && new Date(conversation.botPausedUntil) > new Date()) {
+                console.log(`⏸️ Bot paused until ${conversation.botPausedUntil} for conversation ${conversationId}`);
                 if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
                 return null;
             }

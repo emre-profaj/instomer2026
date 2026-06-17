@@ -315,13 +315,12 @@ export const handleWidgetChat = async (req, res) => {
                 widgetSettings = await prisma.webWidget.findFirst({ where: { workspaceId } });
             }
             const widgetBotId = widgetSettings?.assignedBotId || null;
-            // Update if bot changed or if botEnabled was false
-            if (widgetBotId !== conversation.assignedBotId || conversation.botEnabled === false) {
+            // Only sync bot assignment if bot changed, but do NOT re-enable if agent paused it
+            if (widgetBotId && widgetBotId !== conversation.assignedBotId) {
                 conversation = await prisma.conversation.update({
                     where: { id: conversation.id },
                     data: {
-                        assignedBotId: widgetBotId,
-                        botEnabled: widgetBotId ? true : conversation.botEnabled
+                        assignedBotId: widgetBotId
                     },
                     include: { contact: true }
                 });
