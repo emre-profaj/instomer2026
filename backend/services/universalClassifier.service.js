@@ -253,6 +253,10 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
     try {
         const { classification, extractedData, matchedFunnelId, isQualifiedLead } = classificationResult;
 
+        // Conversation'dan channel bilgisini al
+        const convForChannel = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { channel: true } });
+        const channel = convForChannel?.channel || 'UNKNOWN';
+
         // --- Kişi bilgilerini güncelle (eksik olanları doldur) ---
         if (extractedData) {
             const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, phone: true } });
