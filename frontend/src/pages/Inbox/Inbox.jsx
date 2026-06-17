@@ -439,6 +439,7 @@ const Inbox = () => {
     const [customDateEnd, setCustomDateEnd] = useState(null);
     const [closingDropdownOpen, setClosingDropdownOpen] = useState(false);
     const closingDropdownRef = useRef(null);
+    const caseLinkDropdownRef = useRef(null);
 
     // Funnel options — loaded dynamically from API
     const [funnelOptions, setFunnelOptions] = useState(FUNNEL_TYPE_OPTIONS_DEFAULT);
@@ -558,6 +559,9 @@ const Inbox = () => {
             }
             if (closingDropdownRef.current && !closingDropdownRef.current.contains(event.target)) {
                 setClosingDropdownOpen(false);
+            }
+            if (caseLinkDropdownRef.current && !caseLinkDropdownRef.current.contains(event.target)) {
+                setCaseLinkDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -3943,7 +3947,7 @@ const Inbox = () => {
                                                 const linkedCase = currentCaseId ? contactCases.find(c => c.id === currentCaseId) : null;
 
                                                 return (
-                                                    <div style={{ position: 'relative', display: 'inline-flex' }}>
+                                                    <div ref={caseLinkDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
                                                         <button
                                                             className="case-link-btn"
                                                             title={linkedCase ? `Bağlı: ${linkedCase.title}` : 'Case\'e bağla'}
@@ -3986,11 +3990,13 @@ const Inbox = () => {
                                                         {caseLinkDropdownOpen && (
                                                             <div
                                                                 style={{
-                                                                    position: 'absolute', top: '100%', right: 0, zIndex: 9999,
+                                                                    position: 'fixed',
+                                                                    top: (caseLinkDropdownRef.current?.getBoundingClientRect?.().bottom + 4) || 0,
+                                                                    left: (caseLinkDropdownRef.current?.getBoundingClientRect?.().right - 280) || 0,
+                                                                    zIndex: 99999,
                                                                     background: '#fff', border: '1px solid #e5e7eb',
                                                                     borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                                                                     width: 280, maxHeight: 360, overflow: 'auto',
-                                                                    marginTop: 4
                                                                 }}
                                                                 onClick={e => e.stopPropagation()}
                                                             >
