@@ -2919,6 +2919,10 @@ const Inbox = () => {
                         caseStatus = closingStageId || 'CLOSED';
                     }
                     await caseAPI.update(currentWorkspace.id, targetItem.caseId, { status: caseStatus });
+                    // Notify sidebar to update case status immediately
+                    window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                        detail: { caseId: targetItem.caseId, changes: { status: caseStatus } }
+                    }));
                     console.log(`✅ Case ${targetItem.caseId} status synced to ${caseStatus}`);
                 } catch (caseErr) {
                     console.error('⚠️ Case status sync failed:', caseErr.message);
