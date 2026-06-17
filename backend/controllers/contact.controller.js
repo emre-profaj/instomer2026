@@ -330,8 +330,10 @@ export const getContacts = async (req, res) => {
         };
 
         // ── Snapshot for Quick Stats: captures all filters EXCEPT contactInfo & callStatus ──
-        // This ensures pill numbers reflect funnel, date, assignment, search, source filters
-        const statsWhere = JSON.parse(JSON.stringify(where));
+        // Safe to use a direct reference because `where` is always reassigned via
+        // `where = { AND: [where, ...] }` which creates a NEW object, leaving the old one intact.
+        // JSON.parse(JSON.stringify()) was breaking Date objects in nested Prisma queries.
+        const statsWhere = where;
 
         // Add contactInfo filter (phone/email presence) — applied AFTER statsWhere snapshot
         if (contactInfo && contactInfo !== 'ALL') {
@@ -994,6 +996,11 @@ export const getContacts = async (req, res) => {
                 funnelStageCounts[item.funnelStageId] = item._count?._all || 0;
             }
         });
+
+
+        console.log(`📊 [QuickStats Debug] periodCount=${periodCount}, withPhoneCount=${withPhoneCount}, noPhoneCount=${noPhoneCount}, agentCalledCount=${agentCalledCount}, aiCalledCount=${aiCalledCount}, noActivityCount=${noActivityCount}`);
+        console.log(`📊 [QuickStats Debug] totalCount(list)=${totalCount}, contactIdsWithPhone.length=${contactIdsWithPhone.length}`);
+        console.log(`📊 [QuickStats Debug] filters: contactInfo=${contactInfo}, callStatus=${callStatus}, dateFilter=${dateFilter}, funnelType=${funnelType}, funnelTypes=${funnelTypes}`);
 
         res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, noPhoneCount } });
     } catch (error) {
