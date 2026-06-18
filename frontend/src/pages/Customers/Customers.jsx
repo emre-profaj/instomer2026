@@ -364,6 +364,7 @@ const Customers = () => {
                 dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
                 dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
                 dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
+                tzOffset: new Date().getTimezoneOffset(),
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);
@@ -468,6 +469,7 @@ const Customers = () => {
                 dateFilter: dateFilter !== 'ALL' ? dateFilter : undefined,
                 dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
                 dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
+                tzOffset: new Date().getTimezoneOffset(),
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);

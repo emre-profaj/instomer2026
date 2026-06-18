@@ -9,7 +9,7 @@ import { ensureCaseForConversation } from './case.controller.js';
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases } = req.query;
+        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases, tzOffset } = req.query;
         const { role } = req.workspaceMember;
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
@@ -150,25 +150,33 @@ export const getContacts = async (req, res) => {
             };
         }
 
-        // Add date filter (createdAt)
+        // Add date filter (createdAt) — use client timezone offset
         if (dateFilter && dateFilter !== 'ALL') {
-            const now = new Date();
+            // tzOffset = minutes from UTC (e.g. -180 for UTC+3)
+            const offsetMs = tzOffset ? parseInt(tzOffset, 10) * 60 * 1000 : 0;
+            // "now" in user's local timezone
+            const nowLocal = new Date(Date.now() - offsetMs);
             let gte, lte;
             if (dateFilter === 'TODAY') {
-                gte = new Date(now); gte.setHours(0, 0, 0, 0);
-                lte = new Date(now); lte.setHours(23, 59, 59, 999);
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate()));
+                gte = new Date(gte.getTime() + offsetMs);
+                lte = new Date(gte.getTime() + 24 * 60 * 60 * 1000 - 1);
             } else if (dateFilter === 'YESTERDAY') {
-                gte = new Date(now); gte.setDate(now.getDate() - 1); gte.setHours(0, 0, 0, 0);
-                lte = new Date(now); lte.setDate(now.getDate() - 1); lte.setHours(23, 59, 59, 999);
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate() - 1));
+                gte = new Date(gte.getTime() + offsetMs);
+                lte = new Date(gte.getTime() + 24 * 60 * 60 * 1000 - 1);
             } else if (dateFilter === 'WEEK') {
-                // Monday to Sunday (ISO week)
-                const day = now.getDay(); // 0=Sun, 1=Mon, ...
-                const diffToMonday = day === 0 ? 6 : day - 1; // Sunday -> 6 days back, else day-1
-                gte = new Date(now); gte.setDate(now.getDate() - diffToMonday); gte.setHours(0, 0, 0, 0);
-                lte = new Date(gte); lte.setDate(gte.getDate() + 6); lte.setHours(23, 59, 59, 999);
+                // Monday to Sunday (ISO week) in user's timezone
+                const day = nowLocal.getUTCDay(); // 0=Sun, 1=Mon, ...
+                const diffToMonday = day === 0 ? 6 : day - 1;
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate() - diffToMonday));
+                gte = new Date(gte.getTime() + offsetMs);
+                lte = new Date(gte.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
             } else if (dateFilter === 'MONTH') {
-                gte = new Date(now.getFullYear(), now.getMonth(), 1); gte.setHours(0, 0, 0, 0);
-                lte = new Date(now.getFullYear(), now.getMonth() + 1, 0); lte.setHours(23, 59, 59, 999);
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), 1));
+                gte = new Date(gte.getTime() + offsetMs);
+                const lastDay = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth() + 1, 0));
+                lte = new Date(lastDay.getTime() + offsetMs + 24 * 60 * 60 * 1000 - 1);
             } else if (dateFilter === 'CUSTOM') {
                 if (dateFrom) { gte = new Date(dateFrom); gte.setHours(0, 0, 0, 0); }
                 if (dateTo)   { lte = new Date(dateTo);   lte.setHours(23, 59, 59, 999); }
