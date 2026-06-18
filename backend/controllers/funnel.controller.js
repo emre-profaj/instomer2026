@@ -7,6 +7,22 @@ import { getDefaultRulesForStage } from '../services/defaultSalesRules.js';
 
 const DEFAULT_FUNNELS = [
     {
+        name: 'Genel',
+        color: '#374151',
+        icon: '📋',
+        order: 0,
+        funnelType: 'MAIN',
+        stages: [
+            { name: 'Yeni Başvuru',       color: '#3b82f6', order: 0 },
+            { name: 'Yeni',               color: '#6366f1', order: 1 },
+            { name: 'İşlemde',            color: '#f59e0b', order: 2 },
+            { name: 'Değerlendirmede',    color: '#8b5cf6', order: 3 },
+            { name: 'Beklemede',          color: '#ef4444', order: 4 },
+            { name: 'Kapandı',            color: '#10b981', order: 5, isClosing: true, statusType: 'CLOSED' },
+            { name: 'Çözüldü',           color: '#22c55e', order: 6, isClosing: true, statusType: 'WON' }
+        ]
+    },
+    {
         name: 'Randevu',
         color: '#06b6d4',
         icon: '📅',
@@ -198,6 +214,7 @@ const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
                     icon: def.icon,
                     order: def.order,
                     ...(isSalesFlow ? { isDefault: true } : {}),
+                    ...(def.funnelType ? { funnelType: def.funnelType } : {}),
                     stages: { create: stagesWithRules }
                 }
             });
