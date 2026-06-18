@@ -217,22 +217,6 @@ const Funnels = () => {
                 </div>
             </div>
 
-            {/* Varsayılan Akış Seçici */}
-            <div className="funnels-create-card" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>⭐ Varsayılan Giriş Akışı:</span>
-                <select
-                    className="funnels-input"
-                    style={{ flex: 1, maxWidth: 320, minWidth: 180 }}
-                    value={defaultFunnelId || ''}
-                    onChange={e => handleSetDefaultFunnel(e.target.value)}
-                >
-                    <option value="">— Seçilmedi —</option>
-                    {funnels.filter(f => f.funnelType !== 'MAIN').map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                </select>
-                <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Yeni konuşmalar bu akışa otomatik atanır</span>
-            </div>
 
             {/* Create form */}
             <div className="funnels-create-card">
@@ -396,6 +380,19 @@ const Funnels = () => {
                                                     }}>
                                                         ↳ alt akış
                                                     </span>
+                                                )}
+                                                {!isMain && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleSetDefaultFunnel(defaultFunnelId === funnel.id ? '' : funnel.id); }}
+                                                        title={defaultFunnelId === funnel.id ? 'Varsayılan akış (kaldırmak için tıkla)' : 'Varsayılan giriş akışı yap'}
+                                                        style={{
+                                                            background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', marginLeft: '4px',
+                                                            fontSize: '14px', lineHeight: 1, opacity: defaultFunnelId === funnel.id ? 1 : 0.3,
+                                                            transition: 'opacity 0.2s'
+                                                        }}
+                                                    >
+                                                        {defaultFunnelId === funnel.id ? '⭐' : '☆'}
+                                                    </button>
                                                 )}
                                                 {(funnel.assignedTeamId || funnel.assignedUserId) && (
                                                     <span className="funnels-assigned-info" style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '6px' }}>
