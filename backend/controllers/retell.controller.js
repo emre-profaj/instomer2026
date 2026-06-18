@@ -5,6 +5,17 @@ import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { emitToWorkspace } from '../socket.js';
 import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 // Helper to find the team that a Retell agent belongs to
 async function resolveAgentTeamId(workspaceId, agentId) {
     if (!agentId) return null;
@@ -2932,8 +2943,9 @@ async function handleCallAnalyzed(call) {
                             : new Date(Date.now() + 24 * 60 * 60 * 1000); // Yarın
 
                         // Duplicate check
-                        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-                        const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+                        const nowTR = new Date(Date.now() + TZ_OFFSET_MS);
+                        const todayStart = new Date(Date.UTC(nowTR.getUTCFullYear(), nowTR.getUTCMonth(), nowTR.getUTCDate()) - TZ_OFFSET_MS);
+                        const todayEnd = new Date(Date.UTC(nowTR.getUTCFullYear(), nowTR.getUTCMonth(), nowTR.getUTCDate()) - TZ_OFFSET_MS + 24*60*60*1000 - 1);
                         const existing = await prisma.contactActivity.findFirst({
                             where: {
                                 contactId: callRecord.contactId,

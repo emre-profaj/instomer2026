@@ -1,6 +1,17 @@
 import axios from 'axios';
 import prisma from '../lib/prisma.js';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 
 const GRAPH_API_VERSION = 'v21.0';
 
@@ -19,12 +30,8 @@ export const getLeads = async (req, res) => {
         // Date range filter
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                where.createdAt.lte = end;
-            }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
 
         const [leads, total] = await Promise.all([
@@ -381,12 +388,8 @@ export const exportLeads = async (req, res) => {
 
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                where.createdAt.lte = end;
-            }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
 
         const leads = await prisma.facebookLead.findMany({

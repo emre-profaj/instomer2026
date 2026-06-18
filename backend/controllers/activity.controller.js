@@ -3,6 +3,17 @@ import { isAgentRole, getAgentTeamIds, buildAgentActivityFilter } from '../utils
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // CREATE ACTIVITY
 // ────────────────────────────────────────────────────────────────────────────
@@ -802,12 +813,8 @@ export const getWorkspaceActivities = async (req, res) => {
         // Date range filter
         if (dateFrom || dateTo) {
             where.dueDate = {};
-            if (dateFrom) where.dueDate.gte = new Date(dateFrom);
-            if (dateTo) {
-                const end = new Date(dateTo);
-                end.setHours(23, 59, 59, 999);
-                where.dueDate.lte = end;
-            }
+            if (dateFrom) where.dueDate.gte = parseDateStartTR(dateFrom);
+            if (dateTo) where.dueDate.lte = parseDateEndTR(dateTo);
         }
 
         // AGENT RBAC: Sadece kendi + takım havuzu

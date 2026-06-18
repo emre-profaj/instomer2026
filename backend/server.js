@@ -397,13 +397,15 @@ async function processAppointmentReminders() {
       try {
         const conversationIdMatch = apt.notes?.match(/Conversation ID: (.+)/);
         const conversationId = conversationIdMatch ? conversationIdMatch[1].trim() : null;
+        const aptTime = new Date(apt.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+        const aptDate = new Date(apt.startTime).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', timeZone: 'Europe/Istanbul' });
 
         await createNotification(
           apt.workspaceId,
           apt.assignedToId,
           'REMINDER',
           `⏰ Hatırlatıcı: ${apt.title}`,
-          apt.description || `${apt.contactName || 'Müşteri'} için hatırlatıcı zamanı geldi.`,
+          apt.description || `${apt.contactName || 'Müşteri'} için ${aptDate} ${aptTime} randevusu.`,
           conversationId ? { conversationId, appointmentId: apt.id } : { appointmentId: apt.id }
         );
 

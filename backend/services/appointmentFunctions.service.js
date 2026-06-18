@@ -47,11 +47,11 @@ function addMinutes(date, mins) {
 }
 
 function formatDate(date) {
-    return date.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    return date.toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Istanbul' });
 }
 
 function formatTime(date) {
-    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
 }
 
 // ─── 1. MÜSAIT SLOT SORGULAMA ───────────────────────────────
@@ -635,13 +635,14 @@ export async function listAppointments(workspaceId, params = {}) {
  */
 export async function checkAndSendReminders() {
     try {
-        const now = new Date();
-        const tomorrow = new Date(now);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setHours(0, 0, 0, 0);
-
-        const tomorrowEnd = new Date(tomorrow);
-        tomorrowEnd.setHours(23, 59, 59, 999);
+        // Calculate "now" and "tomorrow" in Turkey timezone (UTC+3)
+        const TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // Turkey is UTC+3
+        const nowTR = new Date(Date.now() + TZ_OFFSET_MS);
+        const tomorrowTR = new Date(nowTR);
+        tomorrowTR.setUTCDate(tomorrowTR.getUTCDate() + 1);
+        // Tomorrow 00:00 Turkey time = Tomorrow 00:00 UTC - 3h = Previous day 21:00 UTC
+        const tomorrow = new Date(Date.UTC(tomorrowTR.getUTCFullYear(), tomorrowTR.getUTCMonth(), tomorrowTR.getUTCDate()) - TZ_OFFSET_MS);
+        const tomorrowEnd = new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000 - 1);
 
         const appointments = await prisma.appointment.findMany({
             where: {

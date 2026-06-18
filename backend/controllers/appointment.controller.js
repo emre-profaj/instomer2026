@@ -2,6 +2,17 @@ import prisma from '../lib/prisma.js';
 import { isAgentRole, buildAgentAppointmentFilter } from '../utils/rbac.helper.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 
 // Get all appointments for a workspace
 export const getAppointments = async (req, res) => {
@@ -15,12 +26,10 @@ export const getAppointments = async (req, res) => {
         if (startDate || endDate) {
             where.startTime = {};
             if (startDate) {
-                where.startTime.gte = new Date(startDate);
+                where.startTime.gte = parseDateStartTR(startDate);
             }
             if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                where.startTime.lte = end;
+                where.startTime.lte = parseDateEndTR(endDate);
             }
         }
 
@@ -271,11 +280,8 @@ export const getAgentAvailability = async (req, res) => {
             return res.status(400).json({ error: 'Tarih gereklidir' });
         }
 
-        const targetDate = new Date(date);
-        const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
+        const startOfDay = parseDateStartTR(date);
+        const endOfDay = parseDateEndTR(date);
 
         let where = {
             workspaceId,
@@ -308,8 +314,7 @@ export const getAgentAvailability = async (req, res) => {
 
         for (let hour = workStart; hour < workEnd; hour++) {
             for (let minute = 0; minute < 60; minute += slotDuration) {
-                const slotStart = new Date(targetDate);
-                slotStart.setHours(hour, minute, 0, 0);
+                const slotStart = new Date(startOfDay.getTime() + (hour * 60 + minute) * 60 * 1000);
                 const slotEnd = new Date(slotStart);
                 slotEnd.setMinutes(slotEnd.getMinutes() + slotDuration);
 
@@ -368,11 +373,10 @@ async function suggestNextAvailableSlot(assignedToId, preferredStart, preferredE
         const searchDate = new Date(preferredStart);
         searchDate.setDate(searchDate.getDate() + dayOffset);
 
-        const startOfDay = new Date(searchDate);
-        startOfDay.setHours(9, 0, 0, 0); // Work starts at 9 AM
+        const dayBase = new Date(Date.UTC(searchDate.getUTCFullYear(), searchDate.getUTCMonth(), searchDate.getUTCDate()) - TZ_OFFSET_MS);
+        const startOfDay = new Date(dayBase.getTime() + 9 * 60 * 60 * 1000); // 9 AM Turkey
 
-        const endOfDay = new Date(searchDate);
-        endOfDay.setHours(18, 0, 0, 0); // Work ends at 6 PM
+        const endOfDay = new Date(dayBase.getTime() + 18 * 60 * 60 * 1000); // 6 PM Turkey
 
         // Get all appointments for this day
         const dayAppointments = await prisma.appointment.findMany({

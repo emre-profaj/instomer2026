@@ -4,6 +4,21 @@ import { executeHotOpportunityEmailRule } from './rules.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { ensureCaseForConversation } from './case.controller.js';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // Turkey is UTC+3
+
+/** Parse "YYYY-MM-DD" → start of that day in Turkey timezone (as UTC Date) */
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+
+/** Parse "YYYY-MM-DD" → end of that day (23:59:59.999) in Turkey timezone (as UTC Date) */
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 
 // Get all contacts in a workspace
 export const getContacts = async (req, res) => {
@@ -178,8 +193,8 @@ export const getContacts = async (req, res) => {
                 const lastDay = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth() + 1, 0));
                 lte = new Date(lastDay.getTime() + offsetMs + 24 * 60 * 60 * 1000 - 1);
             } else if (dateFilter === 'CUSTOM') {
-                if (dateFrom) { gte = new Date(dateFrom); gte.setHours(0, 0, 0, 0); }
-                if (dateTo)   { lte = new Date(dateTo);   lte.setHours(23, 59, 59, 999); }
+                if (dateFrom) { gte = parseDateStartTR(dateFrom); }
+                if (dateTo)   { lte = parseDateEndTR(dateTo); }
             }
             if (gte || lte) {
                 const createdAtFilter = {};
@@ -1661,12 +1676,8 @@ export const getContactAnalytics = async (req, res) => {
         let dateFilter = {};
         if (startDate || endDate) {
             dateFilter.createdAt = {};
-            if (startDate) dateFilter.createdAt.gte = new Date(startDate);
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                dateFilter.createdAt.lte = end;
-            }
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
         // Base contact where clause
@@ -1841,14 +1852,14 @@ export const getContactAnalytics = async (req, res) => {
 
         // Tarih filtresi: Seçilen aralığa göre dinamik recentCount
         const recentDateFilter = {};
-        if (startDate) recentDateFilter.gte = new Date(startDate);
+        if (startDate) recentDateFilter.gte = parseDateStartTR(startDate);
         else {
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            sevenDaysAgo.setHours(0, 0, 0, 0);
-            recentDateFilter.gte = sevenDaysAgo;
+            // 7 gün önce, Türkiye saatiyle gece yarısı
+            const nowTR = new Date(Date.now() + TZ_OFFSET_MS);
+            const sevenDaysAgoTR = new Date(Date.UTC(nowTR.getUTCFullYear(), nowTR.getUTCMonth(), nowTR.getUTCDate() - 7));
+            recentDateFilter.gte = new Date(sevenDaysAgoTR.getTime() - TZ_OFFSET_MS);
         }
-        if (endDate) recentDateFilter.lte = new Date(endDate);
+        if (endDate) recentDateFilter.lte = parseDateEndTR(endDate);
 
         // Tarih etiketi: frontend'e kaç günlük filtre olduğunu gönder
         const filterDays = Math.ceil((new Date(endDate || Date.now()) - new Date(recentDateFilter.gte)) / (1000 * 60 * 60 * 24));
@@ -1955,12 +1966,8 @@ export const getContactAnalytics = async (req, res) => {
             const eventDateFilter = {};
             if (startDate || endDate) {
                 eventDateFilter.createdAt = {};
-                if (startDate) eventDateFilter.createdAt.gte = new Date(startDate);
-                if (endDate) {
-                    const eEnd = new Date(endDate);
-                    eEnd.setHours(23, 59, 59, 999);
-                    eventDateFilter.createdAt.lte = eEnd;
-                }
+                if (startDate) eventDateFilter.createdAt.gte = parseDateStartTR(startDate);
+                if (endDate) eventDateFilter.createdAt.lte = parseDateEndTR(endDate);
             }
             stageBasedAppointments = await prisma.conversationEvent.count({
                 where: {
@@ -1986,12 +1993,8 @@ export const getContactAnalytics = async (req, res) => {
         const contactDateFilter = {};
         if (startDate || endDate) {
             contactDateFilter.createdAt = {};
-            if (startDate) contactDateFilter.createdAt.gte = new Date(startDate);
-            if (endDate) {
-                const endD2 = new Date(endDate);
-                endD2.setHours(23, 59, 59, 999);
-                contactDateFilter.createdAt.lte = endD2;
-            }
+            if (startDate) contactDateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) contactDateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
         // Telefon numarası olan kişiler (seçili tarih aralığında oluşturulanlar)
@@ -2012,12 +2015,8 @@ export const getContactAnalytics = async (req, res) => {
         const activityDateFilter = {};
         if (startDate || endDate) {
             activityDateFilter.createdAt = {};
-            if (startDate) activityDateFilter.createdAt.gte = new Date(startDate);
-            if (endDate) {
-                const endD = new Date(endDate);
-                endD.setHours(23, 59, 59, 999);
-                activityDateFilter.createdAt.lte = endD;
-            }
+            if (startDate) activityDateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) activityDateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
         const callActivities = await prisma.contactActivity.findMany({
@@ -2180,12 +2179,8 @@ export const getContactAnalytics = async (req, res) => {
             const dealDateFilter = {};
             if (startDate || endDate) {
                 dealDateFilter.createdAt = {};
-                if (startDate) dealDateFilter.createdAt.gte = new Date(startDate);
-                if (endDate) {
-                    const dEnd = new Date(endDate);
-                    dEnd.setHours(23, 59, 59, 999);
-                    dealDateFilter.createdAt.lte = dEnd;
-                }
+                if (startDate) dealDateFilter.createdAt.gte = parseDateStartTR(startDate);
+                if (endDate) dealDateFilter.createdAt.lte = parseDateEndTR(endDate);
             }
 
             const [dealsByStageStatus, recentDeals, dealAmounts] = await Promise.all([
@@ -2253,12 +2248,8 @@ export const getContactAnalytics = async (req, res) => {
             const actDateFilter = {};
             if (startDate || endDate) {
                 actDateFilter.createdAt = {};
-                if (startDate) actDateFilter.createdAt.gte = new Date(startDate);
-                if (endDate) {
-                    const aEnd = new Date(endDate);
-                    aEnd.setHours(23, 59, 59, 999);
-                    actDateFilter.createdAt.lte = aEnd;
-                }
+                if (startDate) actDateFilter.createdAt.gte = parseDateStartTR(startDate);
+                if (endDate) actDateFilter.createdAt.lte = parseDateEndTR(endDate);
             }
 
             const [actByStatus, actByType, actOverdue] = await Promise.all([
@@ -2309,8 +2300,8 @@ export const getContactAnalytics = async (req, res) => {
                     aiTopic: { not: null },
                     ...(startDate || endDate ? {
                         createdAt: {
-                            ...(startDate ? { gte: new Date(startDate) } : {}),
-                            ...(endDate ? { lte: (() => { const e = new Date(endDate); e.setHours(23,59,59,999); return e; })() } : {})
+                            ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                            ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
                         }
                     } : {})
                 },
@@ -2419,18 +2410,12 @@ export const getAgentPerformance = async (req, res) => {
 
         console.log(`📊 [Agent Performance] Getting metrics for workspace: ${workspaceId}`);
 
-        // Build date filter
+        // Build date filter — use Turkey timezone (UTC+3)
         let dateFilter = {};
         if (startDate || endDate) {
             dateFilter.createdAt = {};
-            if (startDate) {
-                dateFilter.createdAt.gte = new Date(startDate);
-            }
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                dateFilter.createdAt.lte = end;
-            }
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
         // Get all workspace members (agents)
@@ -2454,12 +2439,8 @@ export const getAgentPerformance = async (req, res) => {
         const activityDateFilter = {};
         if (startDate || endDate) {
             activityDateFilter.createdAt = {};
-            if (startDate) activityDateFilter.createdAt.gte = new Date(startDate);
-            if (endDate) {
-                const actEnd = new Date(endDate);
-                actEnd.setHours(23, 59, 59, 999);
-                activityDateFilter.createdAt.lte = actEnd;
-            }
+            if (startDate) activityDateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) activityDateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
         for (const member of workspaceMembers) {
@@ -2833,15 +2814,14 @@ export const getDailyContactStats = async (req, res) => {
 
         let startDate, endDate;
         if (qStart) {
-            startDate = new Date(qStart);
-            startDate.setHours(0, 0, 0, 0);
-            endDate = qEnd ? new Date(qEnd) : new Date();
-            endDate.setHours(23, 59, 59, 999);
+            startDate = parseDateStartTR(qStart);
+            endDate = qEnd ? parseDateEndTR(qEnd) : new Date();
         } else {
             const daysCount = Math.min(parseInt(days) || 30, 90);
-            startDate = new Date();
-            startDate.setDate(startDate.getDate() - daysCount);
-            startDate.setHours(0, 0, 0, 0);
+            // Calculate "daysCount ago at 00:00 Turkey time"
+            const nowTR = new Date(Date.now() + TZ_OFFSET_MS);
+            const startTR = new Date(Date.UTC(nowTR.getUTCFullYear(), nowTR.getUTCMonth(), nowTR.getUTCDate() - daysCount));
+            startDate = new Date(startTR.getTime() - TZ_OFFSET_MS);
             endDate = new Date();
         }
 

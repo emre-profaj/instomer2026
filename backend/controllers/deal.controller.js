@@ -1,6 +1,17 @@
 import prisma from '../lib/prisma.js';
 import { isAgentRole, buildAgentDealFilter } from '../utils/rbac.helper.js';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 // Helper: Otomatik numara üret
 const generateNumber = async (workspaceId, prefix) => {
     const year = new Date().getFullYear();
@@ -50,12 +61,8 @@ export const getDeals = async (req, res) => {
         if (assignedToId) where.assignedToId = assignedToId;
         if (dateFrom || dateTo) {
             where.createdAt = {};
-            if (dateFrom) where.createdAt.gte = new Date(dateFrom);
-            if (dateTo) {
-                const end = new Date(dateTo);
-                end.setHours(23, 59, 59, 999);
-                where.createdAt.lte = end;
-            }
+            if (dateFrom) where.createdAt.gte = parseDateStartTR(dateFrom);
+            if (dateTo) where.createdAt.lte = parseDateEndTR(dateTo);
         }
 
         // AGENT RBAC: Kendi + havuz deal'lar

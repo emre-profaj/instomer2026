@@ -1,6 +1,17 @@
 import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
+function parseDateStartTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS);
+}
+function parseDateEndTR(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00.000Z');
+    return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
+}
+
 
 // Helper to get effective AI API key
 const getEffectiveAiApiKey = async (workspaceId) => {
@@ -46,8 +57,8 @@ const dataFunctions = {
         if (category) where.category = category;
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         const contacts = await prisma.contact.findMany({ where, select: { source: true, category: true } });
         const bySource = {}, byCategory = {};
@@ -64,8 +75,8 @@ const dataFunctions = {
         const where = { workspaceId };
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         const calls = await prisma.retellCall.findMany({
             where,
@@ -105,8 +116,8 @@ const dataFunctions = {
         const where = { conversation: { workspaceId } };
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         if (channel) where.conversation.channel = channel;
         const messages = await prisma.message.findMany({ where, select: { messageType: true, isFromContact: true } });
@@ -128,8 +139,8 @@ const dataFunctions = {
         if (channel) where.channel = channel;
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         const conversations = await prisma.conversation.findMany({ where, select: { channel: true, status: true } });
         const byChannel = {}, byStatus = {};
@@ -198,8 +209,8 @@ const dataFunctions = {
         if (status) where.status = status;
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         const deals = await prisma.deal.findMany({
             where,
@@ -223,8 +234,8 @@ const dataFunctions = {
         const where = { workspaceId };
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         const submissions = await prisma.formSubmission.findMany({
             where,
@@ -338,8 +349,8 @@ const dataFunctions = {
         if (status) where.status = status;
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
         const leads = await prisma.facebookLead.findMany({
             where,
@@ -681,11 +692,11 @@ const dataFunctions = {
     getDailyTrend: async (workspaceId, { metric, days = 7 }) => {
         const results = [];
         for (let i = days - 1; i >= 0; i--) {
-            const date = new Date();
-            date.setDate(date.getDate() - i);
-            const start = new Date(date); start.setHours(0, 0, 0, 0);
-            const end = new Date(date); end.setHours(23, 59, 59, 999);
-            const dateStr = start.toISOString().split('T')[0];
+            const nowTR = new Date(Date.now() + TZ_OFFSET_MS);
+            nowTR.setUTCDate(nowTR.getUTCDate() - i);
+            const dateStr = nowTR.toISOString().split('T')[0];
+            const start = parseDateStartTR(dateStr);
+            const end = parseDateEndTR(dateStr);
 
             let count = 0;
             switch (metric) {
@@ -760,8 +771,8 @@ const dataFunctions = {
             : { workspaceId };
         if (startDate || endDate) {
             where.createdAt = {};
-            if (startDate) where.createdAt.gte = new Date(startDate);
-            if (endDate) { const ed = new Date(endDate); ed.setHours(23, 59, 59, 999); where.createdAt.lte = ed; }
+            if (startDate) where.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) where.createdAt.lte = parseDateEndTR(endDate);
         }
 
         const model = metric === 'messages' ? prisma.message : metric === 'calls' ? prisma.retellCall : prisma.conversation;
