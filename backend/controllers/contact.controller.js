@@ -3,6 +3,7 @@ import { emitToWorkspace } from '../socket.js';
 import { executeHotOpportunityEmailRule } from './rules.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { ensureCaseForConversation } from './case.controller.js';
+import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // Turkey is UTC+3
@@ -1410,6 +1411,14 @@ export const updateContact = async (req, res) => {
         }
 
         res.json({ contact });
+
+        // Entry Rules: Contact bilgileri güncellendi → aşama kurallarını değerlendir
+        const evalWorkspaceId = workspaceId || contact.workspaceId;
+        if (evalWorkspaceId) {
+            evaluateAndApplyRules(id, evalWorkspaceId).catch(err =>
+                console.error('⚠️ [UpdateContact] Entry rules hatası:', err.message)
+            );
+        }
     } catch (error) {
         console.error('Update contact error:', error);
         res.status(500).json({ error: 'Failed to update contact' });
@@ -1538,6 +1547,11 @@ export const createContact = async (req, res) => {
         // --- AUTO CALL PLANNING END ---
 
         res.status(201).json({ contact });
+
+        // Entry Rules: Yeni contact oluşturuldu → aşama kurallarını değerlendir
+        evaluateAndApplyRules(contact.id, workspaceId).catch(err =>
+            console.error('⚠️ [CreateContact] Entry rules hatası:', err.message)
+        );
     } catch (error) {
         console.error('Create contact error:', error);
         res.status(500).json({ error: 'Müşteri oluşturulurken hata oluştu' });

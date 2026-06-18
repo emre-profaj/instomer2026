@@ -2843,7 +2843,8 @@ export const updateFunnel = async (req, res) => {
                             data: { 
                                 status: newStatus,
                                 funnelStageId: conversation.funnelStageId,
-                                funnelType: conversation.funnelType
+                                funnelType: conversation.funnelType,
+                                stageManuallySet: true // Manuel aşama değişikliği — otomatik entry rules'u durdur
                             }
                         });
                         console.log(`✅ [StatusSync] Contact ${existing.contactId} status updated to ${newStatus} (Stage: ${stageName})`);

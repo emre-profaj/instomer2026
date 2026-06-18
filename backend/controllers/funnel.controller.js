@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { getDefaultRulesForStage } from '../services/defaultSalesRules.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // DEFAULT FUNNELS & STAGES (her yeni workspace için otomatik oluşturulur)
@@ -32,7 +33,8 @@ const DEFAULT_FUNNELS = [
             { name: 'Satış',                color: '#10b981', order: 6, isClosing: true, statusType: 'WON' },
             { name: 'Ulaşılamadı',          color: '#94a3b8', order: 7 },
             { name: 'Kayıp',                color: '#ef4444', order: 8, isClosing: true, statusType: 'LOST' }
-        ]
+        ],
+        isDefault: true
     },
     {
         name: 'İş ve Taşeron',
@@ -179,6 +181,15 @@ const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
     for (const def of DEFAULT_FUNNELS) {
         const defNormalized = normalizeTR(def.name);
         if (!existingNames.includes(defNormalized)) {
+            const isSalesFlow = def.name === 'Satış Akışı';
+            const stagesWithRules = def.stages.map((stage, index) => {
+                const defaultRules = getDefaultRulesForStage(stage.name);
+                return {
+                    ...stage,
+                    ...(defaultRules ? { entryRules: JSON.stringify(defaultRules), entryPriority: index } : {})
+                };
+            });
+
             await prisma.funnel.create({
                 data: {
                     workspaceId,
@@ -186,10 +197,11 @@ const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
                     color: def.color,
                     icon: def.icon,
                     order: def.order,
-                    stages: { create: def.stages }
+                    ...(isSalesFlow ? { isDefault: true } : {}),
+                    stages: { create: stagesWithRules }
                 }
             });
-            console.log(`🌱 [Funnels] Created default funnel "${def.name}" for workspace ${workspaceId}`);
+            console.log(`🌱 [Funnels] Created default funnel "${def.name}" for workspace ${workspaceId}${isSalesFlow ? ' (isDefault)' : ''}`);
             created = true;
         }
     }
@@ -479,7 +491,13 @@ export const getFunnels = async (req, res) => {
             }
         }
 
-        res.json({ funnels });
+        // Workspace'in defaultFunnelId'sini getir
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { defaultFunnelId: true }
+        });
+
+        res.json({ funnels, defaultFunnelId: workspace?.defaultFunnelId || null });
     } catch (error) {
         console.error('Get funnels error:', error);
         res.status(500).json({ error: 'Akışlar alınamadı' });
@@ -589,6 +607,12 @@ export const deleteFunnel = async (req, res) => {
         const { workspaceId, funnelId } = req.params;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
+
+        // isDefault olan funnel silinemez
+        if (existing.isDefault) {
+            return res.status(400).json({ error: 'Varsayılan akış silinemez' });
+        }
+
         await prisma.funnel.delete({ where: { id: funnelId } });
         res.json({ success: true });
     } catch (error) {
@@ -635,7 +659,7 @@ export const createStage = async (req, res) => {
 export const updateStage = async (req, res) => {
     try {
         const { workspaceId, funnelId, stageId } = req.params;
-        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType } = req.body;
+        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType, entryRules, entryPriority } = req.body;
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
@@ -653,7 +677,9 @@ export const updateStage = async (req, res) => {
                 ...(assignedTeamId !== undefined && { assignedTeamId }),
                 ...(assignedBotId !== undefined && { assignedBotId }),
                 ...(isClosing !== undefined && { isClosing }),
-                ...(statusType !== undefined && { statusType: statusType || null })
+                ...(statusType !== undefined && { statusType: statusType || null }),
+                ...(entryRules !== undefined && { entryRules: entryRules || null }),
+                ...(entryPriority !== undefined && { entryPriority })
             }
         });
         res.json({ stage });
@@ -697,11 +723,28 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
         });
         if (!conv || conv.funnelType) return;
 
-        // Önce "Genel" akışını bul — yeni başvurular buraya düşmeli
-        let defaultFunnel = await prisma.funnel.findFirst({
-            where: { workspaceId, name: { in: ['Genel', 'Genel CRM', 'Genel CRM (Otomatik İşlem)'] } }
+        // 1. Workspace'in varsayılan funnel'ını kontrol et
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { defaultFunnelId: true }
         });
-        // Genel yoksa herhangi bir akışı kullan (son çare)
+
+        let defaultFunnel = null;
+
+        if (workspace?.defaultFunnelId) {
+            defaultFunnel = await prisma.funnel.findUnique({
+                where: { id: workspace.defaultFunnelId }
+            });
+        }
+
+        // 2. Fallback: "Genel" akışını bul
+        if (!defaultFunnel) {
+            defaultFunnel = await prisma.funnel.findFirst({
+                where: { workspaceId, name: { in: ['Genel', 'Genel CRM', 'Genel CRM (Otomatik İşlem)'] } }
+            });
+        }
+
+        // 3. Son çare: herhangi bir akış
         if (!defaultFunnel) {
             defaultFunnel = await prisma.funnel.findFirst({
                 where: { workspaceId },
@@ -741,5 +784,34 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
         console.log(`✅ [AutoFunnel] Assigned "${defaultFunnel.name}" funnel to conversation ${conversationId}${teamId ? ` (team: ${teamId})` : ''}`);
     } catch (err) {
         console.error('❌ [AutoFunnel] Error:', err.message);
+    }
+};
+
+// ── PUT /funnels/:workspaceId/default — Varsayılan akışı ayarla ──
+export const setDefaultFunnel = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { funnelId } = req.body;
+
+        // funnelId null olabilir (varsayılanı kaldır)
+        if (funnelId) {
+            const funnel = await prisma.funnel.findFirst({
+                where: { id: funnelId, workspaceId }
+            });
+            if (!funnel) {
+                return res.status(404).json({ error: 'Akış bulunamadı' });
+            }
+        }
+
+        await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { defaultFunnelId: funnelId || null }
+        });
+
+        console.log(`✅ [DefaultFunnel] Workspace ${workspaceId} → defaultFunnelId: ${funnelId || 'null'}`);
+        res.json({ success: true, defaultFunnelId: funnelId || null });
+    } catch (error) {
+        console.error('Set default funnel error:', error);
+        res.status(500).json({ error: 'Varsayılan akış ayarlanamadı' });
     }
 };

@@ -162,6 +162,8 @@ model Workspace {
   // Varsayılan Dil (agent'ta boşsa buradan alınır)
   defaultLanguage String @default("tr-TR") // tr-TR, en-US, en-GB, de-DE, fr-FR, ar-SA, multi
 
+  defaultFunnelId    String? // Varsayılan satış akışı ID'si
+
   @@index([companyId])
   @@map("workspaces")
 }
@@ -337,6 +339,7 @@ model Contact {
   category          String            @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
   funnelType        String? // Global stage category (e.g. Fırsat)
   funnelStageId     String? // Exact stage ID (e.g. Sıcak Fırsat)
+  stageManuallySet  Boolean           @default(false) // Manuel aşama değişikliği yapıldı mı
   lastContactedAt   DateTime?
   isBlocked         Boolean           @default(false)
   blockedAt         DateTime?
@@ -1220,6 +1223,7 @@ model Funnel {
   assignedTeamId         String?
   qualifiedLeadStageId   String?       // Nitelikli talepler (telefonu olan lead'ler) bu aşamaya düşer
   classificationCriteria String?       @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
+  isDefault              Boolean       @default(false) // true = silinemez varsayılan akış
   createdAt              DateTime      @default(now())
   workspace              Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages                 FunnelStage[]
@@ -1242,6 +1246,8 @@ model FunnelStage {
   assignedBot    AIBot?   @relation("FunnelStageBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
   isClosing      Boolean  @default(false) // true = kapanış aşaması (Satış, Kayıp, Kapandı vb.)
   statusType     String?  // WON, LOST, CLOSED — null = ACTIVE (açık aşama). Case durumunu otomatik günceller.
+  entryRules     String?  @db.Text // JSON: { matchType: 'ALL'|'ANY', rules: [{ type, field, values, ... }] }
+  entryPriority  Int      @default(0) // Yüksek = önce kontrol edilir
   createdAt      DateTime @default(now())
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 

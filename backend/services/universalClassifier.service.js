@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { emitToWorkspace } from '../socket.js';
 import { assignToTeamMember } from './teamAssignment.service.js';
+import { evaluateAndApplyRules } from './stageRuleEngine.service.js';
 
 // =============================================
 // EVRENSEL SINIFLANDIRICI SERVİSİ
@@ -386,6 +387,16 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 });
                 console.log(`📊 [Classifier] Akış atandı: ${targetFunnelId} / Stage: ${targetStageId}`);
 
+                // Entry Rules ile en uygun aşamayı bul (classifier'ın seçtiği stage'den daha yüksek olabilir)
+                try {
+                    const ruleResult = await evaluateAndApplyRules(contactId, workspaceId, { funnelId: targetFunnelId });
+                    if (ruleResult) {
+                        console.log(`🎯 [Classifier+Rules] Entry rules ile aşama yükseltildi: ${ruleResult.stageName}`);
+                    }
+                } catch (ruleErr) {
+                    console.error('⚠️ [Classifier] Entry rules hatası:', ruleErr.message);
+                }
+
                 // Socket ile UI güncelle
                 try {
                     const { emitToWorkspace } = await import('../socket.js');
@@ -487,42 +498,15 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             } else {
                 console.log(`ℹ️ [Classifier] Konuşma zaten "${currentFunnelId}" akışında`);
                 
-                // Lead olduysa → aynı akışta "Fırsat" stage'ine yükselt
-                if (isQualifiedLead && currentFunnelId) {
+                // Konuşma zaten bir akışta → entry rules ile aşama yükseltmeyi dene
+                if (currentFunnelId) {
                     try {
-                        const currentFunnel = await prisma.funnel.findUnique({
-                            where: { id: currentFunnelId },
-                            include: { stages: { orderBy: { order: 'asc' } } }
-                        });
-                        if (currentFunnel?.stages?.length > 0) {
-                            const opportunityStage = currentFunnel.stages.find(s =>
-                                s.name.toLowerCase().includes('fırsat') ||
-                                s.name.toLowerCase().includes('firsat') ||
-                                s.name.toLowerCase().includes('lead') ||
-                                s.name.toLowerCase().includes('opportunity')
-                            );
-                            if (opportunityStage && opportunityStage.id !== conversation.funnelStageId) {
-                                await prisma.conversation.update({
-                                    where: { id: conversationId },
-                                    data: { funnelStageId: opportunityStage.id }
-                                });
-                                await prisma.contact.update({
-                                    where: { id: contactId },
-                                    data: { funnelStageId: opportunityStage.id }
-                                });
-                                console.log(`🎯 [Classifier] Lead → Stage yükseltildi: ${opportunityStage.name}`);
-                                
-                                try {
-                                    emitToWorkspace(workspaceId, 'funnel_stage_updated', {
-                                        conversationId,
-                                        funnelType: currentFunnelId,
-                                        funnelStageId: opportunityStage.id
-                                    });
-                                } catch (_) {}
-                            }
+                        const ruleResult = await evaluateAndApplyRules(contactId, workspaceId, { funnelId: currentFunnelId });
+                        if (ruleResult) {
+                            console.log(`🎯 [Classifier+Rules] Mevcut akışta aşama yükseltildi: ${ruleResult.stageName}`);
                         }
-                    } catch (upgradeErr) {
-                        console.error('⚠️ [Classifier] Stage yükseltme hatası:', upgradeErr.message);
+                    } catch (ruleErr) {
+                        console.error('⚠️ [Classifier] Entry rules stage yükseltme hatası:', ruleErr.message);
                     }
                 }
             }
@@ -533,12 +517,11 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         const hasPhoneForActivity = !!contactPhone;
 
         if (isQualifiedLead) {
-            // Kalifiye Lead → Contact'ı OPPORTUNITY olarak işaretle
+            // Kalifiye Lead → Contact'ı OPPORTUNITY olarak işaretle (sadece category, status entry rules ile yönetilir)
             await prisma.contact.update({
                 where: { id: contactId },
                 data: {
-                    category: 'OPPORTUNITY',
-                    status: 'OPPORTUNITY'
+                    category: 'OPPORTUNITY'
                 }
             });
 

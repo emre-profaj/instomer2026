@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
+import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 
 // ─── Case Number Generator ───────────────────────────────────────────────
 const generateCaseNumber = async (workspaceId) => {
@@ -360,6 +361,13 @@ export const createCase = async (req, res) => {
         }
 
         res.status(201).json(newCase);
+
+        // Entry Rules: Deal oluşturulunca aşama kurallarını değerlendir
+        if (contactId) {
+            evaluateAndApplyRules(contactId, workspaceId).catch(err => 
+                console.error('⚠️ [CaseCreate] Entry rules hatası:', err.message)
+            );
+        }
     } catch (err) {
         console.error('createCase error:', err);
         res.status(500).json({ error: 'Case oluşturulamadı' });
@@ -522,6 +530,13 @@ export const updateCase = async (req, res) => {
         }
 
         res.json(updated);
+
+        // Entry Rules: Deal durumu değişince (WON/LOST) aşama kurallarını değerlendir
+        if (status !== undefined && updated.contactId) {
+            evaluateAndApplyRules(updated.contactId, workspaceId).catch(err => 
+                console.error('⚠️ [CaseUpdate] Entry rules hatası:', err.message)
+            );
+        }
     } catch (err) {
         console.error('updateCase error:', err);
         res.status(500).json({ error: 'Case güncellenemedi' });

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getFunnels, createFunnel, updateFunnel, deleteFunnel, createStage, updateStage, deleteStage } from '../controllers/funnel.controller.js';
+import { getFunnels, createFunnel, updateFunnel, deleteFunnel, createStage, updateStage, deleteStage, setDefaultFunnel } from '../controllers/funnel.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -7,6 +7,7 @@ router.use(authenticateJWT);
 
 router.get('/:workspaceId', requireWorkspaceAccess, getFunnels);
 router.post('/:workspaceId', requireWorkspaceAccess, createFunnel);
+router.put('/:workspaceId/default', requireWorkspaceAccess, setDefaultFunnel);
 router.put('/:workspaceId/:funnelId', requireWorkspaceAccess, updateFunnel);
 router.delete('/:workspaceId/:funnelId', requireWorkspaceAccess, deleteFunnel);
 
@@ -16,3 +17,4 @@ router.put('/:workspaceId/:funnelId/stages/:stageId', requireWorkspaceAccess, up
 router.delete('/:workspaceId/:funnelId/stages/:stageId', requireWorkspaceAccess, deleteStage);
 
 export default router;
+

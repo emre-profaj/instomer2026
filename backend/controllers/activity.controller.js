@@ -2,6 +2,7 @@ import prisma from '../lib/prisma.js';
 import { isAgentRole, getAgentTeamIds, buildAgentActivityFilter } from '../utils/rbac.helper.js';
 import { parseCommentIntent, parseStageIntent } from '../utils/commentIntentParser.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -293,6 +294,13 @@ export const createActivity = async (req, res) => {
         }
 
         res.status(201).json({ ...newActivity, autoActivity, stageChange });
+
+        // Entry Rules: Aktivite oluşturuldu/tamamlandı → aşama kurallarını değerlendir
+        if (contactId && req.body.workspaceId) {
+            evaluateAndApplyRules(contactId, req.body.workspaceId).catch(err =>
+                console.error('⚠️ [CreateActivity] Entry rules hatası:', err.message)
+            );
+        }
     } catch (error) {
         console.error('Create Activity Error:', error);
         res.status(500).json({ error: 'Etkinlik oluşturulurken bir hata oluştu.' });
@@ -729,6 +737,13 @@ export const completeActivity = async (req, res) => {
         });
 
         res.json(updated);
+
+        // Entry Rules: Aktivite tamamlandı → aşama kurallarını değerlendir
+        if (existing.contactId && existing.workspaceId) {
+            evaluateAndApplyRules(existing.contactId, existing.workspaceId).catch(err =>
+                console.error('⚠️ [CompleteActivity] Entry rules hatası:', err.message)
+            );
+        }
     } catch (error) {
         console.error('Complete Activity Error:', error);
         res.status(500).json({ error: 'Aktivite tamamlanırken bir hata oluştu.' });

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI } from '../../services/api';
 import { Plus, Trash2, Edit2, Check, X, Loader, Kanban, ChevronDown, ChevronRight, Circle } from 'lucide-react';
+import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import './Funnels.css';
 
 // Colors cycle automatically — no user selection needed
@@ -40,6 +41,8 @@ const Funnels = () => {
     const [newStageUserId, setNewStageUserId] = useState('');
     const [stageSaving, setStageSaving] = useState(false);
     const [editingStage, setEditingStage] = useState(null); // { id, teamId, userId }
+    const [entryRulesModal, setEntryRulesModal] = useState({ isOpen: false, stage: null });
+    const [defaultFunnelId, setDefaultFunnelId] = useState(null);
 
     useEffect(() => {
         if (currentWorkspace) {
@@ -66,8 +69,18 @@ const Funnels = () => {
             setLoading(true);
             const res = await funnelAPI.getAll(currentWorkspace.id);
             setFunnels(res.data.funnels || []);
+            if (res.data.defaultFunnelId !== undefined) {
+                setDefaultFunnelId(res.data.defaultFunnelId);
+            }
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
+    };
+
+    const handleSetDefaultFunnel = async (funnelId) => {
+        try {
+            await funnelAPI.setDefaultFunnel(currentWorkspace.id, funnelId || null);
+            setDefaultFunnelId(funnelId || null);
+        } catch (err) { console.error('Default funnel error:', err); }
     };
 
     // Auto-assign next color in cycle
@@ -182,6 +195,18 @@ const Funnels = () => {
         } catch (err) { console.error('Stage update error:', err); }
     };
 
+    const handleSaveEntryRules = async (stageId, rulesJson) => {
+        const funnelId = expandedFunnel;
+        if (!funnelId) return;
+        try {
+            const res = await funnelAPI.updateStage(currentWorkspace.id, funnelId, stageId, { entryRules: rulesJson });
+            setFunnels(prev => prev.map(f => {
+                if (f.id !== funnelId) return f;
+                return { ...f, stages: f.stages.map(s => s.id === stageId ? res.data.stage : s) };
+            }));
+        } catch (err) { console.error('Entry rules save error:', err); }
+    };
+
     return (
         <div className="funnels-page">
             <div className="funnels-header">
@@ -190,6 +215,23 @@ const Funnels = () => {
                     <h1>{t('funnels.management')}</h1>
                     <p>{t('funnels.description')}</p>
                 </div>
+            </div>
+
+            {/* Varsayılan Akış Seçici */}
+            <div className="funnels-create-card" style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>⭐ Varsayılan Giriş Akışı:</span>
+                <select
+                    className="funnels-input"
+                    style={{ flex: 1, maxWidth: 320, minWidth: 180 }}
+                    value={defaultFunnelId || ''}
+                    onChange={e => handleSetDefaultFunnel(e.target.value)}
+                >
+                    <option value="">— Seçilmedi —</option>
+                    {funnels.filter(f => f.funnelType !== 'MAIN').map(f => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                </select>
+                <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Yeni konuşmalar bu akışa otomatik atanır</span>
             </div>
 
             {/* Create form */}
@@ -502,6 +544,21 @@ const Funnels = () => {
                                                                 <option value="CLOSED">⚫ Kapandı</option>
                                                             </select>
 
+                                                            {/* Giriş Kuralları */}
+                                                            <button
+                                                                className="funnels-btn-sm"
+                                                                style={{
+                                                                    fontSize: '11px', padding: '3px 8px',
+                                                                    background: (() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; return p?.rules?.length ? '#eff6ff' : '#f3f4f6'; } catch { return '#f3f4f6'; } })(),
+                                                                    color: (() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; return p?.rules?.length ? '#3b82f6' : '#9ca3af'; } catch { return '#9ca3af'; } })(),
+                                                                    border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap'
+                                                                }}
+                                                                onClick={() => setEntryRulesModal({ isOpen: true, stage })}
+                                                                title="Giriş Kuralları"
+                                                            >
+                                                                {(() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; const c = p?.rules?.length || 0; return c > 0 ? `⚙️ ${c} Kural` : '⚙️ Kural Ekle'; } catch { return '⚙️ Kural Ekle'; } })()}
+                                                            </button>
+
                                                             {/* Kaydet (sadece değişiklik yapıldıysa) */}
                                                             {isEditingThis && (
                                                                 <button
@@ -584,6 +641,13 @@ const Funnels = () => {
                     })()
                 )}
             </div>
+
+            <EntryRulesModal
+                isOpen={entryRulesModal.isOpen}
+                onClose={() => setEntryRulesModal({ isOpen: false, stage: null })}
+                stage={entryRulesModal.stage}
+                onSave={handleSaveEntryRules}
+            />
         </div>
     );
 };
