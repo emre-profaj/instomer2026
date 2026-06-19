@@ -36,6 +36,7 @@ const STATUS_TO_STAGE_NAME = {
     'LOST':                   'Kayıp',
     'NOT_INTERESTED':         'Kayıp',
     'NEW':                    'Yeni Başvuru',
+    'INFO_GIVEN':             'Bilgi Verildi',
 };
 const migratedWorkspaces = new Set();
 
@@ -44,34 +45,66 @@ async function migrateStatusToFunnelStage(workspaceId) {
     migratedWorkspaces.add(workspaceId);
 
     try {
-        // Find contacts with status but no funnelStageId
-        const legacyContacts = await prisma.contact.findMany({
-            where: {
-                workspaceId,
-                funnelStageId: null,
-                status: { not: null }
-            },
-            select: { id: true, status: true }
-        });
-
-        if (legacyContacts.length === 0) return;
-
         // Find the "Satış Akışı" funnel with stages
         const satisAkisi = await prisma.funnel.findFirst({
             where: { workspaceId, name: 'Satış Akışı' },
             include: { stages: true }
         });
 
-        if (!satisAkisi || !satisAkisi.stages?.length) return;
+        if (!satisAkisi || !satisAkisi.stages?.length) {
+            console.log(`⚠️ [Migration] No "Satış Akışı" funnel found for workspace ${workspaceId}`);
+            return;
+        }
 
-        console.log(`🔄 [Migration] Migrating ${legacyContacts.length} contacts from legacy status to funnel stages (workspace: ${workspaceId})`);
+        // Collect all valid stage IDs across ALL funnels in this workspace
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: { stages: { select: { id: true } } }
+        });
+        const allValidStageIds = new Set();
+        for (const f of allFunnels) {
+            for (const s of (f.stages || [])) {
+                allValidStageIds.add(s.id);
+            }
+        }
+
+        // --- CASE 1: Contacts with no funnelStageId (use status to assign) ---
+        const noStageContacts = await prisma.contact.findMany({
+            where: {
+                workspaceId,
+                funnelStageId: null,
+                status: { not: 'NEW' }  // NEW is default, only migrate meaningful statuses
+            },
+            select: { id: true, status: true, name: true }
+        });
+
+        // --- CASE 2: Contacts with orphaned funnelStageId (stage was deleted) ---
+        const allContactsWithStage = await prisma.contact.findMany({
+            where: {
+                workspaceId,
+                funnelStageId: { not: null }
+            },
+            select: { id: true, status: true, name: true, funnelStageId: true }
+        });
+        const orphanedContacts = allContactsWithStage.filter(c => !allValidStageIds.has(c.funnelStageId));
+
+        const totalToFix = noStageContacts.length + orphanedContacts.length;
+        if (totalToFix === 0) return;
+
+        console.log(`🔄 [Migration] Found ${noStageContacts.length} contacts without stage, ${orphanedContacts.length} with orphaned stage (workspace: ${workspaceId})`);
 
         let migratedCount = 0;
-        for (const contact of legacyContacts) {
-            const targetStageName = STATUS_TO_STAGE_NAME[contact.status];
-            if (!targetStageName) continue;
 
-            const stage = satisAkisi.stages.find(s => s.name === targetStageName);
+        // Fix both cases
+        const allToFix = [
+            ...noStageContacts.map(c => ({ ...c, reason: 'no_stage' })),
+            ...orphanedContacts.map(c => ({ ...c, reason: 'orphaned' }))
+        ];
+
+        for (const contact of allToFix) {
+            const targetStageName = STATUS_TO_STAGE_NAME[contact.status];
+            // Default to "Fırsat" if status doesn't map
+            const stage = satisAkisi.stages.find(s => s.name === (targetStageName || 'Fırsat'));
             if (!stage) continue;
 
             await prisma.contact.update({
@@ -82,7 +115,7 @@ async function migrateStatusToFunnelStage(workspaceId) {
         }
 
         if (migratedCount > 0) {
-            console.log(`✅ [Migration] Migrated ${migratedCount}/${legacyContacts.length} contacts to funnel stages`);
+            console.log(`✅ [Migration] Migrated ${migratedCount}/${totalToFix} contacts to funnel stages`);
         }
     } catch (err) {
         console.error('⚠️ [Migration] Status→FunnelStage migration error:', err.message);

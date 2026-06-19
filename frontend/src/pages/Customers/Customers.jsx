@@ -2078,11 +2078,44 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                     break;
                                                                 }
                                                             }
+                                                            // Orphaned funnelStageId: stage was deleted, fallback to status
+                                                            if (!funnelName && contact.status) {
+                                                                const statusInfo = getStatusInfo(contact.status);
+                                                                stageName = statusInfo.label;
+                                                                displayColor = statusInfo.color;
+                                                                displayBg = statusInfo.bg;
+                                                                // Try to find the matching funnel by stage name
+                                                                for (const funnel of availableFunnels) {
+                                                                    const s = funnel.stages?.find(x => x.name === stageName);
+                                                                    if (s) {
+                                                                        funnelName = funnel.name;
+                                                                        displayColor = s.color || displayColor;
+                                                                        displayBg = `${displayColor}1a`;
+                                                                        currentFunnelId = funnel.id;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (!funnelName) funnelName = 'Satış Akışı';
+                                                            }
                                                         } else if (contact.status) {
                                                             const statusInfo = getStatusInfo(contact.status);
                                                             stageName = statusInfo.label;
                                                             displayColor = statusInfo.color;
                                                             displayBg = statusInfo.bg;
+                                                            // Try to find the matching funnel by stage name
+                                                            if (availableFunnels.length > 0) {
+                                                                for (const funnel of availableFunnels) {
+                                                                    const s = funnel.stages?.find(x => x.name === stageName);
+                                                                    if (s) {
+                                                                        funnelName = funnel.name;
+                                                                        displayColor = s.color || displayColor;
+                                                                        displayBg = `${displayColor}1a`;
+                                                                        currentFunnelId = funnel.id;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                if (!funnelName) funnelName = 'Satış Akışı';
+                                                            }
                                                         }
 
                                                         const isDropdownOpen = stageDropdownContactId === contact.id;
