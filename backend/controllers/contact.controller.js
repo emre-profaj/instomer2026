@@ -21,12 +21,83 @@ function parseDateEndTR(dateStr) {
 }
 
 
+// ─── Legacy status → funnel stage migration ───────────────────
+// Maps old contact.status values to stage names in "Satış Akışı" funnel
+const STATUS_TO_STAGE_NAME = {
+    'OPPORTUNITY':            'Fırsat',
+    'HOT_OPPORTUNITY':        'Sıcak Fırsat',
+    'UNREACHABLE':            'Ulaşılamadı',
+    'OFFER_GIVEN':            'Teklif Aşaması',
+    'NEGOTIATION':            'Teklif Aşaması',
+    'APPOINTMENT_SCHEDULED':  'Görüşme Planlandı',
+    'CALLBACK':               'Fırsat',
+    'CONTRACT':               'Teklif Aşaması',
+    'SALE_COMPLETED':         'Satış',
+    'LOST':                   'Kayıp',
+    'NOT_INTERESTED':         'Kayıp',
+    'NEW':                    'Yeni Başvuru',
+};
+const migratedWorkspaces = new Set();
+
+async function migrateStatusToFunnelStage(workspaceId) {
+    if (migratedWorkspaces.has(workspaceId)) return;
+    migratedWorkspaces.add(workspaceId);
+
+    try {
+        // Find contacts with status but no funnelStageId
+        const legacyContacts = await prisma.contact.findMany({
+            where: {
+                workspaceId,
+                funnelStageId: null,
+                status: { not: null }
+            },
+            select: { id: true, status: true }
+        });
+
+        if (legacyContacts.length === 0) return;
+
+        // Find the "Satış Akışı" funnel with stages
+        const satisAkisi = await prisma.funnel.findFirst({
+            where: { workspaceId, name: 'Satış Akışı' },
+            include: { stages: true }
+        });
+
+        if (!satisAkisi || !satisAkisi.stages?.length) return;
+
+        console.log(`🔄 [Migration] Migrating ${legacyContacts.length} contacts from legacy status to funnel stages (workspace: ${workspaceId})`);
+
+        let migratedCount = 0;
+        for (const contact of legacyContacts) {
+            const targetStageName = STATUS_TO_STAGE_NAME[contact.status];
+            if (!targetStageName) continue;
+
+            const stage = satisAkisi.stages.find(s => s.name === targetStageName);
+            if (!stage) continue;
+
+            await prisma.contact.update({
+                where: { id: contact.id },
+                data: { funnelStageId: stage.id }
+            });
+            migratedCount++;
+        }
+
+        if (migratedCount > 0) {
+            console.log(`✅ [Migration] Migrated ${migratedCount}/${legacyContacts.length} contacts to funnel stages`);
+        }
+    } catch (err) {
+        console.error('⚠️ [Migration] Status→FunnelStage migration error:', err.message);
+    }
+}
+
 // Get all contacts in a workspace
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases, tzOffset } = req.query;
         const { role } = req.workspaceMember;
+
+        // Auto-migrate legacy status → funnel stage (runs once per workspace)
+        migrateStatusToFunnelStage(workspaceId).catch(() => {});
 
         console.log(`🔍 [Get Contacts] START - Workspace: ${workspaceId}, Role: ${role}, Status: ${status || 'ALL'}, Source: ${source || 'ALL'}, Category: ${category || 'ALL'}, Tag: ${tag || 'ALL'}, ShowArchived: ${showArchived || 'false'}`);
 

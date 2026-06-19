@@ -1342,72 +1342,19 @@ export const webhookHandler = async (req, res) => {
                                     console.log(`⏱️ [WhatsApp] Bot has delay enabled (${assignedBot.autoReplyDelaySeconds}s), scheduling check`);
                                     scheduleAutoReplyCheck(conversation.id, waNumber.workspaceId, 'whatsapp', msg_body);
                                 } else {
-                                    // Check for duplicate auto-reply within last 10 seconds
-                                    const tenSecondsAgo = new Date(Date.now() - 10000);
-                                    const recentBotReply = await prisma.message.findFirst({
-                                        where: {
-                                            conversationId: conversation.id,
-                                            isFromContact: false,
-                                            senderId: null, // Bot message
-                                            createdAt: { gte: tenSecondsAgo }
-                                        },
-                                        orderBy: { createdAt: 'desc' }
-                                    });
-
-                                    if (recentBotReply) {
-                                        console.log('⏭️ [WhatsApp] Skipping AI reply - recent bot message exists');
-                                    } else {
-                                        // Immediate AI auto-reply (original behavior)
-                                        const aiResponse = await getAutoReply(
-                                            waNumber.workspaceId,
-                                            conversation.id,
-                                            msg_body,
-                                            'whatsapp',
-                                            'CHATS'
-                                        );
-
-                                        if (aiResponse) {
-                                            console.log('🤖 AI Auto-Reply (WhatsApp) generated:', aiResponse);
-
-                                            // Send to WhatsApp (Meta Cloud API)
-                                            const waReply = await axios.post(
-                                                `https://graph.facebook.com/${GRAPH_API_VERSION}/${waNumber.phoneNumberId}/messages`,
-                                                {
-                                                    messaging_product: 'whatsapp',
-                                                    to: from,
-                                                    text: { body: aiResponse }
-                                                },
-                                                {
-                                                    headers: { Authorization: `Bearer ${waNumber.accessToken}` }
-                                                }
-                                            );
-
-                                            // Get WhatsApp message ID from response
-                                            const waMsgId = waReply.data?.messages?.[0]?.id;
-
-                                            // Save to DB (as outgoing message)
-                                            const botMessage = await prisma.message.create({
-                                                data: {
-                                                    content: aiResponse,
-                                                    conversationId: conversation.id,
-                                                    isFromContact: false,
-                                                    messageType: 'WHATSAPP',
-                                                    senderId: null,
-                                                    whatsappMessageId: waMsgId || null,
-                                                    status: 'SENT'
-                                                }
-                                            });
-
-                                            // Emit Socket for the reply (workspace-specific)
-                                            emitToWorkspace(waNumber.workspaceId, 'new_message', {
-                                                workspaceId: waNumber.workspaceId,
-                                                conversationId: conversation.id,
-                                                message: botMessage,
-                                                contact: contact,
-                                                channel: 'WHATSAPP'
-                                            });
+                                    // Use message batching/debounce to prevent replying to each fragment separately
+                                    const { scheduleMessageBatch } = await import('../services/autoReplyDelay.service.js');
+                                    scheduleMessageBatch(
+                                        conversation.id,
+                                        waNumber.workspaceId,
+                                        'whatsapp',
+                                        msg_body,
+                                        {
+                                            from,
+                                            waNumber,
+                                            contact
                                         }
-                                    }
+                                    );
                                 }
                             } // Close canBotRespond else
                         }

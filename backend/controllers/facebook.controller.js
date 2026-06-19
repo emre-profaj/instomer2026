@@ -1930,122 +1930,20 @@ async function processWebhookAsync(body) {
                                     console.log(`⏱️ [${isInstagram ? 'Instagram' : 'Facebook'}] Bot has delay enabled (${assignedBot.autoReplyDelaySeconds}s), scheduling check`);
                                     scheduleAutoReplyCheck(conversation.id, facebookPage.workspaceId, isInstagram ? 'instagram' : 'facebook', message.text);
                                 } else {
-                                    const aiResponse = await getAutoReply(
-                                        facebookPage.workspaceId,
+                                    // Use message batching/debounce to prevent replying to each fragment separately
+                                    const { scheduleMessageBatch } = await import('../services/autoReplyDelay.service.js');
+                                    scheduleMessageBatch(
                                         conversation.id,
-                                        message.text,
+                                        facebookPage.workspaceId,
                                         isInstagram ? 'instagram' : 'facebook',
-                                        'CHATS'
+                                        message.text,
+                                        {
+                                            senderId,
+                                            facebookPage,
+                                            isInstagram,
+                                            contact
+                                        }
                                     );
-
-                                    if (aiResponse) {
-                                        // 🛡️ RACE CONDITION PROTECTION: Content-based duplicate detection
-                                        // Ensures identical AI replies are not sent multiple times if concurrent webhooks fire.
-                                        const fiveSecondsAgo2 = new Date(Date.now() - 5000);
-                                        const duplicateContent = await prisma.message.findFirst({
-                                            where: {
-                                                conversationId: conversation.id,
-                                                content: aiResponse,
-                                                isFromContact: false,
-                                                createdAt: { gte: fiveSecondsAgo2 }
-                                            }
-                                        });
-
-                                        if (duplicateContent) {
-                                            console.log(`⏭️ [${isInstagram ? 'Instagram' : 'Facebook'}] Duplicate content detected - same AI response already sent, skipping`);
-                                            continue;
-                                        }
-                                            // --- META 1000 CHARACTER LIMIT FIX ---
-                                            // Split message if > 950 characters
-                                            const chunks = [];
-                                            let currentText = aiResponse;
-                                            while (currentText.length > 0) {
-                                                if (currentText.length <= 950) {
-                                                    chunks.push(currentText);
-                                                    break;
-                                                }
-                                                let breakPoint = currentText.lastIndexOf('\n', 950);
-                                                if (breakPoint === -1) breakPoint = currentText.lastIndexOf('. ', 950);
-                                                if (breakPoint === -1) breakPoint = currentText.lastIndexOf(' ', 950);
-                                                if (breakPoint === -1) breakPoint = 950;
-                                                
-                                                chunks.push(currentText.substring(0, breakPoint + 1).trim());
-                                                currentText = currentText.substring(breakPoint + 1).trim();
-                                            }
-
-                                            let sentMessageId = null;
-                                            for (let i = 0; i < chunks.length; i++) {
-                                                const sendResponse = await axios.post(
-                                                    `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
-                                                    {
-                                                        recipient: { id: String(senderId) },
-                                                        message: { text: chunks[i] }
-                                                    },
-                                                    {
-                                                        params: { access_token: facebookPage.pageAccessToken }
-                                                    }
-                                                );
-                                                if (i === chunks.length - 1) {
-                                                    // Save the ID of the last chunk to associate with our DB record
-                                                    sentMessageId = sendResponse.data?.message_id;
-                                                }
-                                                if (chunks.length > 1 && i < chunks.length - 1) {
-                                                    // Add 500ms delay between chunks to ensure they arrive in order
-                                                    await new Promise(r => setTimeout(r, 500));
-                                                }
-                                            }
-                                            let botMessage;
-
-                                            // 🚀 RACE CONDITION HANDLING:
-                                            // Check if Echo Webhook already saved this message while we were waiting for axios
-                                            if (sentMessageId) {
-                                                botMessage = await prisma.message.findUnique({
-                                                    where: { facebookMessageId: sentMessageId }
-                                                });
-                                                if (botMessage) {
-                                                    console.log(`ℹ️ [${isInstagram ? 'Instagram' : 'Facebook'}] Message already saved by webhook (race condition), usage existing DB record.`);
-                                                }
-                                            }
-
-                                            if (!botMessage) {
-                                                try {
-                                                    // Save to DB (as outgoing message)
-                                                    botMessage = await prisma.message.create({
-                                                        data: {
-                                                            content: aiResponse,
-                                                            conversationId: conversation.id,
-                                                            isFromContact: false, // Outgoing
-                                                            messageType: isInstagram ? 'INSTAGRAM' : 'TEXT',
-                                                            senderId: null, // System/Bot
-                                                            facebookMessageId: sentMessageId || null,
-                                                            status: 'SENT' // Initial status
-                                                        }
-                                                    });
-                                                } catch (dbError) {
-                                                    // If unique constraint failed (race condition between findUnique and create), try to find it again
-                                                    if (dbError.code === 'P2002' && sentMessageId) {
-                                                        console.log(`ℹ️ [${isInstagram ? 'Instagram' : 'Facebook'}] Constraint failed, fetching existing record...`);
-                                                        botMessage = await prisma.message.findUnique({
-                                                            where: { facebookMessageId: sentMessageId }
-                                                        });
-                                                    }
-
-                                                    if (!botMessage) {
-                                                        console.error('❌ Failed to save bot message:', dbError);
-                                                        continue; // Skip emit if we can't get the message
-                                                    }
-                                                }
-                                            }
-
-                                            // Emit Socket for the reply (workspace-specific)
-                                            emitToWorkspace(facebookPage.workspaceId, 'new_message', {
-                                                workspaceId: facebookPage.workspaceId,
-                                                conversationId: conversation.id,
-                                                message: botMessage,
-                                                contact: contact,
-                                                channel: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
-                                            });
-                                        }
                                 } // Close autoReplyDelayEnabled else
                             } // Close channelBotId else
                         } catch (aiError) {
@@ -3073,26 +2971,42 @@ async function handleLeadgenEvent(leadValue, entryId) {
         const leadData = leadResponse.data;
         console.log(`📋 [LEADGEN] Lead data from API:`, JSON.stringify(leadData, null, 2));
 
+        // Get form details (name and questions to map keys to labels/values)
+        let formName = null;
+        let formQuestions = [];
+        try {
+            const formResponse = await axios.get(
+                `https://graph.facebook.com/${GRAPH_API_VERSION}/${leadData.form_id}`,
+                { params: { access_token: facebookPage.pageAccessToken, fields: 'name,questions' } }
+            );
+            formName = formResponse.data.name;
+            formQuestions = formResponse.data.questions || [];
+        } catch (formErr) {
+            console.log('⚠️ Could not fetch form details:', formErr.message);
+        }
+
         // Parse field data
         const fieldData = {};
         if (leadData.field_data) {
             for (const field of leadData.field_data) {
-                fieldData[field.name] = field.values?.[0] || '';
+                let value = field.values?.[0] || '';
+                
+                // Find if this field matches a question with options
+                const question = formQuestions.find(q => q.key === field.name || q.label === field.name);
+                if (question && question.options && question.options.length > 0) {
+                    const matchedOption = question.options.find(opt => opt.key === value || opt.value === value);
+                    if (matchedOption) {
+                        value = matchedOption.value || value;
+                    }
+                } else if (value && typeof value === 'string' && value.includes('_') && !value.includes('@') && !value.includes('/') && !value.includes('http')) {
+                    // Fallback formatting for snake_case values (like dropdown keys)
+                    value = value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                }
+                
+                fieldData[field.name] = value;
             }
         }
         console.log(`📋 [LEADGEN] Parsed fields:`, fieldData);
-
-        // Get form name
-        let formName = null;
-        try {
-            const formResponse = await axios.get(
-                `https://graph.facebook.com/${GRAPH_API_VERSION}/${leadData.form_id}`,
-                { params: { access_token: facebookPage.pageAccessToken, fields: 'name' } }
-            );
-            formName = formResponse.data.name;
-        } catch (formErr) {
-            console.log('⚠️ Could not fetch form name:', formErr.message);
-        }
 
         // Extract contact info (handle different field name formats - case insensitive)
         const getField = (...keys) => {

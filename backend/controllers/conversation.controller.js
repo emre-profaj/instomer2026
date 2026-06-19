@@ -517,10 +517,11 @@ export const sendMessage = async (req, res) => {
         const { conversationId } = req.params;
         let { content, cc, bcc } = req.body;
 
-        // Cancel any pending auto-reply since human is replying
+        // Cancel any pending auto-reply and message batch since human is replying
         try {
-            const { cancelAutoReplyCheck } = await import('../services/autoReplyDelay.service.js');
+            const { cancelAutoReplyCheck, cancelMessageBatch } = await import('../services/autoReplyDelay.service.js');
             cancelAutoReplyCheck(conversationId);
+            cancelMessageBatch(conversationId);
         } catch (e) {
             // Service might not be available, continue
         }
