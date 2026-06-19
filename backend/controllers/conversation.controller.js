@@ -193,7 +193,9 @@ export const getConversations = async (req, res) => {
                         instagramUsername: true,
                         company: true,
                         status: true,
-                        tags: true
+                        tags: true,
+                        funnelType: true,
+                        funnelStageId: true
                     }
                 },
                 assignedTo: {

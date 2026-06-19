@@ -14,7 +14,7 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
     try {
         const conv = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            select: { funnelType: true }
+            select: { funnelType: true, contactId: true }
         });
         if (!conv) return null;
 
@@ -59,6 +59,18 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
                 where: { id: conversationId },
                 data: updateData
             });
+
+            // Contact'ı da güncelle (Customers sayfasında akış/aşama gösterilmesi için)
+            if (conv.contactId) {
+                try {
+                    await prisma.contact.update({
+                        where: { id: conv.contactId },
+                        data: { funnelType: funnelId, funnelStageId: firstStage.id }
+                    });
+                } catch (contactErr) {
+                    console.error('⚠️ [AutoFunnel] Contact update error:', contactErr.message);
+                }
+            }
 
             console.log(`✅ [AutoFunnel] "${defaultFunnel.name}" / "${firstStage.name}" → conversation ${conversationId}`);
         }

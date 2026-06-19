@@ -3566,10 +3566,10 @@ const Inbox = () => {
                                 return true;
                             }).map((item) => {
                                 // Pre-compute values for the card
-                                const funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
-                                const funnelName = funnel?.label || 'Genel';
-                                const funnelColor = funnel?.color || '#94a3b8';
-                                const funnelIcon = funnel?.icon || '📋';
+                                let funnel = item.funnelType ? funnelOptions.find(f => f.value === item.funnelType) : null;
+                                let funnelName = funnel?.label || 'Genel';
+                                let funnelColor = funnel?.color || '#94a3b8';
+                                let funnelIcon = funnel?.icon || '📋';
 
                                 // Stage name resolution
                                 let stageName = null;
@@ -3582,7 +3582,17 @@ const Inbox = () => {
                                     for (const f of funnelOptions) {
                                         if (!f.stages) continue;
                                         const s = f.stages.find(s => s.value === effectiveStageId || s.id === effectiveStageId);
-                                        if (s) { stageName = s.label || s.name; break; }
+                                        if (s) {
+                                            stageName = s.label || s.name;
+                                            // funnelType null veya yanlışsa → stage'den bulunan akış bilgilerini kullan
+                                            if (!funnel || !funnel.stages?.some(fs => (fs.value || fs.id) === effectiveStageId)) {
+                                                funnel = f;
+                                                funnelName = f.label || 'Genel';
+                                                funnelColor = f.color || '#94a3b8';
+                                                funnelIcon = f.icon || '📋';
+                                            }
+                                            break;
+                                        }
                                     }
                                 }
 

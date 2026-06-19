@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI } from '../../services/api';
-import { Plus, Trash2, Edit2, Check, X, Loader, Kanban, ChevronDown, ChevronRight, Circle } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, Loader, Kanban, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import './Funnels.css';
 
@@ -22,6 +22,7 @@ const Funnels = () => {
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [newName, setNewName] = useState('');
+    const [newParentId, setNewParentId] = useState('');
     const [editingFunnel, setEditingFunnel] = useState(null);
     const [newClassificationCriteria, setNewClassificationCriteria] = useState('');
 
@@ -40,9 +41,8 @@ const Funnels = () => {
     const [newStageTeamId, setNewStageTeamId] = useState('');
     const [newStageUserId, setNewStageUserId] = useState('');
     const [stageSaving, setStageSaving] = useState(false);
-    const [editingStage, setEditingStage] = useState(null); // { id, teamId, userId }
+    const [editingStage, setEditingStage] = useState(null); // { id, teamId, userId, name }
     const [entryRulesModal, setEntryRulesModal] = useState({ isOpen: false, stage: null });
-    const [defaultFunnelId, setDefaultFunnelId] = useState(null);
 
     useEffect(() => {
         if (currentWorkspace) {
@@ -69,18 +69,8 @@ const Funnels = () => {
             setLoading(true);
             const res = await funnelAPI.getAll(currentWorkspace.id);
             setFunnels(res.data.funnels || []);
-            if (res.data.defaultFunnelId !== undefined) {
-                setDefaultFunnelId(res.data.defaultFunnelId);
-            }
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
-    };
-
-    const handleSetDefaultFunnel = async (funnelId) => {
-        try {
-            await funnelAPI.setDefaultFunnel(currentWorkspace.id, funnelId || null);
-            setDefaultFunnelId(funnelId || null);
-        } catch (err) { console.error('Default funnel error:', err); }
     };
 
     // Auto-assign next color in cycle
@@ -95,12 +85,14 @@ const Funnels = () => {
                 color: nextColor(),
                 assignedTeamId: newTeamId || null,
                 assignedUserId: newUserId || null,
-                classificationCriteria: newClassificationCriteria.trim() || null
+                classificationCriteria: newClassificationCriteria.trim() || null,
+                parentId: newParentId || null
             });
             setFunnels(prev => [...prev, res.data.funnel]);
             setNewName('');
             setNewTeamId('');
             setNewUserId('');
+            setNewParentId('');
             setNewClassificationCriteria('');
         } catch (err) { console.error(err); }
         finally { setSaving(false); }
@@ -135,6 +127,8 @@ const Funnels = () => {
 
     const toggleExpand = (funnelId) => {
         setExpandedFunnel(prev => prev === funnelId ? null : funnelId);
+        setEditingFunnel(null);
+        setEditingStage(null);
         setNewStageName('');
         setNewStageColor(STAGE_COLORS[0]);
         setNewStageTeamId('');
@@ -181,6 +175,7 @@ const Funnels = () => {
             const res = await funnelAPI.updateStage(
                 currentWorkspace.id, funnelId, stageId,
                 {
+                    ...(editingStage.name !== undefined && { name: editingStage.name }),
                     assignedTeamId: editingStage.teamId || null,
                     assignedUserId: editingStage.userId || null,
                     assignedBotId:  editingStage.botId  || null,
@@ -207,6 +202,22 @@ const Funnels = () => {
         } catch (err) { console.error('Entry rules save error:', err); }
     };
 
+    // Start editing a stage (populate all fields)
+    const startEditingStage = (stage) => {
+        setEditingStage({
+            id: stage.id,
+            name: stage.name,
+            teamId: stage.assignedTeamId || '',
+            userId: stage.assignedUserId || '',
+            botId: stage.assignedBotId || ''
+        });
+    };
+
+    // Get parent funnels for the dropdown (exclude MAIN and self)
+    const getParentOptions = () => {
+        return funnels.filter(f => f.funnelType !== 'MAIN' && !f.parentId);
+    };
+
     return (
         <div className="funnels-page">
             <div className="funnels-header">
@@ -231,6 +242,14 @@ const Funnels = () => {
                             onChange={e => setNewName(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleCreate()}
                         />
+                        <select
+                            className="funnels-input"
+                            value={newParentId}
+                            onChange={e => setNewParentId(e.target.value)}
+                        >
+                            <option value="">Üst Akış Yok (Bağımsız)</option>
+                            {getParentOptions().map(f => <option key={f.id} value={f.id}>↳ {f.name} altına</option>)}
+                        </select>
                         <button
                             className="funnels-btn-primary"
                             onClick={handleCreate}
@@ -280,361 +299,414 @@ const Funnels = () => {
                     </div>
                 ) : (
                     (() => {
-                        // Build tree: main funnel first, then children
+                        // Build tree
                         const mainFunnel = funnels.find(f => f.funnelType === 'MAIN');
-                        const subFunnels = mainFunnel 
-                            ? funnels.filter(f => f.id !== mainFunnel.id)
-                            : funnels;
-                        const orderedList = mainFunnel ? [mainFunnel, ...subFunnels] : subFunnels;
+                        const childrenMap = {};
+                        funnels.forEach(f => {
+                            if (f.parentId && f.parentId !== mainFunnel?.id) {
+                                if (!childrenMap[f.parentId]) childrenMap[f.parentId] = [];
+                                childrenMap[f.parentId].push(f);
+                            }
+                        });
+                        const topLevel = funnels.filter(f => 
+                            f.id !== mainFunnel?.id && (!f.parentId || f.parentId === mainFunnel?.id)
+                        );
 
-                        return orderedList.map(funnel => {
-                        const isExpanded = expandedFunnel === funnel.id;
-                        const stages = funnel.stages || [];
-                        const isMain = funnel.funnelType === 'MAIN';
-                        const isSub = funnel.parentId && funnel.parentId === mainFunnel?.id;
-                        return (
-                            <div key={funnel.id} className={`funnels-funnel-block${isExpanded ? ' funnels-funnel-block--open' : ''}${isMain ? ' funnels-funnel-block--main' : ''}`}
-                                 style={isSub ? { marginLeft: 24, borderLeft: '2px solid #e0e7ff' } : undefined}>
-                                {/* Funnel header row */}
-                                <div className="funnels-row">
-                                    <button
-                                        className="funnels-expand-btn"
-                                        onClick={() => !editingFunnel && toggleExpand(funnel.id)}
-                                        title={isExpanded ? t('common.close') : t('funnels.manageStatuses')}
+                        const renderFunnel = (funnel, depth = 0) => {
+                            const isExpanded = expandedFunnel === funnel.id;
+                            const stages = funnel.stages || [];
+                            const isMain = funnel.funnelType === 'MAIN';
+                            const isSub = depth > 0;
+                            const childFunnels = childrenMap[funnel.id] || [];
+                            const isEditing = editingFunnel?.id === funnel.id;
+
+                            return (
+                                <div key={funnel.id}>
+                                    <div 
+                                        className={`funnels-funnel-block${isExpanded ? ' funnels-funnel-block--open' : ''}${isMain ? ' funnels-funnel-block--main' : ''}`}
+                                        style={isSub ? { marginLeft: 28 * depth, borderLeft: '2px solid #e0e7ff' } : undefined}
                                     >
-                                        {isExpanded
-                                            ? <ChevronDown size={15} />
-                                            : <ChevronRight size={15} />}
-                                    </button>
+                                        {/* Funnel header row — click to expand */}
+                                        <div 
+                                            className="funnels-row" 
+                                            onClick={() => !isEditing && toggleExpand(funnel.id)}
+                                            style={{ cursor: isEditing ? 'default' : 'pointer' }}
+                                        >
+                                            <div className="funnels-dot" style={{ background: isEditing ? editingFunnel.color : funnel.color }} />
 
-                                    <div className="funnels-dot" style={{ background: editingFunnel?.id === funnel.id ? editingFunnel.color : funnel.color }} />
-
-                                    {editingFunnel?.id === funnel.id ? (
-                                        <>
-                                            <input
-                                                autoFocus
-                                                className="funnels-input funnels-input-edit"
-                                                value={editingFunnel.name}
-                                                onChange={e => setEditingFunnel(p => ({ ...p, name: e.target.value }))}
-                                                onKeyDown={e => e.key === 'Enter' && handleUpdate()}
-                                            />
-                                            <select
-                                                className="funnels-input funnels-input-edit"
-                                                value={editingFunnel.assignedTeamId}
-                                                onChange={e => setEditingFunnel(p => ({ ...p, assignedTeamId: e.target.value }))}
-                                            >
-                                                <option value="">Takım Ata</option>
-                                                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                            </select>
-                                            <select
-                                                className="funnels-input funnels-input-edit"
-                                                value={editingFunnel.assignedUserId}
-                                                onChange={e => setEditingFunnel(p => ({ ...p, assignedUserId: e.target.value }))}
-                                            >
-                                                <option value="">Kişi Ata</option>
-                                                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                            </select>
-                                            {editingFunnel.stages?.length > 0 && (
-                                                <select
-                                                    className="funnels-input funnels-input-edit"
-                                                    value={editingFunnel.qualifiedLeadStageId || ''}
-                                                    onChange={e => setEditingFunnel(p => ({ ...p, qualifiedLeadStageId: e.target.value }))}
-                                                >
-                                                    <option value="">🎯 Nitelikli Talepler → (İlk aşamaya düşer)</option>
-                                                    {editingFunnel.stages.map(s => <option key={s.id} value={s.id}>🎯 Nitelikli Talepler → {s.name}</option>)}
-                                                </select>
-                                            )}
-                                            <div style={{ width: '100%', marginTop: '8px' }}>
-                                                <textarea
-                                                    className="funnels-input"
-                                                    placeholder="🤖 AI Giriş Kriterleri — Bu akışa hangi konuşmalar girmeli?"
-                                                    value={editingFunnel.classificationCriteria || ''}
-                                                    onChange={e => setEditingFunnel(p => ({ ...p, classificationCriteria: e.target.value }))}
-                                                    rows={2}
-                                                    style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
-                                                />
-                                            </div>
-                                            <button className="funnels-btn-sm funnels-btn-save" onClick={handleUpdate} disabled={saving}>
-                                                <Check size={13} /> Kaydet
-                                            </button>
-                                            <button className="funnels-btn-sm funnels-btn-cancel" onClick={() => setEditingFunnel(null)}>
-                                                <X size={13} /> İptal
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <span className="funnels-name">
-                                                {funnel.name}
-                                                {isMain && (
-                                                    <span style={{ 
-                                                        fontSize: '10px', fontWeight: 700, color: '#6366f1', 
-                                                        background: '#eef2ff', padding: '2px 8px', borderRadius: '10px',
-                                                        marginLeft: '8px', letterSpacing: '0.5px'
-                                                    }}>
-                                                        ANA AKIŞ
-                                                    </span>
-                                                )}
-                                                {isSub && (
-                                                    <span style={{
-                                                        fontSize: '10px', color: '#94a3b8', marginLeft: '6px'
-                                                    }}>
-                                                        ↳ alt akış
-                                                    </span>
-                                                )}
-                                                {!isMain && (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleSetDefaultFunnel(defaultFunnelId === funnel.id ? '' : funnel.id); }}
-                                                        title={defaultFunnelId === funnel.id ? 'Varsayılan akış (kaldırmak için tıkla)' : 'Varsayılan giriş akışı yap'}
-                                                        style={{
-                                                            background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', marginLeft: '4px',
-                                                            fontSize: '14px', lineHeight: 1, opacity: defaultFunnelId === funnel.id ? 1 : 0.3,
-                                                            transition: 'opacity 0.2s'
-                                                        }}
+                                            {isEditing ? (
+                                                <>
+                                                    <input
+                                                        autoFocus
+                                                        className="funnels-input funnels-input-edit"
+                                                        value={editingFunnel.name}
+                                                        onChange={e => setEditingFunnel(p => ({ ...p, name: e.target.value }))}
+                                                        onKeyDown={e => e.key === 'Enter' && handleUpdate()}
+                                                        onClick={e => e.stopPropagation()}
+                                                    />
+                                                    <select
+                                                        className="funnels-input funnels-input-edit"
+                                                        value={editingFunnel.assignedTeamId}
+                                                        onChange={e => setEditingFunnel(p => ({ ...p, assignedTeamId: e.target.value }))}
+                                                        onClick={e => e.stopPropagation()}
                                                     >
-                                                        {defaultFunnelId === funnel.id ? '⭐' : '☆'}
+                                                        <option value="">Takım Ata</option>
+                                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                    </select>
+                                                    <select
+                                                        className="funnels-input funnels-input-edit"
+                                                        value={editingFunnel.assignedUserId}
+                                                        onChange={e => setEditingFunnel(p => ({ ...p, assignedUserId: e.target.value }))}
+                                                        onClick={e => e.stopPropagation()}
+                                                    >
+                                                        <option value="">Kişi Ata</option>
+                                                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                                    </select>
+                                                    {editingFunnel.stages?.length > 0 && (
+                                                        <select
+                                                            className="funnels-input funnels-input-edit"
+                                                            value={editingFunnel.qualifiedLeadStageId || ''}
+                                                            onChange={e => setEditingFunnel(p => ({ ...p, qualifiedLeadStageId: e.target.value }))}
+                                                            onClick={e => e.stopPropagation()}
+                                                        >
+                                                            <option value="">🎯 Nitelikli Talepler → (İlk aşamaya düşer)</option>
+                                                            {editingFunnel.stages.map(s => <option key={s.id} value={s.id}>🎯 Nitelikli Talepler → {s.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    <div style={{ width: '100%', marginTop: '8px' }}>
+                                                        <textarea
+                                                            className="funnels-input"
+                                                            placeholder="🤖 AI Giriş Kriterleri — Bu akışa hangi konuşmalar girmeli?"
+                                                            value={editingFunnel.classificationCriteria || ''}
+                                                            onChange={e => setEditingFunnel(p => ({ ...p, classificationCriteria: e.target.value }))}
+                                                            onClick={e => e.stopPropagation()}
+                                                            rows={2}
+                                                            style={{ width: '100%', resize: 'vertical', fontSize: '12px' }}
+                                                        />
+                                                    </div>
+                                                    <button className="funnels-btn-sm funnels-btn-save" onClick={(e) => { e.stopPropagation(); handleUpdate(); }} disabled={saving}>
+                                                        <Check size={13} /> Kaydet
                                                     </button>
-                                                )}
-                                                {(funnel.assignedTeamId || funnel.assignedUserId) && (
-                                                    <span className="funnels-assigned-info" style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '6px' }}>
-                                                        ({funnel.assignedTeamId ? teams.find(t => t.id === funnel.assignedTeamId)?.name : ''}
-                                                        {funnel.assignedTeamId && funnel.assignedUserId ? ' - ' : ''}
-                                                        {funnel.assignedUserId ? members.find(m => m.id === funnel.assignedUserId)?.name : ''})
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="funnels-stage-count">{stages.length} durum</span>
-                                            <button className="funnels-icon-btn" onClick={() => {
-                                                setEditingFunnel({ 
-                                                    id: funnel.id, 
-                                                    name: funnel.name, 
-                                                    color: funnel.color,
-                                                    assignedTeamId: funnel.assignedTeamId || '',
-                                                    assignedUserId: funnel.assignedUserId || '',
-                                                    classificationCriteria: funnel.classificationCriteria || ''
-                                                });
-                                                setExpandedFunnel(funnel.id);
-                                            }} title={t('common.edit')}>
-                                                <Edit2 size={15} />
-                                            </button>
-                                            {!isMain && (
-                                                <button className="funnels-icon-btn funnels-icon-btn-danger" onClick={() => handleDelete(funnel.id)} title={t('common.delete')}>
-                                                    <Trash2 size={15} />
-                                                </button>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-
-                                {/* Stages panel */}
-                                {isExpanded && (
-                                    <div className="funnels-stages-panel">
-                                        <div className="funnels-stages-label">Durumlar</div>
-
-                                        {stages.length === 0 ? (
-                                            <div className="funnels-stages-empty">{t('funnels.noStatuses')}</div>
-                                        ) : (
-                                            <div className="funnels-stages-list">
-                                                {stages.map(stage => {
-                                                    const isEditingThis = editingStage?.id === stage.id;
-                                                    return (
-                                                        <div key={stage.id} className="funnels-stage-row">
-                                                            <span className="funnels-stage-dot" style={{ background: stage.color }} />
-                                                            <span className="funnels-stage-name" style={{ flex: 1 }}>
-                                                                {stage.name}
+                                                    <button className="funnels-btn-sm funnels-btn-cancel" onClick={(e) => { e.stopPropagation(); setEditingFunnel(null); }}>
+                                                        <X size={13} /> İptal
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="funnels-name">
+                                                        {funnel.name}
+                                                        {isMain && (
+                                                            <span style={{ 
+                                                                fontSize: '10px', fontWeight: 700, color: '#6366f1', 
+                                                                background: '#eef2ff', padding: '2px 8px', borderRadius: '10px',
+                                                                marginLeft: '8px', letterSpacing: '0.5px'
+                                                            }}>
+                                                                ANA AKIŞ
                                                             </span>
+                                                        )}
+                                                        {isSub && (
+                                                            <span style={{
+                                                                fontSize: '10px', color: '#94a3b8', marginLeft: '6px'
+                                                            }}>
+                                                                ↳ alt akış
+                                                            </span>
+                                                        )}
+                                                        {(funnel.assignedTeamId || funnel.assignedUserId) && (
+                                                            <span className="funnels-assigned-info" style={{ fontSize: '11px', color: '#9ca3af', marginLeft: '6px' }}>
+                                                                ({funnel.assignedTeamId ? teams.find(t => t.id === funnel.assignedTeamId)?.name : ''}
+                                                                {funnel.assignedTeamId && funnel.assignedUserId ? ' - ' : ''}
+                                                                {funnel.assignedUserId ? members.find(m => m.id === funnel.assignedUserId)?.name : ''})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="funnels-stage-count">{stages.length} durum</span>
+                                                    {isExpanded 
+                                                        ? <ChevronDown size={15} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                                                        : <ChevronRight size={15} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                                                    }
+                                                    <button className="funnels-icon-btn" onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingFunnel({ 
+                                                            id: funnel.id, 
+                                                            name: funnel.name, 
+                                                            color: funnel.color,
+                                                            assignedTeamId: funnel.assignedTeamId || '',
+                                                            assignedUserId: funnel.assignedUserId || '',
+                                                            classificationCriteria: funnel.classificationCriteria || '',
+                                                            stages: funnel.stages || []
+                                                        });
+                                                        setExpandedFunnel(funnel.id);
+                                                    }} title={t('common.edit')}>
+                                                        <Edit2 size={15} />
+                                                    </button>
+                                                    {!isMain && (
+                                                        <button className="funnels-icon-btn funnels-icon-btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(funnel.id); }} title={t('common.delete')}>
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
 
-                                                            {/* Takım seç */}
-                                                            <select
-                                                                className="funnels-input funnels-stage-input"
-                                                                style={{ 
-                                                                    width: '130px', fontSize: '12px', padding: '4px 6px',
-                                                                    ...(!(isEditingThis ? editingStage.teamId : stage.assignedTeamId) && funnel.assignedTeamId ? { color: '#9ca3af', fontStyle: 'italic' } : {})
-                                                                }}
-                                                                value={isEditingThis ? editingStage.teamId : (stage.assignedTeamId || '')}
-                                                                onChange={e => {
-                                                                    const val = e.target.value;
-                                                                    setEditingStage({ id: stage.id, teamId: val, userId: isEditingThis ? editingStage.userId : (stage.assignedUserId || ''), botId: isEditingThis ? editingStage.botId : (stage.assignedBotId || '') });
-                                                                }}
-                                                            >
-                                                                <option value="">
-                                                                    {funnel.assignedTeamId 
-                                                                        ? `↑ ${teams.find(t => t.id === funnel.assignedTeamId)?.name || 'Üst Akış'}` 
-                                                                        : 'Takım Ata'}
-                                                                </option>
-                                                                {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                                            </select>
+                                        {/* Stages panel */}
+                                        {isExpanded && (
+                                            <div className="funnels-stages-panel">
+                                                <div className="funnels-stages-label">Durumlar</div>
 
-                                                            {/* Kişi seç */}
-                                                            <select
-                                                                className="funnels-input funnels-stage-input"
-                                                                style={{ width: '130px', fontSize: '12px', padding: '4px 6px' }}
-                                                                value={isEditingThis ? editingStage.userId : (stage.assignedUserId || '')}
-                                                                onChange={e => {
-                                                                    const val = e.target.value;
-                                                                    setEditingStage({ id: stage.id, teamId: isEditingThis ? editingStage.teamId : (stage.assignedTeamId || ''), userId: val, botId: isEditingThis ? editingStage.botId : (stage.assignedBotId || '') });
-                                                                }}
-                                                            >
-                                                                <option value="">
-                                                                    {funnel.assignedUserId 
-                                                                        ? `↑ ${members.find(m => m.id === funnel.assignedUserId)?.name || 'Üst Akış'}` 
-                                                                        : 'Kişi Ata'}
-                                                                </option>
-                                                                {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                                            </select>
+                                                {stages.length === 0 ? (
+                                                    <div className="funnels-stages-empty">{t('funnels.noStatuses')}</div>
+                                                ) : (
+                                                    <div className="funnels-stages-list">
+                                                        {stages.map(stage => {
+                                                            const isEditingThis = editingStage?.id === stage.id;
+                                                            return (
+                                                                <div key={stage.id} className="funnels-stage-row">
+                                                                    <span className="funnels-stage-dot" style={{ background: stage.color }} />
+                                                                    
+                                                                    {/* Stage name — editable on click */}
+                                                                    {isEditingThis ? (
+                                                                        <input
+                                                                            autoFocus
+                                                                            className="funnels-input funnels-stage-name-input"
+                                                                            value={editingStage.name}
+                                                                            onChange={e => setEditingStage(p => ({ ...p, name: e.target.value }))}
+                                                                            onKeyDown={e => e.key === 'Enter' && handleUpdateStage(funnel.id, stage.id)}
+                                                                            style={{ flex: 1, fontSize: '13px', padding: '3px 6px', fontWeight: 500 }}
+                                                                        />
+                                                                    ) : (
+                                                                        <span 
+                                                                            className="funnels-stage-name" 
+                                                                            style={{ flex: 1, cursor: 'pointer' }}
+                                                                            onClick={() => startEditingStage(stage)}
+                                                                            title="Tıklayarak düzenle"
+                                                                        >
+                                                                            {stage.name}
+                                                                        </span>
+                                                                    )}
 
-                                                            {/* Bot seç */}
-                                                            <select
-                                                                className="funnels-input funnels-stage-input"
-                                                                style={{ width: '130px', fontSize: '12px', padding: '4px 6px' }}
-                                                                value={isEditingThis ? editingStage.botId : (stage.assignedBotId || '')}
-                                                                onChange={e => {
-                                                                    const val = e.target.value;
-                                                                    setEditingStage({ id: stage.id, teamId: isEditingThis ? editingStage.teamId : (stage.assignedTeamId || ''), userId: isEditingThis ? editingStage.userId : (stage.assignedUserId || ''), botId: val });
-                                                                }}
-                                                            >
-                                                                <option value="">🤖 Robot Ata</option>
-                                                                {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                                            </select>
+                                                                    {/* Takım seç */}
+                                                                    <select
+                                                                        className="funnels-input funnels-stage-input"
+                                                                        style={{ 
+                                                                            width: '130px', fontSize: '12px', padding: '4px 6px',
+                                                                            ...(!(isEditingThis ? editingStage.teamId : stage.assignedTeamId) && funnel.assignedTeamId ? { color: '#9ca3af', fontStyle: 'italic' } : {})
+                                                                        }}
+                                                                        value={isEditingThis ? editingStage.teamId : (stage.assignedTeamId || '')}
+                                                                        onChange={e => {
+                                                                            const val = e.target.value;
+                                                                            if (isEditingThis) {
+                                                                                setEditingStage(p => ({ ...p, teamId: val }));
+                                                                            } else {
+                                                                                startEditingStage(stage);
+                                                                                setEditingStage(p => ({ ...p, teamId: val }));
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <option value="">
+                                                                            {funnel.assignedTeamId 
+                                                                                ? `↑ ${teams.find(t => t.id === funnel.assignedTeamId)?.name || 'Üst Akış'}` 
+                                                                                : 'Takım Ata'}
+                                                                        </option>
+                                                                        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                                    </select>
 
-                                                            {/* Durum Tipi — Açık / Kazanıldı / Kaybedildi / Kapandı */}
-                                                            <select
-                                                                className="funnels-input funnels-stage-input"
-                                                                style={{
-                                                                    width: '120px', fontSize: '11px', padding: '3px 6px',
-                                                                    borderRadius: '12px', cursor: 'pointer',
-                                                                    background: stage.statusType === 'WON' ? '#dcfce7'
-                                                                        : stage.statusType === 'LOST' ? '#fee2e2'
-                                                                        : stage.statusType === 'CLOSED' ? '#f1f5f9'
-                                                                        : '#f3f4f6',
-                                                                    color: stage.statusType === 'WON' ? '#166534'
-                                                                        : stage.statusType === 'LOST' ? '#991b1b'
-                                                                        : stage.statusType === 'CLOSED' ? '#475569'
-                                                                        : '#9ca3af',
-                                                                    border: `1px solid ${
-                                                                        stage.statusType === 'WON' ? '#86efac'
-                                                                        : stage.statusType === 'LOST' ? '#fca5a5'
-                                                                        : stage.statusType === 'CLOSED' ? '#cbd5e1'
-                                                                        : '#e5e7eb'
-                                                                    }`,
-                                                                    fontWeight: stage.statusType ? 600 : 400
-                                                                }}
-                                                                value={stage.statusType || ''}
-                                                                onChange={async (e) => {
-                                                                    try {
-                                                                        const newStatusType = e.target.value || null;
-                                                                        const newIsClosing = !!newStatusType;
-                                                                        const res = await funnelAPI.updateStage(
-                                                                            currentWorkspace.id, funnel.id, stage.id,
-                                                                            { statusType: newStatusType, isClosing: newIsClosing }
-                                                                        );
-                                                                        setFunnels(prev => prev.map(f => {
-                                                                            if (f.id !== funnel.id) return f;
-                                                                            return { ...f, stages: f.stages.map(s => s.id === stage.id ? res.data.stage : s) };
-                                                                        }));
-                                                                    } catch (err) { console.error('statusType error:', err); }
-                                                                }}
-                                                                title="Aşama sonucu: Case durumunu otomatik günceller"
-                                                            >
-                                                                <option value="">⚪ Açık</option>
-                                                                <option value="WON">🟢 Kazanıldı</option>
-                                                                <option value="LOST">🔴 Kaybedildi</option>
-                                                                <option value="CLOSED">⚫ Kapandı</option>
-                                                            </select>
+                                                                    {/* Kişi seç */}
+                                                                    <select
+                                                                        className="funnels-input funnels-stage-input"
+                                                                        style={{ width: '130px', fontSize: '12px', padding: '4px 6px' }}
+                                                                        value={isEditingThis ? editingStage.userId : (stage.assignedUserId || '')}
+                                                                        onChange={e => {
+                                                                            const val = e.target.value;
+                                                                            if (isEditingThis) {
+                                                                                setEditingStage(p => ({ ...p, userId: val }));
+                                                                            } else {
+                                                                                startEditingStage(stage);
+                                                                                setEditingStage(p => ({ ...p, userId: val }));
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <option value="">
+                                                                            {funnel.assignedUserId 
+                                                                                ? `↑ ${members.find(m => m.id === funnel.assignedUserId)?.name || 'Üst Akış'}` 
+                                                                                : 'Kişi Ata'}
+                                                                        </option>
+                                                                        {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                                                    </select>
 
-                                                            {/* Giriş Kuralları */}
+                                                                    {/* Bot seç */}
+                                                                    <select
+                                                                        className="funnels-input funnels-stage-input"
+                                                                        style={{ width: '130px', fontSize: '12px', padding: '4px 6px' }}
+                                                                        value={isEditingThis ? editingStage.botId : (stage.assignedBotId || '')}
+                                                                        onChange={e => {
+                                                                            const val = e.target.value;
+                                                                            if (isEditingThis) {
+                                                                                setEditingStage(p => ({ ...p, botId: val }));
+                                                                            } else {
+                                                                                startEditingStage(stage);
+                                                                                setEditingStage(p => ({ ...p, botId: val }));
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <option value="">🤖 Robot Ata</option>
+                                                                        {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                                                    </select>
+
+                                                                    {/* Durum Tipi — Açık / Kazanıldı / Kaybedildi / Kapandı */}
+                                                                    <select
+                                                                        className="funnels-input funnels-stage-input"
+                                                                        style={{
+                                                                            width: '120px', fontSize: '11px', padding: '3px 6px',
+                                                                            borderRadius: '12px', cursor: 'pointer',
+                                                                            background: stage.statusType === 'WON' ? '#dcfce7'
+                                                                                : stage.statusType === 'LOST' ? '#fee2e2'
+                                                                                : stage.statusType === 'CLOSED' ? '#f1f5f9'
+                                                                                : '#f3f4f6',
+                                                                            color: stage.statusType === 'WON' ? '#166534'
+                                                                                : stage.statusType === 'LOST' ? '#991b1b'
+                                                                                : stage.statusType === 'CLOSED' ? '#475569'
+                                                                                : '#9ca3af',
+                                                                            border: `1px solid ${
+                                                                                stage.statusType === 'WON' ? '#86efac'
+                                                                                : stage.statusType === 'LOST' ? '#fca5a5'
+                                                                                : stage.statusType === 'CLOSED' ? '#cbd5e1'
+                                                                                : '#e5e7eb'
+                                                                            }`,
+                                                                            fontWeight: stage.statusType ? 600 : 400
+                                                                        }}
+                                                                        value={stage.statusType || ''}
+                                                                        onChange={async (e) => {
+                                                                            try {
+                                                                                const newStatusType = e.target.value || null;
+                                                                                const newIsClosing = !!newStatusType;
+                                                                                const res = await funnelAPI.updateStage(
+                                                                                    currentWorkspace.id, funnel.id, stage.id,
+                                                                                    { statusType: newStatusType, isClosing: newIsClosing }
+                                                                                );
+                                                                                setFunnels(prev => prev.map(f => {
+                                                                                    if (f.id !== funnel.id) return f;
+                                                                                    return { ...f, stages: f.stages.map(s => s.id === stage.id ? res.data.stage : s) };
+                                                                                }));
+                                                                            } catch (err) { console.error('statusType error:', err); }
+                                                                        }}
+                                                                        title="Aşama sonucu: Case durumunu otomatik günceller"
+                                                                    >
+                                                                        <option value="">⚪ Açık</option>
+                                                                        <option value="WON">🟢 Kazanıldı</option>
+                                                                        <option value="LOST">🔴 Kaybedildi</option>
+                                                                        <option value="CLOSED">⚫ Kapandı</option>
+                                                                    </select>
+
+                                                                    {/* Giriş Kuralları */}
+                                                                    <button
+                                                                        className="funnels-btn-sm"
+                                                                        style={{
+                                                                            fontSize: '11px', padding: '3px 8px',
+                                                                            background: (() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; return p?.rules?.length ? '#eff6ff' : '#f3f4f6'; } catch { return '#f3f4f6'; } })(),
+                                                                            color: (() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; return p?.rules?.length ? '#3b82f6' : '#9ca3af'; } catch { return '#9ca3af'; } })(),
+                                                                            border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap'
+                                                                        }}
+                                                                        onClick={() => setEntryRulesModal({ isOpen: true, stage })}
+                                                                        title="Giriş Kuralları"
+                                                                    >
+                                                                        {(() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; const c = p?.rules?.length || 0; return c > 0 ? `⚙️ ${c} Kural` : '⚙️ Kural Ekle'; } catch { return '⚙️ Kural Ekle'; } })()}
+                                                                    </button>
+
+                                                                    {/* Kaydet (sadece değişiklik yapıldıysa) */}
+                                                                    {isEditingThis && (
+                                                                        <>
+                                                                            <button
+                                                                                className="funnels-btn-sm funnels-btn-save"
+                                                                                onClick={() => handleUpdateStage(funnel.id, stage.id)}
+                                                                                title="Kaydet"
+                                                                            >
+                                                                                <Check size={13} /> Kaydet
+                                                                            </button>
+                                                                            <button
+                                                                                className="funnels-btn-sm funnels-btn-cancel"
+                                                                                onClick={() => setEditingStage(null)}
+                                                                                title="İptal"
+                                                                            >
+                                                                                <X size={13} />
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+
+                                                                    <button
+                                                                        className="funnels-icon-btn funnels-icon-btn-danger funnels-stage-del"
+                                                                        onClick={() => handleDeleteStage(funnel.id, stage.id)}
+                                                                        title={t('common.delete')}
+                                                                    >
+                                                                        <Trash2 size={13} />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Add stage row */}
+                                                <div className="funnels-stage-add-row">
+                                                    <div className="funnels-stage-color-picker">
+                                                        {STAGE_COLORS.map(c => (
                                                             <button
-                                                                className="funnels-btn-sm"
-                                                                style={{
-                                                                    fontSize: '11px', padding: '3px 8px',
-                                                                    background: (() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; return p?.rules?.length ? '#eff6ff' : '#f3f4f6'; } catch { return '#f3f4f6'; } })(),
-                                                                    color: (() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; return p?.rules?.length ? '#3b82f6' : '#9ca3af'; } catch { return '#9ca3af'; } })(),
-                                                                    border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap'
-                                                                }}
-                                                                onClick={() => setEntryRulesModal({ isOpen: true, stage })}
-                                                                title="Giriş Kuralları"
-                                                            >
-                                                                {(() => { try { const p = stage.entryRules ? JSON.parse(stage.entryRules) : null; const c = p?.rules?.length || 0; return c > 0 ? `⚙️ ${c} Kural` : '⚙️ Kural Ekle'; } catch { return '⚙️ Kural Ekle'; } })()}
-                                                            </button>
-
-                                                            {/* Kaydet (sadece değişiklik yapıldıysa) */}
-                                                            {isEditingThis && (
-                                                                <button
-                                                                    className="funnels-btn-sm funnels-btn-save"
-                                                                    onClick={() => handleUpdateStage(funnel.id, stage.id)}
-                                                                    title="Kaydet"
-                                                                >
-                                                                    <Check size={13} /> Kaydet
-                                                                </button>
-                                                            )}
-
-                                                            <button
-                                                                className="funnels-icon-btn funnels-icon-btn-danger funnels-stage-del"
-                                                                onClick={() => handleDeleteStage(funnel.id, stage.id)}
-                                                                title={t('common.delete')}
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
+                                                                key={c}
+                                                                className={`funnels-stage-color-dot${newStageColor === c ? ' active' : ''}`}
+                                                                style={{ background: c }}
+                                                                onClick={() => setNewStageColor(c)}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                    <div className="funnels-stage-add-inputs">
+                                                        <input
+                                                            className="funnels-input funnels-stage-input"
+                                                            placeholder="Yeni durum adı…"
+                                                            value={newStageName}
+                                                            onChange={e => setNewStageName(e.target.value)}
+                                                            onKeyDown={e => e.key === 'Enter' && handleAddStage(funnel.id)}
+                                                        />
+                                                        <select
+                                                            className="funnels-input funnels-stage-input"
+                                                            value={newStageTeamId}
+                                                            onChange={e => setNewStageTeamId(e.target.value)}
+                                                        >
+                                                        <option value="">
+                                                            {funnel.assignedTeamId 
+                                                                ? `↑ ${teams.find(t => t.id === funnel.assignedTeamId)?.name || 'Üst Akış'}` 
+                                                                : 'Takım Ata'}
+                                                        </option>
+                                                            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                        <select
+                                                            className="funnels-input funnels-stage-input"
+                                                            value={newStageUserId}
+                                                            onChange={e => setNewStageUserId(e.target.value)}
+                                                        >
+                                                            <option value="">Kişi Ata</option>
+                                                            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                                        </select>
+                                                        <button
+                                                            className="funnels-btn-primary funnels-btn-sm-add"
+                                                            onClick={() => handleAddStage(funnel.id)}
+                                                            disabled={stageSaving || !newStageName.trim()}
+                                                        >
+                                                            {stageSaving ? <Loader size={13} className="spin" /> : <Plus size={13} />}
+                                                            Ekle
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
-
-                                        {/* Add stage row */}
-                                        <div className="funnels-stage-add-row">
-                                            <div className="funnels-stage-color-picker">
-                                                {STAGE_COLORS.map(c => (
-                                                    <button
-                                                        key={c}
-                                                        className={`funnels-stage-color-dot${newStageColor === c ? ' active' : ''}`}
-                                                        style={{ background: c }}
-                                                        onClick={() => setNewStageColor(c)}
-                                                    />
-                                                ))}
-                                            </div>
-                                            <div className="funnels-stage-add-inputs">
-                                                <input
-                                                    className="funnels-input funnels-stage-input"
-                                                    placeholder="Yeni durum adı…"
-                                                    value={newStageName}
-                                                    onChange={e => setNewStageName(e.target.value)}
-                                                    onKeyDown={e => e.key === 'Enter' && handleAddStage(funnel.id)}
-                                                />
-                                                <select
-                                                    className="funnels-input funnels-stage-input"
-                                                    value={newStageTeamId}
-                                                    onChange={e => setNewStageTeamId(e.target.value)}
-                                                >
-                                                <option value="">
-                                                    {funnel.assignedTeamId 
-                                                        ? `↑ ${teams.find(t => t.id === funnel.assignedTeamId)?.name || 'Üst Akış'}` 
-                                                        : 'Takım Ata'}
-                                                </option>
-                                                    {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                                </select>
-                                                <select
-                                                    className="funnels-input funnels-stage-input"
-                                                    value={newStageUserId}
-                                                    onChange={e => setNewStageUserId(e.target.value)}
-                                                >
-                                                    <option value="">Kişi Ata</option>
-                                                    {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                                </select>
-                                                <button
-                                                    className="funnels-btn-primary funnels-btn-sm-add"
-                                                    onClick={() => handleAddStage(funnel.id)}
-                                                    disabled={stageSaving || !newStageName.trim()}
-                                                >
-                                                    {stageSaving ? <Loader size={13} className="spin" /> : <Plus size={13} />}
-                                                    Ekle
-                                                </button>
-                                            </div>
-                                        </div>
                                     </div>
-                                )}
-                            </div>
-                        );
-                    })
+
+                                    {/* Render child funnels recursively */}
+                                    {childFunnels.map(child => renderFunnel(child, depth + 1))}
+                                </div>
+                            );
+                        };
+
+                        const orderedList = mainFunnel ? [mainFunnel, ...topLevel] : topLevel;
+                        return orderedList.map(funnel => renderFunnel(funnel, 0));
                     })()
                 )}
             </div>

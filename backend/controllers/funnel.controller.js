@@ -525,7 +525,7 @@ export const getFunnels = async (req, res) => {
 export const createFunnel = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, color, icon, assignedUserId, assignedTeamId, classificationCriteria } = req.body;
+        const { name, color, icon, assignedUserId, assignedTeamId, classificationCriteria, parentId } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: 'Akış adı zorunludur' });
 
         const maxOrder = await prisma.funnel.aggregate({ where: { workspaceId }, _max: { order: true } });
@@ -552,6 +552,8 @@ export const createFunnel = async (req, res) => {
                     assignedUserId: assignedUserId || null,
                     assignedTeamId: assignedTeamId || null,
                     classificationCriteria: classificationCriteria || null,
+                    parentId: parentId || null,
+                    funnelType: parentId ? 'SUB' : 'SUB',
                     stages: { create: stages }
                 },
                 include: { stages: { orderBy: { order: 'asc' } } }
@@ -566,7 +568,9 @@ export const createFunnel = async (req, res) => {
                     order: nextOrder,
                     assignedUserId: assignedUserId || null,
                     assignedTeamId: assignedTeamId || null,
-                    classificationCriteria: classificationCriteria || null
+                    classificationCriteria: classificationCriteria || null,
+                    parentId: parentId || null,
+                    funnelType: parentId ? 'SUB' : 'SUB'
                 }
             });
             funnel.stages = [];
@@ -736,7 +740,7 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
     try {
         const conv = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            select: { funnelType: true }
+            select: { funnelType: true, contactId: true }
         });
         if (!conv || conv.funnelType) return;
 
@@ -798,6 +802,19 @@ export const autoAssignDefaultFunnel = async (workspaceId, conversationId) => {
             where: { id: conversationId },
             data: updateData
         });
+
+        // Contact'ı da güncelle (Customers sayfasında akış/aşama gösterilmesi için)
+        if (conv.contactId && firstStage) {
+            try {
+                await prisma.contact.update({
+                    where: { id: conv.contactId },
+                    data: { funnelType: defaultFunnel.id, funnelStageId: firstStage.id }
+                });
+            } catch (contactErr) {
+                console.error('⚠️ [AutoFunnel] Contact update error:', contactErr.message);
+            }
+        }
+
         console.log(`✅ [AutoFunnel] Assigned "${defaultFunnel.name}" funnel to conversation ${conversationId}${teamId ? ` (team: ${teamId})` : ''}`);
     } catch (err) {
         console.error('❌ [AutoFunnel] Error:', err.message);
