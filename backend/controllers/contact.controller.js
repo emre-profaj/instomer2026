@@ -2408,6 +2408,42 @@ export const getContactAnalytics = async (req, res) => {
             console.error('Activity stats error (non-fatal):', e.message);
         }
 
+        // ── Meeting Stats (CEO Dashboard — Görüşmeler kırılımı) ──
+        let meetingStats = { total: 0, planned: 0, completed: 0, overdue: 0, cancelled: 0 };
+        try {
+            const meetActDateFilter = {};
+            if (startDate || endDate) {
+                meetActDateFilter.createdAt = {};
+                if (startDate) meetActDateFilter.createdAt.gte = parseDateStartTR(startDate);
+                if (endDate) meetActDateFilter.createdAt.lte = parseDateEndTR(endDate);
+            }
+            const [meetByStatus, meetOverdue] = await Promise.all([
+                prisma.contactActivity.groupBy({
+                    by: ['status'],
+                    where: { workspaceId, type: 'MEETING', ...meetActDateFilter },
+                    _count: true
+                }),
+                prisma.contactActivity.count({
+                    where: {
+                        workspaceId,
+                        type: 'MEETING',
+                        status: 'PLANNED',
+                        dueDate: { lt: new Date() }
+                    }
+                })
+            ]);
+            const getMC = (obj) => typeof obj?._count === 'number' ? obj._count : (obj?._count?._all || 0);
+            meetingStats = {
+                total: meetByStatus.reduce((sum, a) => sum + getMC(a), 0),
+                planned: getMC(meetByStatus.find(a => a.status === 'PLANNED')),
+                completed: getMC(meetByStatus.find(a => a.status === 'COMPLETED')),
+                overdue: meetOverdue,
+                cancelled: getMC(meetByStatus.find(a => a.status === 'CANCELLED'))
+            };
+        } catch (e) {
+            console.error('Meeting stats error (non-fatal):', e.message);
+        }
+
         // ── Gelen Talep Analizi (aiTopic bazlı) ──
         let requestAnalysis = { topics: [], totalRequests: 0, withPhoneCount: 0, calledCount: 0, relevantCount: 0 };
         try {
@@ -2505,8 +2541,10 @@ export const getContactAnalytics = async (req, res) => {
                 byAgent: agentAppointments + stageBasedAppointments,
                 scheduled: scheduledAppointments,
                 completed: completedAppointments,
-                cancelled: cancelledAppointments
+                cancelled: cancelledAppointments,
+                overdue: Math.max(0, scheduledAppointments - completedAppointments - cancelledAppointments)
             },
+            meetingStats,
             callTrackingStats,
             dealStats,
             activityStats,

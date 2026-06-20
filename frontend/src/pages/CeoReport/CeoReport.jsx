@@ -41,16 +41,27 @@ const CeoReport = () => {
     }, [currentWorkspace?.id]);
 
     const getDateRange = () => {
+        const toDateStr = (d) => d.toISOString().split('T')[0]; // YYYY-MM-DD
         const now = new Date();
         const start = new Date();
-        if (dateFilter === 'today') { start.setHours(0, 0, 0, 0); }
-        else if (dateFilter === 'yesterday') { start.setDate(now.getDate() - 1); start.setHours(0, 0, 0, 0); const end = new Date(start); end.setHours(23, 59, 59, 999); return { startDate: start.toISOString(), endDate: end.toISOString() }; }
-        else if (dateFilter === '7d') start.setDate(now.getDate() - 7);
-        else if (dateFilter === '30d') start.setDate(now.getDate() - 30);
-        else if (dateFilter === '90d') start.setDate(now.getDate() - 90);
-        else if (dateFilter === 'custom' && startDate) return { startDate, endDate };
-        else return {};
-        return { startDate: start.toISOString(), endDate: now.toISOString() };
+        if (dateFilter === 'today') {
+            return { startDate: toDateStr(now), endDate: toDateStr(now) };
+        } else if (dateFilter === 'yesterday') {
+            const y = new Date(now);
+            y.setDate(now.getDate() - 1);
+            return { startDate: toDateStr(y), endDate: toDateStr(y) };
+        } else if (dateFilter === '7d') {
+            start.setDate(now.getDate() - 7);
+        } else if (dateFilter === '30d') {
+            start.setDate(now.getDate() - 30);
+        } else if (dateFilter === '90d') {
+            start.setDate(now.getDate() - 90);
+        } else if (dateFilter === 'custom' && startDate) {
+            return { startDate, endDate };
+        } else {
+            return {};
+        }
+        return { startDate: toDateStr(start), endDate: toDateStr(now) };
     };
 
     const fetchData = async () => {
@@ -106,7 +117,44 @@ const CeoReport = () => {
     const as = analytics?.activityStats || {};
     const ct = analytics?.callTrackingStats || {};
     const appt = analytics?.appointmentStats || {};
+    const meet = analytics?.meetingStats || {};
     const totalSales = (ds.wonAmount || 0);
+
+    // ── Topic similarity aggregation for Gelen Talep Analizi ──
+    const aggregateTopics = (topics) => {
+        if (!topics?.length) return [];
+        const normalize = (s) => s.toLowerCase().replace(/[^a-zçğıöşü0-9\s]/g, '').trim();
+        const similarity = (a, b) => {
+            const na = normalize(a), nb = normalize(b);
+            if (na === nb) return 1;
+            if (na.includes(nb) || nb.includes(na)) return 0.85;
+            const wa = na.split(/\s+/), wb = nb.split(/\s+/);
+            const common = wa.filter(w => wb.some(bw => bw === w || (w.length > 3 && bw.startsWith(w.slice(0, -1))) || (bw.length > 3 && w.startsWith(bw.slice(0, -1)))));
+            return common.length / Math.max(wa.length, wb.length);
+        };
+        const groups = [];
+        const used = new Set();
+        const sorted = [...topics].sort((a, b) => b.count - a.count);
+        for (let i = 0; i < sorted.length; i++) {
+            if (used.has(i)) continue;
+            const group = { ...sorted[i], mergedTopics: [sorted[i].topic] };
+            used.add(i);
+            for (let j = i + 1; j < sorted.length; j++) {
+                if (used.has(j)) continue;
+                if (similarity(sorted[i].topic, sorted[j].topic) >= 0.55) {
+                    group.count += sorted[j].count;
+                    group.withPhone += sorted[j].withPhone;
+                    group.called += sorted[j].called;
+                    group.relevant += sorted[j].relevant;
+                    group.mergedTopics.push(sorted[j].topic);
+                    used.add(j);
+                }
+            }
+            groups.push(group);
+        }
+        return groups.sort((a, b) => b.count - a.count);
+    };
+    const aggregatedTopics = aggregateTopics(analytics?.requestAnalysis?.topics);
 
     return (
         <div className="ceo-report">
@@ -441,46 +489,85 @@ const CeoReport = () => {
             </div>
 
             {/* ═══════════════════════════════════════════════════════ */}
-            {/* BÖLÜM 5: Randevu Dağılımı */}
+            {/* BÖLÜM 5: Görüşme & Randevu Dağılımı */}
             {/* ═══════════════════════════════════════════════════════ */}
-            {(appt.total || 0) > 0 && (
+            {((appt.total || 0) > 0 || (meet.total || 0) > 0) && (
                 <div className="ceo-section" style={{ marginBottom: 20 }}>
                     <div className="ceo-section-header">
                         <div className="ceo-section-icon" style={{ background: '#f0fdf4', color: '#10b981' }}><Calendar size={18} /></div>
-                        <h2>Randevu Dağılımı</h2>
+                        <h2>Görüşme & Randevu Dağılımı</h2>
                     </div>
                     <div className="ceo-section-body">
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 16 }}>
-                            {[
-                                { label: 'Bot Aldı', value: appt.byBot, color: '#6366f1', icon: '🤖' },
-                                { label: 'Agent Aldı', value: appt.byAgent, color: '#0ea5e9', icon: '👤' },
-                                { label: 'Planlandı', value: appt.scheduled, color: '#f59e0b', icon: '📅' },
-                                { label: 'Tamamlandı', value: appt.completed, color: '#10b981', icon: '✅' },
-                                { label: 'İptal Edildi', value: appt.cancelled, color: '#ef4444', icon: '❌' },
-                            ].map(item => (
-                                <div key={item.label} style={{ background: '#f8fafc', padding: '16px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <div style={{ fontSize: 24 }}>{item.icon}</div>
-                                    <div>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div>
+                        {/* ── Görüşmeler ── */}
+                        <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Handshake size={15} style={{ color: '#6366f1' }} /> Görüşmeler
+                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({meet.total || 0} toplam)</span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                                {[
+                                    { label: 'Planlanan', value: meet.planned, color: '#f59e0b', icon: '📅' },
+                                    { label: 'Tamamlanan', value: meet.completed, color: '#10b981', icon: '✅' },
+                                    { label: 'Tarihi Geçmiş', value: meet.overdue, color: '#ef4444', icon: '⏰' },
+                                    { label: 'İptal Edildi', value: meet.cancelled, color: '#64748b', icon: '❌' },
+                                ].map(item => (
+                                    <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
+                                        <div style={{ fontSize: 20 }}>{item.icon}</div>
+                                        <div>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div>
+                                            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
 
-                        {/* Agent Bazlı Randevu */}
-                        {agentPerformance?.agents?.filter(a => (a.appointmentCount || 0) > 0).length > 0 && (
+                        {/* ── Randevular ── */}
+                        <div style={{ marginBottom: 20 }}>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Calendar size={15} style={{ color: '#0ea5e9' }} /> Randevular
+                                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({appt.total || 0} toplam)</span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                                {[
+                                    { label: 'Planlanan', value: appt.scheduled, color: '#f59e0b', icon: '📅' },
+                                    { label: 'Tamamlanan', value: appt.completed, color: '#10b981', icon: '✅' },
+                                    { label: 'Tarihi Geçmiş', value: appt.overdue, color: '#ef4444', icon: '⏰' },
+                                    { label: 'İptal Edildi', value: appt.cancelled, color: '#64748b', icon: '❌' },
+                                ].map(item => (
+                                    <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
+                                        <div style={{ fontSize: 20 }}>{item.icon}</div>
+                                        <div>
+                                            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div>
+                                            <div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* ── Agent Bazlı Görüşme & Randevu ── */}
+                        {agentPerformance?.agents?.filter(a => (a.appointmentCount || 0) > 0 || (a.meetingCount || 0) > 0).length > 0 && (
                             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><UserCheck size={14} /> Agent Bazlı Randevu</div>
-                                {agentPerformance.agents.filter(a => (a.appointmentCount || 0) > 0).sort((a, b) => (b.appointmentCount || 0) - (a.appointmentCount || 0)).map((agent, idx) => (
+                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><UserCheck size={14} /> Agent Bazlı Görüşme & Randevu</div>
+                                {agentPerformance.agents.filter(a => (a.appointmentCount || 0) > 0 || (a.meetingCount || 0) > 0).sort((a, b) => ((b.appointmentCount || 0) + (b.meetingCount || 0)) - ((a.appointmentCount || 0) + (a.meetingCount || 0))).map((agent, idx) => (
                                     <div key={agent.userId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: idx === 0 ? '#eff6ff' : '#f8fafc', border: idx === 0 ? '1px solid #bfdbfe' : '1px solid #f1f5f9', marginBottom: 6 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                             <div style={{ width: 28, height: 28, borderRadius: '50%', background: idx === 0 ? '#3b82f6' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '0.7rem' }}>{idx + 1}</div>
                                             <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{agent.name}</span>
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <span style={{ fontSize: '1.1rem', fontWeight: 800, color: idx === 0 ? '#3b82f6' : '#0ea5e9' }}>{agent.appointmentCount}</span>
-                                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>randevu</span>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <Handshake size={13} style={{ color: '#6366f1' }} />
+                                                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#6366f1' }}>{agent.meetingCount || 0}</span>
+                                                <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>görüşme</span>
+                                            </div>
+                                            <div style={{ width: 1, height: 18, background: '#e2e8f0' }} />
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <Calendar size={13} style={{ color: '#0ea5e9' }} />
+                                                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0ea5e9' }}>{agent.appointmentCount || 0}</span>
+                                                <span style={{ fontSize: '0.65rem', color: '#94a3b8' }}>randevu</span>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -542,7 +629,7 @@ const CeoReport = () => {
             {/* ═══════════════════════════════════════════════════════ */}
             {/* BÖLÜM 7: Gelen Talep Analizi */}
             {/* ═══════════════════════════════════════════════════════ */}
-            {analytics?.requestAnalysis?.topics?.length > 0 && (
+            {aggregatedTopics.length > 0 && (
                 <div className="ceo-section" style={{ marginBottom: 20 }}>
                     <div className="ceo-section-header">
                         <div className="ceo-section-icon" style={{ background: '#fdf2f8', color: '#ec4899' }}><Target size={18} /></div>
@@ -569,8 +656,8 @@ const CeoReport = () => {
                             </div>
                         </div>
 
-                        {/* Konu Bazlı Tablo */}
-                        <div className="ceo-label">İlgilenilen Konular</div>
+                        {/* Konu Bazlı Tablo (Benzer konular birleştirilmiş) */}
+                        <div className="ceo-label">İlgilenilen Konular <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#94a3b8' }}>(benzer konular birleştirildi)</span></div>
                         <div style={{ overflowX: 'auto' }}>
                             <table className="ceo-perf-table">
                                 <thead>
@@ -584,9 +671,9 @@ const CeoReport = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {analytics.requestAnalysis.topics.map((t, idx) => {
+                                    {aggregatedTopics.map((t, idx) => {
                                         const convRate = t.count > 0 ? ((t.relevant / t.count) * 100).toFixed(0) : 0;
-                                        const maxCount = analytics.requestAnalysis.topics[0]?.count || 1;
+                                        const maxCount = aggregatedTopics[0]?.count || 1;
                                         const barPct = ((t.count / maxCount) * 100).toFixed(0);
                                         return (
                                             <tr key={t.topic}>
@@ -594,7 +681,10 @@ const CeoReport = () => {
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                         <div style={{ width: 26, height: 26, borderRadius: '50%', background: idx === 0 ? '#ec4899' : idx === 1 ? '#f472b6' : '#f9a8d4', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '0.65rem', flexShrink: 0 }}>{idx + 1}</div>
                                                         <div style={{ minWidth: 0 }}>
-                                                            <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{t.topic}</div>
+                                                            <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={t.mergedTopics?.length > 1 ? t.mergedTopics.join(', ') : undefined}>{t.topic}</div>
+                                                            {t.mergedTopics?.length > 1 && (
+                                                                <div style={{ fontSize: '0.62rem', color: '#a78bfa', marginTop: 2 }}>+{t.mergedTopics.length - 1} benzer konu birleştirildi</div>
+                                                            )}
                                                             <div style={{ height: 3, background: '#f1f5f9', borderRadius: 2, width: 80, marginTop: 3 }}>
                                                                 <div style={{ height: '100%', background: '#ec4899', borderRadius: 2, width: `${barPct}%` }} />
                                                             </div>
