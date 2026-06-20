@@ -14,36 +14,58 @@ const TOPIC_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 /**
  * AI-powered topic classification: takes raw aiTopic strings and groups semantically similar ones
  * Returns a mapping: { "raw topic" => "canonical category name" }
+ * Has a 5-second timeout to prevent blocking the analytics response.
  */
 async function classifyTopicsWithAI(workspaceId, rawTopics) {
     if (!rawTopics || rawTopics.length === 0) return null;
     
     // Create a cache key from sorted topic list
-    const cacheKey = workspaceId + ':' + rawTopics.sort().join('|').substring(0, 500);
+    const sortedTopics = [...rawTopics].sort();
+    const cacheKey = workspaceId + ':' + sortedTopics.join('|').substring(0, 500);
     const cached = topicClassificationCache.get(cacheKey);
     if (cached && cached.expiry > Date.now()) {
         return cached.data;
     }
 
+    // Wrap AI call in a 5-second timeout — if it takes longer, return null
+    // and let the background job cache it for next time
     try {
-        // Get AI API key for workspace
-        const workspace = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: { aiApiKey: true }
-        });
-        let aiApiKey = workspace?.aiApiKey;
-        if (!aiApiKey) {
-            const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
-            aiApiKey = globalSettings?.globalAiApiKey;
+        const result = await Promise.race([
+            _doClassifyTopics(workspaceId, rawTopics, cacheKey),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('AI_TIMEOUT')), 5000))
+        ]);
+        return result;
+    } catch (e) {
+        if (e.message === 'AI_TIMEOUT') {
+            console.warn('⏱️ [TopicAI] Classification timed out (5s), returning raw topics. Will cache in background.');
+            // Fire-and-forget: let it finish in background for next request
+            _doClassifyTopics(workspaceId, rawTopics, cacheKey).catch(() => {});
+        } else {
+            console.error('AI topic classification error (non-fatal):', e.message);
         }
-        if (!aiApiKey) return null;
+        return null;
+    }
+}
 
-        const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+async function _doClassifyTopics(workspaceId, rawTopics, cacheKey) {
+    // Get AI API key for workspace
+    const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { aiApiKey: true }
+    });
+    let aiApiKey = workspace?.aiApiKey;
+    if (!aiApiKey) {
+        const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
+        aiApiKey = globalSettings?.globalAiApiKey;
+    }
+    if (!aiApiKey) return null;
 
-        const topicListText = rawTopics.map((t, i) => `${i + 1}. ${t}`).join('\n');
+    const genAI = new GoogleGenerativeAI(aiApiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-        const prompt = `Sen bir müşteri talep sınıflandırma uzmanısın. Aşağıda bir CRM sistemindeki müşteri taleplerinin konu başlıkları var. 
+    const topicListText = rawTopics.map((t, i) => `${i + 1}. ${t}`).join('\n');
+
+    const prompt = `Sen bir müşteri talep sınıflandırma uzmanısın. Aşağıda bir CRM sistemindeki müşteri taleplerinin konu başlıkları var. 
 Bunların birçoğu aslında aynı konuyu farklı şekillerde ifade ediyor.
 
 GÖREV: Her konu başlığını standart bir kategori adıyla eşleştir. Semantik olarak aynı anlama gelen konuları aynı kategoriye koy.
@@ -61,25 +83,21 @@ ${topicListText}
 ÇIKTI FORMATI (sadece JSON):
 {"mapping": {"orijinal konu 1": "Kategori Adı", "orijinal konu 2": "Kategori Adı", ...}}`;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        
-        // Parse JSON from response
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return null;
-        
-        const parsed = JSON.parse(jsonMatch[0]);
-        const mapping = parsed.mapping || parsed;
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    
+    // Parse JSON from response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    
+    const parsed = JSON.parse(jsonMatch[0]);
+    const mapping = parsed.mapping || parsed;
 
-        // Cache the result
-        topicClassificationCache.set(cacheKey, { data: mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
-        console.log(`🤖 [TopicAI] Classified ${rawTopics.length} topics into ${new Set(Object.values(mapping)).size} categories for workspace ${workspaceId}`);
-        
-        return mapping;
-    } catch (e) {
-        console.error('AI topic classification error (non-fatal):', e.message);
-        return null;
-    }
+    // Cache the result
+    topicClassificationCache.set(cacheKey, { data: mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
+    console.log(`🤖 [TopicAI] Classified ${rawTopics.length} topics into ${new Set(Object.values(mapping)).size} categories for workspace ${workspaceId}`);
+    
+    return mapping;
 }
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
@@ -2369,37 +2387,27 @@ export const getContactAnalytics = async (req, res) => {
         };
 
         // ── Deal/Sales Stats (CEO Dashboard) ──
-        // Her stage kendi tarih alanına göre filtrelenir (Siparişler/Teklifler/Faturalar sayfalarıyla aynı mantık)
+        // Tüm stage'ler aynı tarih alanı (createdAt) ile filtrelenir — Siparişler/Teklifler/Faturalar sayfalarıyla tutarlı
         let dealStats = { totalDeals: 0, totalQuotes: 0, totalOrders: 0, totalInvoices: 0, wonCount: 0, lostCount: 0, openCount: 0, totalAmount: 0, wonAmount: 0, orderAmount: 0, quoteAmount: 0, invoiceAmount: 0, recentDeals: [] };
         try {
-            // Stage-specific date filters: Siparişler sayfası orderCreatedAt||createdAt kullanır, 
-            // Teklifler createdAt, Faturalar invoiceCreatedAt||createdAt kullanır
             const hasDateFilter = startDate || endDate;
             const dateGte = startDate ? parseDateStartTR(startDate) : undefined;
             const dateLte = endDate ? parseDateEndTR(endDate) : undefined;
 
-            const buildDateOr = (dateField) => {
+            // Tüm stage'ler için aynı createdAt filtresi (deal.controller.js getDeals ile aynı)
+            const buildCreatedAtFilter = () => {
                 if (!hasDateFilter) return {};
-                const mainFilter = {};
-                mainFilter[dateField] = {};
-                if (dateGte) mainFilter[dateField].gte = dateGte;
-                if (dateLte) mainFilter[dateField].lte = dateLte;
-                // Eğer dateField null ise createdAt'e fallback yap
-                const fallbackFilter = { [dateField]: null, createdAt: {} };
-                if (dateGte) fallbackFilter.createdAt.gte = dateGte;
-                if (dateLte) fallbackFilter.createdAt.lte = dateLte;
-                return { OR: [mainFilter, fallbackFilter] };
+                const f = { createdAt: {} };
+                if (dateGte) f.createdAt.gte = dateGte;
+                if (dateLte) f.createdAt.lte = dateLte;
+                return f;
             };
 
-            const quoteWhere = { workspaceId, stage: 'QUOTE', ...(hasDateFilter ? { createdAt: {} } : {}) };
-            if (hasDateFilter) {
-                quoteWhere.createdAt = {};
-                if (dateGte) quoteWhere.createdAt.gte = dateGte;
-                if (dateLte) quoteWhere.createdAt.lte = dateLte;
-            }
+            const dateFilter = buildCreatedAtFilter();
 
-            const orderWhere = { workspaceId, stage: 'ORDER', ...buildDateOr('orderCreatedAt') };
-            const invoiceWhere = { workspaceId, stage: 'INVOICE', ...buildDateOr('invoiceCreatedAt') };
+            const quoteWhere = { workspaceId, stage: 'QUOTE', ...dateFilter };
+            const orderWhere = { workspaceId, stage: 'ORDER', ...dateFilter };
+            const invoiceWhere = { workspaceId, stage: 'INVOICE', ...dateFilter };
 
             // Tüm deal'lar için genel tarih filtresi (recentDeals ve total için)
             const generalDateFilter = {};
