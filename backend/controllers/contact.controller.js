@@ -4,6 +4,83 @@ import { executeHotOpportunityEmailRule } from './rules.controller.js';
 import { normalizePhone } from '../utils/phoneNormalizer.js';
 import { ensureCaseForConversation } from './case.controller.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// ─── AI Topic Classification Cache ─────────────────────────────
+// Cache key: workspaceId + hash of topic list, expires in 10 minutes
+const topicClassificationCache = new Map();
+const TOPIC_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * AI-powered topic classification: takes raw aiTopic strings and groups semantically similar ones
+ * Returns a mapping: { "raw topic" => "canonical category name" }
+ */
+async function classifyTopicsWithAI(workspaceId, rawTopics) {
+    if (!rawTopics || rawTopics.length === 0) return null;
+    
+    // Create a cache key from sorted topic list
+    const cacheKey = workspaceId + ':' + rawTopics.sort().join('|').substring(0, 500);
+    const cached = topicClassificationCache.get(cacheKey);
+    if (cached && cached.expiry > Date.now()) {
+        return cached.data;
+    }
+
+    try {
+        // Get AI API key for workspace
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { aiApiKey: true }
+        });
+        let aiApiKey = workspace?.aiApiKey;
+        if (!aiApiKey) {
+            const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
+            aiApiKey = globalSettings?.globalAiApiKey;
+        }
+        if (!aiApiKey) return null;
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const topicListText = rawTopics.map((t, i) => `${i + 1}. ${t}`).join('\n');
+
+        const prompt = `Sen bir müşteri talep sınıflandırma uzmanısın. Aşağıda bir CRM sistemindeki müşteri taleplerinin konu başlıkları var. 
+Bunların birçoğu aslında aynı konuyu farklı şekillerde ifade ediyor.
+
+GÖREV: Her konu başlığını standart bir kategori adıyla eşleştir. Semantik olarak aynı anlama gelen konuları aynı kategoriye koy.
+
+KURALLAR:
+- Kategori adları kısa ve net olsun (2-4 kelime). 
+- Türkçe karakter kullan.
+- "talebi", "bilgisi", "hakkında bilgi", "randevusu" gibi ekleri kaldırarak özünü yakala.
+- "Merhaba", "Bilgi", "İletişim" gibi genel/belirsiz konuları "Genel Bilgi Talebi" kategorisine koy.
+- Sonucu SADECE JSON formatında döndür, başka bir şey yazma.
+
+KONU BAŞLIKLARI:
+${topicListText}
+
+ÇIKTI FORMATI (sadece JSON):
+{"mapping": {"orijinal konu 1": "Kategori Adı", "orijinal konu 2": "Kategori Adı", ...}}`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+        
+        // Parse JSON from response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
+        
+        const parsed = JSON.parse(jsonMatch[0]);
+        const mapping = parsed.mapping || parsed;
+
+        // Cache the result
+        topicClassificationCache.set(cacheKey, { data: mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
+        console.log(`🤖 [TopicAI] Classified ${rawTopics.length} topics into ${new Set(Object.values(mapping)).size} categories for workspace ${workspaceId}`);
+        
+        return mapping;
+    } catch (e) {
+        console.error('AI topic classification error (non-fatal):', e.message);
+        return null;
+    }
+}
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // Turkey is UTC+3
@@ -2480,7 +2557,7 @@ export const getContactAnalytics = async (req, res) => {
             console.error('Meeting stats error (non-fatal):', e.message);
         }
 
-        // ── Gelen Talep Analizi (aiTopic bazlı) ──
+        // ── Gelen Talep Analizi (aiTopic bazlı + AI sınıflandırma) ──
         let requestAnalysis = { topics: [], totalRequests: 0, withPhoneCount: 0, calledCount: 0, relevantCount: 0 };
         try {
             // Seçili tarih aralığında oluşturulan kişilerin konuşmalarından aiTopic çek
@@ -2510,7 +2587,7 @@ export const getContactAnalytics = async (req, res) => {
                 }
             });
 
-            // Topic bazlı gruplama
+            // Step 1: Topic bazlı ham gruplama
             const topicMap = {};
             const seenContactsByTopic = {};
             for (const conv of topicConversations) {
@@ -2541,16 +2618,46 @@ export const getContactAnalytics = async (req, res) => {
                 }
             }
 
-            const topicsArray = Object.values(topicMap)
-                .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant }))
-                .sort((a, b) => b.count - a.count);
+            const rawTopics = Object.keys(topicMap);
+
+            // Step 2: AI sınıflandırma — benzer konuları birleştir
+            let topicsArray;
+            const aiMapping = rawTopics.length > 2 ? await classifyTopicsWithAI(workspaceId, rawTopics) : null;
+            
+            if (aiMapping && Object.keys(aiMapping).length > 0) {
+                // AI sınıflandırma başarılı — kategorilere göre birleştir
+                const categoryMap = {};
+                for (const [rawTopic, rawData] of Object.entries(topicMap)) {
+                    const category = aiMapping[rawTopic] || rawTopic; // fallback to raw if not mapped
+                    if (!categoryMap[category]) {
+                        categoryMap[category] = { topic: category, count: 0, withPhone: 0, called: 0, relevant: 0, mergedTopics: [], contactIds: new Set() };
+                    }
+                    const cat = categoryMap[category];
+                    cat.count += rawData.count;
+                    cat.withPhone += rawData.withPhone;
+                    cat.called += rawData.called;
+                    cat.relevant += rawData.relevant;
+                    cat.mergedTopics.push(rawTopic);
+                    rawData.contactIds.forEach(id => cat.contactIds.add(id));
+                }
+                topicsArray = Object.values(categoryMap)
+                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, mergedTopics: t.mergedTopics }))
+                    .sort((a, b) => b.count - a.count);
+                console.log(`🤖 [TopicAI] ${rawTopics.length} raw topics → ${topicsArray.length} categories`);
+            } else {
+                // AI kullanılamadı — ham topicler olduğu gibi
+                topicsArray = Object.values(topicMap)
+                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant }))
+                    .sort((a, b) => b.count - a.count);
+            }
 
             requestAnalysis = {
                 topics: topicsArray,
                 totalRequests: topicsArray.reduce((s, t) => s + t.count, 0),
                 withPhoneCount: topicsArray.reduce((s, t) => s + t.withPhone, 0),
                 calledCount: topicsArray.reduce((s, t) => s + t.called, 0),
-                relevantCount: topicsArray.reduce((s, t) => s + t.relevant, 0)
+                relevantCount: topicsArray.reduce((s, t) => s + t.relevant, 0),
+                aiClassified: !!(aiMapping && Object.keys(aiMapping).length > 0)
             };
         } catch (e) {
             console.error('Request analysis error (non-fatal):', e.message);

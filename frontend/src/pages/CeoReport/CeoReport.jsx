@@ -120,9 +120,16 @@ const CeoReport = () => {
     const meet = analytics?.meetingStats || {};
     const totalSales = (ds.wonAmount || 0);
 
-    // ── Topic similarity aggregation for Gelen Talep Analizi ──
-    const aggregateTopics = (topics) => {
+    // ── Topic aggregation for Gelen Talep Analizi ──
+    // Backend artık AI ile benzer konuları birleştiriyor (mergedTopics alanı ile).
+    // Eğer AI sınıflandırma yapılmışsa direkt kullan, yapılmamışsa basit similarity fallback
+    const aggregateTopics = (topics, aiClassified) => {
         if (!topics?.length) return [];
+        // Backend AI sınıflandırma yaptıysa, topicler zaten birleştirilmiş geliyor
+        if (aiClassified) {
+            return [...topics].sort((a, b) => b.count - a.count);
+        }
+        // Fallback: Basit similarity aggregation (AI yoksa)
         const normalize = (s) => s.toLowerCase().replace(/[^a-zçğıöşü0-9\s]/g, '').trim();
         const similarity = (a, b) => {
             const na = normalize(a), nb = normalize(b);
@@ -154,7 +161,7 @@ const CeoReport = () => {
         }
         return groups.sort((a, b) => b.count - a.count);
     };
-    const aggregatedTopics = aggregateTopics(analytics?.requestAnalysis?.topics);
+    const aggregatedTopics = aggregateTopics(analytics?.requestAnalysis?.topics, analytics?.requestAnalysis?.aiClassified);
 
     return (
         <div className="ceo-report">
@@ -656,8 +663,8 @@ const CeoReport = () => {
                             </div>
                         </div>
 
-                        {/* Konu Bazlı Tablo (Benzer konular birleştirilmiş) */}
-                        <div className="ceo-label">İlgilenilen Konular <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#94a3b8' }}>(benzer konular birleştirildi)</span></div>
+                        {/* Konu Bazlı Tablo (AI sınıflandırma veya similarity) */}
+                        <div className="ceo-label">İlgilenilen Konular {analytics.requestAnalysis.aiClassified ? <span style={{ fontSize: '0.62rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '2px 8px', borderRadius: 12, marginLeft: 6 }}>🤖 AI Sınıflandırma</span> : <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#94a3b8' }}>(benzer konular birleştirildi)</span>}</div>
                         <div style={{ overflowX: 'auto' }}>
                             <table className="ceo-perf-table">
                                 <thead>
