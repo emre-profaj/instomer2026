@@ -66,6 +66,107 @@
     color: #6366f1;
 }
 
+/* ── Filter Bar ── */
+.ceo-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 18px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.ceo-filter-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.ceo-filter-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    padding: 7px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    white-space: nowrap;
+}
+.ceo-pill-group {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.ceo-pill {
+    padding: 7px 16px;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.ceo-pill:hover {
+    border-color: #c7d2fe;
+    background: #f5f3ff;
+    color: #6366f1;
+}
+.ceo-pill.active {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #dc2626;
+    font-weight: 700;
+}
+.ceo-custom-dates {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.ceo-date-input {
+    padding: 6px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    background: #fff;
+    color: #1e293b;
+    outline: none;
+    font-weight: 500;
+    cursor: pointer;
+}
+.ceo-date-input:focus {
+    border-color: #6366f1;
+}
+.ceo-filter-right {
+    display: flex;
+    align-items: center;
+}
+.ceo-funnel-select {
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 600;
+    color: #1e293b;
+    outline: none;
+    transition: border 0.2s;
+    min-width: 140px;
+}
+.ceo-funnel-select:focus {
+    border-color: #6366f1;
+}
+
 /* ── KPI Grid (Section 2) ── */
 .ceo-kpi-grid {
     display: grid;
@@ -401,5 +502,15 @@
     }
     .ceo-perf-table {
         font-size: 0.75rem;
+    }
+    .ceo-filter-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .ceo-pill-group {
+        flex-wrap: wrap;
+    }
+    .ceo-funnel-select {
+        width: 100%;
     }
 }

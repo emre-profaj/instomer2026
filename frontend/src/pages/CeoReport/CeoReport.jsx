@@ -6,7 +6,7 @@ import {
     CheckCircle2, AlertTriangle, ListChecks, Handshake,
     Instagram, Facebook, Mail, Globe, MessageCircle,
     ChevronDown, ChevronRight, PhoneCall, FileText, ShoppingCart,
-    Search, BarChart3, Target
+    Search, BarChart3, Target, Filter
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, funnelAPI } from '../../services/api';
@@ -25,10 +25,20 @@ const CeoReport = () => {
     const [agentPerformance, setAgentPerformance] = useState(null);
     const [contactStats, setContactStats] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState('7d');
+    const [dateFilter, setDateFilter] = useState('all');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [expandedFlows, setExpandedFlows] = useState({});
+    const [funnelFilter, setFunnelFilter] = useState('');
+    const [funnels, setFunnels] = useState([]);
+
+    // Fetch funnels list
+    useEffect(() => {
+        if (!currentWorkspace?.id) return;
+        funnelAPI.getAll(currentWorkspace.id).then(res => {
+            setFunnels(res.data || []);
+        }).catch(() => {});
+    }, [currentWorkspace?.id]);
 
     const getDateRange = () => {
         const now = new Date();
@@ -48,15 +58,17 @@ const CeoReport = () => {
         setLoading(true);
         try {
             const dateParams = getDateRange();
+            const params = { ...dateParams };
+            if (funnelFilter) params.funnelId = funnelFilter;
             const [analyticsRes, performanceRes] = await Promise.all([
-                contactAPI.getAnalytics(currentWorkspace.id, dateParams),
-                contactAPI.getAgentPerformance(currentWorkspace.id, dateParams)
+                contactAPI.getAnalytics(currentWorkspace.id, params),
+                contactAPI.getAgentPerformance(currentWorkspace.id, params)
             ]);
             setAnalytics(analyticsRes.data);
             setAgentPerformance(performanceRes.data);
 
             try {
-                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, dateParams);
+                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, params);
                 setContactStats(statsRes.data);
             } catch (e) { console.warn('Contact daily stats failed:', e.message); }
         } catch (err) {
@@ -66,7 +78,7 @@ const CeoReport = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
+    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, funnelFilter]);
 
     const getFlowIcon = (flowName) => {
         const name = flowName?.toLowerCase() || '';
@@ -105,26 +117,61 @@ const CeoReport = () => {
                     <p>Satış, aktivite ve ekip performansının anlık özeti</p>
                 </div>
                 <div className="ceo-header-actions">
-                    <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="ceo-select">
-                        <option value="today">Bugün</option>
-                        <option value="yesterday">Dün</option>
-                        <option value="7d">Son 7 Gün</option>
-                        <option value="30d">Son 30 Gün</option>
-                        <option value="90d">Son 90 Gün</option>
-                        <option value="custom">Özel Aralık</option>
-                        <option value="all">Tümü</option>
-                    </select>
-                    {dateFilter === 'custom' && (
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="ceo-select" />
-                            <span style={{ color: '#9ca3af' }}>—</span>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="ceo-select" />
-                        </div>
-                    )}
                     <button className="ceo-refresh-btn" onClick={fetchData}>
                         <RefreshCw size={14} /> Güncelle
                     </button>
                 </div>
+            </div>
+
+            {/* ═══════════════════════════════════════════════════════ */}
+            {/* FİLTRE BARI */}
+            {/* ═══════════════════════════════════════════════════════ */}
+            <div className="ceo-filter-bar">
+                <div className="ceo-filter-left">
+                    <div className="ceo-filter-label">
+                        <Filter size={14} />
+                        <span>Filtreler</span>
+                    </div>
+                    <div className="ceo-pill-group">
+                        {[
+                            { key: 'all', label: 'Tümü' },
+                            { key: 'today', label: 'Bugün' },
+                            { key: 'yesterday', label: 'Dün' },
+                            { key: '7d', label: 'Bu Hafta' },
+                            { key: '30d', label: 'Bu Ay' },
+                            { key: 'custom', label: '📅 Özel' },
+                        ].map(item => (
+                            <button
+                                key={item.key}
+                                className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(item.key)}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
+                    </div>
+                    {dateFilter === 'custom' && (
+                        <div className="ceo-custom-dates">
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="ceo-date-input" />
+                            <span style={{ color: '#9ca3af' }}>—</span>
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="ceo-date-input" />
+                        </div>
+                    )}
+                </div>
+                {funnels.length > 0 && (
+                    <div className="ceo-filter-right">
+                        <select
+                            value={funnelFilter}
+                            onChange={(e) => setFunnelFilter(e.target.value)}
+                            className="ceo-funnel-select"
+                        >
+                            <option value="">Tüm Akışlar</option>
+                            {funnels.map(f => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
             </div>
 
             {/* ═══════════════════════════════════════════════════════ */}
