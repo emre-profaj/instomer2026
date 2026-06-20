@@ -353,8 +353,8 @@ const Quotes = () => {
                         >
                             <option value="ALL">Tüm Durumlar</option>
                             <option value="OPEN">Açık</option>
-                            <option value="WON">Kazanıldı</option>
-                            <option value="LOST">Kaybedildi</option>
+                            <option value="WON">Tamamlandı</option>
+                            <option value="LOST">İptal</option>
                         </select>
                         {!isAgent && (
                             <select
@@ -444,7 +444,7 @@ const Quotes = () => {
                                 <div className="sales-list-card-top">
                                     <span className="sales-list-card-number">{deal.quoteNumber}</span>
                                     <span className={`sales-list-card-badge ${deal.status.toLowerCase()}`}>
-                                        {deal.status === 'OPEN' ? 'Açık' : deal.status === 'WON' ? 'Kazanıldı' : 'Kaybedildi'}
+                                        {deal.status === 'OPEN' ? 'Açık' : deal.status === 'WON' ? 'Tamamlandı' : 'İptal'}
                                     </span>
                                 </div>
                                 <div className="sales-list-card-title">{deal.title}</div>
@@ -510,8 +510,8 @@ const Quotes = () => {
                                         className="status-select"
                                     >
                                         <option value="OPEN">Açık</option>
-                                        <option value="WON">{t('sales.won')}</option>
-                                        <option value="LOST">{t('sales.lost')}</option>
+                                        <option value="WON">Tamamlandı</option>
+                                        <option value="LOST">İptal</option>
                                     </select>
                                 </div>
                                 <div className="info-row">
