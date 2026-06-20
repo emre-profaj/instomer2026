@@ -41,7 +41,13 @@ const CeoReport = () => {
     }, [currentWorkspace?.id]);
 
     const getDateRange = () => {
-        const toDateStr = (d) => d.toISOString().split('T')[0]; // YYYY-MM-DD
+        // Local timezone formatting — toISOString() UTC'ye çevirir ve Türkiye'de 1 gün kayar!
+        const toDateStr = (d) => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
         const now = new Date();
         if (dateFilter === 'today') {
             return { startDate: toDateStr(now), endDate: toDateStr(now) };
@@ -50,7 +56,7 @@ const CeoReport = () => {
             y.setDate(now.getDate() - 1);
             return { startDate: toDateStr(y), endDate: toDateStr(y) };
         } else if (dateFilter === '7d') {
-            // Bu Hafta: Pazartesi'den Pazar'a (Orders sayfasıyla aynı)
+            // Bu Hafta: Pazartesi'den Pazar'a
             const day = now.getDay();
             const diffToMonday = day === 0 ? 6 : day - 1;
             const monday = new Date(now);
@@ -59,7 +65,7 @@ const CeoReport = () => {
             sunday.setDate(sunday.getDate() + 6);
             return { startDate: toDateStr(monday), endDate: toDateStr(sunday) };
         } else if (dateFilter === '30d') {
-            // Bu Ay: Takvim ayının 1'i - son günü (Orders sayfasıyla aynı)
+            // Bu Ay: Takvim ayının 1'i - son günü
             const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
             const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
             return { startDate: toDateStr(firstDay), endDate: toDateStr(lastDay) };
