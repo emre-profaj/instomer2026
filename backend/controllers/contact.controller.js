@@ -2292,24 +2292,62 @@ export const getContactAnalytics = async (req, res) => {
         };
 
         // ── Deal/Sales Stats (CEO Dashboard) ──
-        let dealStats = { totalDeals: 0, totalQuotes: 0, totalOrders: 0, totalInvoices: 0, wonCount: 0, lostCount: 0, openCount: 0, totalAmount: 0, wonAmount: 0, recentDeals: [] };
+        // Her stage kendi tarih alanına göre filtrelenir (Siparişler/Teklifler/Faturalar sayfalarıyla aynı mantık)
+        let dealStats = { totalDeals: 0, totalQuotes: 0, totalOrders: 0, totalInvoices: 0, wonCount: 0, lostCount: 0, openCount: 0, totalAmount: 0, wonAmount: 0, orderAmount: 0, quoteAmount: 0, invoiceAmount: 0, recentDeals: [] };
         try {
-            const dealDateFilter = {};
-            if (startDate || endDate) {
-                dealDateFilter.createdAt = {};
-                if (startDate) dealDateFilter.createdAt.gte = parseDateStartTR(startDate);
-                if (endDate) dealDateFilter.createdAt.lte = parseDateEndTR(endDate);
+            // Stage-specific date filters: Siparişler sayfası orderCreatedAt||createdAt kullanır, 
+            // Teklifler createdAt, Faturalar invoiceCreatedAt||createdAt kullanır
+            const hasDateFilter = startDate || endDate;
+            const dateGte = startDate ? parseDateStartTR(startDate) : undefined;
+            const dateLte = endDate ? parseDateEndTR(endDate) : undefined;
+
+            const buildDateOr = (dateField) => {
+                if (!hasDateFilter) return {};
+                const mainFilter = {};
+                mainFilter[dateField] = {};
+                if (dateGte) mainFilter[dateField].gte = dateGte;
+                if (dateLte) mainFilter[dateField].lte = dateLte;
+                // Eğer dateField null ise createdAt'e fallback yap
+                const fallbackFilter = { [dateField]: null, createdAt: {} };
+                if (dateGte) fallbackFilter.createdAt.gte = dateGte;
+                if (dateLte) fallbackFilter.createdAt.lte = dateLte;
+                return { OR: [mainFilter, fallbackFilter] };
+            };
+
+            const quoteWhere = { workspaceId, stage: 'QUOTE', ...(hasDateFilter ? { createdAt: {} } : {}) };
+            if (hasDateFilter) {
+                quoteWhere.createdAt = {};
+                if (dateGte) quoteWhere.createdAt.gte = dateGte;
+                if (dateLte) quoteWhere.createdAt.lte = dateLte;
             }
 
-            const [dealsByStageStatus, recentDeals, dealAmounts] = await Promise.all([
-                prisma.deal.groupBy({
-                    by: ['stage', 'status'],
-                    where: { workspaceId, ...dealDateFilter },
-                    _count: true,
-                    _sum: { amount: true }
-                }),
+            const orderWhere = { workspaceId, stage: 'ORDER', ...buildDateOr('orderCreatedAt') };
+            const invoiceWhere = { workspaceId, stage: 'INVOICE', ...buildDateOr('invoiceCreatedAt') };
+
+            // Tüm deal'lar için genel tarih filtresi (recentDeals ve total için)
+            const generalDateFilter = {};
+            if (hasDateFilter) {
+                generalDateFilter.createdAt = {};
+                if (dateGte) generalDateFilter.createdAt.gte = dateGte;
+                if (dateLte) generalDateFilter.createdAt.lte = dateLte;
+            }
+
+            const [
+                quoteStats, orderStats, invoiceStats,
+                quoteStatusStats, orderStatusStats, invoiceStatusStats,
+                recentDeals
+            ] = await Promise.all([
+                // Stage-specific counts and amounts
+                prisma.deal.aggregate({ where: quoteWhere, _count: true, _sum: { amount: true } }),
+                prisma.deal.aggregate({ where: orderWhere, _count: true, _sum: { amount: true } }),
+                prisma.deal.aggregate({ where: invoiceWhere, _count: true, _sum: { amount: true } }),
+                // Status breakdowns per stage
+                prisma.deal.groupBy({ by: ['status'], where: quoteWhere, _count: true, _sum: { amount: true } }),
+                prisma.deal.groupBy({ by: ['status'], where: orderWhere, _count: true, _sum: { amount: true } }),
+                prisma.deal.groupBy({ by: ['status'], where: invoiceWhere, _count: true, _sum: { amount: true } }),
+                // Recent deals (general)
                 prisma.deal.findMany({
-                    where: { workspaceId, ...dealDateFilter },
+                    where: { workspaceId, ...generalDateFilter },
                     select: {
                         id: true, title: true, stage: true, status: true, amount: true, currency: true,
                         createdAt: true,
@@ -2318,31 +2356,29 @@ export const getContactAnalytics = async (req, res) => {
                     },
                     orderBy: { createdAt: 'desc' },
                     take: 5
-                }),
-                prisma.deal.aggregate({
-                    where: { workspaceId, ...dealDateFilter },
-                    _sum: { amount: true },
-                    _count: true
                 })
             ]);
 
-            let dTotalQuotes = 0, dTotalOrders = 0, dTotalInvoices = 0;
-            let dWonCount = 0, dLostCount = 0, dOpenCount = 0;
-            let dWonAmount = 0;
-            let dQuoteAmount = 0, dOrderAmount = 0, dInvoiceAmount = 0;
-            for (const d of dealsByStageStatus) {
-                const cnt = typeof d._count === 'number' ? d._count : (d._count?._all || 0);
-                const amt = d._sum?.amount || 0;
-                if (d.stage === 'QUOTE') { dTotalQuotes += cnt; dQuoteAmount += amt; }
-                if (d.stage === 'ORDER') { dTotalOrders += cnt; dOrderAmount += amt; }
-                if (d.stage === 'INVOICE') { dTotalInvoices += cnt; dInvoiceAmount += amt; }
-                if (d.status === 'WON') { dWonCount += cnt; dWonAmount += amt; }
-                if (d.status === 'LOST') dLostCount += cnt;
-                if (d.status === 'OPEN') dOpenCount += cnt;
+            const getCount = (agg) => typeof agg._count === 'number' ? agg._count : (agg._count?._all || 0);
+            const dTotalQuotes = getCount(quoteStats);
+            const dTotalOrders = getCount(orderStats);
+            const dTotalInvoices = getCount(invoiceStats);
+            const dQuoteAmount = quoteStats._sum?.amount || 0;
+            const dOrderAmount = orderStats._sum?.amount || 0;
+            const dInvoiceAmount = invoiceStats._sum?.amount || 0;
+
+            // Status breakdowns across all stages
+            let dWonCount = 0, dLostCount = 0, dOpenCount = 0, dWonAmount = 0;
+            for (const statusGroup of [...quoteStatusStats, ...orderStatusStats, ...invoiceStatusStats]) {
+                const cnt = typeof statusGroup._count === 'number' ? statusGroup._count : (statusGroup._count?._all || 0);
+                const amt = statusGroup._sum?.amount || 0;
+                if (statusGroup.status === 'WON') { dWonCount += cnt; dWonAmount += amt; }
+                if (statusGroup.status === 'LOST') dLostCount += cnt;
+                if (statusGroup.status === 'OPEN') dOpenCount += cnt;
             }
 
             dealStats = {
-                totalDeals: typeof dealAmounts._count === 'number' ? dealAmounts._count : (dealAmounts._count?._all || 0),
+                totalDeals: dTotalQuotes + dTotalOrders + dTotalInvoices,
                 totalQuotes: dTotalQuotes,
                 totalOrders: dTotalOrders,
                 totalInvoices: dTotalInvoices,
@@ -2352,7 +2388,7 @@ export const getContactAnalytics = async (req, res) => {
                 wonCount: dWonCount,
                 lostCount: dLostCount,
                 openCount: dOpenCount,
-                totalAmount: dealAmounts._sum?.amount || 0,
+                totalAmount: dQuoteAmount + dOrderAmount + dInvoiceAmount,
                 wonAmount: dWonAmount,
                 recentDeals
             };
