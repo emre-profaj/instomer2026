@@ -67,7 +67,7 @@ const Quotes = () => {
     const [statusFilter, setStatusFilter] = useState('ALL');
     // AGENT users always see only their own deals (backend enforces this too)
     const [agentFilter, setAgentFilter] = useState(isAgent ? user?.id : (initialView === 'mine' && user?.id ? user.id : 'ALL'));
-    const [datePreset, setDatePreset] = useState('ALL');
+    const [datePreset, setDatePreset] = useState('THIS_MONTH');
     const [customDateFrom, setCustomDateFrom] = useState('');
     const [customDateTo, setCustomDateTo] = useState('');
 
