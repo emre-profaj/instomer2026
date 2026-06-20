@@ -134,7 +134,7 @@ const CeoReport = () => {
     const ct = analytics?.callTrackingStats || {};
     const appt = analytics?.appointmentStats || {};
     const meet = analytics?.meetingStats || {};
-    const totalSales = (ds.wonAmount || 0);
+    const totalSales = (ds.orderAmount || 0);
 
     // ── Topic aggregation for Gelen Talep Analizi ──
     // Backend artık AI ile benzer konuları birleştiriyor (mergedTopics alanı ile).
