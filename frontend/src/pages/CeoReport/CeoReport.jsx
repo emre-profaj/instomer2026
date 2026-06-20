@@ -43,7 +43,6 @@ const CeoReport = () => {
     const getDateRange = () => {
         const toDateStr = (d) => d.toISOString().split('T')[0]; // YYYY-MM-DD
         const now = new Date();
-        const start = new Date();
         if (dateFilter === 'today') {
             return { startDate: toDateStr(now), endDate: toDateStr(now) };
         } else if (dateFilter === 'yesterday') {
@@ -51,17 +50,28 @@ const CeoReport = () => {
             y.setDate(now.getDate() - 1);
             return { startDate: toDateStr(y), endDate: toDateStr(y) };
         } else if (dateFilter === '7d') {
-            start.setDate(now.getDate() - 7);
+            // Bu Hafta: Pazartesi'den Pazar'a (Orders sayfasıyla aynı)
+            const day = now.getDay();
+            const diffToMonday = day === 0 ? 6 : day - 1;
+            const monday = new Date(now);
+            monday.setDate(monday.getDate() - diffToMonday);
+            const sunday = new Date(monday);
+            sunday.setDate(sunday.getDate() + 6);
+            return { startDate: toDateStr(monday), endDate: toDateStr(sunday) };
         } else if (dateFilter === '30d') {
-            start.setDate(now.getDate() - 30);
+            // Bu Ay: Takvim ayının 1'i - son günü (Orders sayfasıyla aynı)
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            return { startDate: toDateStr(firstDay), endDate: toDateStr(lastDay) };
         } else if (dateFilter === '90d') {
+            const start = new Date(now);
             start.setDate(now.getDate() - 90);
+            return { startDate: toDateStr(start), endDate: toDateStr(now) };
         } else if (dateFilter === 'custom' && startDate) {
             return { startDate, endDate };
         } else {
             return {};
         }
-        return { startDate: toDateStr(start), endDate: toDateStr(now) };
     };
 
     const fetchData = async () => {

@@ -95,7 +95,7 @@ const Quotes = () => {
     const fetchDeals = async () => {
         try {
             setLoading(true);
-            const response = await dealAPI.getAll(currentWorkspace.id, { stage: 'QUOTE' });
+            const response = await dealAPI.getAll(currentWorkspace.id, { stage: 'QUOTE', limit: 9999 });
             setDeals(response.data.deals || []);
         } catch (error) {
             console.error('Failed to fetch deals:', error);

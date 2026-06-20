@@ -94,7 +94,8 @@ const Orders = () => {
     const fetchDeals = async () => {
         try {
             setLoading(true);
-            const response = await dealAPI.getAll(currentWorkspace.id, { stage: 'ORDER' });
+            // limit=9999: Tüm siparişleri çek, client-side filtreleme doğru çalışsın
+            const response = await dealAPI.getAll(currentWorkspace.id, { stage: 'ORDER', limit: 9999 });
             setDeals(response.data.deals || []);
         } catch (error) {
             console.error('Failed to fetch orders:', error);
