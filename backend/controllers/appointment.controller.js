@@ -23,14 +23,19 @@ export const getAppointments = async (req, res) => {
         let where = { workspaceId };
 
         // Date range filter
+// Date range filter
         if (startDate || endDate) {
             where.startTime = {};
             if (startDate) {
-                where.startTime.gte = parseDateStartTR(startDate);
+                const parsed = parseDateStartTR(startDate);
+                if (!isNaN(parsed.getTime())) where.startTime.gte = parsed;
             }
             if (endDate) {
-                where.startTime.lte = parseDateEndTR(endDate);
+                const parsed = parseDateEndTR(endDate);
+                if (!isNaN(parsed.getTime())) where.startTime.lte = parsed;
             }
+            // If both are invalid, remove the filter
+            if (Object.keys(where.startTime).length === 0) delete where.startTime;
         }
 
         // Filter by assigned agent
