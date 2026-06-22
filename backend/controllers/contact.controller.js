@@ -103,15 +103,20 @@ ${topicListText}
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000; // Turkey is UTC+3
 
-/** Parse "YYYY-MM-DD" → start of that day in Turkey timezone (as UTC Date) */
+/** Parse "YYYY-MM-DD" or ISO timestamp → start of that day in Turkey timezone (as UTC Date) */
 function parseDateStartTR(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00.000Z');
+    // Handle ISO timestamp format (e.g., "2026-06-15T14:14:00.017Z") — extract date part only
+    const dateOnly = String(dateStr).includes('T') ? String(dateStr).split('T')[0] : dateStr;
+    const d = new Date(dateOnly + 'T00:00:00.000Z');
+    if (isNaN(d.getTime())) return new Date(); // fallback to now if invalid
     return new Date(d.getTime() - TZ_OFFSET_MS);
 }
 
-/** Parse "YYYY-MM-DD" → end of that day (23:59:59.999) in Turkey timezone (as UTC Date) */
+/** Parse "YYYY-MM-DD" or ISO timestamp → end of that day (23:59:59.999) in Turkey timezone (as UTC Date) */
 function parseDateEndTR(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00.000Z');
+    const dateOnly = String(dateStr).includes('T') ? String(dateStr).split('T')[0] : dateStr;
+    const d = new Date(dateOnly + 'T00:00:00.000Z');
+    if (isNaN(d.getTime())) return new Date(); // fallback to now if invalid
     return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
 }
 

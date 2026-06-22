@@ -4,11 +4,15 @@ import { isAgentRole, buildAgentDealFilter } from '../utils/rbac.helper.js';
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000;
 function parseDateStartTR(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00.000Z');
+    const dateOnly = String(dateStr).includes('T') ? String(dateStr).split('T')[0] : dateStr;
+    const d = new Date(dateOnly + 'T00:00:00.000Z');
+    if (isNaN(d.getTime())) return new Date();
     return new Date(d.getTime() - TZ_OFFSET_MS);
 }
 function parseDateEndTR(dateStr) {
-    const d = new Date(dateStr + 'T00:00:00.000Z');
+    const dateOnly = String(dateStr).includes('T') ? String(dateStr).split('T')[0] : dateStr;
+    const d = new Date(dateOnly + 'T00:00:00.000Z');
+    if (isNaN(d.getTime())) return new Date();
     return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
 }
 
