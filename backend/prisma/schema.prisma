@@ -1077,6 +1077,9 @@ model Deal {
   channel        String? // WHATSAPP, FACEBOOK, INSTAGRAM, EMAIL, WIDGET
   sourceNote     String? // Serbest not: "Instagram reklamı", "Google Ads"
 
+  // Protokol No (workspace-specific)
+  protocolNo String?
+
   // Notlar
   notes String?
 

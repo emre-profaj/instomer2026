@@ -180,7 +180,9 @@ export const createDeal = async (req, res) => {
             // Yeni kaynak alanları
             conversationId,
             channel,
-            sourceNote
+            sourceNote,
+            // Protokol No
+            protocolNo
         } = req.body;
 
         if (!contactId || !title) {
@@ -216,7 +218,8 @@ export const createDeal = async (req, res) => {
             paymentDate: paymentDate ? new Date(paymentDate) : null,
             conversationId: conversationId || null,
             channel: channel || null,
-            sourceNote: sourceNote || null
+            sourceNote: sourceNote || null,
+            protocolNo: protocolNo || null
         };
 
         // assignedToId varsa atayan bilgisini ekle
@@ -287,7 +290,9 @@ export const updateDeal = async (req, res) => {
             paidAmount,
             paymentDate,
             // Kaynak notu
-            sourceNote
+            sourceNote,
+            // Protokol No
+            protocolNo
         } = req.body;
 
         // Mevcut deal'ı kontrol et
@@ -315,6 +320,7 @@ export const updateDeal = async (req, res) => {
         }
         if (notes !== undefined) updateData.notes = notes;
         if (sourceNote !== undefined) updateData.sourceNote = sourceNote;
+        if (protocolNo !== undefined) updateData.protocolNo = protocolNo || null;
         if (quoteNumber !== undefined) updateData.quoteNumber = quoteNumber;
         if (orderNumber !== undefined) updateData.orderNumber = orderNumber;
         if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;

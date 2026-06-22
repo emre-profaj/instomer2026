@@ -930,12 +930,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             if (teamId !== undefined) payload.teamId = teamId || null;
             if (userId !== undefined) payload.userId = userId || null;
 
+            // Always use conversationAPI.assign with full payload to ensure both teamId and userId are sent
+            await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
+
+            // Notify parent callbacks for any additional side-effects (e.g. list refresh)
             if (userId !== undefined && onAssignUser) {
-                await onAssignUser(activeConv.id, userId);
+                // Call with 3rd arg to signal parent — don't await (API already called above)
+                try { await onAssignUser(activeConv.id, userId, true); } catch {}
             } else if (userId === undefined && onAssignTeam) {
-                await onAssignTeam(activeConv.id, teamId);
-            } else {
-                await conversationAPI.assign(currentWorkspace.id, activeConv.id, payload);
+                try { await onAssignTeam(activeConv.id, teamId, true); } catch {}
             }
 
             // CASCADE: Case + aktiviteleri de güncelle (backend cascade yapar)

@@ -342,20 +342,23 @@ Yıl: ${now.getFullYear()}
 ### MÜŞTERİ BİLGİLERİ ###
 ${customerInfo}
 
-### SİSTEM TALİMATI ###
-${systemPrompt}
-
 ### KULLANILACAK BİLGİLER ###
 ${documentContext || "Bilgi bankası boş."}
 
-### YANITLAMA KURALLARI ###
+### VARSAYILAN YANITLAMA KURALLARI ###
 1. SADECE yukarıdaki bilgileri kullanarak yanıt ver.
-2. Bilgi bankasında olmayan konularda "Bu konuda size yardımcı olamıyorum, lütfen müşteri temsilcimizle iletişime geçin" de.
+2. Bilgi bankasında olmayan konularda doğrudan web sitesine veya iletişim e-posta adresine yönlendir. ASLA "emin değilim", "bilmiyorum" gibi belirsiz ifadeler kullanma.
 3. Yanıtların kısa, net ve profesyonel olsun.
 4. Türkçe yanıt ver.
 5. Müşteriye her zaman yardımcı olmaya çalış.
 6. Tarih veya saat sorulursa yukarıdaki GÜNCEL TARİH bilgisini kullan, kendi bilgini KULLANMA.
-7. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.`;
+7. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
+8. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş.
+
+### ⭐ ANA SİSTEM TALİMATI (EN YÜKSEK ÖNCELİK) ⭐ ###
+Aşağıdaki talimat işletme sahibi tarafından yazılmıştır ve yukarıdaki varsayılan kurallarla çeliştiğinde BU TALİMAT GEÇERLİDİR. Her zaman önce bu talimata uy:
+
+${systemPrompt}`;
 
         // Build chat history WITHOUT system instruction embedded.
         // System instruction goes via systemInstruction param to prevent prompt leakage.
@@ -1735,8 +1738,8 @@ Bu kuralı ihlal edersen işten atılırsın.
             : '';
 
         // Handoff message: use bot-specific or default
-        const defaultHandoffMsgTR = 'Mesajınızın cevabından tam emin değilim. Bu nedenle ekibimize bilgi vereceğim, en kısa sürede size dönüş yapılacaktır. Dilerseniz telefon numaranızı paylaşırsanız sizi geri aramamızı da sağlayabilirim. 🤝';
-        const defaultHandoffMsgEN = "I'm not entirely sure about the answer to your message. I'll notify our team so they can get back to you as soon as possible. If you'd like, you can share your phone number and we'll call you back. 🤝";
+        const defaultHandoffMsgTR = 'Bu konuda detaylı bilgi için web sitemizi ziyaret edebilir veya iletişim sayfamızdaki bilgiler aracılığıyla ekibimize ulaşabilirsiniz. Size en kısa sürede yardımcı olacaklardır. 🤝';
+        const defaultHandoffMsgEN = "For detailed information on this topic, please visit our website or reach out to our team through the contact details on our website. They will be happy to assist you. 🤝";
         const handoffMsg = activeBot.handoffMessage || (isEnglish ? defaultHandoffMsgEN : defaultHandoffMsgTR);
 
         const fullSystemInstruction = isEnglish
@@ -1748,13 +1751,10 @@ Year: ${now.getFullYear()}
 ### CUSTOMER INFORMATION ###
 ${customerInfo}
 
-### SYSTEM INSTRUCTION ###
-${enhancedSystemPrompt}
-
 ### AVAILABLE INFORMATION ###
 ${documentContext || "Knowledge base is empty."}
 
-### RESPONSE RULES ###
+### DEFAULT RESPONSE RULES ###
 1. ONLY respond using the information above.
 2. **IMPORTANT**: If the knowledge base does NOT contain information about the topic asked AND it is not a simple greeting, write [HANDOFF] at the beginning of your response and then say "${handoffMsg}". Never write [HANDOFF] for greetings or introductions (hi, hello, hey, good morning, etc.) — just greet them warmly.
 3. Keep your responses short, clear and professional.
@@ -1764,7 +1764,13 @@ ${documentContext || "Knowledge base is empty."}
 7. If you CAN answer the question from the knowledge base, do NOT write [HANDOFF].
 8. If asked for customer name or contact info, use the CUSTOMER INFORMATION section above.
 9. **CRITICAL**: If the CUSTOMER INFORMATION section above has "Customer Name" and/or "Phone" filled in, NEVER ask the customer for name or phone! This info is already available.
-10. **CRITICAL**: If the user EXPLICITLY asks to speak to a representative, agent, or human (e.g. "connect me to an agent", "I want to talk to a person"), you MUST write [HANDOFF] at the beginning of your response.`
+10. **CRITICAL**: If the user EXPLICITLY asks to speak to a representative, agent, or human (e.g. "connect me to an agent", "I want to talk to a person"), you MUST write [HANDOFF] at the beginning of your response.
+11. **CRITICAL - LANGUAGE RULES**: NEVER use first-person language ("I", "I'm", "I think", "I'm not sure"). NEVER express uncertainty ("I'm not sure", "I don't know", "I believe"). Always speak on behalf of the establishment using "we/our" (e.g. "Our team will assist you"). If you don't have the answer, directly redirect to the website or email — never say you are unsure.
+
+### ⭐ PRIMARY SYSTEM INSTRUCTION (HIGHEST PRIORITY) ⭐ ###
+The following instruction was written by the business owner and OVERRIDES any conflicting default rules above. Always follow these instructions first:
+
+${enhancedSystemPrompt}`
             : `${contactWarning}### GÜNCEL TARİH VE SAAT ###
 Bugün: ${currentDay}, ${currentDate}
 Saat: ${currentTime} (Türkiye Saati)
@@ -1773,13 +1779,10 @@ Yıl: ${now.getFullYear()}
 ### MÜŞTERİ BİLGİLERİ ###
 ${customerInfo}
 
-### SİSTEM TALİMATI ###
-${enhancedSystemPrompt}
-
 ### KULLANILACAK BİLGİLER ###
 ${documentContext || "Bilgi bankası boş."}
 
-### YANITLAMA KURALLARI ###
+### VARSAYILAN YANITLAMA KURALLARI ###
 1. SADECE yukarıdaki bilgileri kullanarak yanıt ver.
 2. **ÖNEMLİ**: Eğer bilgi bankasında sorulan konuyla ilgili BİLGİ YOKSA VE mesaj sadece selamlama/tanışma değilse, yanıtının başına [HANDOFF] yaz ve ardından "${handoffMsg}" mesajını ver. Selamlama mesajlarına (selam, merhaba, iyi günler, nasılsınız, vs.) ASLA [HANDOFF] yazma, nazikçe karşıla.
 3. Yanıtların kısa, net ve profesyonel olsun.
@@ -1789,7 +1792,13 @@ ${documentContext || "Bilgi bankası boş."}
 7. Eğer soruya bilgi bankasından cevap verebiliyorsan, [HANDOFF] YAZMA.
 8. Müşteri adını veya iletişim bilgilerini sorulursa yukarıdaki MÜŞTERİ BİLGİLERİ kısmını kullan.
 9. **KRİTİK**: Yukarıdaki MÜŞTERİ BİLGİLERİ kısmında "Müşteri Adı" ve/veya "Telefon" bilgisi DOLUYSA, müşteriden ASLA isim veya telefon numarası isteme! Bu bilgiler zaten mevcut.
-10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.`;
+10. **KRİTİK**: Eğer müşteri AÇIKÇA bir temsilci, yetkili veya gerçek kişiyle konuşmak istediğini belirtirse (örn. "temsilciye bağla", "müşteri temsilcisi istiyorum", "gerçek kişiyle konuşmak istiyorum"), yanıtının başına MUTLAKA [HANDOFF] yaz.
+11. **KRİTİK - DİL KURALLARI**: ASLA birinci şahıs dili kullanma ("ben", "benim", "bence", "sanırım", "düşünüyorum"). ASLA belirsizlik ifadesi kullanma ("emin değilim", "bilmiyorum", "tam olarak bilemiyorum", "şu an bilgi sahibi değilim"). Her zaman kurum adına "biz/bizim/ekibimiz" şeklinde konuş (örn. "Ekibimiz size yardımcı olacaktır"). Cevabını bilmediğin sorularda "emin değilim" DEME, doğrudan web sitesine veya e-posta adresine yönlendir.
+
+### ⭐ ANA SİSTEM TALİMATI (EN YÜKSEK ÖNCELİK) ⭐ ###
+Aşağıdaki talimat işletme sahibi tarafından yazılmıştır ve yukarıdaki varsayılan kurallarla çeliştiğinde BU TALİMAT GEÇERLİDİR. Her zaman önce bu talimata uy:
+
+${enhancedSystemPrompt}`;
 
         // 🏥 PROBEL BOT — Build a clean, focused system instruction
         let finalSystemInstruction;

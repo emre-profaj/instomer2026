@@ -58,6 +58,8 @@ const Orders = () => {
     const workspaceMemberRole = currentWorkspace?.members?.find(m => m.userId === user?.id)?.role;
     const userRole = workspaceMemberRole || user?.role;
     const isAgent = userRole === 'AGENT';
+    const PROTOCOL_WORKSPACE_ID = '2d4305d2-1c7f-4f11-88d1-78afd844be42';
+    const showProtocolNo = currentWorkspace?.id === PROTOCOL_WORKSPACE_ID;
 
     const location = useLocation();
     const searchParams = new URLSearchParams(location.search);
@@ -79,7 +81,8 @@ const Orders = () => {
         currency: 'TRY',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
         assignedToId: user?.id || '',
-        notes: ''
+        notes: '',
+        protocolNo: ''
     });
 
     useEffect(() => {
@@ -211,7 +214,8 @@ const Orders = () => {
             currency: deal.currency || 'TRY',
             products: deal.products?.length ? deal.products : [{ name: '', quantity: 1, unitPrice: 0 }],
             assignedToId: deal.assignedToId || '',
-            notes: deal.notes || ''
+            notes: deal.notes || '',
+            protocolNo: deal.protocolNo || ''
         });
         const existingContact = contacts.find(c => c.id === deal.contactId);
         setContactSearch(existingContact ? (existingContact.name || existingContact.fullName || existingContact.email || existingContact.phone || '') : '');
@@ -232,7 +236,8 @@ const Orders = () => {
             currency: 'TRY',
             products: [{ name: '', quantity: 1, unitPrice: 0 }],
             assignedToId: user?.id || '',
-            notes: ''
+            notes: '',
+            protocolNo: ''
         });
         setContactSearch('');
     };
@@ -441,6 +446,11 @@ const Orders = () => {
                                         {deal.status === 'OPEN' ? 'Açık' : deal.status === 'WON' ? 'Tamamlandı' : 'İptal'}
                                     </span>
                                 </div>
+                                {showProtocolNo && deal.protocolNo && (
+                                    <p style={{ fontSize: '0.7rem', color: '#8b5cf6', fontWeight: 600, margin: '0 0 2px 0' }}>
+                                        📋 Protokol: {deal.protocolNo}
+                                    </p>
+                                )}
                                 <p className="sales-list-card-title">{deal.title}</p>
                                 <p className="sales-list-card-customer">{deal.contact?.name || deal.contact?.fullName}</p>
                                 {deal.assignedTo && (
@@ -727,6 +737,18 @@ const Orders = () => {
                                     required
                                 />
                             </div>
+
+                            {showProtocolNo && (
+                                <div className="form-group">
+                                    <label>Protokol No</label>
+                                    <input
+                                        type="text"
+                                        value={formData.protocolNo}
+                                        onChange={(e) => setFormData({ ...formData, protocolNo: e.target.value })}
+                                        placeholder="Örn: 320775"
+                                    />
+                                </div>
+                            )}
 
                             <div className="form-row">
                                 <div className="form-group">

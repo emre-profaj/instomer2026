@@ -63,11 +63,24 @@ const Customers = () => {
     const location = useLocation();
     const { t } = useTranslation();
 
+    // --- Persist filters in sessionStorage ---
+    const FILTER_STORAGE_KEY = 'customers_filters';
+
+    const getSavedFilters = () => {
+        try {
+            const saved = sessionStorage.getItem(FILTER_STORAGE_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch { return {}; }
+    };
+
+    const savedFilters = useRef(getSavedFilters());
+    const sf = savedFilters.current;
+
     // Assignment filter state (all / mine / unassigned / team_ID / user_ID)
-    const [assignmentFilter, setAssignmentFilter] = useState('all');
+    const [assignmentFilter, setAssignmentFilter] = useState(sf.assignmentFilter || 'all');
 
     // Quick filter mode for stats bar buttons
-    const [quickFilterMode, setQuickFilterMode] = useState('ALL');
+    const [quickFilterMode, setQuickFilterMode] = useState(sf.quickFilterMode || 'ALL');
 
     // Status options
 
@@ -113,17 +126,17 @@ const Customers = () => {
     const getCategoryInfo = (category) => CATEGORY_OPTIONS.find(c => c.value === category) || CATEGORY_OPTIONS[1];
     const [contacts, setContacts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('ALL');
+    const [search, setSearch] = useState(sf.search || '');
+    const [statusFilter, setStatusFilter] = useState(sf.statusFilter || 'ALL');
     // Funnel filter state
-    const [funnelFilter, setFunnelFilter] = useState('ALL');
-    const [funnelStageFilter, setFunnelStageFilter] = useState('ALL');
-    const [mergedFunnelIds, setMergedFunnelIds] = useState(null); // when non-null, filter by these IDs together
-    const [selectedFunnelIds, setSelectedFunnelIds] = useState([]);
+    const [funnelFilter, setFunnelFilter] = useState(sf.funnelFilter || 'ALL');
+    const [funnelStageFilter, setFunnelStageFilter] = useState(sf.funnelStageFilter || 'ALL');
+    const [mergedFunnelIds, setMergedFunnelIds] = useState(sf.mergedFunnelIds || null); // when non-null, filter by these IDs together
+    const [selectedFunnelIds, setSelectedFunnelIds] = useState(sf.selectedFunnelIds || []);
     const [availableFunnels, setAvailableFunnels] = useState([]);
-    const [sourceFilter, setSourceFilter] = useState('ALL');
-    const [categoryFilter, setCategoryFilter] = useState('ALL');
-    const [callStatusFilter, setCallStatusFilter] = useState('ALL');
+    const [sourceFilter, setSourceFilter] = useState(sf.sourceFilter || 'ALL');
+    const [categoryFilter, setCategoryFilter] = useState(sf.categoryFilter || 'ALL');
+    const [callStatusFilter, setCallStatusFilter] = useState(sf.callStatusFilter || 'ALL');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '', confirmText: '', type: 'danger' });
     const [funnelFilterOpen, setFunnelFilterOpen] = useState(false);
     const funnelFilterRef = useRef(null);
@@ -132,16 +145,16 @@ const Customers = () => {
     const dateFilterRef = useRef(null);
     const [filtersDropdownOpen, setFiltersDropdownOpen] = useState(false);
     const filtersDropdownRef = useRef(null);
-    const [onlyOpenCases, setOnlyOpenCases] = useState(true);
+    const [onlyOpenCases, setOnlyOpenCases] = useState(sf.onlyOpenCases !== undefined ? sf.onlyOpenCases : true);
     const showArchived = !onlyOpenCases; // Kapalılar dahilse arşivliler de dahil
     const [page, setPage] = useState(1);
     const [total, setTotal] = useState(0);
-    const [limit, setLimit] = useState(100);
+    const [limit, setLimit] = useState(sf.limit || 100);
     const [quickStats, setQuickStats] = useState({ periodCount: 0, withPhoneCount: 0, agentCalledCount: 0, aiCalledCount: 0, noActivityCount: 0, noPhoneCount: 0, totalAllTime: 0 });
 
     // Column sorting
-    const [sortField, setSortField] = useState('createdAt');
-    const [sortDir, setSortDir] = useState('desc');
+    const [sortField, setSortField] = useState(sf.sortField || 'createdAt');
+    const [sortDir, setSortDir] = useState(sf.sortDir || 'desc');
 
     // Analytics panel
     const [showAnalytics, setShowAnalytics] = useState(false);
@@ -225,20 +238,38 @@ const Customers = () => {
     const [importFileName, setImportFileName] = useState('');
 
     // Tag filter state
-    const [tagFilter, setTagFilter] = useState('ALL');
+    const [tagFilter, setTagFilter] = useState(sf.tagFilter || 'ALL');
     const [availableTags, setAvailableTags] = useState([]);
 
     // Contact info filter state (phone/email)
-    const [contactInfoFilter, setContactInfoFilter] = useState('ALL');
+    const [contactInfoFilter, setContactInfoFilter] = useState(sf.contactInfoFilter || 'ALL');
 
     // Import group filter state
-    const [importGroupFilter, setImportGroupFilter] = useState('ALL');
+    const [importGroupFilter, setImportGroupFilter] = useState(sf.importGroupFilter || 'ALL');
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
 
     // Date filter
-    const [dateFilter, setDateFilter] = useState('ALL'); // ALL | TODAY | WEEK | MONTH | CUSTOM
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
+    const [dateFilter, setDateFilter] = useState(sf.dateFilter || 'ALL'); // ALL | TODAY | WEEK | MONTH | CUSTOM
+    const [dateFrom, setDateFrom] = useState(sf.dateFrom || '');
+    const [dateTo, setDateTo] = useState(sf.dateTo || '');
+
+    // Persist filters to sessionStorage whenever they change
+    useEffect(() => {
+        const filtersToSave = {
+            assignmentFilter, quickFilterMode, search, statusFilter,
+            funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
+            sourceFilter, categoryFilter, callStatusFilter, tagFilter,
+            contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
+            onlyOpenCases, sortField, sortDir, limit
+        };
+        try {
+            sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filtersToSave));
+        } catch { /* storage full — ignore */ }
+    }, [assignmentFilter, quickFilterMode, search, statusFilter,
+        funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
+        sourceFilter, categoryFilter, callStatusFilter, tagFilter,
+        contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
+        onlyOpenCases, sortField, sortDir, limit]);
 
     // Inline stage change dropdown
     const [stageDropdownContactId, setStageDropdownContactId] = useState(null);
@@ -308,9 +339,16 @@ const Customers = () => {
         }
     }, [showBulkCall, currentWorkspace]);
 
+    const initialLoadDone = useRef(false);
+
     useEffect(() => {
         if (currentWorkspace) {
-            loadContacts();
+            if (!initialLoadDone.current) {
+                loadContacts();
+                initialLoadDone.current = true;
+            } else {
+                silentReloadContacts();
+            }
         }
     }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir]);
 
@@ -831,7 +869,7 @@ const Customers = () => {
                     if (selectedContact && selectedIds.includes(selectedContact.id)) {
                         setSelectedContact(null);
                     }
-                    loadContacts();
+                    silentReloadContacts();
                 } catch (error) {
                     console.error('Error deleting contacts:', error);
                     alert('Bazı kişiler silinemedi');
@@ -907,7 +945,7 @@ const Customers = () => {
         setBulkStatusFunnel('');
         setBulkStatusStage('');
         setSelectedIds([]);
-        loadContacts();
+        silentReloadContacts();
     };
 
     const handleDeleteContact = async (id) => {
@@ -924,7 +962,7 @@ const Customers = () => {
                     if (selectedContact?.id === id) {
                         setSelectedContact(null);
                     }
-                    loadContacts();
+                    silentReloadContacts();
                 } catch (error) {
                     console.error('Error deleting contact:', error);
                     alert('Kişi silinirken hata oluştu.');
@@ -962,7 +1000,7 @@ const Customers = () => {
                 setIsModalOpen(false);
                 setEditingContact(null);
                 setFormData({ name: '', fullName: '', phones: [''], emails: [''], company: '' });
-                loadContacts();
+                silentReloadContacts();
             } else {
                 if (phones.length === 0 && emails.length === 0) {
                     setFormError('En az bir iletişim bilgisi (telefon veya e-posta) gereklidir');
@@ -971,7 +1009,7 @@ const Customers = () => {
                 await contactAPI.create(currentWorkspace.id, dataToSend);
                 setIsModalOpen(false);
                 setFormData({ name: '', fullName: '', phones: [''], emails: [''], company: '' });
-                loadContacts();
+                silentReloadContacts();
             }
         } catch (error) {
             console.error('Error saving contact:', error);
@@ -1167,7 +1205,7 @@ const Customers = () => {
                 if (!prev.includes(importTag.trim())) return [...prev, importTag.trim()].sort();
                 return prev;
             });
-            loadContacts();
+            silentReloadContacts();
         } catch (err) {
             setImportResult({ error: err.response?.data?.error || 'İçe aktarma başarısız' });
         } finally {
@@ -1603,6 +1641,75 @@ const Customers = () => {
                                 )}
                             </div>
                         </div>
+                        {/* Clear All Filters Button — only visible when any filter is active */}
+                        {(() => {
+                            const hasActiveFilter = 
+                                dateFilter !== 'ALL' || 
+                                funnelFilter !== 'ALL' || 
+                                funnelStageFilter !== 'ALL' || 
+                                mergedFunnelIds || 
+                                selectedFunnelIds.length > 0 ||
+                                assignmentFilter !== 'all' || 
+                                sourceFilter !== 'ALL' || 
+                                tagFilter !== 'ALL' || 
+                                categoryFilter !== 'ALL' ||
+                                statusFilter !== 'ALL' ||
+                                contactInfoFilter !== 'ALL' || 
+                                callStatusFilter !== 'ALL' || 
+                                importGroupFilter !== 'ALL' ||
+                                quickFilterMode !== 'ALL' ||
+                                search !== '';
+                            return hasActiveFilter ? (
+                                <button
+                                    className="btn-clear-all-filters"
+                                    onClick={() => {
+                                        setDateFilter('ALL');
+                                        setDateFrom('');
+                                        setDateTo('');
+                                        setFunnelFilter('ALL');
+                                        setFunnelStageFilter('ALL');
+                                        setMergedFunnelIds(null);
+                                        setSelectedFunnelIds([]);
+                                        setAssignmentFilter('all');
+                                        setSourceFilter('ALL');
+                                        setTagFilter('ALL');
+                                        setCategoryFilter('ALL');
+                                        setStatusFilter('ALL');
+                                        setContactInfoFilter('ALL');
+                                        setCallStatusFilter('ALL');
+                                        setImportGroupFilter('ALL');
+                                        setQuickFilterMode('ALL');
+                                        setSearch('');
+                                        setPage(1);
+                                        try { sessionStorage.removeItem(FILTER_STORAGE_KEY); } catch {}
+                                    }}
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        height: '30px',
+                                        padding: '0 12px',
+                                        border: '1px solid #fecaca',
+                                        borderRadius: '8px',
+                                        background: '#fef2f2',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        color: '#dc2626',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s',
+                                        whiteSpace: 'nowrap',
+                                        marginLeft: '6px',
+                                        flexShrink: 0
+                                    }}
+                                    onMouseEnter={(e) => { e.target.style.background = '#fee2e2'; e.target.style.borderColor = '#fca5a5'; }}
+                                    onMouseLeave={(e) => { e.target.style.background = '#fef2f2'; e.target.style.borderColor = '#fecaca'; }}
+                                    title="Tüm filtreleri kaldır"
+                                >
+                                    <X size={13} />
+                                    Filtreleri Kaldır
+                                </button>
+                            ) : null;
+                        })()}
                         <div className="header-right-actions">
                             <label className="active-only-check" title="İşaretlenirse sadece aktif kişiler gösterilir">
                                 <input
@@ -1722,23 +1829,28 @@ const Customers = () => {
                                         const newMode = isActive ? 'ALL' : btn.key;
                                         setQuickFilterMode(newMode);
                                         setPage(1);
-                                        // Reset all quick-filter-related states first
-                                        setContactInfoFilter('ALL');
-                                        setCallStatusFilter('ALL');
-                                        setAssignmentFilter('all');
-                                        // Apply the specific filter
+                                        // Only reset the specific filter category this button controls
+                                        // Do NOT reset other unrelated filters (funnel, tag, source, date, etc.)
                                         if (newMode === 'HAS_PHONE') {
                                             setContactInfoFilter('HAS_PHONE');
+                                            setCallStatusFilter('ALL');
                                         } else if (newMode === 'AGENT_CALLS') {
                                             setCallStatusFilter('ended');
+                                            setContactInfoFilter('ALL');
                                         } else if (newMode === 'AI_CALLS') {
                                             setCallStatusFilter('ai_called');
+                                            setContactInfoFilter('ALL');
                                         } else if (newMode === 'NO_ACTIVITY') {
                                             setCallStatusFilter('no_call');
+                                            setContactInfoFilter('ALL');
                                         } else if (newMode === 'NO_PHONE') {
                                             setContactInfoFilter('NO_PHONE');
+                                            setCallStatusFilter('ALL');
+                                        } else {
+                                            // ALL — only reset quick-filter-specific states
+                                            setContactInfoFilter('ALL');
+                                            setCallStatusFilter('ALL');
                                         }
-                                        // ALL → all filters already reset
                                     }}
                                     style={{ cursor: 'pointer', userSelect: 'none' }}
                                     title={btn.label}
@@ -2866,20 +2978,27 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                         members={members}
                         teams={teams}
                         isOwner={true}
-                        onAssignTeam={async (convId, teamId) => {
+                        onAssignTeam={async (convId, teamId, skipApi) => {
                             try {
-                                await conversationAPI.assign(currentWorkspace.id, convId, { teamId });
+                                if (!skipApi) {
+                                    await conversationAPI.assign(currentWorkspace.id, convId, { teamId });
+                                }
+                                silentReloadContacts();
                             } catch (err) { console.error('Team assign error:', err); }
                         }}
-                        onAssignUser={async (convId, userId) => {
+                        onAssignUser={async (convId, userId, skipApi) => {
                             try {
-                                await conversationAPI.assign(currentWorkspace.id, convId, { assignedToId: userId || null });
+                                if (!skipApi) {
+                                    await conversationAPI.assign(currentWorkspace.id, convId, { userId: userId || null });
+                                }
+                                silentReloadContacts();
                             } catch (err) { console.error('User assign error:', err); }
                         }}
                         onTakeOver={async (convId) => {
                             try {
-                                await conversationAPI.takeOver(currentWorkspace.id, convId);
-                            } catch (err) { console.error('TakeOver error:', err); }
+                                await conversationAPI.claim(currentWorkspace.id, convId);
+                                silentReloadContacts();
+                            } catch (err) { console.error('TakeOver/Claim error:', err); }
                         }}
                         currentUserId={user?.id}
                     />
