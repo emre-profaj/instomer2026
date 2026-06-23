@@ -120,6 +120,19 @@ function parseDateEndTR(dateStr) {
     return new Date(d.getTime() - TZ_OFFSET_MS + 24 * 60 * 60 * 1000 - 1);
 }
 
+// ─── Team Filter Helper ───────────────────────────────────────
+/**
+ * Get user IDs for a given team. Returns null if no teamId provided.
+ * Used to filter analytics/performance data by team membership.
+ */
+async function getTeamUserIds(teamId) {
+    if (!teamId) return null;
+    const members = await prisma.teamMember.findMany({
+        where: { teamId, userId: { not: null } },
+        select: { userId: true }
+    });
+    return members.map(m => m.userId);
+}
 
 // ─── Legacy status → funnel stage migration ───────────────────
 // Maps old contact.status values to stage names in "Satış Akışı" funnel
@@ -1886,9 +1899,12 @@ export const bulkImportContacts = async (req, res) => {
 export const getContactAnalytics = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { startDate, endDate, funnelId } = req.query;
+        const { startDate, endDate, funnelId, teamId } = req.query;
 
-        console.log(`📊 [Analytics] Getting contact analytics for workspace: ${workspaceId}${funnelId ? ` (Funnel: ${funnelId})` : ''}`);
+        console.log(`📊 [Analytics] Getting contact analytics for workspace: ${workspaceId}${funnelId ? ` (Funnel: ${funnelId})` : ''}${teamId ? ` (Team: ${teamId})` : ''}`);
+
+        // Resolve team member user IDs (null = no team filter)
+        const teamUserIds = await getTeamUserIds(teamId);
 
         // Build date filter
         let dateFilter = {};
@@ -1901,7 +1917,8 @@ export const getContactAnalytics = async (req, res) => {
         // Base contact where clause
         const contactWhere = {
             conversations: { some: { workspaceId } },
-            ...dateFilter
+            ...dateFilter,
+            ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {})
         };
 
         let activeFunnel = null;
@@ -1937,7 +1954,7 @@ export const getContactAnalytics = async (req, res) => {
         });
 
         // Message metrics (Human vs AI)
-        const messageFilter = { conversation: { workspaceId } };
+        const messageFilter = { conversation: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) } };
         if (startDate || endDate) messageFilter.createdAt = dateFilter.createdAt;
 
         const [totalMessages, totalAiMessages, totalHumanMessages] = await Promise.all([
@@ -1953,13 +1970,14 @@ export const getContactAnalytics = async (req, res) => {
                 where: { 
                     ...messageFilter, 
                     isFromContact: false, 
-                    senderId: { not: null } 
+                    senderId: { not: null },
+                    ...(teamUserIds ? { senderId: { in: teamUserIds } } : {})
                 } 
             })
         ]);
 
         // Conversation metrics
-        const conversationFilter = { workspaceId };
+        const conversationFilter = { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) };
         if (startDate || endDate) conversationFilter.createdAt = dateFilter.createdAt;
 
         const [totalConversations, botLedConversations, handoffConversations] = await Promise.all([
@@ -2159,7 +2177,7 @@ export const getContactAnalytics = async (req, res) => {
 
 
         // Appointment Statistics
-        const appointmentFilter = { workspaceId };
+        const appointmentFilter = { workspaceId, ...(teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdById: { in: teamUserIds } }] } : {}) };
         if (startDate || endDate) appointmentFilter.createdAt = dateFilter.createdAt;
 
         const [
@@ -2241,7 +2259,8 @@ export const getContactAnalytics = async (req, res) => {
             where: {
                 workspaceId,
                 type: 'CALL',
-                ...activityDateFilter
+                ...activityDateFilter,
+                ...(teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdBy: { in: teamUserIds } }] } : {})
             },
             select: {
                 id: true,
@@ -2350,7 +2369,8 @@ export const getContactAnalytics = async (req, res) => {
             workspaceId,
             type: 'CALL',
             status: 'PLANNED',
-            dueDate: { lt: new Date() }
+            dueDate: { lt: new Date() },
+            ...(teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdBy: { in: teamUserIds } }] } : {})
         };
         const [overdueCalls, overdueCount] = await Promise.all([
             prisma.contactActivity.findMany({
@@ -2410,9 +2430,10 @@ export const getContactAnalytics = async (req, res) => {
 
             const dateFilter = buildCreatedAtFilter();
 
-            const quoteWhere = { workspaceId, stage: 'QUOTE', ...dateFilter };
-            const orderWhere = { workspaceId, stage: 'ORDER', ...dateFilter };
-            const invoiceWhere = { workspaceId, stage: 'INVOICE', ...dateFilter };
+            const teamDealFilter = teamUserIds ? { assignedToId: { in: teamUserIds } } : {};
+            const quoteWhere = { workspaceId, stage: 'QUOTE', ...dateFilter, ...teamDealFilter };
+            const orderWhere = { workspaceId, stage: 'ORDER', ...dateFilter, ...teamDealFilter };
+            const invoiceWhere = { workspaceId, stage: 'INVOICE', ...dateFilter, ...teamDealFilter };
 
             // Tüm deal'lar için genel tarih filtresi (recentDeals ve total için)
             const generalDateFilter = {};
@@ -2437,7 +2458,7 @@ export const getContactAnalytics = async (req, res) => {
                 prisma.deal.groupBy({ by: ['status'], where: invoiceWhere, _count: true, _sum: { amount: true } }),
                 // Recent deals (general)
                 prisma.deal.findMany({
-                    where: { workspaceId, ...generalDateFilter },
+                    where: { workspaceId, ...generalDateFilter, ...teamDealFilter },
                     select: {
                         id: true, title: true, stage: true, status: true, amount: true, currency: true,
                         createdAt: true,
@@ -2496,22 +2517,24 @@ export const getContactAnalytics = async (req, res) => {
                 if (endDate) actDateFilter.createdAt.lte = parseDateEndTR(endDate);
             }
 
+            const teamActFilter = teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdBy: { in: teamUserIds } }] } : {};
             const [actByStatus, actByType, actOverdue] = await Promise.all([
                 prisma.contactActivity.groupBy({
                     by: ['status'],
-                    where: { workspaceId, ...actDateFilter },
+                    where: { workspaceId, ...actDateFilter, ...teamActFilter },
                     _count: true
                 }),
                 prisma.contactActivity.groupBy({
                     by: ['type'],
-                    where: { workspaceId, ...actDateFilter },
+                    where: { workspaceId, ...actDateFilter, ...teamActFilter },
                     _count: true
                 }),
                 prisma.contactActivity.count({
                     where: {
                         workspaceId,
                         status: 'PLANNED',
-                        dueDate: { lt: new Date() }
+                        dueDate: { lt: new Date() },
+                        ...teamActFilter
                     }
                 })
             ]);
@@ -2543,10 +2566,11 @@ export const getContactAnalytics = async (req, res) => {
                 if (startDate) meetActDateFilter.createdAt.gte = parseDateStartTR(startDate);
                 if (endDate) meetActDateFilter.createdAt.lte = parseDateEndTR(endDate);
             }
+            const teamMeetFilter = teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdBy: { in: teamUserIds } }] } : {};
             const [meetByStatus, meetOverdue] = await Promise.all([
                 prisma.contactActivity.groupBy({
                     by: ['status'],
-                    where: { workspaceId, type: 'MEETING', ...meetActDateFilter },
+                    where: { workspaceId, type: 'MEETING', ...meetActDateFilter, ...teamMeetFilter },
                     _count: true
                 }),
                 prisma.contactActivity.count({
@@ -2554,7 +2578,8 @@ export const getContactAnalytics = async (req, res) => {
                         workspaceId,
                         type: 'MEETING',
                         status: 'PLANNED',
-                        dueDate: { lt: new Date() }
+                        dueDate: { lt: new Date() },
+                        ...teamMeetFilter
                     }
                 })
             ]);
@@ -2718,9 +2743,12 @@ export const getContactAnalytics = async (req, res) => {
 export const getAgentPerformance = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, teamId } = req.query;
 
-        console.log(`📊 [Agent Performance] Getting metrics for workspace: ${workspaceId}`);
+        console.log(`📊 [Agent Performance] Getting metrics for workspace: ${workspaceId}${teamId ? ` (Team: ${teamId})` : ''}`);
+
+        // Resolve team member user IDs (null = no team filter)
+        const teamUserIds = await getTeamUserIds(teamId);
 
         // Build date filter — use Turkey timezone (UTC+3)
         let dateFilter = {};
@@ -2730,8 +2758,8 @@ export const getAgentPerformance = async (req, res) => {
             if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
-        // Get all workspace members (agents)
-        const workspaceMembers = await prisma.workspaceMember.findMany({
+        // Get workspace members (agents) — filtered by team if teamId provided
+        let workspaceMembers = await prisma.workspaceMember.findMany({
             where: { workspaceId },
             include: {
                 user: {
@@ -2744,6 +2772,11 @@ export const getAgentPerformance = async (req, res) => {
                 }
             }
         });
+
+        // Filter to team members only when teamId is provided
+        if (teamUserIds) {
+            workspaceMembers = workspaceMembers.filter(m => teamUserIds.includes(m.user.id));
+        }
 
         const agentMetrics = [];
 
@@ -3122,7 +3155,10 @@ export const getAgentPerformance = async (req, res) => {
 export const getDailyContactStats = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { days = 30, startDate: qStart, endDate: qEnd } = req.query;
+        const { days = 30, startDate: qStart, endDate: qEnd, teamId } = req.query;
+
+        // Resolve team member user IDs (null = no team filter)
+        const teamUserIds = await getTeamUserIds(teamId);
 
         let startDate, endDate;
         if (qStart) {
@@ -3147,7 +3183,8 @@ export const getDailyContactStats = async (req, res) => {
                 OR: [
                     { workspaceId },
                     { conversations: { some: { workspaceId } } }
-                ]
+                ],
+                ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {})
             },
             select: {
                 id: true,

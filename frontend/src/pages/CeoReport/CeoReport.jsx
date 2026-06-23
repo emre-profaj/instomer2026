@@ -9,7 +9,7 @@ import {
     Search, BarChart3, Target, Filter
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, funnelAPI } from '../../services/api';
+import { contactAPI, funnelAPI, teamAPI } from '../../services/api';
 import './CeoReport.css';
 
 const formatNumber = (n) => {
@@ -31,12 +31,26 @@ const CeoReport = () => {
     const [expandedFlows, setExpandedFlows] = useState({});
     const [funnelFilter, setFunnelFilter] = useState('');
     const [funnels, setFunnels] = useState([]);
+    const [teamFilter, setTeamFilter] = useState('');
+    const [teams, setTeams] = useState([]);
+
+    const TARGET_WORKSPACE = '2d4305d2-1c7f-4f11-88d1-78afd844be42';
+    const showTeamFilter = currentWorkspace?.id === TARGET_WORKSPACE;
 
     // Fetch funnels list
     useEffect(() => {
         if (!currentWorkspace?.id) return;
         funnelAPI.getAll(currentWorkspace.id).then(res => {
             setFunnels(res.data || []);
+        }).catch(() => {});
+    }, [currentWorkspace?.id]);
+
+    // Fetch teams list (only for target workspace)
+    useEffect(() => {
+        if (!currentWorkspace?.id || currentWorkspace.id !== TARGET_WORKSPACE) return;
+        teamAPI.getWorkspaceTeams(currentWorkspace.id).then(res => {
+            const teamList = res.data?.teams || res.data || [];
+            setTeams(teamList);
         }).catch(() => {});
     }, [currentWorkspace?.id]);
 
@@ -87,6 +101,7 @@ const CeoReport = () => {
             const dateParams = getDateRange();
             const params = { ...dateParams };
             if (funnelFilter) params.funnelId = funnelFilter;
+            if (teamFilter) params.teamId = teamFilter;
             const [analyticsRes, performanceRes] = await Promise.all([
                 contactAPI.getAnalytics(currentWorkspace.id, params),
                 contactAPI.getAgentPerformance(currentWorkspace.id, params)
@@ -105,7 +120,7 @@ const CeoReport = () => {
         }
     };
 
-    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, funnelFilter]);
+    useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, funnelFilter, teamFilter]);
 
     const getFlowIcon = (flowName) => {
         const name = flowName?.toLowerCase() || '';
@@ -229,8 +244,22 @@ const CeoReport = () => {
                         </div>
                     )}
                 </div>
-                {funnels.length > 0 && (
-                    <div className="ceo-filter-right">
+                <div className="ceo-filter-right" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {showTeamFilter && teams.length > 0 && (
+                        <select
+                            value={teamFilter}
+                            onChange={(e) => setTeamFilter(e.target.value)}
+                            className="ceo-funnel-select"
+                        >
+                            <option value="">Tüm Takımlar</option>
+                            {teams.map(t => (
+                                <option key={t.id} value={t.id}>
+                                    {t.name} ({t.members?.length || t._count?.members || 0} kişi)
+                                </option>
+                            ))}
+                        </select>
+                    )}
+                    {funnels.length > 0 && (
                         <select
                             value={funnelFilter}
                             onChange={(e) => setFunnelFilter(e.target.value)}
@@ -241,8 +270,8 @@ const CeoReport = () => {
                                 <option key={f.id} value={f.id}>{f.name}</option>
                             ))}
                         </select>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* ═══════════════════════════════════════════════════════ */}
