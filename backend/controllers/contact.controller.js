@@ -1916,9 +1916,8 @@ export const getContactAnalytics = async (req, res) => {
 
         // Base contact where clause
         const contactWhere = {
-            conversations: { some: { workspaceId } },
-            ...dateFilter,
-            ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {})
+            conversations: { some: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) } },
+            ...dateFilter
         };
 
         let activeFunnel = null;
@@ -1970,8 +1969,7 @@ export const getContactAnalytics = async (req, res) => {
                 where: { 
                     ...messageFilter, 
                     isFromContact: false, 
-                    senderId: { not: null },
-                    ...(teamUserIds ? { senderId: { in: teamUserIds } } : {})
+                    senderId: teamUserIds ? { in: teamUserIds } : { not: null }
                 } 
             })
         ]);
@@ -3176,16 +3174,21 @@ export const getDailyContactStats = async (req, res) => {
         const daysCount = Math.max(1, Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)));
 
         // Get all contacts created in the date range for this workspace
+        const contactsWhere = {
+            createdAt: { gte: startDate, lte: endDate },
+            isDeleted: false,
+        };
+        if (teamUserIds) {
+            // When team filter is active, only get contacts with conversations assigned to team members
+            contactsWhere.conversations = { some: { workspaceId, assignedToId: { in: teamUserIds } } };
+        } else {
+            contactsWhere.OR = [
+                { workspaceId },
+                { conversations: { some: { workspaceId } } }
+            ];
+        }
         const contacts = await prisma.contact.findMany({
-            where: {
-                createdAt: { gte: startDate, lte: endDate },
-                isDeleted: false,
-                OR: [
-                    { workspaceId },
-                    { conversations: { some: { workspaceId } } }
-                ],
-                ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {})
-            },
+            where: contactsWhere,
             select: {
                 id: true,
                 phone: true,
