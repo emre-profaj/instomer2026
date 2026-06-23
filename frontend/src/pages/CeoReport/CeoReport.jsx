@@ -102,17 +102,17 @@ const CeoReport = () => {
             const params = { ...dateParams };
             if (funnelFilter) params.funnelId = funnelFilter;
             if (teamFilter) params.teamId = teamFilter;
-            const [analyticsRes, performanceRes] = await Promise.all([
+            const [analyticsRes, performanceRes, statsRes] = await Promise.all([
                 contactAPI.getAnalytics(currentWorkspace.id, params),
-                contactAPI.getAgentPerformance(currentWorkspace.id, params)
+                contactAPI.getAgentPerformance(currentWorkspace.id, params),
+                contactAPI.getDailyStats(currentWorkspace.id, params).catch(e => {
+                    console.warn('Contact daily stats failed:', e.message);
+                    return null;
+                })
             ]);
             setAnalytics(analyticsRes.data);
             setAgentPerformance(performanceRes.data);
-
-            try {
-                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, params);
-                setContactStats(statsRes.data);
-            } catch (e) { console.warn('Contact daily stats failed:', e.message); }
+            if (statsRes) setContactStats(statsRes.data);
         } catch (err) {
             console.error('Dashboard fetch error:', err);
         } finally {
@@ -195,7 +195,20 @@ const CeoReport = () => {
     const aggregatedTopics = aggregateTopics(analytics?.requestAnalysis?.topics, analytics?.requestAnalysis?.aiClassified);
 
     return (
-        <div className="ceo-report">
+        <div className="ceo-report" style={{ position: 'relative' }}>
+            {/* Refetch overlay — takım/tarih değiştiğinde göster */}
+            {loading && analytics && (
+                <div style={{
+                    position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.6)',
+                    zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    borderRadius: 16, backdropFilter: 'blur(2px)'
+                }}>
+                    <div style={{ textAlign: 'center', color: '#6366f1' }}>
+                        <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite' }} />
+                        <p style={{ fontSize: '0.8rem', marginTop: 8, fontWeight: 600 }}>Güncelleniyor...</p>
+                    </div>
+                </div>
+            )}
             {/* Header */}
             <div className="ceo-header">
                 <div className="ceo-header-title">
