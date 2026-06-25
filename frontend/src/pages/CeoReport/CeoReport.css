@@ -479,6 +479,150 @@
     text-align: right;
 }
 
+/* ── Summary Report Cards Grid (CEO Dashboard) ── */
+.ceo-report-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 18px;
+    margin-top: 4px;
+}
+.ceo-summary-report-card {
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.ceo-summary-report-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(99,102,241,0.10);
+    border-color: #c7d2fe;
+}
+.ceo-src-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px 0;
+}
+.ceo-src-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.ceo-src-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+    flex: 1;
+}
+.ceo-src-arrow {
+    color: #c7d2fe;
+    transition: transform 0.2s, color 0.2s;
+}
+.ceo-summary-report-card:hover .ceo-src-arrow {
+    color: #6366f1;
+    transform: translateX(3px);
+}
+.ceo-src-body {
+    padding: 14px 20px 10px;
+    flex: 1;
+}
+.ceo-src-metrics {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+.ceo-src-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.ceo-src-metric-value {
+    font-size: 1.45rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+}
+.ceo-src-metric-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.ceo-src-info {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 8px;
+    font-weight: 500;
+}
+.ceo-src-info strong {
+    color: #1e293b;
+    font-weight: 700;
+}
+.ceo-src-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 10px 20px;
+    border-top: 1px solid #f1f5f9;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
+    transition: color 0.2s;
+}
+.ceo-summary-report-card:hover .ceo-src-footer {
+    color: #6366f1;
+}
+.ceo-src-upgrade {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 0;
+    text-align: center;
+    font-size: 0.78rem;
+    color: #8b5cf6;
+    font-weight: 500;
+}
+.ceo-src-upgrade-cta {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #6366f1;
+    margin-top: 4px;
+}
+
+/* ── Trend Badge ── */
+.ceo-trend-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 16px;
+    margin-top: 2px;
+}
+.ceo-trend-up {
+    background: #ecfdf5;
+    color: #059669;
+}
+.ceo-trend-down {
+    background: #fef2f2;
+    color: #ef4444;
+}
+
 /* ── Spinner ── */
 @keyframes spin {
     from { transform: rotate(0deg); }

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts } from '../controllers/contact.controller.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts } from '../controllers/contact.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -15,6 +15,9 @@ router.get('/:workspaceId/agent-performance', requireWorkspaceAccess, getAgentPe
 
 // Daily contact stats (chart data)
 router.get('/:workspaceId/daily-stats', requireWorkspaceAccess, getDailyContactStats);
+
+// Peak hours heatmap data
+router.get('/:workspaceId/peak-hours', requireWorkspaceAccess, getPeakHours);
 
 // List contacts in workspace
 router.get('/:workspaceId', requireWorkspaceAccess, getContacts);

@@ -240,6 +240,18 @@ export const getConversations = async (req, res) => {
                     select: {
                         messages: true
                     }
+                },
+                case: {
+                    select: {
+                        id: true,
+                        caseNumber: true,
+                        status: true,
+                        title: true,
+                        assignedToId: true,
+                        assignedTeamId: true,
+                        funnelType: true,
+                        funnelStageId: true
+                    }
                 }
             },
             orderBy: { lastMessageAt: 'desc' },
@@ -483,6 +495,18 @@ export const getConversation = async (req, res) => {
                 },
                 events: {
                     orderBy: { createdAt: 'asc' }
+                },
+                case: {
+                    select: {
+                        id: true,
+                        caseNumber: true,
+                        status: true,
+                        title: true,
+                        assignedToId: true,
+                        assignedTeamId: true,
+                        funnelType: true,
+                        funnelStageId: true
+                    }
                 }
             }
         });
@@ -1260,7 +1284,11 @@ export const updateConversationStatus = async (req, res) => {
 
         // ── Closing Stage Logic: kapanış aşaması seçildiyse cascade uygula ──
         let closingStage = null;
-        if (status === 'RESOLVED' && closingStageId) {
+        // closingStageId bazen doğrudan status string'i olarak gelir (WON/LOST/CLOSED)
+        const directStatusValues = ['WON', 'LOST', 'CLOSED'];
+        const isDirectStatus = closingStageId && directStatusValues.includes(closingStageId);
+        
+        if (status === 'RESOLVED' && closingStageId && !isDirectStatus) {
             closingStage = await prisma.funnelStage.findUnique({
                 where: { id: closingStageId },
                 include: { funnel: { select: { id: true, name: true } } }
@@ -1321,6 +1349,12 @@ export const updateConversationStatus = async (req, res) => {
                             data: caseUpdateData
                         });
                         console.log(`   📦 Case ${activeCase.caseNumber} → ${closingStage.statusType}`);
+
+                        // case_updated socket event gönder — sidebar güncellensin
+                        emitToWorkspace(workspaceId, 'case_updated', {
+                            caseId: activeCase.id,
+                            changes: { status: closingStage.statusType }
+                        });
                     }
                 }
 
@@ -1355,24 +1389,32 @@ export const updateConversationStatus = async (req, res) => {
         // ── Case Status Cascade: kapanış aşaması olmasa bile Case durumunu senkronize et ──
         if (existing.caseId && !closingStage) {
             try {
+                // isDirectStatus ise (WON/LOST/CLOSED) doğrudan o statusü kullan
+                const targetCaseStatus = isDirectStatus ? closingStageId : (status === 'RESOLVED' ? 'CLOSED' : 'ACTIVE');
+                const now = new Date();
+                
                 if (status === 'RESOLVED') {
-                    // Konuşma kapatıldı → Case'i de CLOSED yap
+                    // Konuşma kapatıldı → Case'i de kapat (WON/LOST/CLOSED)
+                    const caseUpdateData = { status: targetCaseStatus, closedAt: now };
+                    if (targetCaseStatus === 'WON') caseUpdateData.wonAt = now;
+                    if (targetCaseStatus === 'LOST') caseUpdateData.lostAt = now;
+                    
                     await prisma.case.update({
                         where: { id: existing.caseId },
-                        data: { status: 'CLOSED', closedAt: new Date() }
+                        data: caseUpdateData
                     });
-                    console.log(`📦 [StatusCascade] Case ${existing.caseId} → CLOSED (no closing stage)`);
+                    console.log(`📦 [StatusCascade] Case ${existing.caseId} → ${targetCaseStatus}`);
                 } else if (status === 'OPEN') {
                     // Konuşma yeniden açıldı → Case'i de ACTIVE yap
                     await prisma.case.update({
                         where: { id: existing.caseId },
-                        data: { status: 'ACTIVE', closedAt: null }
+                        data: { status: 'ACTIVE', closedAt: null, wonAt: null, lostAt: null }
                     });
                     console.log(`📦 [StatusCascade] Case ${existing.caseId} → ACTIVE (reopened)`);
                 }
                 emitToWorkspace(workspaceId, 'case_updated', {
                     caseId: existing.caseId,
-                    changes: { status: status === 'RESOLVED' ? 'CLOSED' : 'ACTIVE' }
+                    changes: { status: targetCaseStatus }
                 });
             } catch (caseErr) {
                 console.error('⚠️ [StatusCascade] Error:', caseErr.message);

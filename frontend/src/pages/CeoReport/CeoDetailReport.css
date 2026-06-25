@@ -1,0 +1,522 @@
+/* ═══════════════════════════════════════════════════════ */
+/* CEO Detail Report — Shared Premium Styles              */
+/* ═══════════════════════════════════════════════════════ */
+
+/* ── Back Button ── */
+.ceo-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(8px);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    margin-bottom: 8px;
+}
+.ceo-back-btn:hover {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #6366f1;
+    transform: translateX(-2px);
+}
+
+/* ── Detail Page Header ── */
+.ceo-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 24px;
+}
+.ceo-detail-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.ceo-detail-header-left h1 {
+    font-size: 1.55rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ceo-detail-header-left p {
+    font-size: 0.82rem;
+    color: #64748b;
+    margin: 0;
+}
+
+/* ── Gradient KPI Cards (Large) ── */
+.ceo-detail-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.ceo-detail-kpi-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 22px 22px 18px;
+    border: 1px solid #f1f5f9;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.ceo-detail-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-radius: 16px 16px 0 0;
+}
+.ceo-detail-kpi-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+}
+.ceo-detail-kpi-card .kpi-icon-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+.ceo-detail-kpi-card .kpi-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 4px;
+}
+.ceo-detail-kpi-card .kpi-value {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.15;
+}
+.ceo-detail-kpi-card .kpi-trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 20px;
+    margin-top: 8px;
+}
+.kpi-trend.up {
+    background: #ecfdf5;
+    color: #059669;
+}
+.kpi-trend.down {
+    background: #fef2f2;
+    color: #ef4444;
+}
+.kpi-trend.neutral {
+    background: #f8fafc;
+    color: #94a3b8;
+}
+.ceo-detail-kpi-card .kpi-sub {
+    font-size: 0.68rem;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
+/* Clickable KPI */
+.ceo-detail-kpi-card.clickable {
+    cursor: pointer;
+}
+.ceo-detail-kpi-card.clickable:hover {
+    border-color: #c7d2fe;
+}
+.ceo-detail-kpi-card.clickable::after {
+    content: '→';
+    position: absolute;
+    top: 16px;
+    right: 18px;
+    font-size: 1rem;
+    color: #c7d2fe;
+    transition: transform 0.2s, color 0.2s;
+}
+.ceo-detail-kpi-card.clickable:hover::after {
+    transform: translateX(3px);
+    color: #6366f1;
+}
+
+/* ── Channel Bar ── */
+.ceo-channel-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: #f8fafc;
+    margin-bottom: 8px;
+    transition: background 0.15s;
+}
+.ceo-channel-bar:hover {
+    background: #f1f5f9;
+}
+.ceo-channel-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.ceo-channel-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1e293b;
+    min-width: 90px;
+}
+.ceo-channel-count {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #0f172a;
+    min-width: 50px;
+    text-align: right;
+}
+.ceo-channel-bar-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ceo-channel-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ceo-channel-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.8s ease;
+}
+.ceo-channel-pct {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #475569;
+    min-width: 42px;
+    text-align: right;
+}
+
+/* ── Heatmap Grid ── */
+.ceo-heatmap {
+    overflow-x: auto;
+    margin-top: 12px;
+}
+.ceo-heatmap table {
+    border-collapse: separate;
+    border-spacing: 3px;
+    width: 100%;
+    min-width: 700px;
+}
+.ceo-heatmap th {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #94a3b8;
+    padding: 4px 2px;
+    text-align: center;
+}
+.ceo-heatmap th.day-label {
+    text-align: right;
+    padding-right: 8px;
+    font-size: 0.7rem;
+    color: #475569;
+    min-width: 40px;
+}
+.ceo-heatmap td.heat-cell {
+    width: 28px;
+    height: 24px;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 0.58rem;
+    font-weight: 600;
+    color: transparent;
+    transition: all 0.2s;
+    cursor: default;
+    position: relative;
+}
+.ceo-heatmap td.heat-cell:hover {
+    transform: scale(1.25);
+    z-index: 2;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* ── League Table (Team) ── */
+.ceo-league-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.ceo-league-table thead th {
+    padding: 14px 14px;
+    background: #f8fafc;
+    font-weight: 700;
+    color: #475569;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    text-align: center;
+    border-bottom: 2px solid #e2e8f0;
+    white-space: nowrap;
+}
+.ceo-league-table thead th:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+.ceo-league-table tbody td {
+    padding: 14px 14px;
+    text-align: center;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+.ceo-league-table tbody td:first-child {
+    text-align: left;
+    padding-left: 20px;
+}
+.ceo-league-table tbody tr {
+    transition: background 0.15s;
+}
+.ceo-league-table tbody tr:hover {
+    background: #fafbfc;
+}
+.ceo-league-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.ceo-league-table tbody tr.gold-row {
+    background: linear-gradient(90deg, #fefce8 0%, #fff 60%);
+}
+.ceo-league-table tbody tr.silver-row {
+    background: linear-gradient(90deg, #f8fafc 0%, #fff 60%);
+}
+.ceo-league-table tbody tr.bronze-row {
+    background: linear-gradient(90deg, #fff7ed 0%, #fff 60%);
+}
+.medal-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+}
+.medal-badge.gold { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff; box-shadow: 0 2px 8px rgba(245,158,11,0.3); }
+.medal-badge.silver { background: linear-gradient(135deg, #d1d5db, #9ca3af); color: #fff; box-shadow: 0 2px 8px rgba(156,163,175,0.3); }
+.medal-badge.bronze { background: linear-gradient(135deg, #fdba74, #f97316); color: #fff; box-shadow: 0 2px 8px rgba(249,115,22,0.3); }
+.medal-badge.default { background: #f1f5f9; color: #64748b; }
+
+/* ── Sort Dropdown ── */
+.ceo-sort-select {
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #475569;
+    background: #fff;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.ceo-sort-select:focus {
+    border-color: #6366f1;
+}
+
+/* ── Funnel Cards Overview ── */
+.ceo-funnel-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.ceo-funnel-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid #f1f5f9;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+}
+.ceo-funnel-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.07);
+    border-color: #c7d2fe;
+}
+.ceo-funnel-card.selected {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+}
+.ceo-funnel-card .funnel-color-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+}
+.ceo-funnel-card .funnel-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 12px;
+    margin-top: 6px;
+}
+.ceo-funnel-card .funnel-stats {
+    display: flex;
+    gap: 16px;
+}
+.ceo-funnel-card .funnel-stat {
+    display: flex;
+    flex-direction: column;
+}
+.ceo-funnel-card .funnel-stat-value {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+.ceo-funnel-card .funnel-stat-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Stage Horizontal Bars ── */
+.ceo-stage-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    background: #f8fafc;
+    transition: background 0.15s;
+}
+.ceo-stage-bar-row:hover {
+    background: #f1f5f9;
+}
+.ceo-stage-color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.ceo-stage-bar-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1e293b;
+    min-width: 100px;
+    flex-shrink: 0;
+}
+.ceo-stage-bar-track {
+    flex: 1;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ceo-stage-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.6s ease;
+}
+.ceo-stage-bar-count {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #0f172a;
+    min-width: 42px;
+    text-align: right;
+}
+.ceo-stage-bar-pct {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* ── Bot vs Human section ── */
+.ceo-bot-human-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+}
+.ceo-bot-human-card {
+    border-radius: 14px;
+    padding: 18px 16px;
+    text-align: center;
+    border: 1px solid #f1f5f9;
+    transition: transform 0.15s;
+}
+.ceo-bot-human-card:hover {
+    transform: translateY(-2px);
+}
+.ceo-bot-human-card .bh-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+.ceo-bot-human-card .bh-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 4px;
+}
+
+/* ── Glassmorphism Section Variant ── */
+.ceo-section.glass {
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(12px);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .ceo-detail-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .ceo-detail-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .ceo-funnel-overview {
+        grid-template-columns: 1fr;
+    }
+    .ceo-bot-human-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .ceo-league-table {
+        font-size: 0.75rem;
+    }
+    .ceo-league-table thead th,
+    .ceo-league-table tbody td {
+        padding: 10px 8px;
+    }
+}

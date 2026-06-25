@@ -2699,6 +2699,63 @@ export const getContactAnalytics = async (req, res) => {
             console.error('Request analysis error (non-fatal):', e.message);
         }
 
+        // ── Previous Period Comparison ──
+        let previousPeriod = null;
+        const { comparePrevious } = req.query;
+        if (comparePrevious === 'true' && startDate && endDate) {
+            try {
+                const sDate = new Date(startDate + 'T00:00:00Z');
+                const eDate = new Date(endDate + 'T00:00:00Z');
+                const durationMs = eDate.getTime() - sDate.getTime() + 86400000; // include end day
+                const prevEnd = new Date(sDate.getTime() - 86400000); // day before start
+                const prevStart = new Date(prevEnd.getTime() - durationMs + 86400000);
+                const toStr = (d) => d.toISOString().slice(0, 10);
+                const prevDateFilter = {
+                    createdAt: {
+                        gte: parseDateStartTR(toStr(prevStart)),
+                        lte: parseDateEndTR(toStr(prevEnd))
+                    }
+                };
+                const prevContactWhere = {
+                    conversations: { some: { workspaceId } },
+                    ...prevDateFilter
+                };
+                if (funnelId && activeFunnel) {
+                    const stageIds = activeFunnel.stages.map(s => s.id);
+                    prevContactWhere.funnelStageId = { in: stageIds };
+                }
+
+                const [prevContacts, prevMsgs, prevCalled, prevOrders] = await Promise.all([
+                    prisma.contact.count({ where: prevContactWhere }),
+                    prisma.message.count({ where: { conversation: { workspaceId }, ...prevDateFilter } }),
+                    prisma.contact.count({
+                        where: {
+                            ...prevContactWhere,
+                            activities: { some: { type: { in: ['CALL', 'OUTBOUND_CALL'] } } }
+                        }
+                    }),
+                    prisma.deal.findMany({
+                        where: {
+                            contact: prevContactWhere,
+                            type: 'ORDER',
+                            ...prevDateFilter
+                        },
+                        select: { amount: true }
+                    })
+                ]);
+
+                previousPeriod = {
+                    totalContacts: prevContacts,
+                    totalMessages: prevMsgs,
+                    totalCalled: prevCalled,
+                    totalOrders: prevOrders.length,
+                    orderAmount: prevOrders.reduce((s, d) => s + (d.amount || 0), 0)
+                };
+            } catch (prevErr) {
+                console.error('Previous period comparison error (non-fatal):', prevErr.message);
+            }
+        }
+
         res.json({
             totalContacts,
             totalMessages,
@@ -2727,7 +2784,8 @@ export const getContactAnalytics = async (req, res) => {
             callTrackingStats,
             dealStats,
             activityStats,
-            requestAnalysis
+            requestAnalysis,
+            previousPeriod
         });
     } catch (error) {
         console.error('Analytics error:', error);
@@ -3651,5 +3709,55 @@ export const addNoteToConversation = async (req, res) => {
     } catch (error) {
         console.error('Add note to conversation error:', error);
         res.status(500).json({ error: 'Not eklenirken hata oluştu' });
+    }
+};
+
+// ─── Peak Hours Analysis ─────────────────────────────────
+export const getPeakHours = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate, funnelId } = req.query;
+
+        // Build date filter same as getContactAnalytics
+        let dateFilter = {};
+        if (startDate || endDate) {
+            dateFilter.createdAt = {};
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+        }
+
+        const where = {
+            conversations: { some: { workspaceId } },
+            ...dateFilter
+        };
+        if (funnelId) where.funnelStageId = { not: null };
+
+        // Get all contacts with createdAt
+        const contacts = await prisma.contact.findMany({
+            where,
+            select: { createdAt: true }
+        });
+
+        // Build hourly distribution (0-23) and daily distribution (0=Sunday, 1=Monday,...6=Saturday)
+        const hourly = Array(24).fill(0);
+        const daily = Array(7).fill(0); // 0=Paz, 1=Pzt, 2=Sal, 3=Çar, 4=Per, 5=Cum, 6=Cmt
+        // Build heatmap: 7 days x 24 hours
+        const heatmap = Array.from({ length: 7 }, () => Array(24).fill(0));
+
+        for (const c of contacts) {
+            // Convert to Turkey timezone (UTC+3)
+            const d = new Date(c.createdAt);
+            const trTime = new Date(d.getTime() + TZ_OFFSET_MS);
+            const hour = trTime.getUTCHours();
+            const day = trTime.getUTCDay();
+            hourly[hour]++;
+            daily[day]++;
+            heatmap[day][hour]++;
+        }
+
+        res.json({ hourly, daily, heatmap, totalContacts: contacts.length });
+    } catch (error) {
+        console.error('Peak hours error:', error);
+        res.status(500).json({ error: 'Peak hours analizi başarısız' });
     }
 };

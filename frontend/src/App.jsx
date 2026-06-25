@@ -24,6 +24,13 @@ import AramaAnalizi from './pages/Analytics/AramaAnalizi';
 import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
 import CeoReport from './pages/CeoReport/CeoReport';
+import GeneralReport from './pages/CeoReport/GeneralReport';
+import TeamReport from './pages/CeoReport/TeamReport';
+import FunnelReport from './pages/CeoReport/FunnelReport';
+import ActivityReport from './pages/CeoReport/ActivityReport';
+import AICallReport from './pages/CeoReport/AICallReport';
+import SalesReport from './pages/CeoReport/SalesReport';
+import RequestReport from './pages/CeoReport/RequestReport';
 import Calendar from './pages/Calendar/Calendar';
 import Activities from './pages/Activities/Activities';
 import Automations from './pages/Automations/Automations';
@@ -96,6 +103,13 @@ function App() {
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="ceo-report" element={<CeoReport />} />
+              <Route path="ceo-report/general" element={<GeneralReport />} />
+              <Route path="ceo-report/team" element={<TeamReport />} />
+              <Route path="ceo-report/funnel" element={<FunnelReport />} />
+              <Route path="ceo-report/activities" element={<ActivityReport />} />
+              <Route path="ceo-report/ai-calls" element={<AICallReport />} />
+              <Route path="ceo-report/sales" element={<SalesReport />} />
+              <Route path="ceo-report/requests" element={<RequestReport />} />
               <Route path="call-analytics" element={<AramaAnalizi />} />
               <Route path="agent-performance" element={<AgentPerformance />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />

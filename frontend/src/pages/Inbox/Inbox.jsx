@@ -902,9 +902,8 @@ const Inbox = () => {
             const { caseId, changes } = e.detail || {};
             if (!caseId || !changes) return;
 
-            // Update all conversations linked to this case
-            setInboxItems(prev => prev.map(item => {
-                if (item.caseId !== caseId) return item;
+            // Build updates for conversation fields AND embedded case object
+            const buildUpdates = (item) => {
                 const updates = {};
                 if (changes.funnelType !== undefined) updates.funnelType = changes.funnelType;
                 if (changes.funnelStageId !== undefined) {
@@ -914,27 +913,29 @@ const Inbox = () => {
                 if (changes.title !== undefined) updates.aiTopic = changes.title;
                 if (changes.status === 'CLOSED' || changes.status === 'WON' || changes.status === 'LOST') {
                     updates.status = 'RESOLVED';
+                    updates.closingStatus = changes.status; // WON/LOST/CLOSED — Case'ten gelen durum
                 } else if (changes.status === 'ACTIVE') {
                     updates.status = 'OPEN';
+                    updates.closingStatus = null; // Yeniden açıldı, kapanış durumu temizlendi
                 }
+                // Sync the embedded case object so UI always reflects latest case state
+                if (item.case) {
+                    updates.case = { ...item.case, ...changes };
+                }
+                return updates;
+            };
+
+            // Update all conversations linked to this case
+            setInboxItems(prev => prev.map(item => {
+                if (item.caseId !== caseId) return item;
+                const updates = buildUpdates(item);
                 return Object.keys(updates).length > 0 ? { ...item, ...updates } : item;
             }));
 
             // Update selected item if linked to this case
             setSelectedItem(prev => {
                 if (!prev || prev.caseId !== caseId) return prev;
-                const updates = {};
-                if (changes.funnelType !== undefined) updates.funnelType = changes.funnelType;
-                if (changes.funnelStageId !== undefined) {
-                    updates.funnelStageId = changes.funnelStageId;
-                    updates._effectiveStageId = changes.funnelStageId;
-                }
-                if (changes.title !== undefined) updates.aiTopic = changes.title;
-                if (changes.status === 'CLOSED' || changes.status === 'WON' || changes.status === 'LOST') {
-                    updates.status = 'RESOLVED';
-                } else if (changes.status === 'ACTIVE') {
-                    updates.status = 'OPEN';
-                }
+                const updates = buildUpdates(prev);
                 return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
             });
         };
@@ -1987,6 +1988,18 @@ const Inbox = () => {
                 allConversations.forEach(conv => {
                     // Use explicit funnelStageId first, then contact's funnelStageId
                     conv._effectiveStageId = conv.funnelStageId || conv.contact?.funnelStageId || null;
+
+                    // ── Case as Source of Truth ──
+                    // When conversation is linked to a case, inherit case properties
+                    if (conv.case) {
+                        conv._caseNumber = conv.case.caseNumber;
+                        conv._caseTitle = conv.case.title;
+                        conv._caseStatus = conv.case.status; // ACTIVE, WON, LOST, CLOSED
+                        // Case statusünü closingStatus olarak kullan — sayfa yenilendiğinde de doğru pill görünsün
+                        if (conv.status === 'RESOLVED' && conv.case.status && conv.case.status !== 'ACTIVE') {
+                            conv.closingStatus = conv.case.status; // WON, LOST, CLOSED
+                        }
+                    }
                 });
 
                 // Check if there are more pages
@@ -2928,36 +2941,44 @@ const Inbox = () => {
         console.log(`🔄 Attempting to update conversation ${conversationId} to status: ${newStatus}${closingStageId ? ` (closingStage: ${closingStageId})` : ''}`);
         console.log(`📌 Workspace ID: ${currentWorkspace?.id}`);
         try {
+            // Capture caseId BEFORE state updates to avoid stale reference
+            const currentItem = selectedItem?.id === conversationId ? selectedItem : inboxItems.find(i => i.id === conversationId);
+            const linkedCaseId = currentItem?.caseId;
+
             const payload = { status: newStatus };
             if (closingStageId) payload.closingStageId = closingStageId;
             const response = await conversationAPI.updateStatus(currentWorkspace.id, conversationId, payload);
             console.log('📡 API Response:', response);
+
+            // Backend returns closingStage.statusType (WON/LOST/CLOSED) — use this for closingStatus
+            // When closingStageId is a direct status string (WON/LOST/CLOSED), backend returns closingStage=null
+            // In that case, use closingStageId itself as the status type
+            const directStatusValues = ['WON', 'LOST', 'CLOSED'];
+            const isDirectStatus = closingStageId && directStatusValues.includes(closingStageId);
+            const closingStatusType = response?.data?.closingStage?.statusType || (isDirectStatus ? closingStageId : null);
+
+            // Only set funnelStageId when closingStageId is a real UUID (not a status string)
+            const funnelStageUpdate = (closingStageId && !isDirectStatus) ? { funnelStageId: closingStageId } : {};
+
             setInboxItems(prev => prev.map(i =>
-                i.id === conversationId ? { ...i, status: newStatus, closingStatus: closingStageId, ...(closingStageId ? { funnelStageId: closingStageId } : {}) } : i
+                i.id === conversationId ? { ...i, status: newStatus, closingStatus: closingStatusType, ...funnelStageUpdate } : i
             ));
             if (selectedItem?.id === conversationId) {
-                setSelectedItem(prev => ({ ...prev, status: newStatus, closingStatus: closingStageId, ...(closingStageId ? { funnelStageId: closingStageId } : {}) }));
+                setSelectedItem(prev => ({ ...prev, status: newStatus, closingStatus: closingStatusType, ...funnelStageUpdate }));
             }
             setClosingDropdownOpen(false);
 
-            // Sync case status with sidebar — closingStageId is WON/LOST/CLOSED directly
-            const targetItem = selectedItem?.id === conversationId ? selectedItem : inboxItems.find(i => i.id === conversationId);
-            if (targetItem?.caseId && currentWorkspace?.id) {
-                try {
-                    let caseStatus = 'ACTIVE';
-                    if (newStatus === 'RESOLVED') {
-                        // closingStageId is directly WON, LOST, or CLOSED
-                        caseStatus = closingStageId || 'CLOSED';
-                    }
-                    await caseAPI.update(currentWorkspace.id, targetItem.caseId, { status: caseStatus });
-                    // Notify sidebar to update case status immediately
-                    window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                        detail: { caseId: targetItem.caseId, changes: { status: caseStatus } }
-                    }));
-                    console.log(`✅ Case ${targetItem.caseId} status synced to ${caseStatus}`);
-                } catch (caseErr) {
-                    console.error('⚠️ Case status sync failed:', caseErr.message);
-                }
+            // Backend zaten case status'unu cascade ile güncelliyor + socket event gönderiyor
+            // Burada sadece anında sidebar UI güncellemesi için local event dispatch ediyoruz
+            if (linkedCaseId) {
+                // Use the actual statusType (WON/LOST/CLOSED), whether from backend closingStage or direct status
+                const caseStatus = (newStatus === 'RESOLVED')
+                    ? (closingStatusType || 'CLOSED')
+                    : 'ACTIVE';
+                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                    detail: { caseId: linkedCaseId, changes: { status: caseStatus } }
+                }));
+                console.log(`✅ Case ${linkedCaseId} status dispatched locally: ${caseStatus}`);
             }
 
             loadInboxItems(false);
@@ -2968,6 +2989,7 @@ const Inbox = () => {
             alert('Sohbet durumu güncellenemedi: ' + (error.response?.data?.error || error.message));
         }
     };
+
 
     // Handle status change for FB/IG post-comment items (no DB — persisted in localStorage)
     const handleCommentStatusChange = (postId, newStatus) => {
