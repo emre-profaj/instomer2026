@@ -7,7 +7,8 @@ import {
     Instagram, Facebook, Mail, Globe, MessageCircle,
     ChevronDown, ChevronRight, PhoneCall, FileText, ShoppingCart,
     Search, BarChart3, Target, Filter, ArrowRight, Bot, Sparkles,
-    ArrowUpRight, ArrowDownRight
+    ArrowUpRight, ArrowDownRight, Trophy, Zap, TrendingDown,
+    PieChart, Hash
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +22,73 @@ const formatNumber = (n) => {
     if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
     return n.toLocaleString('tr-TR');
 };
+
+const formatCurrency = (n) => {
+    if (!n && n !== 0) return '₺0';
+    if (n >= 1000000) return '₺' + (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return '₺' + (n / 1000).toFixed(1) + 'K';
+    return '₺' + n.toLocaleString('tr-TR');
+};
+
+// ── Inline Mini Chart Components ──
+
+const HorizontalBar = ({ items, maxValue }) => {
+    const max = maxValue || Math.max(...items.map(i => i.value), 1);
+    return (
+        <div className="dash-hbar-list">
+            {items.map((item, idx) => (
+                <div key={idx} className="dash-hbar-row">
+                    <span className="dash-hbar-label">{item.label}</span>
+                    <div className="dash-hbar-track">
+                        <div
+                            className="dash-hbar-fill"
+                            style={{
+                                width: `${Math.max((item.value / max) * 100, 2)}%`,
+                                background: item.color || '#6366f1'
+                            }}
+                        />
+                    </div>
+                    <span className="dash-hbar-value">{formatNumber(item.value)}</span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const DonutMini = ({ value, total, color = '#6366f1', label }) => {
+    const pct = total > 0 ? (value / total) * 100 : 0;
+    const r = 28;
+    const circ = 2 * Math.PI * r;
+    const offset = circ - (pct / 100) * circ;
+    return (
+        <div className="dash-donut-wrap">
+            <svg width="68" height="68" viewBox="0 0 68 68">
+                <circle cx="34" cy="34" r={r} fill="none" stroke="#f1f5f9" strokeWidth="7" />
+                <circle
+                    cx="34" cy="34" r={r} fill="none"
+                    stroke={color} strokeWidth="7"
+                    strokeDasharray={circ} strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    transform="rotate(-90 34 34)"
+                    style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                />
+                <text x="34" y="36" textAnchor="middle" fontSize="13" fontWeight="800" fill="#0f172a">
+                    {pct.toFixed(0)}%
+                </text>
+            </svg>
+            {label && <span className="dash-donut-label">{label}</span>}
+        </div>
+    );
+};
+
+const LeagueRow = ({ rank, name, value, valueLabel, highlight }) => (
+    <div className={`dash-league-row${highlight ? ' dash-league-top' : ''}`}>
+        <span className="dash-league-rank">{rank === 1 ? '🏆' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`}</span>
+        <span className="dash-league-name">{name}</span>
+        <span className="dash-league-value">{value}</span>
+        {valueLabel && <span className="dash-league-vlabel">{valueLabel}</span>}
+    </div>
+);
 
 const CeoReport = () => {
     const { currentWorkspace } = useAuth();
@@ -144,51 +212,58 @@ const CeoReport = () => {
         );
     };
 
-    // Summary card component
-    const SummaryCard = ({ icon, iconBg, iconColor, title, children, route, gradient }) => (
-        <div
-            className="ceo-summary-report-card"
-            style={{ background: gradient || '#fff' }}
-            onClick={() => navigate(route)}
-        >
-            <div className="ceo-src-header">
-                <div className="ceo-src-icon" style={{ background: iconBg, color: iconColor }}>
-                    {icon}
-                </div>
-                <h3 className="ceo-src-title">{title}</h3>
-                <div className="ceo-src-arrow">
-                    <ArrowRight size={16} />
-                </div>
-            </div>
-            <div className="ceo-src-body">
-                {children}
-            </div>
-            <div className="ceo-src-footer">
-                <span>Detaylı Rapor</span>
-                <ArrowRight size={14} />
-            </div>
-        </div>
-    );
-
-    // Top agent by orders
-    const topAgent = [...(agentPerformance?.agents || [])].sort((a, b) => (b.dealOrders || 0) - (a.dealOrders || 0))[0];
-    // Top funnel
-    const topFunnel = [...(analytics?.funnelSummary || [])].sort((a, b) => (b.count || 0) - (a.count || 0))[0];
-    // Call stats
+    // Data derivatives
+    const agents = agentPerformance?.agents || [];
+    const topAgents = [...agents].sort((a, b) => (b.dealOrders || 0) - (a.dealOrders || 0)).slice(0, 3);
+    const funnelSummary = analytics?.funnelSummary || [];
+    const topFunnels = [...funnelSummary].sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 5);
+    const channels = analytics?.channelData || [];
+    const sortedChannels = [...channels].sort((a, b) => (b.count || 0) - (a.count || 0));
     const numarali = contactStats?.totals?.withPhone || ct.totalWithPhone || 0;
     const kaciArandi = ct.totalCalled || 0;
     const aranmayan = Math.max(0, numarali - kaciArandi);
     const aramaOrani = numarali > 0 ? ((kaciArandi / numarali) * 100).toFixed(0) : 0;
-    // Channel distribution
-    const channels = analytics?.channelData || [];
-    const topChannel = [...channels].sort((a, b) => (b.count || 0) - (a.count || 0))[0];
+    const totalAICalls = agents.reduce((s, a) => s + (a.retellCallCount || 0), 0);
+
+    const channelIcon = (ch) => {
+        if (ch === 'WHATSAPP') return '💬';
+        if (ch === 'INSTAGRAM') return '📸';
+        if (ch === 'FACEBOOK') return '👤';
+        if (ch === 'EMAIL') return '✉️';
+        if (ch === 'PHONE') return '📞';
+        if (ch === 'WIDGET') return '🌐';
+        if (ch === 'LEAD') return '🎯';
+        return '📋';
+    };
+
+    const channelLabel = (ch) => {
+        if (ch === 'WHATSAPP') return 'WhatsApp';
+        if (ch === 'INSTAGRAM') return 'Instagram';
+        if (ch === 'FACEBOOK') return 'Facebook';
+        if (ch === 'EMAIL') return 'E-posta';
+        if (ch === 'PHONE') return 'Telefon';
+        if (ch === 'WIDGET') return 'Web Widget';
+        if (ch === 'LEAD') return 'Lead Form';
+        return ch;
+    };
+
+    const channelColor = (ch) => {
+        if (ch === 'WHATSAPP') return '#25d366';
+        if (ch === 'INSTAGRAM') return '#e1306c';
+        if (ch === 'FACEBOOK') return '#1877f2';
+        if (ch === 'EMAIL') return '#ea580c';
+        if (ch === 'PHONE') return '#16a34a';
+        if (ch === 'WIDGET') return '#6366f1';
+        if (ch === 'LEAD') return '#ec4899';
+        return '#94a3b8';
+    };
 
     return (
         <div className="ceo-report">
             {/* Header */}
             <div className="ceo-header">
                 <div className="ceo-header-title">
-                    <h1>CEO Dashboard</h1>
+                    <h1>Dashboard</h1>
                     <p>Satış, aktivite ve ekip performansının anlık özeti</p>
                 </div>
                 <div className="ceo-header-actions">
@@ -248,210 +323,384 @@ const CeoReport = () => {
             </div>
 
             {/* ═══════════════════════════════════════════════════════ */}
-            {/* ÖZET KARTLAR */}
+            {/* DASHBOARD KARTLARI — Dikey, tam genişlik */}
             {/* ═══════════════════════════════════════════════════════ */}
-            <div className="ceo-report-cards-grid">
+            <div className="dash-cards-stack">
 
-                {/* 1. GENEL BAKIŞ */}
-                <SummaryCard
-                    icon={<BarChart3 size={20} />}
-                    iconBg="#eef2ff" iconColor="#6366f1"
-                    title="Genel Bakış"
-                    route="/ceo-report/general"
-                >
-                    <div className="ceo-src-metrics">
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(analytics?.totalContacts || 0)}</span>
-                            <span className="ceo-src-metric-label">Başvuru</span>
-                            <TrendBadge current={analytics?.totalContacts || 0} previous={prev.totalContacts} />
+                {/* ──────── 1. GENEL BAKIŞ ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/general')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#eef2ff', color: '#6366f1' }}>
+                                <BarChart3 size={20} />
+                            </div>
+                            <h3>Genel Bakış</h3>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(analytics?.totalMessages || 0)}</span>
-                            <span className="ceo-src-metric-label">Mesaj</span>
+                        <div className="dash-card-kpis">
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(analytics?.totalContacts || 0)}</span>
+                                <span className="dash-kpi-label">Başvuru</span>
+                                <TrendBadge current={analytics?.totalContacts || 0} previous={prev.totalContacts} />
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(analytics?.totalMessages || 0)}</span>
+                                <span className="dash-kpi-label">Mesaj</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(ct.totalCalled || 0)}</span>
+                                <span className="dash-kpi-label">Arama</span>
+                                <TrendBadge current={ct.totalCalled || 0} previous={prev.totalCalled} />
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{analytics?.resolutionRate || 0}%</span>
+                                <span className="dash-kpi-label">Çözüm Oranı</span>
+                            </div>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(ct.totalCalled || 0)}</span>
-                            <span className="ceo-src-metric-label">Arama</span>
+                        <div className="dash-card-footer">
+                            <span>Detaylı Rapor</span>
+                            <ArrowRight size={14} />
                         </div>
                     </div>
-                    {topChannel && (
-                        <div className="ceo-src-info">
-                            Kanal: <strong>{topChannel.channel === 'WHATSAPP' ? 'WhatsApp' : topChannel.channel === 'INSTAGRAM' ? 'Instagram' : topChannel.channel}</strong> en yoğun ({topChannel.count})
-                        </div>
-                    )}
-                </SummaryCard>
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">Kanal Dağılımı</span>
+                        {sortedChannels.length > 0 ? (
+                            <HorizontalBar
+                                items={sortedChannels.slice(0, 5).map(ch => ({
+                                    label: `${channelIcon(ch.channel)} ${channelLabel(ch.channel)}`,
+                                    value: ch.count,
+                                    color: channelColor(ch.channel)
+                                }))}
+                            />
+                        ) : (
+                            <div className="dash-chart-empty">Veri yok</div>
+                        )}
+                    </div>
+                </div>
 
-                {/* 2. TAKIM PERFORMANSI */}
-                <SummaryCard
-                    icon={<UserCheck size={20} />}
-                    iconBg="#eff6ff" iconColor="#3b82f6"
-                    title="Takım & Temsilci"
-                    route="/ceo-report/team"
-                >
-                    <div className="ceo-src-metrics">
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{(agentPerformance?.agents || []).length}</span>
-                            <span className="ceo-src-metric-label">Ajan</span>
+                {/* ──────── 2. TAKIM & TEMSİLCİ ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/team')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#eff6ff', color: '#3b82f6' }}>
+                                <UserCheck size={20} />
+                            </div>
+                            <h3>Takım & Temsilci</h3>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{agentPerformance?.teamTotals?.avgResolutionRate || 0}%</span>
-                            <span className="ceo-src-metric-label">Çözüm</span>
+                        <div className="dash-card-kpis">
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{agents.length}</span>
+                                <span className="dash-kpi-label">Ajan</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{agentPerformance?.teamTotals?.avgResolutionRate || 0}%</span>
+                                <span className="dash-kpi-label">Çözüm</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{agentPerformance?.teamTotals?.avgResponseTime || 0}dk</span>
+                                <span className="dash-kpi-label">Ort. Yanıt</span>
+                            </div>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{agentPerformance?.teamTotals?.avgResponseTime || 0}dk</span>
-                            <span className="ceo-src-metric-label">Yanıt</span>
+                        <div className="dash-card-footer">
+                            <span>Detaylı Rapor</span>
+                            <ArrowRight size={14} />
                         </div>
                     </div>
-                    {topAgent && (
-                        <div className="ceo-src-info">
-                            🏆 <strong>{topAgent.name}</strong> — {topAgent.dealOrders || 0} sipariş
-                        </div>
-                    )}
-                </SummaryCard>
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">En İyi Temsilciler</span>
+                        {topAgents.length > 0 ? (
+                            <div className="dash-league">
+                                {topAgents.map((a, i) => (
+                                    <LeagueRow
+                                        key={a.id || i}
+                                        rank={i + 1}
+                                        name={a.name || 'Bilinmeyen'}
+                                        value={a.dealOrders || 0}
+                                        valueLabel="sipariş"
+                                        highlight={i === 0}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="dash-chart-empty">Temsilci verisi yok</div>
+                        )}
+                    </div>
+                </div>
 
-                {/* 3. AKIŞ RAPORU */}
-                <SummaryCard
-                    icon={<Activity size={20} />}
-                    iconBg="#fdf4ff" iconColor="#a855f7"
-                    title="Akış Raporu"
-                    route="/ceo-report/funnel"
-                >
-                    <div className="ceo-src-metrics">
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{(analytics?.funnelSummary || []).length}</span>
-                            <span className="ceo-src-metric-label">Akış</span>
+                {/* ──────── 3. AKIŞ RAPORU ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/funnel')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#fdf4ff', color: '#a855f7' }}>
+                                <Activity size={20} />
+                            </div>
+                            <h3>Akış Raporu</h3>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber((analytics?.funnelSummary || []).reduce((s, f) => s + (f.count || 0), 0))}</span>
-                            <span className="ceo-src-metric-label">Toplam Kişi</span>
+                        <div className="dash-card-kpis">
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{funnelSummary.length}</span>
+                                <span className="dash-kpi-label">Akış</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(funnelSummary.reduce((s, f) => s + (f.count || 0), 0))}</span>
+                                <span className="dash-kpi-label">Toplam Kişi</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{analytics?.conversionRate || 0}%</span>
+                                <span className="dash-kpi-label">Dönüşüm</span>
+                            </div>
+                        </div>
+                        <div className="dash-card-footer">
+                            <span>Detaylı Rapor</span>
+                            <ArrowRight size={14} />
                         </div>
                     </div>
-                    {topFunnel && (
-                        <div className="ceo-src-info">
-                            En yoğun: <strong>{topFunnel.name}</strong> ({topFunnel.count} kişi)
-                        </div>
-                    )}
-                </SummaryCard>
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">Akış Dağılımı</span>
+                        {topFunnels.length > 0 ? (
+                            <HorizontalBar
+                                items={topFunnels.map((f, i) => ({
+                                    label: f.name || 'Akış',
+                                    value: f.count || 0,
+                                    color: ['#a855f7', '#8b5cf6', '#7c3aed', '#6d28d9', '#5b21b6'][i] || '#a855f7'
+                                }))}
+                            />
+                        ) : (
+                            <div className="dash-chart-empty">Akış verisi yok</div>
+                        )}
+                    </div>
+                </div>
 
-                {/* 4. AKTİVİTE & ARAMA */}
-                <SummaryCard
-                    icon={<Phone size={20} />}
-                    iconBg="#ecfdf5" iconColor="#059669"
-                    title="Aktivite & Arama"
-                    route="/ceo-report/activities"
-                >
-                    <div className="ceo-src-metrics">
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(kaciArandi)}</span>
-                            <span className="ceo-src-metric-label">Aranan</span>
+                {/* ──────── 4. AKTİVİTE & ARAMA ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/activities')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#ecfdf5', color: '#059669' }}>
+                                <Phone size={20} />
+                            </div>
+                            <h3>Aktivite & Arama</h3>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value" style={{ color: aranmayan > 0 ? '#ef4444' : undefined }}>{formatNumber(aranmayan)}</span>
-                            <span className="ceo-src-metric-label">Aranmayan</span>
+                        <div className="dash-card-kpis">
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(kaciArandi)}</span>
+                                <span className="dash-kpi-label">Aranan</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val" style={{ color: aranmayan > 0 ? '#ef4444' : undefined }}>{formatNumber(aranmayan)}</span>
+                                <span className="dash-kpi-label">Aranmayan</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">%{aramaOrani}</span>
+                                <span className="dash-kpi-label">Arama Oranı</span>
+                            </div>
                         </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">%{aramaOrani}</span>
-                            <span className="ceo-src-metric-label">Oran</span>
+                        <div className="dash-card-footer">
+                            <span>Detaylı Rapor</span>
+                            <ArrowRight size={14} />
                         </div>
                     </div>
-                    <div className="ceo-src-info">
-                        Görüşme: <strong>{as.meetingCount || 0}</strong> | Randevu: <strong>{appt.total || 0}</strong>
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">Aktivite Özeti</span>
+                        <div className="dash-activity-grid">
+                            <div className="dash-activity-item">
+                                <DonutMini value={kaciArandi} total={numarali} color="#16a34a" label="Arama" />
+                            </div>
+                            <div className="dash-activity-stats">
+                                <div className="dash-act-row">
+                                    <Handshake size={14} style={{ color: '#6366f1' }} />
+                                    <span>Görüşme</span>
+                                    <strong>{as.meetingCount || 0}</strong>
+                                </div>
+                                <div className="dash-act-row">
+                                    <Calendar size={14} style={{ color: '#8b5cf6' }} />
+                                    <span>Randevu</span>
+                                    <strong>{appt.total || 0}</strong>
+                                </div>
+                                <div className="dash-act-row">
+                                    <CheckCircle2 size={14} style={{ color: '#10b981' }} />
+                                    <span>Tamamlanan</span>
+                                    <strong>{appt.completed || 0}</strong>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </SummaryCard>
+                </div>
 
-                {/* 5. AI ARAMA ANALİZİ */}
-                <SummaryCard
-                    icon={<Bot size={20} />}
-                    iconBg="#f5f3ff" iconColor="#8b5cf6"
-                    title="AI Arama Analizi"
-                    route="/ceo-report/ai-calls"
-                >
-                    {(() => {
-                        // Check if there are AI calls (retell calls in agent performance)
-                        const totalAICalls = (agentPerformance?.agents || []).reduce((s, a) => s + (a.retellCallCount || 0), 0);
-                        if (totalAICalls > 0) {
-                            return (
-                                <>
-                                    <div className="ceo-src-metrics">
-                                        <div className="ceo-src-metric">
-                                            <span className="ceo-src-metric-value">{formatNumber(totalAICalls)}</span>
-                                            <span className="ceo-src-metric-label">AI Arama</span>
-                                        </div>
-                                    </div>
-                                    <div className="ceo-src-info">
-                                        <Sparkles size={12} style={{ marginRight: 4, color: '#8b5cf6' }} /> AI destekli arama aktif
-                                    </div>
-                                </>
-                            );
-                        }
-                        return (
-                            <div className="ceo-src-upgrade">
-                                <Sparkles size={16} style={{ color: '#8b5cf6', marginBottom: 4 }} />
+                {/* ──────── 5. AI ARAMA ANALİZİ ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/ai-calls')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}>
+                                <Bot size={20} />
+                            </div>
+                            <h3>AI Arama Analizi</h3>
+                        </div>
+                        {totalAICalls > 0 ? (
+                            <div className="dash-card-kpis">
+                                <div className="dash-kpi">
+                                    <span className="dash-kpi-val">{formatNumber(totalAICalls)}</span>
+                                    <span className="dash-kpi-label">AI Arama</span>
+                                </div>
+                                <div className="dash-kpi">
+                                    <span className="dash-kpi-val">{formatNumber(appt.byBot || 0)}</span>
+                                    <span className="dash-kpi-label">Bot Randevu</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="dash-ai-empty">
+                                <Sparkles size={18} style={{ color: '#8b5cf6' }} />
                                 <span>AI Arama henüz aktif değil</span>
-                                <span className="ceo-src-upgrade-cta">Keşfet →</span>
                             </div>
-                        );
-                    })()}
-                </SummaryCard>
-
-                {/* 6. SATIŞ RAPORU */}
-                <SummaryCard
-                    icon={<DollarSign size={20} />}
-                    iconBg="#ecfdf5" iconColor="#059669"
-                    title="Satış Raporu"
-                    route="/ceo-report/sales"
-                >
-                    <div className="ceo-src-metrics">
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(ds.totalQuotes || 0)}</span>
-                            <span className="ceo-src-metric-label">Teklif</span>
-                        </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(ds.totalOrders || 0)}</span>
-                            <span className="ceo-src-metric-label">Sipariş</span>
-                        </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value" style={{ color: '#059669' }}>₺{formatNumber(totalSales)}</span>
-                            <span className="ceo-src-metric-label">Ciro</span>
-                            <TrendBadge current={totalSales} previous={prev.orderAmount} />
+                        )}
+                        <div className="dash-card-footer">
+                            <span>{totalAICalls > 0 ? 'Detaylı Rapor' : 'Keşfet'}</span>
+                            <ArrowRight size={14} />
                         </div>
                     </div>
-                    <div className="ceo-src-info">
-                        Dönüşüm: <strong>{ds.totalOrders > 0 && ds.wonCount > 0 ? ((ds.wonCount / ds.totalOrders) * 100).toFixed(0) : 0}%</strong>
-                    </div>
-                </SummaryCard>
-
-                {/* 7. GELEN TALEP ANALİZİ */}
-                <SummaryCard
-                    icon={<Target size={20} />}
-                    iconBg="#fdf2f8" iconColor="#ec4899"
-                    title="Gelen Talep Analizi"
-                    route="/ceo-report/requests"
-                >
-                    <div className="ceo-src-metrics">
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(analytics?.requestAnalysis?.totalRequests || 0)}</span>
-                            <span className="ceo-src-metric-label">Talep</span>
-                        </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(analytics?.requestAnalysis?.withPhoneCount || 0)}</span>
-                            <span className="ceo-src-metric-label">Numaralı</span>
-                        </div>
-                        <div className="ceo-src-metric">
-                            <span className="ceo-src-metric-value">{formatNumber(analytics?.requestAnalysis?.relevantCount || 0)}</span>
-                            <span className="ceo-src-metric-label">İlgili</span>
-                        </div>
-                    </div>
-                    {(() => {
-                        const topics = analytics?.requestAnalysis?.topics || [];
-                        const topTopic = [...topics].sort((a, b) => (b.count || 0) - (a.count || 0))[0];
-                        return topTopic ? (
-                            <div className="ceo-src-info">
-                                En çok: <strong>{topTopic.topic}</strong> ({topTopic.count})
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">AI vs Manuel</span>
+                        {totalAICalls > 0 ? (
+                            <div className="dash-ai-comparison">
+                                <div className="dash-ai-bar-group">
+                                    <div className="dash-ai-bar-item">
+                                        <span className="dash-ai-bar-label"><Bot size={13} /> AI</span>
+                                        <div className="dash-ai-bar-track">
+                                            <div className="dash-ai-bar-fill" style={{
+                                                width: `${kaciArandi > 0 ? Math.max((totalAICalls / (kaciArandi + totalAICalls)) * 100, 5) : 50}%`,
+                                                background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)'
+                                            }} />
+                                        </div>
+                                        <span className="dash-ai-bar-count">{formatNumber(totalAICalls)}</span>
+                                    </div>
+                                    <div className="dash-ai-bar-item">
+                                        <span className="dash-ai-bar-label"><UserCheck size={13} /> Manuel</span>
+                                        <div className="dash-ai-bar-track">
+                                            <div className="dash-ai-bar-fill" style={{
+                                                width: `${kaciArandi > 0 ? Math.max((kaciArandi / (kaciArandi + totalAICalls)) * 100, 5) : 50}%`,
+                                                background: 'linear-gradient(90deg, #3b82f6, #60a5fa)'
+                                            }} />
+                                        </div>
+                                        <span className="dash-ai-bar-count">{formatNumber(kaciArandi)}</span>
+                                    </div>
+                                </div>
                             </div>
-                        ) : null;
-                    })()}
-                </SummaryCard>
+                        ) : (
+                            <div className="dash-chart-empty">
+                                <Sparkles size={16} style={{ color: '#c4b5fd' }} />
+                                <span>AI aramayı aktifleştirin</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ──────── 6. SATIŞ RAPORU ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/sales')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#ecfdf5', color: '#059669' }}>
+                                <DollarSign size={20} />
+                            </div>
+                            <h3>Satış Raporu</h3>
+                        </div>
+                        <div className="dash-card-kpis">
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(ds.totalQuotes || 0)}</span>
+                                <span className="dash-kpi-label">Teklif</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(ds.totalOrders || 0)}</span>
+                                <span className="dash-kpi-label">Sipariş</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val dash-kpi-highlight">{formatCurrency(totalSales)}</span>
+                                <span className="dash-kpi-label">Ciro</span>
+                                <TrendBadge current={totalSales} previous={prev.orderAmount} />
+                            </div>
+                        </div>
+                        <div className="dash-card-footer">
+                            <span>Detaylı Rapor</span>
+                            <ArrowRight size={14} />
+                        </div>
+                    </div>
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">Satış Metrikleri</span>
+                        <div className="dash-sales-metrics">
+                            <div className="dash-sales-metric">
+                                <DonutMini
+                                    value={ds.wonCount || 0}
+                                    total={(ds.totalOrders || 0) + (ds.totalQuotes || 0)}
+                                    color="#059669"
+                                    label="Dönüşüm"
+                                />
+                            </div>
+                            <div className="dash-sales-info">
+                                <div className="dash-act-row">
+                                    <CheckCircle2 size={14} style={{ color: '#10b981' }} />
+                                    <span>Kazanılan</span>
+                                    <strong>{ds.wonCount || 0}</strong>
+                                </div>
+                                <div className="dash-act-row">
+                                    <AlertTriangle size={14} style={{ color: '#ef4444' }} />
+                                    <span>Kaybedilen</span>
+                                    <strong>{ds.lostCount || 0}</strong>
+                                </div>
+                                <div className="dash-act-row">
+                                    <Clock size={14} style={{ color: '#f59e0b' }} />
+                                    <span>Bekleyen</span>
+                                    <strong>{(ds.totalQuotes || 0) - (ds.wonCount || 0) - (ds.lostCount || 0)}</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ──────── 7. GELEN TALEP ANALİZİ ──────── */}
+                <div className="dash-card" onClick={() => navigate('/ceo-report/requests')}>
+                    <div className="dash-card-left">
+                        <div className="dash-card-header">
+                            <div className="dash-card-icon" style={{ background: '#fdf2f8', color: '#ec4899' }}>
+                                <Target size={20} />
+                            </div>
+                            <h3>Gelen Talep Analizi</h3>
+                        </div>
+                        <div className="dash-card-kpis">
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(analytics?.requestAnalysis?.totalRequests || 0)}</span>
+                                <span className="dash-kpi-label">Talep</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(analytics?.requestAnalysis?.withPhoneCount || 0)}</span>
+                                <span className="dash-kpi-label">Numaralı</span>
+                            </div>
+                            <div className="dash-kpi">
+                                <span className="dash-kpi-val">{formatNumber(analytics?.requestAnalysis?.relevantCount || 0)}</span>
+                                <span className="dash-kpi-label">İlgili</span>
+                            </div>
+                        </div>
+                        <div className="dash-card-footer">
+                            <span>Detaylı Rapor</span>
+                            <ArrowRight size={14} />
+                        </div>
+                    </div>
+                    <div className="dash-card-right">
+                        <span className="dash-chart-title">En Çok Talep Edilen</span>
+                        {(() => {
+                            const topics = analytics?.requestAnalysis?.topics || [];
+                            const sorted = [...topics].sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 4);
+                            return sorted.length > 0 ? (
+                                <HorizontalBar
+                                    items={sorted.map((t, i) => ({
+                                        label: t.topic?.length > 30 ? t.topic.slice(0, 30) + '…' : t.topic,
+                                        value: t.count,
+                                        color: ['#ec4899', '#f472b6', '#f9a8d4', '#fbcfe8'][i] || '#ec4899'
+                                    }))}
+                                />
+                            ) : (
+                                <div className="dash-chart-empty">Talep verisi yok</div>
+                            );
+                        })()}
+                    </div>
+                </div>
+
             </div>
         </div>
     );

@@ -479,7 +479,350 @@
     text-align: right;
 }
 
-/* ── Summary Report Cards Grid (CEO Dashboard) ── */
+/* ═══════════════════════════════════════════════════════ */
+/* ── Dashboard Vertical Cards (New Design) ──           */
+/* ═══════════════════════════════════════════════════════ */
+
+.dash-cards-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 4px;
+}
+
+/* ── Card Container ── */
+.dash-card {
+    display: flex;
+    background: #fff;
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    overflow: hidden;
+    min-height: 140px;
+}
+.dash-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(99,102,241,0.10);
+    border-color: #c7d2fe;
+}
+
+/* ── Left Panel (KPIs) ── */
+.dash-card-left {
+    flex: 1;
+    min-width: 0;
+    padding: 20px 24px 14px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #f1f5f9;
+}
+.dash-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.dash-card-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.dash-card-header h3 {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0;
+}
+
+/* ── KPI Row ── */
+.dash-card-kpis {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+.dash-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.dash-kpi-val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.2;
+}
+.dash-kpi-val.dash-kpi-highlight {
+    color: #059669;
+}
+.dash-kpi-label {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Card Footer ── */
+.dash-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #94a3b8;
+    transition: color 0.2s;
+}
+.dash-card:hover .dash-card-footer {
+    color: #6366f1;
+}
+
+/* ── Right Panel (Charts/Visuals) ── */
+.dash-card-right {
+    flex: 0 0 340px;
+    padding: 18px 22px;
+    background: #fafbfc;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.dash-chart-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.dash-chart-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    flex: 1;
+    font-size: 0.78rem;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+/* ── Horizontal Bar Chart ── */
+.dash-hbar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.dash-hbar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.dash-hbar-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #475569;
+    width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+.dash-hbar-track {
+    flex: 1;
+    height: 7px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.dash-hbar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+.dash-hbar-value {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #0f172a;
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ── Donut Mini Chart ── */
+.dash-donut-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.dash-donut-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── League Table ── */
+.dash-league {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.dash-league-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    transition: background 0.15s;
+}
+.dash-league-row:hover {
+    background: #f1f5f9;
+}
+.dash-league-top {
+    background: #fef9c3;
+}
+.dash-league-top:hover {
+    background: #fef08a;
+}
+.dash-league-rank {
+    font-size: 0.85rem;
+    width: 24px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.dash-league-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1e293b;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dash-league-value {
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+.dash-league-vlabel {
+    font-size: 0.62rem;
+    font-weight: 500;
+    color: #94a3b8;
+}
+
+/* ── Activity Grid (Donut + Stats) ── */
+.dash-activity-grid {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.dash-activity-item {
+    flex-shrink: 0;
+}
+.dash-activity-stats {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.dash-act-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: #475569;
+    font-weight: 500;
+}
+.dash-act-row strong {
+    margin-left: auto;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+/* ── AI Comparison Bars ── */
+.dash-ai-comparison {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+.dash-ai-bar-group {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.dash-ai-bar-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.dash-ai-bar-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #475569;
+    width: 65px;
+    flex-shrink: 0;
+}
+.dash-ai-bar-track {
+    flex: 1;
+    height: 10px;
+    background: #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.dash-ai-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.6s ease;
+}
+.dash-ai-bar-count {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #0f172a;
+    min-width: 36px;
+    text-align: right;
+}
+
+/* ── AI Empty State ── */
+.dash-ai-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+    font-size: 0.82rem;
+    color: #8b5cf6;
+    font-weight: 500;
+}
+
+/* ── Sales Metrics ── */
+.dash-sales-metrics {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: 1;
+}
+.dash-sales-metric {
+    flex-shrink: 0;
+}
+.dash-sales-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+/* ── Legacy SummaryCard styles (kept for detail pages) ── */
 .ceo-report-cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -498,109 +841,11 @@
     display: flex;
     flex-direction: column;
 }
-.ceo-summary-report-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 32px rgba(99,102,241,0.10);
-    border-color: #c7d2fe;
-}
-.ceo-src-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 18px 20px 0;
-}
-.ceo-src-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.ceo-src-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin: 0;
-    flex: 1;
-}
-.ceo-src-arrow {
-    color: #c7d2fe;
-    transition: transform 0.2s, color 0.2s;
-}
-.ceo-summary-report-card:hover .ceo-src-arrow {
-    color: #6366f1;
-    transform: translateX(3px);
-}
-.ceo-src-body {
-    padding: 14px 20px 10px;
-    flex: 1;
-}
-.ceo-src-metrics {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-.ceo-src-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-.ceo-src-metric-value {
-    font-size: 1.45rem;
-    font-weight: 800;
-    color: #0f172a;
-    line-height: 1.2;
-}
-.ceo-src-metric-label {
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: #94a3b8;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-.ceo-src-info {
-    font-size: 0.72rem;
-    color: #64748b;
-    margin-top: 8px;
-    font-weight: 500;
-}
-.ceo-src-info strong {
-    color: #1e293b;
-    font-weight: 700;
-}
-.ceo-src-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    padding: 10px 20px;
-    border-top: 1px solid #f1f5f9;
-    font-size: 0.72rem;
-    font-weight: 600;
-    color: #94a3b8;
-    transition: color 0.2s;
-}
-.ceo-summary-report-card:hover .ceo-src-footer {
-    color: #6366f1;
-}
-.ceo-src-upgrade {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 12px 0;
-    text-align: center;
-    font-size: 0.78rem;
-    color: #8b5cf6;
-    font-weight: 500;
-}
-.ceo-src-upgrade-cta {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: #6366f1;
-    margin-top: 4px;
+.ceo-src-header, .ceo-src-icon, .ceo-src-title, .ceo-src-arrow,
+.ceo-src-body, .ceo-src-metrics, .ceo-src-metric,
+.ceo-src-metric-value, .ceo-src-metric-label,
+.ceo-src-info, .ceo-src-footer, .ceo-src-upgrade, .ceo-src-upgrade-cta {
+    /* Legacy class stubs — prevent missing style errors in detail pages */
 }
 
 /* ── Trend Badge ── */
@@ -656,5 +901,26 @@
     }
     .ceo-funnel-select {
         width: 100%;
+    }
+    .dash-card {
+        flex-direction: column;
+    }
+    .dash-card-left {
+        border-right: none;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .dash-card-right {
+        flex: none;
+        width: 100%;
+    }
+    .dash-card-kpis {
+        gap: 16px;
+    }
+    .dash-kpi-val {
+        font-size: 1.25rem;
+    }
+    .dash-hbar-label {
+        width: 80px;
+        font-size: 0.68rem;
     }
 }
