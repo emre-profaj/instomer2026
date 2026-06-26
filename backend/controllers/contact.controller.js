@@ -1941,6 +1941,7 @@ export const getContactAnalytics = async (req, res) => {
             where: contactWhere,
             select: {
                 id: true,
+                phone: true,
                 status: true,
                 funnelType: true,
                 funnelStageId: true,
@@ -2060,6 +2061,7 @@ export const getContactAnalytics = async (req, res) => {
         }
 
         const totalContacts = contacts.length;
+        const withPhoneCount = contacts.filter(c => c.phone && c.phone.trim() !== '').length;
         const convertedCount = funnelId ? 0 : (contacts.filter(c => c.status === 'CONVERTED').length);
         const conversionRate = totalContacts > 0 ? ((convertedCount / totalContacts) * 100).toFixed(1) : 0;
 
@@ -2910,6 +2912,7 @@ export const getContactAnalytics = async (req, res) => {
 
         res.json({
             totalContacts,
+            withPhoneCount,
             totalMessages,
             totalAiMessages,
             totalHumanMessages,

@@ -761,7 +761,7 @@ const CeoReport = () => {
             {/* ═══════ KPI SUMMARY ROW ═══════ */}
             <div className="dash-kpi-row">
                 <KpiStat label="Başvuru" value={formatNumber(analytics?.totalContacts || 0)} icon={<Users size={22} />} color="#6366f1"
-                    subtitle={`${formatNumber(contactStats?.totals?.withPhone || 0)} numaralı`}
+                    subtitle={`${formatNumber(analytics?.withPhoneCount || contactStats?.totals?.withPhone || 0)} numaralı`}
                     trend={<TrendBadge current={analytics?.totalContacts || 0} previous={prev.totalContacts} />} />
                 <KpiStat label="Mesaj" value={formatNumber(analytics?.totalMessages || 0)} icon={<MessageSquare size={22} />} color="#3b82f6"
                     subtitle={`Ort. ${analytics?.totalContacts ? Math.round((analytics?.totalMessages || 0) / analytics.totalContacts) : 0}/kişi`} />
