@@ -3116,12 +3116,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
                                                                     <Pencil size={12} /> Düzenle
                                                                 </button>
-                                                                {item.status && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
-                                                                    <button onClick={() => { setExpandedMilestone(null); handleDeleteActivity(item.id); }}
-                                                                        style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                                                        <Trash2 size={12} /> Sil
-                                                                    </button>
-                                                                )}
+                                                                <button onClick={() => { setExpandedMilestone(null); handleDeleteActivity(item.id); }}
+                                                                    style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                    <Trash2 size={12} /> Sil
+                                                                </button>
                                                             </div>
                                                         </div>
                                                         );
@@ -3182,6 +3180,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             />
                                         </div>
                                         <div className="reminder-modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
+                                            <button
+                                                onClick={() => { handleDeleteActivity(editingNoteData.id); setEditingNoteData(null); setEditNoteText(''); }}
+                                                style={{
+                                                    background: '#fee2e2',
+                                                    color: '#ef4444',
+                                                    border: 'none',
+                                                    borderRadius: '8px',
+                                                    padding: '8px 20px',
+                                                    fontSize: '0.85rem',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    marginRight: 'auto',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                <Trash2 size={16} />
+                                                Sil
+                                            </button>
                                             <button
                                                 onClick={() => { setEditingNoteData(null); setEditNoteText(''); }}
                                                 className="reminder-btn-cancel"
