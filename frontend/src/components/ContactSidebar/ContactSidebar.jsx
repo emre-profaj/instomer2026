@@ -2312,7 +2312,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             const initials = callerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
                                             let sentimentEmoji = '';
                                             if (call.callSentiment) {
-                                                sentimentEmoji = call.callSentiment === 'Positive' ? ' 😊' : call.callSentiment === 'Negative' ? ' 😞' : ' 😐';
+                                                sentimentEmoji = call.callSentiment === 'Positive' ? ' 😊' : 
+                                                                 call.callSentiment === 'Negative' ? ' 😞' : 
+                                                                 call.callSentiment === 'WrongSend' ? ' ⚠️' : ' 😐';
                                             }
                                             milestones.push({
                                                 icon: isAI ? '🤖' : '👤',
@@ -2962,7 +2964,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>👤 Manuel Aramalar</div>
                                                             {expandedMilestone._sourceItems.map((item, ci) => {
                                                                 const callerName = item.assignedToName || item.completedByName || 'Bilinmeyen';
-                                                                const sentimentMap = { Positive: '😊', Neutral: '😐', Negative: '😞' };
+                                                                const sentimentMap = { Positive: '😊', Neutral: '😐', Negative: '😞', WrongSend: '⚠️' };
                                                                 return (
                                                                     <div key={ci} style={{ padding: '8px 10px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '4px' }}>
                                                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -3376,7 +3378,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             {[
                                                                 { key: 'Positive', emoji: '😊', label: 'Olumlu', color: '#16a34a', bg: '#dcfce7' },
                                                                 { key: 'Neutral', emoji: '😐', label: 'Nötr', color: '#6b7280', bg: '#f3f4f6' },
-                                                                { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' }
+                                                                { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' },
+                                                                { key: 'WrongSend', emoji: '⚠️', label: 'Hatalı Gönderim', color: '#d97706', bg: '#fef3c7' }
                                                             ].map(s => (
                                                                 <button
                                                                     key={s.key}
@@ -3590,7 +3593,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             {[
                                                                 { key: 'Positive', emoji: '😊', label: 'Olumlu', color: '#16a34a', bg: '#dcfce7' },
                                                                 { key: 'Neutral', emoji: '😐', label: 'Nötr', color: '#6b7280', bg: '#f3f4f6' },
-                                                                { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' }
+                                                                { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' },
+                                                                { key: 'WrongSend', emoji: '⚠️', label: 'Hatalı Gönderim', color: '#d97706', bg: '#fef3c7' }
                                                             ].map(s => (
                                                                 <button
                                                                     key={s.key}
