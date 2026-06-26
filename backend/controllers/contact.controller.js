@@ -1916,6 +1916,7 @@ export const getContactAnalytics = async (req, res) => {
 
         // Base contact where clause
         const contactWhere = {
+            isDeleted: false,
             conversations: { some: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) } },
             ...dateFilter
         };
@@ -2205,14 +2206,16 @@ export const getContactAnalytics = async (req, res) => {
             agentAppointments,
             scheduledAppointments,
             completedAppointments,
-            cancelledAppointments
+            cancelledAppointments,
+            overdueAppointments
         ] = await Promise.all([
             prisma.appointment.count({ where: appointmentFilter }),
             prisma.appointment.count({ where: { ...appointmentFilter, createdByBotId: { not: null } } }),
             prisma.appointment.count({ where: { ...appointmentFilter, createdByBotId: null } }),
             prisma.appointment.count({ where: { ...appointmentFilter, status: 'SCHEDULED' } }),
             prisma.appointment.count({ where: { ...appointmentFilter, status: 'COMPLETED' } }),
-            prisma.appointment.count({ where: { ...appointmentFilter, status: 'CANCELLED' } })
+            prisma.appointment.count({ where: { ...appointmentFilter, status: 'CANCELLED' } }),
+            prisma.appointment.count({ where: { ...appointmentFilter, status: 'SCHEDULED', startTime: { lt: new Date() } } })
         ]);
 
         // Agent'ların "Randevu" aşamasına taşıdığı kişiler (STAGE_CHANGED event'leri)
@@ -2481,7 +2484,7 @@ export const getContactAnalytics = async (req, res) => {
                     select: {
                         id: true, title: true, stage: true, status: true, amount: true, currency: true,
                         createdAt: true,
-                        contact: { select: { id: true, name: true } },
+                        contact: { select: { id: true, name: true, phone: true } },
                         assignedTo: { select: { id: true, name: true } }
                     },
                     orderBy: { createdAt: 'desc' },
@@ -2767,7 +2770,8 @@ export const getContactAnalytics = async (req, res) => {
                     }
                 };
                 const prevContactWhere = {
-                    conversations: { some: { workspaceId } },
+                    isDeleted: false,
+                    conversations: { some: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) } },
                     ...prevDateFilter
                 };
                 if (funnelId && activeFunnel) {
@@ -2775,31 +2779,63 @@ export const getContactAnalytics = async (req, res) => {
                     prevContactWhere.funnelStageId = { in: stageIds };
                 }
 
-                const [prevContacts, prevMsgs, prevCalled, prevOrders] = await Promise.all([
+                // Phone contact where for previous period
+                const prevPhoneContactWhere = {
+                    OR: [
+                        { workspaceId },
+                        { conversations: { some: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) } } }
+                    ],
+                    isDeleted: false,
+                    phone: { not: null },
+                    NOT: { phone: '' },
+                    createdAt: prevDateFilter.createdAt
+                };
+
+                // Completed calls in previous period
+                const prevCallActivities = await prisma.contactActivity.findMany({
+                    where: {
+                        workspaceId,
+                        type: 'CALL',
+                        status: 'COMPLETED',
+                        createdAt: prevDateFilter.createdAt,
+                        ...(teamUserIds ? { OR: [{ assignedToId: { in: teamUserIds } }, { createdBy: { in: teamUserIds } }] } : {})
+                    },
+                    select: { contactId: true }
+                });
+                const prevCalledContactIds = new Set(prevCallActivities.map(a => a.contactId));
+
+                const [prevContacts, prevMsgs, prevPhoneContactsList, prevOrdersAgg] = await Promise.all([
                     prisma.contact.count({ where: prevContactWhere }),
-                    prisma.message.count({ where: { conversation: { workspaceId }, ...prevDateFilter } }),
-                    prisma.contact.count({
-                        where: {
-                            ...prevContactWhere,
-                            activities: { some: { type: { in: ['CALL', 'OUTBOUND_CALL'] } } }
-                        }
+                    prisma.message.count({ 
+                        where: { 
+                            conversation: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) }, 
+                            ...prevDateFilter 
+                        } 
                     }),
-                    prisma.deal.findMany({
+                    prisma.contact.findMany({
+                        where: prevPhoneContactWhere,
+                        select: { id: true }
+                    }),
+                    prisma.deal.aggregate({
                         where: {
-                            contact: prevContactWhere,
-                            type: 'ORDER',
-                            ...prevDateFilter
+                            workspaceId,
+                            stage: 'ORDER',
+                            createdAt: prevDateFilter.createdAt,
+                            ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {})
                         },
-                        select: { amount: true }
+                        _count: true,
+                        _sum: { amount: true }
                     })
                 ]);
+
+                const prevCalledCount = prevPhoneContactsList.filter(c => prevCalledContactIds.has(c.id)).length;
 
                 previousPeriod = {
                     totalContacts: prevContacts,
                     totalMessages: prevMsgs,
-                    totalCalled: prevCalled,
-                    totalOrders: prevOrders.length,
-                    orderAmount: prevOrders.reduce((s, d) => s + (d.amount || 0), 0)
+                    totalCalled: prevCalledCount,
+                    totalOrders: prevOrdersAgg._count || 0,
+                    orderAmount: prevOrdersAgg._sum?.amount || 0
                 };
             } catch (prevErr) {
                 console.error('Previous period comparison error (non-fatal):', prevErr.message);
@@ -2922,6 +2958,7 @@ export const getContactAnalytics = async (req, res) => {
             handoffRate: botLedConversations > 0 ? ((handoffConversations / botLedConversations) * 100).toFixed(1) : 0,
             conversionRate: parseFloat(conversionRate),
             resolutionRate: parseFloat(realResolutionRate),
+            resolvedCount: resolvedConvs,
             statusData,
             funnelSummary,
             channelData: Object.entries(channelCounts).map(([k, v]) => ({ channel: k, count: v })),
@@ -2933,7 +2970,7 @@ export const getContactAnalytics = async (req, res) => {
                 scheduled: scheduledAppointments,
                 completed: completedAppointments,
                 cancelled: cancelledAppointments,
-                overdue: Math.max(0, scheduledAppointments - completedAppointments - cancelledAppointments)
+                overdue: overdueAppointments
             },
             meetingStats,
             callTrackingStats,
@@ -3242,6 +3279,7 @@ export const getAgentPerformance = async (req, res) => {
                 resolutionRate: Math.min(resolutionRate, 100),
                 // Activity metrics
                 callCount: (activityCounts['CALL'] || 0) + retellCallCount,
+                retellCallCount,
                 meetingCount: activityCounts['MEETING'] || 0,
                 // Deal metrics
                 dealQuotes,
@@ -3315,21 +3353,11 @@ export const getAgentPerformance = async (req, res) => {
                 }
             });
 
-            // Get conversations where this bot is assigned
-            const botConversations = await prisma.conversation.count({
-                where: {
-                    workspaceId,
-                    assignedBotId: bot.id,
-                    ...dateFilter
-                }
-            });
-
-            // Get conversations handled by bot (via channel assignment)
-            // Check WhatsApp, Facebook, Instagram assignments
-            const channelConversations = await prisma.conversation.count({
+            const totalBotConversations = await prisma.conversation.count({
                 where: {
                     workspaceId,
                     OR: [
+                        { assignedBotId: bot.id },
                         { whatsappPhoneNumber: { assignedBotId: bot.id } },
                         { facebookPage: { assignedBotId: bot.id } },
                         { facebookPage: { instagramBotId: bot.id } }
@@ -3337,8 +3365,6 @@ export const getAgentPerformance = async (req, res) => {
                     ...dateFilter
                 }
             });
-
-            const totalBotConversations = botConversations + channelConversations;
 
             const myBotTeams = botTeamMemberships
                 .filter(tm => tm.botId === bot.id)

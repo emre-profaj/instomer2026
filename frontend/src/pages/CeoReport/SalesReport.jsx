@@ -287,13 +287,13 @@ const SalesReport = () => {
                                         'LOST': { label: 'İptal', bg: '#fef2f2', color: '#ef4444' },
                                     };
                                     const st = statusConfig[deal.status] || statusConfig['OPEN'];
-                                    const typeLabel = deal.type === 'ORDER' ? 'Sipariş' : deal.type === 'QUOTE' ? 'Teklif' : deal.type === 'INVOICE' ? 'Fatura' : deal.type;
+                                    const typeLabel = deal.stage === 'ORDER' ? 'Sipariş' : deal.stage === 'QUOTE' ? 'Teklif' : deal.stage === 'INVOICE' ? 'Fatura' : deal.stage;
                                     return (
                                         <tr key={deal.id || idx}>
                                             <td>
                                                 <div>
-                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{deal.contactName || 'İsimsiz'}</div>
-                                                    {deal.contactPhone && <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{deal.contactPhone}</div>}
+                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{deal.contact?.name || 'İsimsiz'}</div>
+                                                    {deal.contact?.phone && <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{deal.contact.phone}</div>}
                                                 </div>
                                             </td>
                                             <td><span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>{typeLabel}</span></td>
