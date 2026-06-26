@@ -1515,3 +1515,161 @@
     .dash-card-title, .dash-panel-title, .ceo-detail-title { color: #000 !important; }
     .dash-card-value { color: #000 !important; }
 }
+
+/* Screen view: hide the print-only container completely */
+.print-report-container {
+    display: none !important;
+}
+
+@media print {
+    /* Hide the normal screen layout completely */
+    .print-logo-header,
+    .dash-topbar,
+    .dash-kpi-row,
+    .dash-ai-summary-card,
+    .dash-analytics-grid {
+        display: none !important;
+    }
+
+    /* Show the print-only container */
+    .print-report-container {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Print page styling and forced page break */
+    .print-page {
+        page-break-after: always !important;
+        break-after: page !important;
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 10mm 0 !important;
+    }
+
+    /* Avoid page breaking inside tables, cards, charts */
+    .print-card,
+    .print-table-wrap,
+    .print-section,
+    .dash-hm-cell,
+    .dash-hbar-row {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+
+    /* Header for each page */
+    .print-page-header {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        margin-bottom: 25px !important;
+        border-bottom: 2px solid #e2e8f0 !important;
+        padding-bottom: 10px !important;
+    }
+
+    .print-page-header-top {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+    }
+
+    .print-page-header-top img {
+        height: 28px !important;
+    }
+
+    .print-page-header-logo-text {
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #4f46e5 !important;
+        letter-spacing: 0.5px !important;
+    }
+
+    .print-page-header-meta {
+        display: flex !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        margin-top: 6px !important;
+        font-size: 10px !important;
+        color: #64748b !important;
+    }
+
+    /* Custom print layouts */
+    .print-grid-3 {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 15px !important;
+        margin-bottom: 20px !important;
+    }
+
+    .print-grid-2 {
+        display: grid !important;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 20px !important;
+        margin-bottom: 20px !important;
+    }
+
+    .print-kpi-card {
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        background: #f8fafc !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 4px !important;
+        position: relative !important;
+    }
+
+    .print-kpi-title {
+        font-size: 11px !important;
+        color: #64748b !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+    }
+
+    .print-kpi-val {
+        font-size: 20px !important;
+        font-weight: 800 !important;
+        color: #0f172a !important;
+    }
+
+    .print-kpi-sub {
+        font-size: 10px !important;
+        color: #94a3b8 !important;
+    }
+
+    .print-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-top: 10px !important;
+    }
+
+    .print-table th, .print-table td {
+        border: 1px solid #e2e8f0 !important;
+        padding: 8px 10px !important;
+        text-align: left !important;
+        font-size: 11px !important;
+    }
+
+    .print-table th {
+        background-color: #f1f5f9 !important;
+        font-weight: 700 !important;
+        color: #334155 !important;
+    }
+
+    .print-table td {
+        color: #475569 !important;
+    }
+
+    .print-title-2 {
+        font-size: 14px !important;
+        font-weight: 700 !important;
+        color: #1e293b !important;
+        margin: 20px 0 10px 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+}

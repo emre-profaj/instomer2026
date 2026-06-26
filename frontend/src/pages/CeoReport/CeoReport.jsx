@@ -683,6 +683,32 @@ const CeoReport = () => {
         return map[ch] || '#94a3b8';
     };
 
+    const renderPrintHeader = (pageTitle) => {
+        const TurkishFilterLabels = {
+            all: 'Tüm Zamanlar',
+            today: 'Bugün',
+            yesterday: 'Dün',
+            '7d': 'Bu Hafta',
+            '30d': 'Bu Ay',
+            '90d': 'Son 90 Gün',
+            custom: 'Özel Tarih Aralığı'
+        };
+        const filterText = dateFilter === 'custom' && startDate ? `${startDate} / ${endDate}` : (TurkishFilterLabels[dateFilter] || dateFilter);
+        return (
+            <div className="print-page-header">
+                <div className="print-page-header-top">
+                    <img src="/instomer-logo.png" alt="Instomer" style={{ height: '28px' }} />
+                    <span className="print-page-header-logo-text">CEO PERFORMANS RAPORU</span>
+                </div>
+                <div className="print-page-header-meta">
+                    <span>Rapor Bölümü: <strong>{pageTitle}</strong></span>
+                    <span>Tarih Filtresi: <strong>{filterText}</strong></span>
+                    <span>Yazdırma Tarihi: <strong>{new Date().toLocaleDateString('tr-TR')}</strong></span>
+                </div>
+            </div>
+        );
+    };
+
     const handleDownload = async () => {
         if (!aiSummary && !aiSummaryLoading && analytics) {
             await generateAiSummary(analytics, dateFilter);
@@ -1368,6 +1394,351 @@ const CeoReport = () => {
                 </div>
 
             </div>
+
+            {/* ═══════ PRINT-ONLY FULL MULTI-PAGE REPORT ═══════ */}
+            <div className="print-report-container">
+                {/* Page 1: Yönetici Özeti & AI Rapor Yorumu */}
+                <div className="print-page">
+                    {renderPrintHeader('1. Yönetici Performans Özeti')}
+                    
+                    <div className="print-grid-3" style={{ marginTop: 20 }}>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Başvuru</span>
+                            <span className="print-kpi-val">{formatNumber(analytics?.totalContacts || 0)}</span>
+                            <span className="print-kpi-sub">{formatNumber(analytics?.withPhoneCount || 0)} telefonlu</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Mesaj</span>
+                            <span className="print-kpi-val">{formatNumber(analytics?.totalMessages || 0)}</span>
+                            <span className="print-kpi-sub">Acente: {formatNumber(analytics?.totalHumanMessages || 0)} | Bot: {formatNumber(analytics?.totalAiMessages || 0)}</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Arama Yapılan Kişi</span>
+                            <span className="print-kpi-val">{formatNumber(ct.totalCalled || 0)}</span>
+                            <span className="print-kpi-sub">Oran: %{aramaOrani}</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Sipariş</span>
+                            <span className="print-kpi-val">{formatNumber(ds.totalOrders || 0)}</span>
+                            <span className="print-kpi-sub">{formatNumber(ds.totalQuotes || 0)} teklif</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Ciro</span>
+                            <span className="print-kpi-val">{formatCurrency(totalSales)}</span>
+                            <span className="print-kpi-sub">{ds.wonCount || 0} kazanılan sipariş</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Çözüm Oranı</span>
+                            <span className="print-kpi-val">%{analytics?.resolutionRate || 0}</span>
+                            <span className="print-kpi-sub">{formatNumber(analytics?.resolvedCount || 0)} çözülen sohbet</span>
+                        </div>
+                    </div>
+
+                    <div className="print-card" style={{ marginTop: 30, border: '1px solid #cbd5e1', borderRadius: '8px', padding: '16px' }}>
+                        <h3 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 6, color: '#4f46e5' }}>
+                            🤖 Yapay Zeka Rapor Analizi
+                        </h3>
+                        <div className="ai-summary-content" style={{ fontSize: 12, lineHeight: 1.5, color: '#334155' }}>
+                            {aiSummary ? renderMarkdown(aiSummary) : 'Yapay zeka rapor yorumu bulunamadı.'}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Page 2: Genel Rapor ve Başvuru Dağılımları */}
+                <div className="print-page">
+                    {renderPrintHeader('2. Genel Başvuru & Grafik Analizi')}
+                    
+                    <h4 className="print-title-2">📊 Günlük Başvuru Dağılımı</h4>
+                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginBottom: 25 }}>
+                        <StackedAreaChart data={dailyStackedData} height={160} showLabels={true} />
+                    </div>
+
+                    <div className="print-grid-2">
+                        <div className="print-card">
+                            <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>📱 Kanal Dağılımı</h4>
+                            <table className="print-table">
+                                <thead>
+                                    <tr>
+                                        <th>Kanal</th>
+                                        <th>Başvuru</th>
+                                        <th>Oran</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedChannels.map((ch, i) => {
+                                        const total = sortedChannels.reduce((sum, c) => sum + c.count, 0) || 1;
+                                        return (
+                                            <tr key={i}>
+                                                <td>{channelLabel(ch.channel)}</td>
+                                                <td>{ch.count}</td>
+                                                <td>%{((ch.count / total) * 100).toFixed(0)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div className="print-card">
+                            <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>📅 Aylık Başvuru (Son 6 Ay)</h4>
+                            <table className="print-table">
+                                <thead>
+                                    <tr>
+                                        <th>Ay</th>
+                                        <th>Başvuru</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {monthlyData.map((m, i) => (
+                                        <tr key={i}>
+                                            <td>{m.month}</td>
+                                            <td>{m.count}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <h4 className="print-title-2" style={{ marginTop: 25 }}>⏰ Yoğun Başvuru Saatleri</h4>
+                    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10 }}>
+                        <Heatmap data={analytics?.heatmapData} />
+                    </div>
+                </div>
+
+                {/* Page 3: Satış ve Pazarlama Performansı */}
+                <div className="print-page">
+                    {renderPrintHeader('3. Satış ve Pazarlama Analizi')}
+                    
+                    <div className="print-grid-3">
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Teklif</span>
+                            <span className="print-kpi-val">{ds.totalQuotes || 0}</span>
+                            <span className="print-kpi-sub">Tutar: {formatCurrency(ds.quoteAmount || 0)}</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Sipariş</span>
+                            <span className="print-kpi-val">{ds.totalOrders || 0}</span>
+                            <span className="print-kpi-sub">Tutar: {formatCurrency(ds.orderAmount || 0)}</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Kazanılan Sipariş</span>
+                            <span className="print-kpi-val">{ds.wonCount || 0}</span>
+                            <span className="print-kpi-sub">Ciro: {formatCurrency(ds.wonAmount || 0)}</span>
+                        </div>
+                    </div>
+
+                    <div style={{ margin: '20px 0' }}>
+                        <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>📈 Temsilci Satış Lider Tablosu</h4>
+                        <table className="print-table">
+                            <thead>
+                                <tr>
+                                    <th>Sıra</th>
+                                    <th>Temsilci</th>
+                                    <th>Sipariş</th>
+                                    <th>Teklif</th>
+                                    <th>Fatura</th>
+                                    <th>Ciro (₺)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {topAgents.map((agent, i) => (
+                                    <tr key={i}>
+                                        <td>#{i + 1}</td>
+                                        <td><strong>{agent.name}</strong></td>
+                                        <td>{agent.dealOrders || 0}</td>
+                                        <td>{agent.dealQuotes || 0}</td>
+                                        <td>{agent.dealInvoices || 0}</td>
+                                        <td>{formatCurrency(agent.dealTotalAmount || 0)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style={{ marginTop: 25 }}>
+                        <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>🛍️ Son Satışlar</h4>
+                        <table className="print-table">
+                            <thead>
+                                <tr>
+                                    <th>Sipariş/Teklif</th>
+                                    <th>Müşteri</th>
+                                    <th>Temsilci</th>
+                                    <th>Aşama</th>
+                                    <th>Tutar</th>
+                                    <th>Tarih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {ds.recentDeals?.slice(0, 7).map((deal, i) => (
+                                    <tr key={i}>
+                                        <td>{deal.title}</td>
+                                        <td>{deal.contact?.name || '—'}</td>
+                                        <td>{deal.assignedTo?.name || '—'}</td>
+                                        <td>{deal.stage === 'QUOTE' ? 'Teklif' : deal.stage === 'ORDER' ? 'Sipariş' : deal.stage === 'INVOICE' ? 'Fatura' : deal.stage}</td>
+                                        <td><strong>{formatCurrency(deal.amount || 0)}</strong></td>
+                                        <td>{deal.createdAt ? new Date(deal.createdAt).toLocaleDateString('tr-TR') : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Page 4: Aktivite Performansı & Randevular */}
+                <div className="print-page">
+                    {renderPrintHeader('4. Aktivite & Temsilci Performansı')}
+                    
+                    <div className="print-grid-3">
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Telefonlu Başvuru</span>
+                            <span className="print-kpi-val">{formatNumber(numarali)}</span>
+                            <span className="print-kpi-sub">Telefon numarası kayıtlı</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Arama Yapılan</span>
+                            <span className="print-kpi-val">{formatNumber(kaciArandi)}</span>
+                            <span className="print-kpi-sub">Arama Oranı: %{aramaOrani}</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Aranmayanlar</span>
+                            <span className="print-kpi-val" style={{ color: aranmayan > 0 ? '#ef4444' : undefined }}>{formatNumber(aranmayan)}</span>
+                            <span className="print-kpi-sub">Arama bekleyen</span>
+                        </div>
+                    </div>
+
+                    <div className="print-grid-2" style={{ marginTop: 20 }}>
+                        <div className="print-card">
+                            <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>📞 Temsilci Arama Sıralaması</h4>
+                            <table className="print-table">
+                                <thead>
+                                    <tr>
+                                        <th>Sıra</th>
+                                        <th>Temsilci</th>
+                                        <th>Arama Sayısı</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {agents.filter(a => (a.callCount || 0) > 0).sort((a,b) => (b.callCount || 0) - (a.callCount || 0)).slice(0, 10).map((agent, i) => (
+                                        <tr key={i}>
+                                            <td>#{i + 1}</td>
+                                            <td>{agent.name}</td>
+                                            <td><strong>{agent.callCount}</strong></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="print-card">
+                            <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>📋 Aktivite Tipleri Dağılımı</h4>
+                            <table className="print-table">
+                                <thead>
+                                    <tr>
+                                        <th>Aktivite Tipi</th>
+                                        <th>Tamamlanan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td>Görüşme (Meeting)</td><td><strong>{as2.meetingCount || 0}</strong></td></tr>
+                                    <tr><td>Randevu (Appointment)</td><td><strong>{appt.total || 0}</strong></td></tr>
+                                    <tr><td>Görev (Task)</td><td><strong>{as2.taskCount || 0}</strong></td></tr>
+                                    <tr><td>Arama Notu (Call Note)</td><td><strong>{as2.callCount || 0}</strong></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 25 }}>
+                        <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>📅 Temsilci Randevu & Görüşme Sayıları</h4>
+                        <table className="print-table">
+                            <thead>
+                                <tr>
+                                    <th>Temsilci</th>
+                                    <th>Görüşme Sayısı</th>
+                                    <th>Randevu Sayısı</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {agents.filter(a => (a.meetingCount || 0) > 0 || (a.appointmentCount || 0) > 0).map((agent, i) => (
+                                    <tr key={i}>
+                                        <td><strong>{agent.name}</strong></td>
+                                        <td>{agent.meetingCount || 0}</td>
+                                        <td>{agent.appointmentCount || 0}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Page 5: AI Arama & Gelen Talep Analizi */}
+                <div className="print-page">
+                    {renderPrintHeader('5. Yapay Zeka & Gelen Talep Analizi')}
+                    
+                    <div className="print-grid-2">
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam AI Arama</span>
+                            <span className="print-kpi-val">{formatNumber(totalAICalls)}</span>
+                            <span className="print-kpi-sub">Başarılı Arama: {formatNumber(analytics?.aiCallStats?.successfulCount || 0)}</span>
+                        </div>
+                        <div className="print-kpi-card">
+                            <span className="print-kpi-title">Toplam Gelen Talep</span>
+                            <span className="print-kpi-val">{formatNumber(analytics?.requestAnalysis?.totalRequests || 0)}</span>
+                            <span className="print-kpi-sub">İlgili Talep: {formatNumber(analytics?.requestAnalysis?.relevantCount || 0)}</span>
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: 20 }}>
+                        <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>🤖 En Çok Talep Edilen Konular</h4>
+                        <table className="print-table">
+                            <thead>
+                                <tr>
+                                    <th>Sıra</th>
+                                    <th>Talep Konusu / AI Sınıflandırması</th>
+                                    <th>Talep Sayısı</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {analytics?.requestAnalysis?.topics?.slice(0, 10).map((topic, i) => (
+                                    <tr key={i}>
+                                        <td>#{i + 1}</td>
+                                        <td>{topic.topic}</td>
+                                        <td><strong>{topic.count}</strong></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style={{ marginTop: 25 }}>
+                        <h4 className="print-title-2" style={{ margin: '0 0 10px 0' }}>🎯 Son Gelen Müşteri Talepleri</h4>
+                        <table className="print-table">
+                            <thead>
+                                <tr>
+                                    <th>Talep Konusu</th>
+                                    <th>Müşteri</th>
+                                    <th>Telefon</th>
+                                    <th>Aşama</th>
+                                    <th>Tarih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {analytics?.requestAnalysis?.recentRequests?.slice(0, 7).map((req, i) => (
+                                    <tr key={i}>
+                                        <td>{req.topic}</td>
+                                        <td>{req.contactName}</td>
+                                        <td>{req.phone}</td>
+                                        <td>{req.status}</td>
+                                        <td>{req.createdAt ? new Date(req.createdAt).toLocaleDateString('tr-TR') : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
         </div>
     );
 };
