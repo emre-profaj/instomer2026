@@ -567,7 +567,8 @@ const CeoReport = () => {
             setAiSummary(res.data?.summary || '');
         } catch (e) {
             console.error('AI summary generation failed:', e);
-            setAiSummary('Yorum oluşturulamadı. Lütfen API anahtarınızı veya internet bağlantınızı kontrol edin.');
+            const backendMsg = e?.response?.data?.error || e?.message || '';
+            setAiSummary(`Yorum oluşturulamadı. ${backendMsg ? `Hata: ${backendMsg}` : 'Lütfen API anahtarınızı veya internet bağlantınızı kontrol edin.'}`);
         } finally {
             setAiSummaryLoading(false);
         }
