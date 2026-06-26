@@ -650,11 +650,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             return alert('Görüşme notu boş olamaz.');
         }
         if (activityForm.type === 'NOTE' && noteCallSuccess === null) {
+            return alert('Lütfen aramanın durumunu (Başarılı / Başarısız / Ulaşılamadı) seçin.');
+        }
+        if (activityForm.type === 'NOTE' && noteCallSuccess !== 'UNREACHABLE' && !noteCallSentiment) {
             return alert('Lütfen aramanın başarılı mı yoksa başarısız mı olduğunu seçin.');
         }
-        if (activityForm.type === 'NOTE' && !noteCallSentiment) {
-            return alert('Lütfen görüşme duygusunu (Olumlu / Nötr / Olumsuz) seçin.');
-        }
+        
         if ((activityForm.type === 'REMINDER' || activityForm.type === 'MEETING') && (!activityForm.dueDate || !activityForm.description.trim())) {
             return alert('Tarih ve açıklama girmelisiniz.');
         }
@@ -671,13 +672,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 workspaceId: currentWorkspace.id,
                 type: isCallNote ? 'CALL' : activityForm.type,
                 title: isCallNote ? 'Telefon Görüşmesi' : (activityForm.title || (activityForm.type === 'REMINDER' ? 'Hatırlatıcı' : 'Aktivite')),
-                description: activityForm.description,
+                description: (isCallNote && noteCallSuccess === 'UNREACHABLE') ? `📵 Ulaşılamadı: ${activityForm.description}` : activityForm.description,
                 dueDate: isNoteType ? new Date().toISOString() : (activityForm.dueDate ? new Date(activityForm.dueDate).toISOString() : null),
                 assignedToId: isNoteType ? null : (activityForm.assignedToId || null),
                 teamId: activityForm.teamId || null,
                 ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() }),
-                ...(isCallNote && noteCallSuccess !== null && { callSuccessful: noteCallSuccess }),
-                ...(isCallNote && noteCallSentiment && { callSentiment: noteCallSentiment }),
+                ...(isCallNote && noteCallSuccess !== null && { callSuccessful: noteCallSuccess === 'SUCCESS' }),
+                ...(isCallNote && noteCallSentiment && noteCallSuccess !== 'UNREACHABLE' && { callSentiment: noteCallSentiment }),
                 ...(isCallNote && completePlannedCall && existingPlannedCall && { completePlannedCall: true })
             };
 
@@ -765,18 +766,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (!completingActivity) return;
         const isCallType = (completingActivity.type === 'CALL' || completingActivity.type === 'REMINDER');
         if (isCallType && completeCallSuccess === null) {
+            return alert('Lütfen aramanın durumunu (Başarılı / Başarısız / Ulaşılamadı) seçin.');
+        }
+        if (isCallType && completeCallSuccess !== 'UNREACHABLE' && !completeCallSentiment) {
             return alert('Lütfen aramanın başarılı mı yoksa başarısız mı olduğunu seçin.');
         }
-        if (isCallType && !completeCallSentiment) {
-            return alert('Lütfen görüşme duygusunu (Olumlu / Nötr / Olumsuz) seçin.');
-        }
+        
         try {
             const rawId = completingActivity.id.replace(/^act_/, '');
+            let finalResult = completeResult;
+            if (isCallType && completeCallSuccess === 'UNREACHABLE') {
+                finalResult = finalResult ? `📵 Ulaşılamadı: ${finalResult}` : '📵 Ulaşılamadı';
+            }
             await activityAPI.completeActivity(
                 rawId,
-                completeResult,
-                isCallType ? completeCallSuccess : undefined,
-                isCallType ? completeCallSentiment : undefined
+                finalResult,
+                isCallType ? (completeCallSuccess === 'SUCCESS') : undefined,
+                isCallType && completeCallSuccess !== 'UNREACHABLE' ? completeCallSentiment : undefined
             );
             // Planned'dan kaldır, past'a ekle
             const completedItem = {
@@ -784,9 +790,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 isCompleted: true,
                 isPlanned: false,
                 status: 'COMPLETED',
-                content: completeResult || completingActivity.content,
-                callSuccessful: isCallType ? completeCallSuccess : undefined,
-                callSentiment: isCallType ? completeCallSentiment : undefined
+                content: finalResult || completingActivity.content,
+                callSuccessful: isCallType ? (completeCallSuccess === 'SUCCESS') : undefined,
+                callSentiment: isCallType && completeCallSuccess !== 'UNREACHABLE' ? completeCallSentiment : undefined
             };
             setPlannedTimeline(prev => prev.filter(i => i.id !== completingActivity.id));
             setPastTimeline(prev => [completedItem, ...prev]);
@@ -3316,12 +3322,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <div style={{ display: 'flex', gap: '8px' }}>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setNoteCallSuccess(true)}
+                                                                onClick={() => setNoteCallSuccess('SUCCESS')}
                                                                 style={{
                                                                     flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
-                                                                    borderColor: noteCallSuccess === true ? '#16a34a' : '#e5e7eb',
-                                                                    background: noteCallSuccess === true ? '#dcfce7' : '#fff',
-                                                                    color: noteCallSuccess === true ? '#15803d' : '#6b7280',
+                                                                    borderColor: noteCallSuccess === 'SUCCESS' ? '#16a34a' : '#e5e7eb',
+                                                                    background: noteCallSuccess === 'SUCCESS' ? '#dcfce7' : '#fff',
+                                                                    color: noteCallSuccess === 'SUCCESS' ? '#15803d' : '#6b7280',
                                                                     fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
                                                                     transition: 'all 0.2s ease'
                                                                 }}
@@ -3331,23 +3337,39 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setNoteCallSuccess(false)}
+                                                                onClick={() => setNoteCallSuccess('FAILED')}
                                                                 style={{
                                                                     flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
-                                                                    borderColor: noteCallSuccess === false ? '#ef4444' : '#e5e7eb',
-                                                                    background: noteCallSuccess === false ? '#fef2f2' : '#fff',
-                                                                    color: noteCallSuccess === false ? '#dc2626' : '#6b7280',
+                                                                    borderColor: noteCallSuccess === 'FAILED' ? '#ef4444' : '#e5e7eb',
+                                                                    background: noteCallSuccess === 'FAILED' ? '#fef2f2' : '#fff',
+                                                                    color: noteCallSuccess === 'FAILED' ? '#dc2626' : '#6b7280',
                                                                     fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
                                                                     transition: 'all 0.2s ease'
                                                                 }}
                                                             >
                                                                 ❌ Başarısız
-                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı / Kapattı</div>
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Konuştu, olumsuz</div>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setNoteCallSuccess('UNREACHABLE')}
+                                                                style={{
+                                                                    flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                                                    borderColor: noteCallSuccess === 'UNREACHABLE' ? '#f59e0b' : '#e5e7eb',
+                                                                    background: noteCallSuccess === 'UNREACHABLE' ? '#fef3c7' : '#fff',
+                                                                    color: noteCallSuccess === 'UNREACHABLE' ? '#b45309' : '#6b7280',
+                                                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                            >
+                                                                📵 Ulaşılamadı
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı / Meşgul</div>
                                                             </button>
                                                         </div>
                                                     </div>
 
                                                     {/* Duygu Analizi */}
+                                                    {noteCallSuccess !== 'UNREACHABLE' && (
                                                     <div style={{ marginBottom: '12px' }}>
                                                         <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>🎭 Görüşme Nasıl Geçti?</label>
                                                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -3375,6 +3397,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             ))}
                                                         </div>
                                                     </div>
+                                                    )}
                                                 </>
                                             )}
                                             {activityForm.type !== 'NOTE' && (
@@ -3513,12 +3536,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <div style={{ display: 'flex', gap: '8px' }}>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setCompleteCallSuccess(true)}
+                                                                onClick={() => setCompleteCallSuccess('SUCCESS')}
                                                                 style={{
                                                                     flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
-                                                                    borderColor: completeCallSuccess === true ? '#16a34a' : '#e5e7eb',
-                                                                    background: completeCallSuccess === true ? '#dcfce7' : '#fff',
-                                                                    color: completeCallSuccess === true ? '#15803d' : '#6b7280',
+                                                                    borderColor: completeCallSuccess === 'SUCCESS' ? '#16a34a' : '#e5e7eb',
+                                                                    background: completeCallSuccess === 'SUCCESS' ? '#dcfce7' : '#fff',
+                                                                    color: completeCallSuccess === 'SUCCESS' ? '#15803d' : '#6b7280',
                                                                     fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
                                                                     transition: 'all 0.2s ease'
                                                                 }}
@@ -3528,23 +3551,39 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => setCompleteCallSuccess(false)}
+                                                                onClick={() => setCompleteCallSuccess('FAILED')}
                                                                 style={{
                                                                     flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
-                                                                    borderColor: completeCallSuccess === false ? '#ef4444' : '#e5e7eb',
-                                                                    background: completeCallSuccess === false ? '#fef2f2' : '#fff',
-                                                                    color: completeCallSuccess === false ? '#dc2626' : '#6b7280',
+                                                                    borderColor: completeCallSuccess === 'FAILED' ? '#ef4444' : '#e5e7eb',
+                                                                    background: completeCallSuccess === 'FAILED' ? '#fef2f2' : '#fff',
+                                                                    color: completeCallSuccess === 'FAILED' ? '#dc2626' : '#6b7280',
                                                                     fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
                                                                     transition: 'all 0.2s ease'
                                                                 }}
                                                             >
                                                                 ❌ Başarısız
-                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı / Kapattı</div>
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Konuştu, olumsuz</div>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCompleteCallSuccess('UNREACHABLE')}
+                                                                style={{
+                                                                    flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                                                    borderColor: completeCallSuccess === 'UNREACHABLE' ? '#f59e0b' : '#e5e7eb',
+                                                                    background: completeCallSuccess === 'UNREACHABLE' ? '#fef3c7' : '#fff',
+                                                                    color: completeCallSuccess === 'UNREACHABLE' ? '#b45309' : '#6b7280',
+                                                                    fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                                    transition: 'all 0.2s ease'
+                                                                }}
+                                                            >
+                                                                📵 Ulaşılamadı
+                                                                <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı / Meşgul</div>
                                                             </button>
                                                         </div>
                                                     </div>
 
                                                     {/* Duygu Analizi */}
+                                                    {completeCallSuccess !== 'UNREACHABLE' && (
                                                     <div style={{ marginBottom: '12px' }}>
                                                         <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>🎭 Görüşme Nasıl Geçti?</label>
                                                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -3572,6 +3611,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             ))}
                                                         </div>
                                                     </div>
+                                                    )}
                                                 </>
                                             )}
 
