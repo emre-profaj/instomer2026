@@ -553,9 +553,13 @@ export const getContactTimeline = async (req, res) => {
             let noteDate = new Date();
             try {
                 if (note.timestamp) {
-                    const parts = note.timestamp.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
-                    if (parts) {
-                        noteDate = new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]), parseInt(parts[4]), parseInt(parts[5]));
+                    if (note.timestamp.includes('T')) {
+                        noteDate = new Date(note.timestamp);
+                    } else {
+                        const parts = note.timestamp.match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+                        if (parts) {
+                            noteDate = new Date(parseInt(parts[3]), parseInt(parts[2]) - 1, parseInt(parts[1]), parseInt(parts[4]), parseInt(parts[5]));
+                        }
                     }
                 }
             } catch {}

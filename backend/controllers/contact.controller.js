@@ -3918,7 +3918,7 @@ export const addNoteToConversation = async (req, res) => {
         } catch { existingNotes = []; }
 
         const newNoteEntry = {
-            timestamp: new Date().toLocaleString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }),
+            timestamp: new Date().toISOString(),
             title: '',
             content: note
         };
