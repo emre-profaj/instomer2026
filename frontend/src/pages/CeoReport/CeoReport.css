@@ -1467,21 +1467,20 @@
         display: none !important;
     }
 
-    /* Expand Main Area to Full Page Width */
-    .admin-main, .content-area, .main-content, .ceo-report {
+    /* Expand Main Area to Full Page Width and force block flow */
+    html, body, #root, .admin-layout, .admin-main, .content-area, .main-content, .ceo-report {
+        display: block !important;
+        position: static !important;
         margin: 0 !important;
         padding: 0 !important;
         width: 100% !important;
         max-width: 100% !important;
-        left: 0 !important;
         height: auto !important;
+        min-height: auto !important;
         overflow: visible !important;
-    }
-
-    /* Override colors to ensure clean printing */
-    body, .admin-layout, .ceo-report, .content-area {
         background: #fff !important;
         color: #000 !important;
+        box-shadow: none !important;
     }
 
     /* Remove shadows, adjust borders and prevent page break inside elements */
