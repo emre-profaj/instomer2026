@@ -2063,16 +2063,35 @@ export const getContactAnalytics = async (req, res) => {
         const convertedCount = funnelId ? 0 : (contacts.filter(c => c.status === 'CONVERTED').length);
         const conversionRate = totalContacts > 0 ? ((convertedCount / totalContacts) * 100).toFixed(1) : 0;
 
-        // Monthly data
+        // Monthly data (ignoring short-term dateFilter but applying workspace/team/funnel filters)
+        const monthlyContactWhere = {
+            conversations: { some: { workspaceId, ...(teamUserIds ? { assignedToId: { in: teamUserIds } } : {}) } }
+        };
+        if (funnelId && activeFunnel) {
+            monthlyContactWhere.OR = [
+                { funnelStageId: { in: activeFunnel.stages.map(s => s.id) } },
+                { funnelType: activeFunnel.name }
+            ];
+        }
+
+        // Limit to last 6 months (5 months ago 1st day to now)
+        const nowForMonthly = endDate ? new Date(parseDateEndTR(endDate)) : new Date();
+        const sixMonthsAgo = new Date(nowForMonthly.getFullYear(), nowForMonthly.getMonth() - 5, 1);
+        monthlyContactWhere.createdAt = { gte: sixMonthsAgo };
+
+        const monthlyContacts = await prisma.contact.findMany({
+            where: monthlyContactWhere,
+            select: { createdAt: true }
+        });
+
         const monthlyData = [];
-        const now = new Date();
         for (let i = 5; i >= 0; i--) {
-            const mStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+            const mStart = new Date(nowForMonthly.getFullYear(), nowForMonthly.getMonth() - i, 1);
+            const mEndNext = new Date(nowForMonthly.getFullYear(), nowForMonthly.getMonth() - i + 1, 1);
             const mName = mStart.toLocaleString('tr-TR', { month: 'short' });
-            const count = contacts.filter(c => {
+            const count = monthlyContacts.filter(c => {
                 const d = new Date(c.createdAt);
-                return d >= mStart && d <= mEnd;
+                return d >= mStart && d < mEndNext;
             }).length;
             monthlyData.push({ month: mName, count });
         }
@@ -2687,13 +2706,42 @@ export const getContactAnalytics = async (req, res) => {
                     .sort((a, b) => b.count - a.count);
             }
 
+            const recentConvList = await prisma.conversation.findMany({
+                where: {
+                    workspaceId,
+                    aiTopic: { not: null }
+                },
+                take: 5,
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    contact: {
+                        select: {
+                            id: true,
+                            name: true,
+                            phone: true,
+                            status: true
+                        }
+                    }
+                }
+            });
+
+            const recentRequests = recentConvList.map(c => ({
+                id: c.id,
+                topic: c.aiTopic,
+                createdAt: c.createdAt,
+                contactName: c.contact?.name || 'Bilinmeyen Müşteri',
+                phone: c.contact?.phone || '—',
+                status: c.contact?.status || 'NEW'
+            }));
+
             requestAnalysis = {
                 topics: topicsArray,
                 totalRequests: topicsArray.reduce((s, t) => s + t.count, 0),
                 withPhoneCount: topicsArray.reduce((s, t) => s + t.withPhone, 0),
                 calledCount: topicsArray.reduce((s, t) => s + t.called, 0),
                 relevantCount: topicsArray.reduce((s, t) => s + t.relevant, 0),
-                aiClassified: !!(aiMapping && Object.keys(aiMapping).length > 0)
+                aiClassified: !!(aiMapping && Object.keys(aiMapping).length > 0),
+                recentRequests
             };
         } catch (e) {
             console.error('Request analysis error (non-fatal):', e.message);
@@ -2756,6 +2804,110 @@ export const getContactAnalytics = async (req, res) => {
             }
         }
 
+        // ── AI Call Stats (RetellCall) ──
+        let aiCallStats = {
+            totalCalls: 0,
+            successfulCount: 0,
+            totalCost: 0,
+            totalDuration: 0,
+            avgDuration: 0,
+            successRate: 0,
+            statusBreakdown: {},
+            sentimentBreakdown: {}
+        };
+        try {
+            const aiCallDateFilter = {};
+            if (startDate || endDate) {
+                aiCallDateFilter.createdAt = {};
+                if (startDate) aiCallDateFilter.createdAt.gte = parseDateStartTR(startDate);
+                if (endDate) aiCallDateFilter.createdAt.lte = parseDateEndTR(endDate);
+            }
+            const aiCallWhere = { workspaceId, ...aiCallDateFilter };
+
+            const callsList = await prisma.retellCall.findMany({
+                where: aiCallWhere,
+                select: {
+                    status: true,
+                    sentiment: true,
+                    duration: true,
+                    cost: true,
+                    callSuccessful: true
+                }
+            });
+
+            const totalCalls = callsList.length;
+            const totalDuration = callsList.reduce((sum, c) => sum + (c.duration || 0), 0);
+            const avgDuration = totalCalls > 0 ? Math.round(totalDuration / totalCalls) : 0;
+            const successfulCount = callsList.filter(c => c.callSuccessful).length;
+            const successRate = totalCalls > 0 ? Math.round((successfulCount / totalCalls) * 100) : 0;
+            const totalCost = callsList.reduce((sum, c) => sum + ((c.cost || 0) / 100), 0);
+
+            const statusBreakdown = {};
+            callsList.forEach(c => {
+                const s = c.status || 'unknown';
+                statusBreakdown[s] = (statusBreakdown[s] || 0) + 1;
+            });
+
+            const sentimentBreakdown = {};
+            callsList.forEach(c => {
+                if (c.sentiment) {
+                    const s = c.sentiment.toLowerCase();
+                    const normalized = s === 'positive' ? 'positive' : s === 'negative' ? 'negative' : 'neutral';
+                    sentimentBreakdown[normalized] = (sentimentBreakdown[normalized] || 0) + 1;
+                }
+            });
+
+            aiCallStats = {
+                totalCalls,
+                successfulCount,
+                totalCost,
+                totalDuration,
+                avgDuration,
+                successRate,
+                statusBreakdown,
+                sentimentBreakdown
+            };
+        } catch (aiErr) {
+            console.error('AI Call stats error (non-fatal):', aiErr.message);
+        }
+
+        // ── Heatmap Data (from messages — database-level aggregation for high performance) ──
+        let heatmapData = Array.from({ length: 7 }, () => Array(24).fill(0));
+        try {
+            let query = `
+                SELECT 
+                    EXTRACT(DOW FROM m."createdAt" + interval '3 hours')::integer AS dow,
+                    EXTRACT(HOUR FROM m."createdAt" + interval '3 hours')::integer AS hour,
+                    COUNT(*)::integer AS count
+                FROM messages m
+                INNER JOIN conversations c ON m."conversationId" = c.id
+                WHERE c."workspaceId" = $1
+            `;
+            const params = [workspaceId];
+            
+            if (startDate) {
+                params.push(parseDateStartTR(startDate));
+                query += ` AND m."createdAt" >= $${params.length}`;
+            }
+            if (endDate) {
+                params.push(parseDateEndTR(endDate));
+                query += ` AND m."createdAt" <= $${params.length}`;
+            }
+            
+            query += ` GROUP BY dow, hour`;
+            
+            const rawHeatmap = await prisma.$queryRawUnsafe(query, ...params);
+            for (const row of rawHeatmap) {
+                const day = row.dow; // 0-6 (0=Sun)
+                const hr = row.hour; // 0-23
+                if (day >= 0 && day < 7 && hr >= 0 && hr < 24) {
+                    heatmapData[day][hr] = row.count || 0;
+                }
+            }
+        } catch (hmErr) {
+            console.error('Heatmap data error (non-fatal):', hmErr.message);
+        }
+
         res.json({
             totalContacts,
             totalMessages,
@@ -2785,6 +2937,8 @@ export const getContactAnalytics = async (req, res) => {
             dealStats,
             activityStats,
             requestAnalysis,
+            aiCallStats,
+            heatmapData,
             previousPeriod
         });
     } catch (error) {
@@ -2833,6 +2987,22 @@ export const getAgentPerformance = async (req, res) => {
         if (teamUserIds) {
             workspaceMembers = workspaceMembers.filter(m => teamUserIds.includes(m.user.id));
         }
+
+        const teamMemberships = await prisma.teamMember.findMany({
+            where: {
+                team: { workspaceId }
+            },
+            select: {
+                userId: true,
+                team: {
+                    select: {
+                        id: true,
+                        name: true,
+                        color: true
+                    }
+                }
+            }
+        });
 
         const agentMetrics = [];
 
@@ -3050,6 +3220,10 @@ export const getAgentPerformance = async (req, res) => {
                 }
             });
 
+            const myTeams = teamMemberships
+                .filter(tm => tm.userId === userId)
+                .map(tm => tm.team);
+
             agentMetrics.push({
                 userId: member.user.id,
                 name: member.user.name,
@@ -3076,7 +3250,8 @@ export const getAgentPerformance = async (req, res) => {
                 dealTotalAmount,
                 dealWonAmount,
                 // Randevu
-                appointmentCount
+                appointmentCount,
+                teams: myTeams
             });
         }
 
@@ -3088,6 +3263,23 @@ export const getAgentPerformance = async (req, res) => {
         const bots = await prisma.aIBot.findMany({
             where: { workspaceId },
             select: { id: true, name: true, role: true, isActive: true }
+        });
+
+        const botTeamMemberships = await prisma.teamMember.findMany({
+            where: {
+                team: { workspaceId },
+                botId: { not: null }
+            },
+            select: {
+                botId: true,
+                team: {
+                    select: {
+                        id: true,
+                        name: true,
+                        color: true
+                    }
+                }
+            }
         });
 
         const botMetrics = [];
@@ -3145,6 +3337,10 @@ export const getAgentPerformance = async (req, res) => {
 
             const totalBotConversations = botConversations + channelConversations;
 
+            const myBotTeams = botTeamMemberships
+                .filter(tm => tm.botId === bot.id)
+                .map(tm => tm.team);
+
             botMetrics.push({
                 botId: bot.id,
                 name: bot.name,
@@ -3155,7 +3351,8 @@ export const getAgentPerformance = async (req, res) => {
                 totalConversations: totalBotConversations,
                 // Bots don't "resolve" - they assist
                 resolvedConversations: 0,
-                openConversations: totalBotConversations
+                openConversations: totalBotConversations,
+                teams: myBotTeams
             });
         }
 
@@ -3194,12 +3391,51 @@ export const getAgentPerformance = async (req, res) => {
             totalBotMessages
         };
 
-        console.log(`✅ [Agent Performance] Found ${agentMetrics.length} agents, ${botMetrics.length} bots`);
+        // Retrieve teams in the workspace and their conversation counts
+        const teamList = await prisma.team.findMany({
+            where: { workspaceId },
+            include: {
+                members: {
+                    select: {
+                        userId: true,
+                        botId: true
+                    }
+                }
+            }
+        });
+
+        const teamsMetrics = [];
+        for (const t of teamList) {
+            const memberUserIds = t.members.filter(m => m.userId).map(m => m.userId);
+            const conversationCount = await prisma.conversation.count({
+                where: {
+                    workspaceId,
+                    OR: [
+                        { assignedTeamId: t.id },
+                        ...(memberUserIds.length > 0 ? [{ assignedToId: { in: memberUserIds } }] : [])
+                    ],
+                    ...dateFilter
+                }
+            });
+
+            teamsMetrics.push({
+                id: t.id,
+                name: t.name,
+                color: t.color,
+                description: t.description,
+                agentCount: memberUserIds.length,
+                botCount: t.members.filter(m => m.botId).length,
+                conversationCount
+            });
+        }
+
+        console.log(`✅ [Agent Performance] Found ${agentMetrics.length} agents, ${botMetrics.length} bots, ${teamsMetrics.length} teams`);
 
         res.json({
             agents: agentMetrics,
             bots: botMetrics,
-            teamTotals
+            teamTotals,
+            teams: teamsMetrics
         });
     } catch (error) {
         console.error('Agent performance error:', error);
@@ -3254,17 +3490,18 @@ export const getDailyContactStats = async (req, res) => {
             }
         });
 
-        // Build daily stats map
+        // Build daily stats map — use Turkey timezone for date keys
         const dailyMap = {};
         for (let i = 0; i < daysCount; i++) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + i);
-            const key = d.toISOString().split('T')[0]; // YYYY-MM-DD
+            const d = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+            const trDate = new Date(d.getTime() + TZ_OFFSET_MS);
+            const key = trDate.toISOString().split('T')[0]; // YYYY-MM-DD in Turkey time
             dailyMap[key] = { date: key, total: 0, withPhone: 0, withoutPhone: 0 };
         }
 
         for (const contact of contacts) {
-            const key = contact.createdAt.toISOString().split('T')[0];
+            const trDate = new Date(contact.createdAt.getTime() + TZ_OFFSET_MS);
+            const key = trDate.toISOString().split('T')[0]; // Turkey date
             if (dailyMap[key]) {
                 dailyMap[key].total++;
                 if (contact.phone && contact.phone.trim() !== '') {
@@ -3718,23 +3955,27 @@ export const getPeakHours = async (req, res) => {
         const { workspaceId } = req.params;
         const { startDate, endDate, funnelId } = req.query;
 
-        // Build date filter same as getContactAnalytics
-        let dateFilter = {};
+        // Use OR pattern to match contacts either by direct workspaceId or via conversations
+        const contactsWhere = {
+            isDeleted: false,
+            OR: [
+                { workspaceId },
+                { conversations: { some: { workspaceId } } }
+            ]
+        };
+
+        // Add date filter
         if (startDate || endDate) {
-            dateFilter.createdAt = {};
-            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
-            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+            contactsWhere.createdAt = {};
+            if (startDate) contactsWhere.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) contactsWhere.createdAt.lte = parseDateEndTR(endDate);
         }
 
-        const where = {
-            conversations: { some: { workspaceId } },
-            ...dateFilter
-        };
-        if (funnelId) where.funnelStageId = { not: null };
+        if (funnelId) contactsWhere.funnelStageId = { not: null };
 
         // Get all contacts with createdAt
         const contacts = await prisma.contact.findMany({
-            where,
+            where: contactsWhere,
             select: { createdAt: true }
         });
 
@@ -3759,5 +4000,75 @@ export const getPeakHours = async (req, res) => {
     } catch (error) {
         console.error('Peak hours error:', error);
         res.status(500).json({ error: 'Peak hours analizi başarısız' });
+    }
+};
+
+// Generate AI summary interpretation for CEO report
+export const getAiAnalyticsSummary = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { analyticsData, dateFilter } = req.body;
+
+        if (!analyticsData) {
+            return res.status(400).json({ error: 'Rapor verisi bulunamadı' });
+        }
+
+        // Get AI API key for workspace
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { aiApiKey: true }
+        });
+        let aiApiKey = workspace?.aiApiKey;
+        if (!aiApiKey) {
+            const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
+            aiApiKey = globalSettings?.globalAiApiKey;
+        }
+        if (!aiApiKey) {
+            aiApiKey = process.env.GEMINI_API_KEY;
+        }
+        if (!aiApiKey) {
+            return res.status(400).json({ error: 'Gemini API anahtarı bulunamadı. Lütfen ayarlardan veya .env dosyasına ekleyin.' });
+        }
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const prompt = `Sen kıdemli bir iş analisti ve Instomer CRM sisteminin CEO raporlama asistanısın.
+Aşağıda şirketin belirli bir döneme (${dateFilter || 'seçilen dönem'}) ait performans verileri yer almaktadır:
+
+- Toplam Müşteri İletişimi: ${analyticsData.totalContacts || 0}
+- Toplam Mesaj Sayısı: ${analyticsData.totalMessages || 0}
+- AI (Yapay Zeka) Tarafından Atılan Mesaj: ${analyticsData.totalAiMessages || 0}
+- Temsilciler Tarafından Atılan Mesaj: ${analyticsData.totalHumanMessages || 0}
+- Toplam Sohbet Sayısı: ${analyticsData.totalConversations || 0}
+- Yapay Zekanın Başlattığı Görüşmeler: ${analyticsData.botLedConversations || 0}
+- Canlı Desteğe Aktarılan Sohbetler: ${analyticsData.handoffConversations || 0}
+- Tamamen AI Tarafından Yanıtlanan & Çözülen Sohbetler: ${analyticsData.handledByBotConversations || 0}
+- Sipariş Sayısı: ${analyticsData.dealStats?.orderCount || 0}
+- Satış Tutarı (Ciro): ₺${analyticsData.dealStats?.orderAmount?.toLocaleString('tr-TR') || 0}
+- AI Arama (Sesli) Sayısı: ${analyticsData.aiCallStats?.totalCalls || 0}
+- AI Arama Başarı Oranı: %${analyticsData.aiCallStats?.successRate || 0}
+- AI Arama Maliyeti: $${analyticsData.aiCallStats?.totalCost || 0}
+- Randevu Sayısı: ${analyticsData.appointmentStats?.totalAppointments || 0}
+
+GÖREV: Bu verileri analiz et ve CEO için 3-4 paragraflık, profesyonel, yapıcı ve doğrudan aksiyona yönelik Türkçe bir performans özeti yaz.
+Yazında şunlara değin:
+1. Genel durum değerlendirmesi (satışlar, müşteri trafiği, yapay zekanın katma değeri).
+2. Yapay zekanın (mesajlaşma ve sesli arama) performansı, başarı oranları ve verimliliğe etkisi.
+3. İyileştirilmesi veya odaklanılması gereken kritik alanlar (örneğin canlı desteğe aktarım oranları, başarısız aramalar veya düşük ciro vb.).
+
+ÖNEMLİ KURALLAR:
+- SADECE Türkçe yaz.
+- Profesyonel, ciddi, yönetici özeti formatında bir üslup kullan.
+- Markdown formatında döndür (bold kelimeler, bullet point'ler kullanabilirsin).
+- Yorumunun en başına "### 🤖 Yapay Zeka Rapor Analizi" başlığını ekle.`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+
+        res.json({ summary: responseText });
+    } catch (error) {
+        console.error('❌ [AiAnalyticsSummary] Error:', error);
+        res.status(500).json({ error: error.message || 'Yorum oluşturulurken bir hata oluştu' });
     }
 };

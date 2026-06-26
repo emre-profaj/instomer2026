@@ -1,5 +1,5 @@
 import express from 'express';
-import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts } from '../controllers/contact.controller.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary } from '../controllers/contact.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -9,6 +9,7 @@ router.use(authenticateJWT);
 
 // Analytics endpoint (must be before /:workspaceId/:id to avoid conflict)
 router.get('/:workspaceId/analytics', requireWorkspaceAccess, getContactAnalytics);
+router.post('/:workspaceId/ai-summary', requireWorkspaceAccess, getAiAnalyticsSummary);
 
 // Agent performance metrics
 router.get('/:workspaceId/agent-performance', requireWorkspaceAccess, getAgentPerformance);
