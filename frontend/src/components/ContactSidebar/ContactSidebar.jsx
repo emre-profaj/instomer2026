@@ -3189,7 +3189,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         </div>
                                         <div className="reminder-modal-footer" style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid #f1f5f9' }}>
                                             <button
-                                                onClick={() => { handleDeleteActivity(editingNoteData.id); setEditingNoteData(null); setEditNoteText(''); }}
+                                                onClick={() => { if (confirm('Bu notu silmek istediğinize emin misiniz?')) { handleDeleteActivity(editingNoteData.id); setEditingNoteData(null); setEditNoteText(''); } }}
                                                 style={{
                                                     background: '#fee2e2',
                                                     color: '#ef4444',
@@ -3232,30 +3232,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 }}
                                             >
                                                 <Save size={14} /> Kaydet
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (confirm('Bu notu silmek istediğinize emin misiniz?')) {
-                                                        handleDeleteActivity(editingNoteData.id);
-                                                        setEditingNoteData(null);
-                                                        setEditNoteText('');
-                                                    }
-                                                }}
-                                                style={{
-                                                    background: '#fef2f2',
-                                                    color: '#ef4444',
-                                                    border: '1px solid #fecaca',
-                                                    borderRadius: '8px',
-                                                    padding: '8px 14px',
-                                                    fontSize: '0.85rem',
-                                                    fontWeight: 700,
-                                                    cursor: 'pointer',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: '4px'
-                                                }}
-                                            >
-                                                <Trash2 size={13} /> Sil
                                             </button>
                                         </div>
                                     </div>
