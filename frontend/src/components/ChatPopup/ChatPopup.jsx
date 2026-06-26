@@ -885,10 +885,42 @@ const ChatPopup = ({ conversationId, onClose }) => {
                                                     </>
                                                 )}
                                                 {msg.isInternalNote && (
-                                                    <span className="chat-popup-note-footer">
-                                                        <StickyNote size={10} />
-                                                        Dahili Not ({msg.sender?.name || 'Gizli'})
-                                                    </span>
+                                                    <div className="chat-popup-note-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <StickyNote size={10} />
+                                                            Dahili Not ({msg.sender?.name || 'Gizli'})
+                                                        </span>
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                if (!confirm('Bu dahili notu silmek istediğinize emin misiniz?')) return;
+                                                                try {
+                                                                    await conversationAPI.deleteNote(currentWorkspace.id, conversationId, msg.id);
+                                                                    setMessages(prev => prev.filter(m => m.id !== msg.id));
+                                                                } catch (err) {
+                                                                    console.error('Delete note error:', err);
+                                                                    alert('Not silinemedi.');
+                                                                }
+                                                            }}
+                                                            title="Notu Sil"
+                                                            style={{
+                                                                background: 'transparent',
+                                                                border: 'none',
+                                                                color: '#ef4444',
+                                                                cursor: 'pointer',
+                                                                padding: '2px 4px',
+                                                                borderRadius: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                opacity: 0.6,
+                                                                transition: 'opacity 0.2s'
+                                                            }}
+                                                            onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                                                            onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
