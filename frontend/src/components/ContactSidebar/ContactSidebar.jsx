@@ -766,10 +766,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (!completingActivity) return;
         const isCallType = (completingActivity.type === 'CALL' || completingActivity.type === 'REMINDER');
         if (isCallType && completeCallSuccess === null) {
-            return alert('Lütfen aramanın durumunu (Başarılı / Başarısız / Ulaşılamadı) seçin.');
+            return alert('Lütfen aramanın durumunu (Ulaşıldı / Ulaşılamadı) seçin.');
         }
         if (isCallType && completeCallSuccess !== 'UNREACHABLE' && !completeCallSentiment) {
-            return alert('Lütfen aramanın başarılı mı yoksa başarısız mı olduğunu seçin.');
+            return alert('Lütfen görüşmenin nasıl geçtiğini (Duygu Durumu) seçin.');
         }
         
         try {
@@ -808,7 +808,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             }
         } catch (err) {
             console.error('Complete activity error:', err);
-            alert('Tamamlama başarısız.');
+            alert('Tamamlama başarısız: ' + (err.response?.data?.error || err.message));
         }
     };
 
