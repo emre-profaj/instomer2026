@@ -734,69 +734,71 @@ const Automations = () => {
                 {/* Basit Otomasyonlar Tab (Automations + Rules merged) */}
                 {activeTab === 'automations' && (
                     <div>
-                        <div className="automations-grid">
-                            {automations.length === 0 ? (
-                                <div className="empty-state">
-                                    <div className="icon">⚡</div>
-                                    <h3>Henüz otomasyon yok</h3>
-                                    <p>Tetikleyici ve aksiyon seçerek ilk otomasyonunuzu oluşturun.</p>
-                                    <button className="btn btn-primary" onClick={() => { resetAutomationForm(); setShowAutomationModal(true); }}>
-                                        <Plus size={18} /> Otomasyon Oluştur
-                                    </button>
-                                </div>
-                            ) : (
-                                automations.map(automation => (
-                                    <div key={automation.id} className={`automation-card ${!automation.isActive ? 'inactive' : ''}`}>
-                                        {/* Top color stripe */}
-                                        <div className="auto-card-stripe" />
-                                        
-                                        {/* Card body */}
-                                        <div className="auto-card-body">
-                                            {/* Header: name + toggle */}
-                                            <div className="auto-card-header">
-                                                <div className="auto-card-title-row">
-                                                    <h3 className="automation-name">{automation.name}</h3>
-                                                    <span className={`auto-status-pill ${automation.isActive ? 'active' : ''}`}>
-                                                        {automation.isActive ? 'Aktif' : 'Pasif'}
+                        <div className="table-responsive" style={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)', overflow: 'hidden' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead style={{ backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                    <tr>
+                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Otomasyon Adı</th>
+                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Durum</th>
+                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Tetikleyici</th>
+                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem' }}>Aksiyon</th>
+                                        <th style={{ padding: '16px 24px', fontWeight: 600, color: '#4b5563', fontSize: '0.85rem', textAlign: 'right' }}>İşlemler</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {automations.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="5" style={{ padding: '60px 24px', textAlign: 'center' }}>
+                                                <div className="empty-state" style={{ border: 'none', background: 'transparent' }}>
+                                                    <div className="icon">⚡</div>
+                                                    <h3>Henüz otomasyon yok</h3>
+                                                    <p style={{ color: '#6b7280', marginTop: '8px' }}>Tetikleyici ve aksiyon seçerek ilk otomasyonunuzu oluşturun.</p>
+                                                    <button className="btn btn-primary" style={{ marginTop: '20px' }} onClick={() => { resetAutomationForm(); setShowAutomationModal(true); }}>
+                                                        <Plus size={18} /> Otomasyon Oluştur
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        automations.map(automation => (
+                                            <tr key={automation.id} style={{ borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                                <td style={{ padding: '16px 24px', color: '#111827', fontWeight: 500, fontSize: '0.9rem' }}>
+                                                    {automation.name}
+                                                    {automation.description && (
+                                                        <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 4, fontWeight: 400 }}>{automation.description}</div>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '16px 24px' }}>
+                                                    <span style={{ 
+                                                        fontSize: '0.7rem', fontWeight: 600, padding: '4px 10px', borderRadius: '6px',
+                                                        backgroundColor: automation.isActive ? '#dcfce7' : '#f3f4f6',
+                                                        color: automation.isActive ? '#16a34a' : '#6b7280',
+                                                        letterSpacing: '0.5px'
+                                                    }}>
+                                                        {automation.isActive ? 'AKTİF' : 'PASİF'}
                                                     </span>
-                                                </div>
-                                                <div
-                                                    className={`automation-toggle ${automation.isActive ? 'active' : ''}`}
-                                                    onClick={() => handleToggleAutomation(automation)}
-                                                />
-                                            </div>
-
-                                            {/* Flow: trigger → action */}
-                                            <div className="auto-card-flow">
-                                                <div className="auto-flow-step trigger">
-                                                    <span className="auto-flow-label">Tetikleyici</span>
-                                                    <span className="auto-flow-value">{getTriggerLabel(automation.trigger)}</span>
-                                                </div>
-                                                <div className="auto-flow-arrow">→</div>
-                                                <div className="auto-flow-step action">
-                                                    <span className="auto-flow-label">Aksiyon</span>
-                                                    <span className="auto-flow-value">{getActionLabel(automation.action)}</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Description */}
-                                            {automation.description && (
-                                                <p className="automation-description">{automation.description}</p>
-                                            )}
-                                        </div>
-
-                                        {/* Footer actions */}
-                                        <div className="auto-card-footer">
-                                            <button className="btn btn-secondary btn-sm" onClick={() => openEditAutomation(automation)}>
-                                                <Edit2 size={13} /> Düzenle
-                                            </button>
-                                            <button className="btn btn-danger btn-sm btn-icon" onClick={() => handleDeleteAutomation(automation.id)}>
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                                                </td>
+                                                <td style={{ padding: '16px 24px', color: '#4b5563', fontSize: '0.9rem' }}>
+                                                    {getTriggerLabel(automation.trigger)}
+                                                </td>
+                                                <td style={{ padding: '16px 24px', color: '#4b5563', fontSize: '0.9rem' }}>
+                                                    {getActionLabel(automation.action)}
+                                                </td>
+                                                <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                                        <button className="btn btn-icon" onClick={() => openEditAutomation(automation)} style={{ color: '#6b7280', padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer' }} title="Düzenle">
+                                                            <Edit2 size={16} />
+                                                        </button>
+                                                        <button className="btn btn-icon" onClick={() => handleDeleteAutomation(automation.id)} style={{ color: '#ef4444', padding: '6px', background: 'transparent', border: 'none', cursor: 'pointer' }} title="Sil">
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
 
 
@@ -1388,22 +1390,22 @@ const Automations = () => {
                                             onChange={(e) => setAutomationForm({ ...automationForm, delayMinutes: parseInt(e.target.value) || 0 })}
                                         />
                                     </div>
-                                </div>
 
-                                {automationForm.selectedActions?.includes('SEND_TEMPLATE') && (
-                                    <div className="form-group">
-                                        <label>Sendilecek Şablon</label>
-                                        <select
-                                            value={automationForm.templateId}
-                                            onChange={(e) => setAutomationForm({ ...automationForm, templateId: e.target.value })}
-                                        >
-                                            <option value="">Şablon seçin...</option>
-                                            {templates.filter(t => t.status === 'APPROVED').map(t => (
-                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
+                                    {automationForm.selectedActions?.includes('SEND_TEMPLATE') && (
+                                        <div className="form-group">
+                                            <label>Gönderilecek Şablon</label>
+                                            <select
+                                                value={automationForm.templateId}
+                                                onChange={(e) => setAutomationForm({ ...automationForm, templateId: e.target.value })}
+                                            >
+                                                <option value="">Şablon seçin...</option>
+                                                {templates.filter(t => t.status === 'APPROVED').map(t => (
+                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
 
                                 {automationForm.selectedActions?.includes('SEND_MESSAGE') && (
                                     <div className="form-group">

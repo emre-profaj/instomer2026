@@ -542,7 +542,7 @@ const AramaAnalizi = () => {
                                                 <td style={{ textAlign: 'center' }}>
                                                     {isCompleted ? (
                                                         <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
-                                                            ✓ Başarılı
+                                                            ✓ Ulaşıldı
                                                         </span>
                                                     ) : isPlanned ? (
                                                         <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
@@ -550,7 +550,7 @@ const AramaAnalizi = () => {
                                                         </span>
                                                     ) : (
                                                         <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
-                                                            ✗ Başarısız
+                                                            ✗ Ulaşılamadı
                                                         </span>
                                                     )}
                                                 </td>

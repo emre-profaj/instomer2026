@@ -898,10 +898,14 @@ export const getWorkspaceCallQueue = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const where = {
             workspaceId,
             type: { in: ['CALL', 'MEETING', 'VISIT', 'TASK', 'REMINDER'] },
-            status: { in: ['PLANNED', 'COMPLETED'] },
+            OR: [
+                { status: 'PLANNED' },
+                { status: 'COMPLETED', updatedAt: { gte: twentyFourHoursAgo } }
+            ]
         };
 
         // AGENT RBAC: Sadece kendi + takım aktiviteleri
@@ -930,10 +934,11 @@ export const getWorkspaceCallQueue = async (req, res) => {
                 creator: { select: { name: true } },
             },
             orderBy: [
+                { status: 'asc' }, // PLANNED comes before COMPLETED
                 { dueDate: 'asc' },
                 { createdAt: 'desc' }
             ],
-            take: 500,
+            take: 1500,
         });
 
         res.json(activities);

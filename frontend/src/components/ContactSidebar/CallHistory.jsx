@@ -184,7 +184,7 @@ const CallHistory = ({ workspaceId, contactId, refreshKey = 0 }) => {
                                         )}
                                         {call.callSuccessful !== null && (
                                             <span className={`call-success-badge ${call.callSuccessful ? 'success' : 'failed'}`}>
-                                                {call.callSuccessful ? '✓ Başarılı' : '✗ Başarısız'}
+                                                {call.callSuccessful ? '✓ Ulaşıldı' : '✗ Ulaşılamadı'}
                                             </span>
                                         )}
                                     </div>
@@ -242,7 +242,7 @@ const CallHistory = ({ workspaceId, contactId, refreshKey = 0 }) => {
                             })()}
                             {selectedCall.callSuccessful !== null && (
                                 <div className={`call-stat ${selectedCall.callSuccessful ? 'stat-success' : 'stat-failed'}`}>
-                                    <span>{selectedCall.callSuccessful ? '✓ Başarılı' : '✗ Başarısız'}</span>
+                                    <span>{selectedCall.callSuccessful ? '✓ Ulaşıldı' : '✗ Ulaşılamadı'}</span>
                                 </div>
                             )}
                         </div>
