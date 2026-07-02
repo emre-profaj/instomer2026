@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     DollarSign, ShoppingCart, FileText, RefreshCw, Filter, ArrowLeft,
     TrendingUp, UserCheck, Receipt, XCircle, CheckCircle2, Clock,
-    ArrowUpRight, ArrowDownRight
+    ArrowUpRight, ArrowDownRight, PieChart
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -93,8 +93,38 @@ const SalesReport = () => {
         );
     }
 
+    const getGroupedSubjects = () => {
+        if (!ds.recentDeals || ds.recentDeals.length === 0) return [];
+        const groups = {};
+        ds.recentDeals.forEach(deal => {
+            let title = (deal.title || 'Belirtilmemiş').trim();
+            const key = title.toLowerCase();
+            
+            if (!groups[key]) {
+                groups[key] = {
+                    title: title,
+                    count: 0,
+                    amount: 0,
+                    wonCount: 0,
+                    lostCount: 0,
+                    openCount: 0
+                };
+            }
+            groups[key].count += 1;
+            groups[key].amount += (deal.amount || 0);
+            
+            if (deal.status === 'WON') groups[key].wonCount += 1;
+            else if (deal.status === 'LOST') groups[key].lostCount += 1;
+            else groups[key].openCount += 1;
+        });
+        
+        return Object.values(groups).sort((a, b) => b.count - a.count);
+    };
+
+    const groupedSubjects = getGroupedSubjects();
+
     return (
-        <div className="ceo-report">
+        <div className="ceo-detail-layout">
             <button className="ceo-back-btn" onClick={() => navigate('/ceo-report')}><ArrowLeft size={16} /> Dashboard</button>
 
             <div className="ceo-detail-header">
@@ -249,6 +279,44 @@ const SalesReport = () => {
                                         </tr>
                                     );
                                 })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Konu Gruplaması */}
+            {groupedSubjects.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 20 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><PieChart size={18} /></div>
+                        <h2>Satış Konuları (Gruplanmış)</h2>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>Konu</th>
+                                    <th>Toplam Adet</th>
+                                    <th>Kazanılan (Tamamlandı)</th>
+                                    <th>Açık</th>
+                                    <th>Kaybedilen (İptal)</th>
+                                    <th>Toplam Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groupedSubjects.map((grp, idx) => (
+                                    <tr key={idx}>
+                                        <td>
+                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{grp.title}</div>
+                                        </td>
+                                        <td><span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{grp.count}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: '#10b981' }}>{grp.wonCount}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: '#3b82f6' }}>{grp.openCount}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: '#ef4444' }}>{grp.lostCount}</span></td>
+                                        <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(grp.amount)}</span></td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
