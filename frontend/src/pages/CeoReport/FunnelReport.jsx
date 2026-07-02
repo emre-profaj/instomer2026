@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { contactAPI, funnelAPI } from '../../services/api';
 import './CeoReport.css';
 import './CeoDetailReport.css';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 
 const FunnelReport = () => {
     const { currentWorkspace } = useAuth();
@@ -27,29 +28,7 @@ const FunnelReport = () => {
     }, [currentWorkspace?.id]);
 
     const getDateRange = () => {
-        const toDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        const now = new Date();
-        if (dateFilter === 'today') return { startDate: toDateStr(now), endDate: toDateStr(now) };
-        if (dateFilter === 'yesterday') { const y = new Date(now); y.setDate(now.getDate()-1); return { startDate: toDateStr(y), endDate: toDateStr(y) }; }
-        if (dateFilter === '7d') { const day = now.getDay(); const diff = day === 0 ? 6 : day - 1; const mon = new Date(now); mon.setDate(mon.getDate()-diff); const sun = new Date(mon); sun.setDate(sun.getDate()+6); return { startDate: toDateStr(mon), endDate: toDateStr(sun) }; }
-        if (dateFilter === '30d') { const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth()+1, 0); return { startDate: toDateStr(first), endDate: toDateStr(last) }; }
-        if (dateFilter === 'custom' && startDate) return { startDate, endDate };
-        return {};
-    };
-
-    const fetchData = async () => {
-        if (!currentWorkspace?.id) return;
-        setLoading(true);
-        try {
-            const params = { ...getDateRange() };
-            if (funnelFilter) params.funnelId = funnelFilter;
-            const res = await contactAPI.getAnalytics(currentWorkspace.id, params);
-            setAnalytics(res.data);
-        } catch (err) {
-            console.error('Funnel report error:', err);
-        } finally {
-            setLoading(false);
-        }
+        return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, funnelFilter]);
@@ -96,7 +75,7 @@ const FunnelReport = () => {
                 <div className="ceo-filter-left">
                     <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
                     <div className="ceo-pill-group">
-                        {[{ key: 'all', label: 'Tümü' }, { key: 'today', label: 'Bugün' }, { key: 'yesterday', label: 'Dün' }, { key: '7d', label: 'Bu Hafta' }, { key: '30d', label: 'Bu Ay' }, { key: 'custom', label: '📅 Özel' }].map(item => (
+                        {dateFilterOptions.map(item => (
                             <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
                         ))}
                     </div>

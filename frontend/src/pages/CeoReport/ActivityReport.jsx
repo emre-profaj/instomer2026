@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
 import './CeoReport.css';
 import './CeoDetailReport.css';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 
 const formatNumber = (n) => {
     if (!n && n !== 0) return '0';
@@ -29,36 +30,7 @@ const ActivityReport = () => {
     const [endDate, setEndDate] = useState('');
 
     const getDateRange = () => {
-        const toDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        const now = new Date();
-        if (dateFilter === 'today') return { startDate: toDateStr(now), endDate: toDateStr(now) };
-        if (dateFilter === 'yesterday') { const y = new Date(now); y.setDate(now.getDate()-1); return { startDate: toDateStr(y), endDate: toDateStr(y) }; }
-        if (dateFilter === '7d') { const day = now.getDay(); const diff = day === 0 ? 6 : day - 1; const mon = new Date(now); mon.setDate(mon.getDate()-diff); const sun = new Date(mon); sun.setDate(sun.getDate()+6); return { startDate: toDateStr(mon), endDate: toDateStr(sun) }; }
-        if (dateFilter === '30d') { const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth()+1, 0); return { startDate: toDateStr(first), endDate: toDateStr(last) }; }
-        if (dateFilter === 'custom' && startDate) return { startDate, endDate };
-        return {};
-    };
-
-    const fetchData = async () => {
-        if (!currentWorkspace?.id) return;
-        setLoading(true);
-        try {
-            const params = getDateRange();
-            const [analyticsRes, perfRes] = await Promise.all([
-                contactAPI.getAnalytics(currentWorkspace.id, params),
-                contactAPI.getAgentPerformance(currentWorkspace.id, params)
-            ]);
-            setAnalytics(analyticsRes.data);
-            setAgentPerformance(perfRes.data);
-            try {
-                const statsRes = await contactAPI.getDailyStats(currentWorkspace.id, params);
-                setContactStats(statsRes.data);
-            } catch (e) {}
-        } catch (err) {
-            console.error('Activity report error:', err);
-        } finally {
-            setLoading(false);
-        }
+        return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
@@ -101,7 +73,7 @@ const ActivityReport = () => {
                 <div className="ceo-filter-left">
                     <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
                     <div className="ceo-pill-group">
-                        {[{ key: 'all', label: 'Tümü' }, { key: 'today', label: 'Bugün' }, { key: 'yesterday', label: 'Dün' }, { key: '7d', label: 'Bu Hafta' }, { key: '30d', label: 'Bu Ay' }, { key: 'custom', label: '📅 Özel' }].map(item => (
+                        {dateFilterOptions.map(item => (
                             <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
                         ))}
                     </div>
@@ -197,7 +169,7 @@ const ActivityReport = () => {
                         <div style={{ marginBottom: 20 }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Handshake size={15} style={{ color: '#6366f1' }} /> Görüşmeler <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({meet.total || 0} toplam)</span></div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                {[{ label: 'Planlanan', value: meet.planned, color: '#f59e0b', icon: '📅' }, { label: 'Tamamlanan', value: meet.completed, color: '#10b981', icon: '✅' }, { label: 'Tarihi Geçmiş', value: meet.overdue, color: '#ef4444', icon: '⏰' }, { label: 'İptal Edildi', value: meet.cancelled, color: '#64748b', icon: '❌' }].map(item => (
+                                {dateFilterOptions.map(item => (
                                     <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
                                         <div style={{ fontSize: 20 }}>{item.icon}</div>
                                         <div><div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div></div>
@@ -208,7 +180,7 @@ const ActivityReport = () => {
                         <div style={{ marginBottom: 20 }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={15} style={{ color: '#0ea5e9' }} /> Randevular <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({appt.total || 0} toplam)</span></div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                {[{ label: 'Planlanan', value: appt.scheduled, color: '#f59e0b', icon: '📅' }, { label: 'Tamamlanan', value: appt.completed, color: '#10b981', icon: '✅' }, { label: 'Tarihi Geçmiş', value: appt.overdue, color: '#ef4444', icon: '⏰' }, { label: 'İptal Edildi', value: appt.cancelled, color: '#64748b', icon: '❌' }].map(item => (
+                                {dateFilterOptions.map(item => (
                                     <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
                                         <div style={{ fontSize: 20 }}>{item.icon}</div>
                                         <div><div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div></div>

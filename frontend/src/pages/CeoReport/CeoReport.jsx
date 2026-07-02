@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { contactAPI, funnelAPI } from '../../services/api';
 import './CeoReport.css';
 import './CeoDetailReport.css';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 
 const formatNumber = (n) => {
     if (!n && n !== 0) return '0';
@@ -525,37 +526,9 @@ const CeoReport = () => {
     }, [isPrintPending, aiSummaryLoading]);
 
     const getDateRange = () => {
-        const toDateStr = (d) => {
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        };
-        const now = new Date();
-        if (dateFilter === 'today') {
-            return { startDate: toDateStr(now), endDate: toDateStr(now) };
-        } else if (dateFilter === 'yesterday') {
-            const y = new Date(now); y.setDate(now.getDate() - 1);
-            return { startDate: toDateStr(y), endDate: toDateStr(y) };
-        } else if (dateFilter === '7d') {
-            const day = now.getDay();
-            const diffToMonday = day === 0 ? 6 : day - 1;
-            const monday = new Date(now); monday.setDate(monday.getDate() - diffToMonday);
-            const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
-            return { startDate: toDateStr(monday), endDate: toDateStr(sunday) };
-        } else if (dateFilter === '30d') {
-            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-            const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            return { startDate: toDateStr(firstDay), endDate: toDateStr(lastDay) };
-        } else if (dateFilter === '90d') {
-            const start = new Date(now); start.setDate(now.getDate() - 90);
-            return { startDate: toDateStr(start), endDate: toDateStr(now) };
-        } else if (dateFilter === 'custom' && startDate) {
-            return { startDate, endDate };
-        } else {
-            return {};
-        }
+        return getDateRangeLogic(dateFilter, startDate, endDate);
     };
+
 
     const generateAiSummary = async (analyticsData, filterType) => {
         if (!currentWorkspace?.id || !analyticsData) return;
@@ -566,9 +539,12 @@ const CeoReport = () => {
                 all: 'Tüm Zamanlar',
                 today: 'Bugün',
                 yesterday: 'Dün',
-                '7d': 'Bu Hafta',
-                '30d': 'Bu Ay',
-                '90d': 'Son 90 Gün',
+                thisWeek: 'Bu Hafta',
+                lastWeek: 'Geçen Hafta',
+                thisMonth: 'Bu Ay',
+                lastMonth: 'Geçen Ay',
+                thisYear: 'Bu Yıl',
+                lastYear: 'Geçen Yıl',
                 custom: 'Özel Tarih Aralığı'
             };
             const res = await contactAPI.getAiSummary(currentWorkspace.id, {
@@ -758,14 +734,7 @@ const CeoReport = () => {
             <div className="dash-topbar">
                 <h1 className="dash-topbar-title">Dashboard</h1>
                 <div className="dash-topbar-pills">
-                    {[
-                        { key: 'all', label: 'Tümü' },
-                        { key: 'today', label: 'Bugün' },
-                        { key: 'yesterday', label: 'Dün' },
-                        { key: '7d', label: 'Bu Hafta' },
-                        { key: '30d', label: 'Bu Ay' },
-                        { key: 'custom', label: '📅 Özel' },
-                    ].map(item => (
+                    {dateFilterOptions.map(item => (
                         <button
                             key={item.key}
                             className={`dash-pill${dateFilter === item.key ? ' active' : ''}`}
