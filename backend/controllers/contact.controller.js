@@ -2487,8 +2487,7 @@ export const getContactAnalytics = async (req, res) => {
                         contact: { select: { id: true, name: true, phone: true } },
                         assignedTo: { select: { id: true, name: true } }
                     },
-                    orderBy: { createdAt: 'desc' },
-                    take: 5
+                    orderBy: { createdAt: 'desc' }
                 })
             ]);
 

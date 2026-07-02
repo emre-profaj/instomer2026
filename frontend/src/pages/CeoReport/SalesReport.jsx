@@ -261,45 +261,55 @@ const SalesReport = () => {
                 </div>
             )}
 
-            {/* Recent Deals */}
+            {/* Satış Listesi */}
             {ds.recentDeals?.length > 0 && (
                 <div className="ceo-section" style={{ marginBottom: 20 }}>
                     <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><Clock size={18} /></div>
-                        <h2>Son Siparişler</h2>
+                        <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><FileText size={18} /></div>
+                        <h2>Satış Listesi</h2>
                     </div>
                     <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
                         <table className="ceo-league-table">
                             <thead>
                                 <tr>
-                                    <th>Müşteri</th>
-                                    <th>Tip</th>
-                                    <th>Tutar</th>
-                                    <th>Durum</th>
                                     <th>Tarih</th>
+                                    <th>Satıcı</th>
+                                    <th>Konu / Müşteri</th>
+                                    <th>Durum</th>
+                                    <th>Tutar</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {ds.recentDeals.slice(0, 10).map((deal, idx) => {
+                                {ds.recentDeals.map((deal, idx) => {
                                     const statusConfig = {
                                         'OPEN': { label: 'Açık', bg: '#eff6ff', color: '#3b82f6' },
                                         'WON': { label: 'Tamamlandı', bg: '#f0fdf4', color: '#10b981' },
-                                        'LOST': { label: 'İptal', bg: '#fef2f2', color: '#ef4444' },
+                                        'LOST': { label: 'Tamamlanmadı', bg: '#fef2f2', color: '#ef4444' },
                                     };
                                     const st = statusConfig[deal.status] || statusConfig['OPEN'];
                                     const typeLabel = deal.stage === 'ORDER' ? 'Sipariş' : deal.stage === 'QUOTE' ? 'Teklif' : deal.stage === 'INVOICE' ? 'Fatura' : deal.stage;
                                     return (
                                         <tr key={deal.id || idx}>
+                                            <td><span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>{deal.createdAt ? new Date(deal.createdAt).toLocaleDateString('tr-TR') : '-'}</span></td>
                                             <td>
-                                                <div>
-                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{deal.contact?.name || 'İsimsiz'}</div>
-                                                    {deal.contact?.phone && <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{deal.contact.phone}</div>}
+                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                                                    {deal.assignedTo?.name || 'Atanmadı'}
                                                 </div>
                                             </td>
-                                            <td><span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569' }}>{typeLabel}</span></td>
-                                            <td><span style={{ fontWeight: 800, color: '#059669' }}>{formatCurrency(deal.amount || 0)}</span></td>
-                                            <td><span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 20, background: st.bg, color: st.color, fontSize: '0.72rem', fontWeight: 700 }}>{st.label}</span></td>
-                                            <td><span style={{ fontSize: '0.78rem', color: '#64748b' }}>{deal.createdAt ? new Date(deal.createdAt).toLocaleDateString('tr-TR') : '-'}</span></td>
+                                            <td>
+                                                <div>
+                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{deal.title || 'Belirtilmemiş'}</div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>
+                                                        {typeLabel} • {deal.contact?.name || 'İsimsiz Müşteri'}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 20, background: st.bg, color: st.color, fontSize: '0.75rem', fontWeight: 700 }}>
+                                                    {st.label}
+                                                </span>
+                                            </td>
+                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '0.95rem' }}>{formatCurrency(deal.amount || 0)}</span></td>
                                         </tr>
                                     );
                                 })}
