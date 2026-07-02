@@ -113,16 +113,16 @@ const SalesReport = () => {
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #8b5cf6, #8b5cf688)' }} />
                     <div className="kpi-icon-wrap" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><FileText size={20} /></div>
                     <div className="kpi-label">Teklif</div>
-                    <div className="kpi-value">{formatNumber(ds.totalQuotes || 0)}</div>
-                    <div className="kpi-sub">{formatCurrency(ds.quoteAmount || 0)}</div>
+                    <div className="kpi-value">{formatCurrency(ds.quoteAmount || 0)}</div>
+                    <div className="kpi-sub">{formatNumber(ds.totalQuotes || 0)} Adet</div>
                 </div>
                 {/* Sipariş */}
                 <div className="ceo-detail-kpi-card">
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} />
                     <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><ShoppingCart size={20} /></div>
                     <div className="kpi-label">Sipariş</div>
-                    <div className="kpi-value">{formatNumber(ds.totalOrders || 0)}</div>
-                    <div className="kpi-sub">{formatCurrency(ds.orderAmount || 0)}</div>
+                    <div className="kpi-value">{formatCurrency(ds.orderAmount || 0)}</div>
+                    <div className="kpi-sub">{formatNumber(ds.totalOrders || 0)} Adet</div>
                     <TrendBadge current={ds.orderAmount || 0} previous={prev.orderAmount} />
                 </div>
                 {/* Fatura */}
@@ -130,8 +130,8 @@ const SalesReport = () => {
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} />
                     <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><Receipt size={20} /></div>
                     <div className="kpi-label">Fatura</div>
-                    <div className="kpi-value">{formatNumber(ds.totalInvoices || 0)}</div>
-                    <div className="kpi-sub">{formatCurrency(ds.invoiceAmount || 0)}</div>
+                    <div className="kpi-value">{formatCurrency(ds.invoiceAmount || 0)}</div>
+                    <div className="kpi-sub">{formatNumber(ds.totalInvoices || 0)} Adet</div>
                 </div>
             </div>
 
@@ -144,19 +144,19 @@ const SalesReport = () => {
                 <div className="ceo-section-body">
                     <div className="ceo-mini-grid cols-4">
                         <div className="ceo-mini-card" style={{ background: '#eff6ff' }}>
-                            <div className="mini-value" style={{ color: '#2563eb' }}>{ds.openCount || 0}</div>
+                            <div className="mini-value" style={{ color: '#2563eb', fontSize: '1.4rem' }}>{formatCurrency(ds.openAmount || 0)}</div>
                             <div className="mini-label" style={{ color: '#3b82f6' }}>Açık</div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{formatCurrency(ds.openAmount || 0)}</div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{ds.openCount || 0} Adet</div>
                         </div>
                         <div className="ceo-mini-card" style={{ background: '#f0fdf4' }}>
-                            <div className="mini-value" style={{ color: '#16a34a' }}>{ds.wonCount || 0}</div>
+                            <div className="mini-value" style={{ color: '#16a34a', fontSize: '1.4rem' }}>{formatCurrency(ds.wonAmount || 0)}</div>
                             <div className="mini-label" style={{ color: '#059669' }}>Tamamlandı</div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{formatCurrency(ds.wonAmount || 0)}</div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{ds.wonCount || 0} Adet</div>
                         </div>
                         <div className="ceo-mini-card" style={{ background: '#fef2f2' }}>
-                            <div className="mini-value" style={{ color: '#dc2626' }}>{ds.lostCount || 0}</div>
+                            <div className="mini-value" style={{ color: '#dc2626', fontSize: '1.4rem' }}>{formatCurrency(ds.lostAmount || 0)}</div>
                             <div className="mini-label" style={{ color: '#dc2626' }}>İptal</div>
-                            <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{formatCurrency(ds.lostAmount || 0)}</div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{ds.lostCount || 0} Adet</div>
                         </div>
                         <div className="ceo-mini-card" style={{ background: '#fef3c7' }}>
                             <div className="mini-value" style={{ color: '#b45309' }}>
@@ -250,7 +250,8 @@ const SalesReport = () => {
                                 <tr>
                                     <th>Tarih</th>
                                     <th>Satıcı</th>
-                                    <th>Konu / Müşteri</th>
+                                    <th>Konu</th>
+                                    <th>Müşteri</th>
                                     <th>Durum</th>
                                     <th>Tutar</th>
                                 </tr>
@@ -275,9 +276,12 @@ const SalesReport = () => {
                                             <td>
                                                 <div>
                                                     <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{deal.title || 'Belirtilmemiş'}</div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>
-                                                        {typeLabel} • {deal.contact?.name || 'İsimsiz Müşteri'}
-                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>{typeLabel}</div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
+                                                    {deal.contact?.name || 'İsimsiz Müşteri'}
                                                 </div>
                                             </td>
                                             <td>

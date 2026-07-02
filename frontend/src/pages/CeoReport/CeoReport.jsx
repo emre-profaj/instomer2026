@@ -503,10 +503,7 @@ const CeoReport = () => {
     const [funnelFilter, setFunnelFilter] = useState('');
     const [funnels, setFunnels] = useState([]);
     
-    // AI Interpretation States
-    const [aiSummary, setAiSummary] = useState('');
-    const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
-    const [isPrintPending, setIsPrintPending] = useState(false);
+
 
     useEffect(() => {
         if (!currentWorkspace?.id) return;
@@ -515,51 +512,12 @@ const CeoReport = () => {
         }).catch(() => {});
     }, [currentWorkspace?.id]);
 
-    useEffect(() => {
-        if (isPrintPending && !aiSummaryLoading) {
-            setIsPrintPending(false);
-            const timer = setTimeout(() => {
-                window.print();
-            }, 250);
-            return () => clearTimeout(timer);
-        }
-    }, [isPrintPending, aiSummaryLoading]);
+
 
     const getDateRange = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
-
-    const generateAiSummary = async (analyticsData, filterType) => {
-        if (!currentWorkspace?.id || !analyticsData) return;
-        setAiSummaryLoading(true);
-        setAiSummary('');
-        try {
-            const TurkishFilterLabels = {
-                all: 'Tüm Zamanlar',
-                today: 'Bugün',
-                yesterday: 'Dün',
-                thisWeek: 'Bu Hafta',
-                lastWeek: 'Geçen Hafta',
-                thisMonth: 'Bu Ay',
-                lastMonth: 'Geçen Ay',
-                thisYear: 'Bu Yıl',
-                lastYear: 'Geçen Yıl',
-                custom: 'Özel Tarih Aralığı'
-            };
-            const res = await contactAPI.getAiSummary(currentWorkspace.id, {
-                analyticsData,
-                dateFilter: TurkishFilterLabels[filterType] || filterType
-            });
-            setAiSummary(res.data?.summary || '');
-        } catch (e) {
-            console.error('AI summary generation failed:', e);
-            const backendMsg = e?.response?.data?.error || e?.message || '';
-            setAiSummary(`Yorum oluşturulamadı. ${backendMsg ? `Hata: ${backendMsg}` : 'Lütfen API anahtarınızı veya internet bağlantınızı kontrol edin.'}`);
-        } finally {
-            setAiSummaryLoading(false);
-        }
-    };
 
     const fetchData = async () => {
         if (!currentWorkspace?.id) return;
@@ -585,9 +543,6 @@ const CeoReport = () => {
             if (dailyStatsRes && dailyStatsRes.data) {
                 setContactStats(dailyStatsRes.data);
             }
-
-            // Generate AI Summary
-            generateAiSummary(analyticsRes.data, dateFilter);
 
         } catch (err) {
             console.error('Dashboard fetch error:', err);
@@ -698,29 +653,12 @@ const CeoReport = () => {
     };
 
     const handleDownload = async () => {
-        if (aiSummaryLoading) {
-            setIsPrintPending(true);
-            return;
-        }
-        if (!aiSummary && analytics) {
-            setIsPrintPending(true);
-            generateAiSummary(analytics, dateFilter);
-            return;
-        }
         window.print();
     };
 
     return (
         <div className="ceo-report">
-            {isPrintPending && (
-                <div className="print-loading-overlay">
-                    <div className="print-loading-card">
-                        <RefreshCw size={32} style={{ animation: 'spin 1.5s linear infinite', color: '#6366f1', marginBottom: 16 }} />
-                        <h3>Rapor Hazırlanıyor</h3>
-                        <p>Yapay zeka analizi ve grafikler hazırlanıyor. Rapor birazdan otomatik olarak indirilecektir...</p>
-                    </div>
-                </div>
-            )}
+
 
             {/* Logo area shown ONLY in print layout */}
             <div className="print-logo-header">
@@ -798,38 +736,6 @@ const CeoReport = () => {
                     trend={<TrendBadge current={totalSales} previous={prev.orderAmount} />} />
                 <KpiStat label="Çözüm" value={`${analytics?.resolutionRate || 0}%`} icon={<CheckCircle2 size={22} />} color="#8b5cf6"
                     subtitle={`${formatNumber(analytics?.resolvedCount || 0)} çözülen`} />
-            </div>
-
-            {/* 🤖 YAPAY ZEKA RAPOR ANALİZİ */}
-            <div className="dash-panel dash-ai-summary-card">
-                <div className="ai-summary-header">
-                    <div className="ai-summary-title">
-                        <Sparkles size={18} style={{ color: '#6366f1' }} />
-                        <span>🤖 Yapay Zeka Rapor Analizi</span>
-                    </div>
-                    <button 
-                        className="ai-summary-regenerate-btn" 
-                        onClick={() => analytics && generateAiSummary(analytics, dateFilter)}
-                        disabled={aiSummaryLoading}
-                    >
-                        <RefreshCw size={12} className={aiSummaryLoading ? 'spin-anim' : ''} style={aiSummaryLoading ? { animation: 'spin 1s linear infinite' } : {}} />
-                        <span>Yorumu Güncelle</span>
-                    </button>
-                </div>
-                <div className="ai-summary-content">
-                    {aiSummaryLoading ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#6366f1', padding: '10px 0' }}>
-                            <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>AI verileri yorumluyor, lütfen bekleyin...</span>
-                        </div>
-                    ) : aiSummary ? (
-                        renderMarkdown(aiSummary)
-                    ) : (
-                        <p style={{ color: '#64748b', fontStyle: 'italic', fontSize: '0.85rem', margin: 0 }}>
-                            Rapor yorumu yüklenemedi. Lütfen API bağlantınızı kontrol edin.
-                        </p>
-                    )}
-                </div>
             </div>
 
             {/* ═══════ ANALYTICS GRID ═══════ */}
