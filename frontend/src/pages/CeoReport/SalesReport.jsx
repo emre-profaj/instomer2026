@@ -96,9 +96,25 @@ const SalesReport = () => {
     const getGroupedSubjects = () => {
         if (!ds.recentDeals || ds.recentDeals.length === 0) return [];
         const groups = {};
+
+        const normalizeTitle = (str) => {
+            if (!str) return 'belirtilmemis';
+            return str
+                .toLocaleLowerCase('tr-TR')
+                .replace(/ğ/g, 'g')
+                .replace(/ü/g, 'u')
+                .replace(/ş/g, 's')
+                .replace(/ı/g, 'i')
+                .replace(/ö/g, 'o')
+                .replace(/ç/g, 'c')
+                .replace(/[^a-z0-9]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
+
         ds.recentDeals.forEach(deal => {
             let title = (deal.title || 'Belirtilmemiş').trim();
-            const key = title.toLowerCase();
+            const key = normalizeTitle(title);
             
             if (!groups[key]) {
                 groups[key] = {
@@ -338,6 +354,7 @@ const SalesReport = () => {
                                     <th>Satıcı</th>
                                     <th>Konu</th>
                                     <th>Müşteri</th>
+                                    <th>Kaynak</th>
                                     <th>Durum</th>
                                     <th>Tutar</th>
                                 </tr>
@@ -369,6 +386,11 @@ const SalesReport = () => {
                                                 <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
                                                     {deal.contact?.name || 'İsimsiz Müşteri'}
                                                 </div>
+                                            </td>
+                                            <td>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '2px 8px', borderRadius: 12 }}>
+                                                    {(deal.contact?.source || 'Manuel').charAt(0).toUpperCase() + (deal.contact?.source || 'MANUAL').slice(1).toLowerCase()}
+                                                </span>
                                             </td>
                                             <td>
                                                 <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 20, background: st.bg, color: st.color, fontSize: '0.75rem', fontWeight: 700 }}>
