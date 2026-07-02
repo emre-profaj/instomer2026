@@ -2295,7 +2295,7 @@ export const getContactAnalytics = async (req, res) => {
                 createdAt: true,
                 completedAt: true,
                 assignedToId: true,
-                contact: { select: { id: true, name: true, phone: true, status: true, funnelStageId: true } },
+                contact: { select: { id: true, name: true, phone: true, source: true, status: true, funnelStageId: true } },
                 assignee: { select: { id: true, name: true } }
             }
         });
@@ -2404,7 +2404,7 @@ export const getContactAnalytics = async (req, res) => {
                     dueDate: true,
                     createdAt: true,
                     assignedToId: true,
-                    contact: { select: { id: true, name: true, phone: true } },
+                    contact: { select: { id: true, name: true, phone: true, source: true } },
                     assignee: { select: { id: true, name: true } }
                 },
                 orderBy: { dueDate: 'asc' }
@@ -2484,7 +2484,7 @@ export const getContactAnalytics = async (req, res) => {
                     select: {
                         id: true, title: true, stage: true, status: true, amount: true, currency: true,
                         createdAt: true,
-                        contact: { select: { id: true, name: true, phone: true } },
+                        contact: { select: { id: true, name: true, phone: true, source: true } },
                         assignedTo: { select: { id: true, name: true } }
                     },
                     orderBy: { createdAt: 'desc' }
