@@ -37,6 +37,24 @@ const SalesReport = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
+    const fetchData = async () => {
+        if (!currentWorkspace?.id) return;
+        setLoading(true);
+        try {
+            const params = { ...getDateRange(), comparePrevious: true };
+            const [analyticsRes, perfRes] = await Promise.all([
+                contactAPI.getAnalytics(currentWorkspace.id, params),
+                contactAPI.getAgentPerformance(currentWorkspace.id, params)
+            ]);
+            setAnalytics(analyticsRes.data);
+            setAgentPerformance(perfRes.data);
+        } catch (err) {
+            console.error('Sales report error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
 
     const ds = analytics?.dealStats || {};
