@@ -171,7 +171,7 @@ const Sidebar = () => {
         setIsActivitiesOpen(path.startsWith('/activities') || path === '/calendar');
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices'].some(p => path === p));
-        setIsAnalyticsOpen(['/general-report', '/analytics', '/agent-performance', '/call-analytics', '/ai-call-analytics'].some(p => path === p));
+        setIsAnalyticsOpen(['/general-report', '/agent-performance', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
         setIsSettingsOpen(['/channels', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
     }, [location.pathname]);
 
