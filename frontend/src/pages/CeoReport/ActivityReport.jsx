@@ -35,6 +35,33 @@ const ActivityReport = () => {
         sessionStorage.setItem('reportEndDate', endDate);
     }, [dateFilter, startDate, endDate]);
 
+    const fetchData = async () => {
+        if (!currentWorkspace?.id) return;
+        setLoading(true);
+        try {
+            const dateParams = getDateRangeLogic(dateFilter, startDate, endDate);
+            const params = { ...dateParams, comparePrevious: true };
+
+            const [analyticsRes, performanceRes, dailyStatsRes] = await Promise.all([
+                contactAPI.getAnalytics(currentWorkspace.id, params),
+                contactAPI.getAgentPerformance(currentWorkspace.id, params),
+                contactAPI.getDailyStats(currentWorkspace.id, dateParams).catch(e => {
+                    console.warn('Daily stats failed:', e.message);
+                    return { data: null };
+                })
+            ]);
+            setAnalytics(analyticsRes.data);
+            setAgentPerformance(performanceRes.data);
+            if (dailyStatsRes && dailyStatsRes.data) {
+                setContactStats(dailyStatsRes.data);
+            }
+        } catch (error) {
+            console.error('Error fetching activity report:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const getDateRange = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
