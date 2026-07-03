@@ -50,6 +50,7 @@ const Sidebar = () => {
         { path: '/general-report', icon: BarChart3, label: 'Genel Rapor' },
         { path: '/general-report/sales', icon: ShoppingCart, label: 'Satışlar' },
         { path: '/general-report/team', icon: Users, label: 'Takım ve Temsilciler' },
+        { path: '/general-report/activities', icon: Activity, label: 'Aktivite Raporu' },
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },
         { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' }
     ];
