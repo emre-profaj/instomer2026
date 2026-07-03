@@ -120,13 +120,52 @@ const ActivityReport = () => {
                 </div>
             </div>
 
-            {/* Call Summary KPI */}
-            <div className="ceo-detail-kpi-grid">
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} /><div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div><div className="kpi-label">Numaralı Başvuru</div><div className="kpi-value">{formatNumber(numarali)}</div><div className="kpi-sub">Telefon numarası olan</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><Phone size={20} /></div><div className="kpi-label">Kaçı Arandı</div><div className="kpi-value">{formatNumber(kaciArandi)}</div><div className="kpi-sub">Benzersiz kişi</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #059669, #05966988)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#059669' }}><PhoneCall size={20} /></div><div className="kpi-label">Toplam Arama</div><div className="kpi-value">{formatNumber(toplamArama)}</div><div className="kpi-sub">Yapılan arama sayısı</div></div>
-                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/call-analytics')}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #ef4444, #ef444488)' }} /><div className="kpi-icon-wrap" style={{ background: '#fef2f2', color: '#ef4444' }}><PhoneOff size={20} /></div><div className="kpi-label">Aranmayan 🔴</div><div className="kpi-value" style={{ color: '#ef4444' }}>{formatNumber(aranmayan)}</div><div className="kpi-sub">Tıklayın → detay rapor</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} /><div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={20} /></div><div className="kpi-label">Arama Oranı</div><div className="kpi-value">%{aramaOrani}</div><div className="kpi-sub">Aranan / Numaralı</div></div>
+            {/* KPI Grid */}
+            <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+                {/* Calls */}
+                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/call-analytics')}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} />
+                    <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><PhoneCall size={20} /></div>
+                    <div className="kpi-label">Toplam Arama</div>
+                    <div className="kpi-value">{formatNumber(toplamArama)}</div>
+                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
+                </div>
+
+                {/* Meetings */}
+                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/meeting-analytics')}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} />
+                    <div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div>
+                    <div className="kpi-label">Görüşme (Toplantı)</div>
+                    <div className="kpi-value">{formatNumber(meet.total || 0)}</div>
+                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
+                </div>
+
+                {/* Appointments */}
+                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/appointment-analytics')}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #8b5cf6, #8b5cf688)' }} />
+                    <div className="kpi-icon-wrap" style={{ background: '#f3e8ff', color: '#8b5cf6' }}><Calendar size={20} /></div>
+                    <div className="kpi-label">Toplam Randevu</div>
+                    <div className="kpi-value">{formatNumber(appt.total || 0)}</div>
+                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
+                </div>
+
+                {/* AI Calls */}
+                <div className="ceo-detail-kpi-card clickable" onClick={() => navigate('/ai-call-analytics')}>
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #0ea5e9, #0ea5e988)' }} />
+                    <div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Phone size={20} /></div>
+                    <div className="kpi-label">AI Araması</div>
+                    <div className="kpi-value">{formatNumber(analytics?.aiCallStats?.totalCount || 0)}</div>
+                    <div className="kpi-sub">Detaylı Rapor İçin Tıklayın →</div>
+                </div>
+
+                {/* Visits */}
+                <div className="ceo-detail-kpi-card">
+                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} />
+                    <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#f59e0b' }}><Users size={20} /></div>
+                    <div className="kpi-label">Ziyaretler</div>
+                    <div className="kpi-value">{formatNumber(as.visitCount || 0)}</div>
+                    <div className="kpi-sub">Kayıtlı toplam ziyaret</div>
+                </div>
             </div>
 
             {/* Agent Call Leaderboard */}

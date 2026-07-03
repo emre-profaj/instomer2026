@@ -62,6 +62,8 @@ export const activityAPI = {
         if (filters.dateFrom) params.dateFrom = filters.dateFrom;
         if (filters.dateTo) params.dateTo = filters.dateTo;
         if (filters.source) params.source = filters.source;
+        if (filters.limit) params.limit = filters.limit;
+        if (filters.dateField) params.dateField = filters.dateField;
         const response = await api.get(`/activities/workspace/${workspaceId}/list`, { params });
         return response.data;
     },

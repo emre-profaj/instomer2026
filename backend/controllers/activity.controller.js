@@ -835,9 +835,10 @@ export const getWorkspaceActivities = async (req, res) => {
 
         // Date range filter
         if (dateFrom || dateTo) {
-            where.dueDate = {};
-            if (dateFrom) where.dueDate.gte = parseDateStartTR(dateFrom);
-            if (dateTo) where.dueDate.lte = parseDateEndTR(dateTo);
+            const field = req.query.dateField || 'dueDate'; // e.g. 'createdAt', 'completedAt', 'dueDate'
+            where[field] = {};
+            if (dateFrom) where[field].gte = parseDateStartTR(dateFrom);
+            if (dateTo) where[field].lte = parseDateEndTR(dateTo);
         }
 
         // AGENT RBAC: Sadece kendi + takım havuzu

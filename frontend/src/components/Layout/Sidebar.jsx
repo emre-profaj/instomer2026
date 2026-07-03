@@ -52,6 +52,8 @@ const Sidebar = () => {
         { path: '/general-report/team', icon: Users, label: 'Takım ve Temsilciler' },
         { path: '/general-report/activities', icon: Activity, label: 'Aktivite Raporu' },
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },
+        { path: '/meeting-analytics', icon: Users, label: 'Görüşme Analizi' },
+        { path: '/appointment-analytics', icon: Calendar, label: 'Randevu Analizi' },
         { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' }
     ];
 

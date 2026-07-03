@@ -2295,6 +2295,8 @@ export const getContactAnalytics = async (req, res) => {
                 createdAt: true,
                 completedAt: true,
                 assignedToId: true,
+                callSuccessful: true,
+                callSentiment: true,
                 contact: { select: { id: true, name: true, phone: true, source: true, status: true, funnelStageId: true } },
                 assignee: { select: { id: true, name: true } }
             }
@@ -2572,7 +2574,8 @@ export const getContactAnalytics = async (req, res) => {
                 callCount: getCount(actByType.find(a => a.type === 'CALL')),
                 meetingCount: getCount(actByType.find(a => a.type === 'MEETING')),
                 taskCount: getCount(actByType.find(a => a.type === 'TASK')),
-                noteCount: getCount(actByType.find(a => a.type === 'NOTE'))
+                noteCount: getCount(actByType.find(a => a.type === 'NOTE')),
+                visitCount: getCount(actByType.find(a => a.type === 'VISIT'))
             };
         } catch (e) {
             console.error('Activity stats error (non-fatal):', e.message);
