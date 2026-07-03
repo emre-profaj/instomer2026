@@ -26,9 +26,15 @@ const GeneralReport = () => {
     const [contactStats, setContactStats] = useState(null);
     const [peakHours, setPeakHours] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState('all');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
+    const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
+    const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
+
+    useEffect(() => {
+        sessionStorage.setItem('reportDateFilter', dateFilter);
+        sessionStorage.setItem('reportStartDate', startDate);
+        sessionStorage.setItem('reportEndDate', endDate);
+    }, [dateFilter, startDate, endDate]);
 
     const getDateRange = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);

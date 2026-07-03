@@ -22,9 +22,15 @@ const RequestReport = () => {
     const navigate = useNavigate();
     const [analytics, setAnalytics] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState('all');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
+    const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
+    const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
+
+    useEffect(() => {
+        sessionStorage.setItem('reportDateFilter', dateFilter);
+        sessionStorage.setItem('reportStartDate', startDate);
+        sessionStorage.setItem('reportEndDate', endDate);
+    }, [dateFilter, startDate, endDate]);
     const [showAllTopics, setShowAllTopics] = useState(false);
 
     const getDateRange = () => {
