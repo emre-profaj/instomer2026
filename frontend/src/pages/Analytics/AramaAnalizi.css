@@ -651,3 +651,53 @@
 .modal-body::-webkit-scrollbar-thumb:hover {
     background: #cbd5e1;
 }
+
+/* Modern Table Styles copied for AramaAnalizi */
+.modern-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.modern-table th {
+    text-align: left;
+    padding: 16px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.modern-table td {
+    padding: 20px 16px;
+    border-bottom: 1px solid #f8fafc;
+    vertical-align: middle;
+}
+
+.modern-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+/* Sidebar Modal Overlay */
+.sidebar-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(15, 23, 42, 0.5);
+    display: flex;
+    justify-content: flex-end; /* Slide in from right */
+}
+
+.sidebar-modal-container {
+    width: 450px;
+    height: 100%;
+    background: white;
+    box-shadow: -5px 0 25px rgba(0,0,0,0.1);
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}

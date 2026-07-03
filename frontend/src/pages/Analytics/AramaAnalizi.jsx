@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
 import api, { contactAPI, retellAPI, funnelAPI } from '../../services/api';
+import { activityAPI } from '../../services/activity.api';
 import './AramaAnalizi.css';
 
 const AramaAnalizi = () => {
@@ -20,6 +21,14 @@ const AramaAnalizi = () => {
     const [funnels, setFunnels] = useState([]);
     const [bottomTab, setBottomTab] = useState('calls'); // calls | uncalled
     
+    // Note Modal States
+    const [noteModalOpen, setNoteModalOpen] = useState(false);
+    const [noteContactId, setNoteContactId] = useState(null);
+    const [noteSuccess, setNoteSuccess] = useState(null);
+    const [noteSentiment, setNoteSentiment] = useState(null);
+    const [noteDesc, setNoteDesc] = useState('');
+    const [noteSaving, setNoteSaving] = useState(false);
+
     // Date filter states
     const [dateFilter, setDateFilter] = useState('7d'); // 24h | 7d | 30d | custom
     const [startDate, setStartDate] = useState('');
@@ -109,6 +118,54 @@ const AramaAnalizi = () => {
         } catch (error) {
             console.error('Failed to cancel scheduled call:', error);
             showError('Arama iptal edilirken bir hata oluştu.');
+        }
+    };
+
+    const handleOpenNoteModal = (contactId) => {
+        setNoteContactId(contactId);
+        setNoteSuccess(null);
+        setNoteSentiment(null);
+        setNoteDesc('');
+        setNoteModalOpen(true);
+    };
+
+    const handleSaveNote = async () => {
+        if (!noteSuccess) {
+            showError('Lütfen aramanın durumunu (Ulaşıldı / Ulaşılamadı) seçin.');
+            return;
+        }
+        if (noteSuccess === 'SUCCESS' && !noteSentiment) {
+            showError('Lütfen görüşmenin nasıl geçtiğini seçin.');
+            return;
+        }
+        
+        setNoteSaving(true);
+        try {
+            const dataToSave = {
+                workspaceId: currentWorkspace.id,
+                type: 'CALL',
+                title: 'Telefon Görüşmesi',
+                description: noteSuccess === 'FAILED' ? `📵 Ulaşılamadı: ${noteDesc}` : noteDesc,
+                dueDate: new Date().toISOString(),
+                assignedToId: null,
+                teamId: null,
+                status: 'COMPLETED',
+                completedAt: new Date().toISOString(),
+                callSuccessful: noteSuccess === 'SUCCESS',
+                ...(noteSentiment && noteSuccess === 'SUCCESS' && { callSentiment: noteSentiment }),
+                completePlannedCall: true
+            };
+
+            await activityAPI.createActivity(noteContactId, dataToSave);
+            
+            showSuccess('Arama notu başarıyla eklendi.');
+            setNoteModalOpen(false);
+            loadAllData(false);
+        } catch (error) {
+            console.error('Not eklenirken hata:', error);
+            showError('Not eklenirken bir hata oluştu.');
+        } finally {
+            setNoteSaving(false);
         }
     };
 
@@ -383,6 +440,7 @@ const AramaAnalizi = () => {
                                     <th style={{ textAlign: 'center' }}>Ulaşılabilirlik</th>
                                     <th style={{ textAlign: 'center' }}>Değerlendirme</th>
                                     <th>Arama Notu</th>
+                                    <th style={{ textAlign: 'center', width: '130px' }}>İşlem</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -455,18 +513,18 @@ const AramaAnalizi = () => {
                                                 </td>
                                                 <td style={{ textAlign: 'center' }}>
                                                     {isCompleted ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✓ Tamamlandı</span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✓ Tamamlandı</span>
                                                     ) : isPlanned ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>⏳ Bekliyor</span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>⏳ Bekliyor</span>
                                                     ) : (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✗ İptal</span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✗ İptal</span>
                                                     )}
                                                 </td>
                                                 <td style={{ textAlign: 'center' }}>
                                                     {a.callSuccessful === true ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✓ Ulaşıldı</span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✓ Ulaşıldı</span>
                                                     ) : a.callSuccessful === false ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✗ Ulaşılamadı</span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✗ Ulaşılamadı</span>
                                                     ) : (
                                                         <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
@@ -491,6 +549,16 @@ const AramaAnalizi = () => {
                                                         <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
                                                 </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <button 
+                                                        className="btn btn-outline" 
+                                                        style={{ padding: '4px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                        onClick={() => handleOpenNoteModal(a.contact?.id || a.contactId)}
+                                                    >
+                                                        <FileText size={12} />
+                                                        Not Ekle
+                                                    </button>
+                                                </td>
                                             </tr>
                                         );
                                     });
@@ -511,6 +579,7 @@ const AramaAnalizi = () => {
                                     <th>Firma</th>
                                     <th>Aşama / Durum</th>
                                     <th>Kayıt Tarihi</th>
+                                    <th style={{ textAlign: 'center', width: '130px' }}>İşlem</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -569,6 +638,16 @@ const AramaAnalizi = () => {
                                                     <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
                                                         {formatDateTime(c.createdAt)}
                                                     </span>
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <button 
+                                                        className="btn btn-outline" 
+                                                        style={{ padding: '4px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                        onClick={() => handleOpenNoteModal(c.contactId)}
+                                                    >
+                                                        <FileText size={12} />
+                                                        Not Ekle
+                                                    </button>
                                                 </td>
                                             </tr>
                                         );
@@ -685,6 +764,94 @@ const AramaAnalizi = () => {
                                 ?.length === 0 && (
                                     <div style={{ textAlign: 'center', color: '#9ca3af', padding: '32px 0', fontSize: '0.85rem' }}>Eşleşen sonuç bulunamadı.</div>
                                 )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Arama Notu Ekle Modal */}
+            {noteModalOpen && (
+                <div className="modal-overlay">
+                    <div className="modal-backdrop" onClick={() => setNoteModalOpen(false)} />
+                    <div className="modal-container" style={{ maxWidth: '450px' }}>
+                        <div className="modal-header">
+                            <div className="modal-header-info">
+                                <h3>Arama Notu Ekle</h3>
+                                <p>Müşteri aramasıyla ilgili detayları girin</p>
+                            </div>
+                            <button className="modal-close-btn" onClick={() => setNoteModalOpen(false)}>
+                                <X size={16} />
+                            </button>
+                        </div>
+                        
+                        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+                                    Arama Durumu
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button 
+                                        onClick={() => setNoteSuccess('SUCCESS')}
+                                        style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${noteSuccess === 'SUCCESS' ? '#10b981' : '#e2e8f0'}`, background: noteSuccess === 'SUCCESS' ? '#ecfdf5' : 'white', color: noteSuccess === 'SUCCESS' ? '#047857' : '#475569', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                                    >
+                                        ✓ Ulaşıldı
+                                    </button>
+                                    <button 
+                                        onClick={() => setNoteSuccess('FAILED')}
+                                        style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${noteSuccess === 'FAILED' ? '#ef4444' : '#e2e8f0'}`, background: noteSuccess === 'FAILED' ? '#fef2f2' : 'white', color: noteSuccess === 'FAILED' ? '#b91c1c' : '#475569', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                                    >
+                                        ✗ Ulaşılamadı
+                                    </button>
+                                </div>
+                            </div>
+
+                            {noteSuccess === 'SUCCESS' && (
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+                                        Görüşme Nasıl Geçti?
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button 
+                                            onClick={() => setNoteSentiment('Positive')}
+                                            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${noteSentiment === 'Positive' ? '#10b981' : '#e2e8f0'}`, background: noteSentiment === 'Positive' ? '#ecfdf5' : 'white', color: noteSentiment === 'Positive' ? '#047857' : '#475569', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                                        >
+                                            😊 Olumlu
+                                        </button>
+                                        <button 
+                                            onClick={() => setNoteSentiment('Neutral')}
+                                            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${noteSentiment === 'Neutral' ? '#6366f1' : '#e2e8f0'}`, background: noteSentiment === 'Neutral' ? '#eef2ff' : 'white', color: noteSentiment === 'Neutral' ? '#4338ca' : '#475569', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                                        >
+                                            😐 Nötr
+                                        </button>
+                                        <button 
+                                            onClick={() => setNoteSentiment('Negative')}
+                                            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${noteSentiment === 'Negative' ? '#ef4444' : '#e2e8f0'}`, background: noteSentiment === 'Negative' ? '#fef2f2' : 'white', color: noteSentiment === 'Negative' ? '#b91c1c' : '#475569', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                                        >
+                                            😔 Olumsuz
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+                                    Arama Notu
+                                </label>
+                                <textarea 
+                                    className="modal-search"
+                                    style={{ width: '100%', minHeight: '100px', resize: 'vertical' }}
+                                    placeholder="Görüşme ile ilgili notlarınızı buraya yazın..."
+                                    value={noteDesc}
+                                    onChange={(e) => setNoteDesc(e.target.value)}
+                                ></textarea>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', borderTop: '1px solid #f1f5f9' }}>
+                            <button className="btn btn-outline" onClick={() => setNoteModalOpen(false)}>İptal</button>
+                            <button className="btn btn-primary" disabled={noteSaving || !noteSuccess || (noteSuccess === 'SUCCESS' && !noteSentiment)} onClick={handleSaveNote}>
+                                {noteSaving ? 'Kaydediliyor...' : 'Notu Kaydet'}
+                            </button>
                         </div>
                     </div>
                 </div>
