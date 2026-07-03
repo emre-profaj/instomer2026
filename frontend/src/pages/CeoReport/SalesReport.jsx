@@ -173,7 +173,7 @@ const SalesReport = () => {
     const groupedSources = getGroupedSources();
 
     return (
-        <div className="ceo-detail-layout">
+        <div className="ceo-report">
             <button className="ceo-back-btn" onClick={() => navigate('/ceo-report')}><ArrowLeft size={16} /> Dashboard</button>
 
             <div className="ceo-detail-header">

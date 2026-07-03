@@ -19,7 +19,6 @@ import Customers from './pages/Customers/Customers';
 import Leads from './pages/Leads/Leads';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import Emails from './pages/Emails/Emails';
-import Analytics from './pages/Analytics/Analytics';
 import AramaAnalizi from './pages/Analytics/AramaAnalizi';
 import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
@@ -101,7 +100,6 @@ function App() {
               <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
-              <Route path="analytics" element={<Analytics />} />
               <Route path="ceo-report" element={<CeoReport />} />
               <Route path="ceo-report/general" element={<GeneralReport />} />
               <Route path="ceo-report/team" element={<TeamReport />} />
