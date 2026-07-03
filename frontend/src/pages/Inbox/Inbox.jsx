@@ -3504,6 +3504,45 @@ const Inbox = () => {
                             )}
                         </div>
 
+                        {/* Takım/Akış Seçici */}
+                        <select
+                            value={funnelFilter || ''}
+                            onChange={(e) => {
+                                setFunnelFilter(e.target.value || null);
+                                setStatusFilter(null);
+                                setCurrentPage(1);
+                                if (currentPageRef) currentPageRef.current = 1;
+                            }}
+                            style={{
+                                height: '28px',
+                                borderRadius: '14px',
+                                border: funnelFilter ? '1.5px solid #6366f1' : '1px solid #cbd5e1',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                padding: '0 12px',
+                                cursor: 'pointer',
+                                background: funnelFilter ? '#eef2ff' : '#ffffff',
+                                color: funnelFilter ? '#4f46e5' : '#1e293b',
+                                minWidth: '150px',
+                                flexShrink: 0,
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right 8px center',
+                                paddingRight: '24px'
+                            }}
+                        >
+                            <option value="">Tümü</option>
+                            {funnelOptions.filter(f => f.value).map(funnel => {
+                                const count = inboxItems.filter(item => item.contact?.funnelType === funnel.value).length;
+                                return (
+                                    <option key={funnel.value} value={funnel.value}>
+                                        {funnel.label} {count > 0 ? `(${count})` : ''}
+                                    </option>
+                                );
+                            })}
+                        </select>
                     </div>
                 </div>
 

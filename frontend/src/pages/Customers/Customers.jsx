@@ -48,7 +48,9 @@ import {
     ArrowUpDown,
     Bot,
     UserCheck,
-    CircleOff
+    CircleOff,
+    KanbanSquare,
+    List
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -56,6 +58,7 @@ import './Customers.css';
 import '../../components/ContactSidebar/ContactSidebar.css';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
+import PipelineView from '../Pipeline/Pipeline';
 
 const Customers = () => {
     const { currentWorkspace, user } = useAuth();
@@ -63,7 +66,9 @@ const Customers = () => {
     const location = useLocation();
     const { t } = useTranslation();
 
-    // --- Persist filters in sessionStorage ---
+    const [viewMode, setViewMode] = useState('list'); // 'list' | 'pipeline'
+
+    // Filtre state'leri (sayfa yenilendiğinde sessionStorage'dan okunur) ---
     const FILTER_STORAGE_KEY = 'customers_filters';
 
     const getSavedFilters = () => {
@@ -1725,8 +1730,39 @@ const Customers = () => {
                             >
                                 <Plus size={18} />
                             </button>
+                            <button
+                                className={`inbox-view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
+                                onClick={() => setViewMode(v => v === 'list' ? 'pipeline' : 'list')}
+                                title={viewMode === 'list' ? 'Pipeline Görünümüne Geç' : 'Liste Görünümüne Geç'}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '36px',
+                                    height: '36px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    background: viewMode === 'pipeline' ? '#eef2ff' : '#ffffff',
+                                    color: viewMode === 'pipeline' ? '#4f46e5' : '#64748b',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    marginLeft: '8px'
+                                }}
+                            >
+                                {viewMode === 'list'
+                                    ? <KanbanSquare size={16} />
+                                    : <List size={16} />}
+                            </button>
                         </div>
                     </div>
+
+                    {viewMode === 'pipeline' && (
+                        <div style={{ flex: 1, height: 'calc(100vh - 80px)', overflow: 'hidden' }}>
+                            <PipelineView />
+                        </div>
+                    )}
+                    
+                    <div style={{ display: viewMode === 'list' ? 'block' : 'none' }}>
 
                     {/* Dynamic Tabs */}
                     <div className="contacts-tabs" style={{ display: 'none', gap: '8px', padding: '0 24px', marginBottom: '16px', overflowX: 'auto' }}>
@@ -2966,6 +3002,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                             </div>
                         </div>
                     )}
+                    </div>
 
                 </div>
 
