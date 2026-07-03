@@ -22,6 +22,20 @@ const TeamReport = () => {
     const [sortBy, setSortBy] = useState('totalConversations');
     const [viewMode, setViewMode] = useState('team-grouped');
 
+    const fetchData = async () => {
+        if (!currentWorkspace?.id) return;
+        setLoading(true);
+        try {
+            const dateParams = getDateRangeLogic(dateFilter, startDate, endDate);
+            const res = await contactAPI.getAgentPerformance(currentWorkspace.id, dateParams);
+            setAgentPerformance(res.data);
+        } catch (error) {
+            console.error('Error fetching team report:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const getDateRange = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
