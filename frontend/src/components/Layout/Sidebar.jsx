@@ -47,7 +47,8 @@ const Sidebar = () => {
     ];
 
     const analyticsSubItems = [
-        { path: '/ceo-report', icon: BarChart3, label: 'Dashboard' },
+        { path: '/general-report', icon: BarChart3, label: 'Genel Rapor' },
+        { path: '/general-report/sales', icon: ShoppingCart, label: 'Satışlar' },
         { path: '/agent-performance', icon: Activity, label: 'Agent Performansları' },
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },
         { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' }
@@ -170,7 +171,7 @@ const Sidebar = () => {
         setIsActivitiesOpen(path.startsWith('/activities') || path === '/calendar');
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices'].some(p => path === p));
-        setIsAnalyticsOpen(['/ceo-report', '/analytics', '/agent-performance', '/call-analytics', '/ai-call-analytics'].some(p => path === p));
+        setIsAnalyticsOpen(['/general-report', '/analytics', '/agent-performance', '/call-analytics', '/ai-call-analytics'].some(p => path === p));
         setIsSettingsOpen(['/channels', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
     }, [location.pathname]);
 

@@ -100,14 +100,14 @@ function App() {
               <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
-              <Route path="ceo-report" element={<CeoReport />} />
-              <Route path="ceo-report/general" element={<GeneralReport />} />
-              <Route path="ceo-report/team" element={<TeamReport />} />
-              <Route path="ceo-report/funnel" element={<FunnelReport />} />
-              <Route path="ceo-report/activities" element={<ActivityReport />} />
-              <Route path="ceo-report/ai-calls" element={<AICallReport />} />
-              <Route path="ceo-report/sales" element={<SalesReport />} />
-              <Route path="ceo-report/requests" element={<RequestReport />} />
+              <Route path="general-report" element={<CeoReport />} />
+              <Route path="general-report/general" element={<GeneralReport />} />
+              <Route path="general-report/team" element={<TeamReport />} />
+              <Route path="general-report/funnel" element={<FunnelReport />} />
+              <Route path="general-report/activities" element={<ActivityReport />} />
+              <Route path="general-report/ai-calls" element={<AICallReport />} />
+              <Route path="general-report/sales" element={<SalesReport />} />
+              <Route path="general-report/requests" element={<RequestReport />} />
               <Route path="call-analytics" element={<AramaAnalizi />} />
               <Route path="agent-performance" element={<AgentPerformance />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />

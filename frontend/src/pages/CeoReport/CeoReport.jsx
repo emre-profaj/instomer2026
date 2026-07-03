@@ -641,7 +641,7 @@ const CeoReport = () => {
             <div className="print-page-header">
                 <div className="print-page-header-top">
                     <img src="/instomer-logo.png" alt="Instomer" style={{ height: '28px' }} />
-                    <span className="print-page-header-logo-text">CEO PERFORMANS RAPORU</span>
+                    <span className="print-page-header-logo-text">GENEL PERFORMANS RAPORU</span>
                 </div>
                 <div className="print-page-header-meta">
                     <span>Rapor Bölümü: <strong>{pageTitle}</strong></span>
@@ -664,7 +664,7 @@ const CeoReport = () => {
             <div className="print-logo-header">
                 <img src="/instomer-logo.png" alt="Instomer" style={{ height: '38px' }} />
                 <span style={{ fontSize: '14px', fontWeight: 600, color: '#64748b' }}>
-                    CEO Performans Raporu — {new Date().toLocaleDateString('tr-TR')}
+                    Genel Performans Raporu — {new Date().toLocaleDateString('tr-TR')}
                 </span>
             </div>
 
@@ -742,7 +742,7 @@ const CeoReport = () => {
             <div className="dash-analytics-grid">
 
                 {/* ──── Günlük Başvuru Trendi (wide) — Stacked numaralı/numarasız ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/general')}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/general')}>
                     <div className="dash-panel-header">
                         <h3><TrendingUp size={18} /> Günlük Başvuru Trendi</h3>
                         <span className="dash-panel-link">Detaylı Rapor <ArrowRight size={14} /></span>
@@ -753,7 +753,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── Kanal Dağılımı ──── */}
-                <div className="dash-panel" onClick={() => navigate('/ceo-report/general')}>
+                <div className="dash-panel" onClick={() => navigate('/general-report/general')}>
                     <div className="dash-panel-header">
                         <h3><PieChart size={18} /> Kanal Dağılımı</h3>
                     </div>
@@ -788,7 +788,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── Takım & Temsilci (wide, 2 bölüm) ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/team')} style={{ cursor: 'pointer' }}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/team')} style={{ cursor: 'pointer' }}>
                     <div className="dash-panel-header">
                         <h3><UserCheck size={18} /> Takım & Temsilci</h3>
                         <span className="dash-panel-link">Detaylı <ArrowRight size={14} /></span>
@@ -880,7 +880,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── Akış Raporu (wide — alt alta dikey liste) ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/funnel')}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/funnel')}>
                     <div className="dash-panel-header">
                         <h3><Activity size={16} /> Akış Raporu</h3>
                         <span className="dash-panel-link">Detaylı <ArrowRight size={12} /></span>
@@ -954,7 +954,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── Aktivite & Arama (wide, 2 bölüm) ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/activities')}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/activities')}>
                     <div className="dash-split-panel">
                         {/* Sol: Arama İstatistikleri */}
                         <div className="dash-split-section">
@@ -1026,7 +1026,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── AI Arama (wide — detaylı) ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/ai-calls')} style={{ cursor: 'pointer' }}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/ai-calls')} style={{ cursor: 'pointer' }}>
                     <div className="dash-panel-header">
                         <h3><Bot size={18} /> AI Arama Analizi</h3>
                         <span className="dash-panel-link">{totalAICalls > 0 ? 'Detaylı' : 'Keşfet'} <ArrowRight size={14} /></span>
@@ -1086,7 +1086,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── Satış & Ciro Raporu (WIDE — premium sales dashboard) ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/sales')}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/sales')}>
                     <div className="dash-panel-header">
                         <h3><DollarSign size={18} /> Satış & Ciro Raporu</h3>
                         <span className="dash-panel-link">Detaylı Rapor <ArrowRight size={14} /></span>
@@ -1170,7 +1170,7 @@ const CeoReport = () => {
                 </div>
 
                 {/* ──── Gelen Talep Analizi (wide) ──── */}
-                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/ceo-report/requests')}>
+                <div className="dash-panel dash-panel-wide" onClick={() => navigate('/general-report/requests')}>
                     <div className="dash-panel-header">
                         <h3><Target size={18} /> Gelen Talep Analizi</h3>
                         <span className="dash-panel-link">Detaylı Rapor <ArrowRight size={14} /></span>

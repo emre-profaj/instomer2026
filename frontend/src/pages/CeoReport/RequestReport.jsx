@@ -76,7 +76,7 @@ const RequestReport = () => {
 
     return (
         <div className="ceo-report">
-            <button className="ceo-back-btn" onClick={() => navigate('/ceo-report')}><ArrowLeft size={16} /> Dashboard</button>
+            <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
 
             <div className="ceo-detail-header">
                 <div className="ceo-detail-header-left">
