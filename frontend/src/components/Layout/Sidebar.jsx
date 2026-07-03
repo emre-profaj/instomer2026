@@ -48,7 +48,6 @@ const Sidebar = () => {
 
     const analyticsSubItems = [
         { path: '/ceo-report', icon: BarChart3, label: 'Dashboard' },
-        { path: '/analytics', icon: BarChart3, label: t('analytics.title') },
         { path: '/agent-performance', icon: Activity, label: 'Agent Performansları' },
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },
         { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' }
