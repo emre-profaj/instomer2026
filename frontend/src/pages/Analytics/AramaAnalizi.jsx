@@ -134,12 +134,6 @@ const AramaAnalizi = () => {
         activities: []
     };
 
-    // Gecikmiş aramalar: backend'den tarih filtresi olmadan geliyor
-    const delayedCalls = stats.overdueCalls || [];
-
-    // Closure notes — backend'den tarih filtresi olmadan geliyor (en son 100)
-    const closureNotes = stats.closureNotes || [];
-
     // Filter customer details table
     const filteredDetails = (stats.details || [])
         .filter(d => {
@@ -158,6 +152,16 @@ const AramaAnalizi = () => {
                 (d.assigneeName && d.assigneeName.toLowerCase().includes(term))
             );
         });
+
+    // Calculate new metrics requested by user
+    const callListAll = stats.activities || [];
+    const totalPositive = callListAll.filter(a => a.callSentiment === 'Positive').length;
+    const totalNegative = callListAll.filter(a => a.callSentiment === 'Negative').length;
+    const totalReached = callListAll.filter(a => a.callSuccessful === true).length;
+    const totalNotReached = callListAll.filter(a => a.callSuccessful === false).length;
+    const totalCompleted = callListAll.filter(a => a.status === 'COMPLETED').length;
+    const totalPending = callListAll.filter(a => a.status !== 'COMPLETED' && a.status !== 'CANCELLED').length;
+
 
     if (loading && !analytics) {
         return (
@@ -293,138 +297,46 @@ const AramaAnalizi = () => {
                 </div>
             </div>
 
-            {/* Split panels: Delayed Calls & Closed Call Notes */}
-            <div className="sections-grid">
-                {/* Delayed Calls Column */}
-                <div className="section-card">
-                    <div className="section-card-header">
-                        <div className="section-card-title">
-                            <div className="section-card-title-icon" style={{ color: '#ef4444' }}>
-                                <AlertCircle size={20} />
-                            </div>
-                            <h2>Gecikmiş Aramalar</h2>
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700, background: '#fef2f2', padding: '2px 8px', borderRadius: '12px' }}>
-                            {stats.overdueCount || delayedCalls.length} Bekleyen
-                        </span>
+            <div className="stats-grid" style={{ marginTop: '16px' }}>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#dcfce7', color: '#15803d' }}>
+                        <TrendingUp size={22} />
                     </div>
-                    
-                    <div className="delayed-calls-list">
-                        {delayedCalls.length > 0 ? (
-                            delayedCalls.map(call => (
-                                <div key={call.id} className="delayed-call-item">
-                                    <div className="delayed-call-left">
-                                        <span className="delayed-call-contact-name">
-                                            {call.contact?.name || 'İsimsiz Müşteri'}
-                                        </span>
-                                        <span className="delayed-call-phone-num">
-                                            {call.contact?.phone || '—'}
-                                        </span>
-                                        <div className="delayed-call-time-badge">
-                                            <Clock size={12} />
-                                            {formatDateTime(call.dueDate)}
-                                        </div>
-                                        {call.assignee && (
-                                            <span style={{ fontSize: '0.68rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600, marginTop: 4, alignSelf: 'flex-start' }}>
-                                                👤 {call.assignee.name}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="delayed-call-right" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                        <button 
-                                            className="btn-action-cancel"
-                                            style={{ background: '#10b981', fontSize: '0.75rem', padding: '7px 14px' }}
-                                            onClick={async () => {
-                                                try {
-                                                    await api.put(`/activities/${call.id}/complete`, { result: 'Arandı' });
-                                                    showSuccess('Arama tamamlandı olarak işaretlendi.');
-                                                    loadAllData(true);
-                                                } catch (err) {
-                                                    console.error('Complete error:', err);
-                                                    showError('İşaretlenirken hata oluştu.');
-                                                }
-                                            }}
-                                            title="Arama Yapıldı"
-                                        >
-                                            <PhoneCall size={13} style={{ marginRight: 4 }} />
-                                            Arandı ✓
-                                        </button>
-                                        <button 
-                                            className="btn-action-cancel"
-                                            style={{ fontSize: '0.75rem', padding: '7px 14px' }}
-                                            onClick={async () => {
-                                                if (!window.confirm('Bu gecikmiş aramayı iptal etmek istediğinize emin misiniz?')) return;
-                                                try {
-                                                    await api.delete(`/activities/${call.id}`);
-                                                    showSuccess('Arama iptal edildi.');
-                                                    loadAllData(true);
-                                                } catch (err) {
-                                                    console.error('Cancel error:', err);
-                                                    showError('İptal edilirken hata oluştu.');
-                                                }
-                                            }}
-                                            title="Aramayı İptal Et"
-                                        >
-                                            <Trash2 size={12} style={{ marginRight: 4 }} />
-                                            İptal Et
-                                        </button>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="empty-state">
-                                <div className="empty-state-icon" style={{ color: '#10b981' }}>✓</div>
-                                <p>Gecikmiş arama bulunmamaktadır.</p>
-                            </div>
-                        )}
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Olumlu / Olumsuz</span>
+                        <span className="stat-card-value">
+                            <span style={{ color: '#15803d' }}>{totalPositive}</span> / <span style={{ color: '#dc2626' }}>{totalNegative}</span>
+                        </span>
+                        <span className="stat-card-desc">Görüşme değerlendirmesi</span>
                     </div>
                 </div>
-
-                {/* Closed Call Notes Column */}
-                <div className="section-card">
-                    <div className="section-card-header">
-                        <div className="section-card-title">
-                            <div className="section-card-title-icon" style={{ color: '#6366f1' }}>
-                                <FileText size={20} />
-                            </div>
-                            <h2>Arama Kapatma Notları</h2>
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 700, background: '#eef2ff', padding: '2px 8px', borderRadius: '12px' }}>
-                            {closureNotes.length} Kayıt
-                        </span>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                        <PhoneCall size={22} />
                     </div>
-
-                    <div className="closure-notes-list">
-                        {closureNotes.length > 0 ? (
-                            closureNotes.map(act => (
-                                <div key={act.id} className="closure-note-item">
-                                    <div className="closure-note-meta">
-                                        <span className="closure-note-contact-link">
-                                            {act.contact?.name || 'Bilinmeyen Kişi'}
-                                        </span>
-                                        <span className="closure-note-agent">
-                                            👤 {act.assignee?.name || 'Atanmamış'}
-                                        </span>
-                                    </div>
-                                    <p className="closure-note-text">
-                                        "{act.result}"
-                                    </p>
-                                    <span className="closure-note-date">
-                                        {formatDateTime(act.completedAt || act.createdAt)}
-                                    </span>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="empty-state">
-                                <div className="empty-state-icon" style={{ color: '#94a3b8' }}>
-                                    <MessageSquare size={32} />
-                                </div>
-                                <p>Bu aralıkta kapatma notu bulunmamaktadır.</p>
-                            </div>
-                        )}
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Ulaşılan / Ulaşılamayan</span>
+                        <span className="stat-card-value">
+                            <span style={{ color: '#0369a1' }}>{totalReached}</span> / <span style={{ color: '#dc2626' }}>{totalNotReached}</span>
+                        </span>
+                        <span className="stat-card-desc">Çağrı yanıtlanma durumu</span>
+                    </div>
+                </div>
+                <div className="stat-card">
+                    <div className="stat-card-icon" style={{ background: '#f3e8ff', color: '#7e22ce' }}>
+                        <AlertCircle size={22} />
+                    </div>
+                    <div className="stat-card-info">
+                        <span className="stat-card-label">Kapatıldı / Aranacak</span>
+                        <span className="stat-card-value">
+                            <span style={{ color: '#15803d' }}>{totalCompleted}</span> / <span style={{ color: '#ea580c' }}>{totalPending}</span>
+                        </span>
+                        <span className="stat-card-desc">Kapatılan vs bekleyen kayıt</span>
                     </div>
                 </div>
             </div>
+
+            {/* Split panels: Delayed Calls & Closed Call Notes removed as requested */}
 
             {/* Bottom Tables — Arama Listesi & Aranmayanlar */}
             <div className="bottom-section">
@@ -463,11 +375,13 @@ const AramaAnalizi = () => {
                         <table className="modern-table" style={{ fontSize: '0.82rem' }}>
                             <thead>
                                 <tr>
-                                    <th>Kişi Adı</th>
+                                    <th>Tarih</th>
                                     <th>Temsilci</th>
-                                    <th>Aşama / Durum</th>
-                                    <th>Arama Tarihi</th>
-                                    <th style={{ textAlign: 'center' }}>Sonuç</th>
+                                    <th>Müşteri</th>
+                                    <th>Konu</th>
+                                    <th style={{ textAlign: 'center' }}>Durum</th>
+                                    <th style={{ textAlign: 'center' }}>Ulaşılabilirlik</th>
+                                    <th style={{ textAlign: 'center' }}>Değerlendirme</th>
                                     <th>Arama Notu</th>
                                 </tr>
                             </thead>
@@ -513,8 +427,9 @@ const AramaAnalizi = () => {
                                         return (
                                             <tr key={a.id}>
                                                 <td>
-                                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{a.contact?.name || 'Bilinmiyor'}</div>
-                                                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{a.contact?.phone || ''}</div>
+                                                    <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                                        {formatDateTime(a.completedAt || a.dueDate || a.createdAt)}
+                                                    </span>
                                                 </td>
                                                 <td>
                                                     {a.assignee ? (
@@ -526,6 +441,10 @@ const AramaAnalizi = () => {
                                                     )}
                                                 </td>
                                                 <td>
+                                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{a.contact?.name || 'Bilinmiyor'}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{a.contact?.phone || ''}</div>
+                                                </td>
+                                                <td>
                                                     {stageName ? (
                                                         <span style={{ fontSize: '0.72rem', background: `${stageColor}1a`, color: stageColor, padding: '2px 8px', borderRadius: '8px', fontWeight: 600, border: `1px solid ${stageColor}33` }}>
                                                             {stageName}
@@ -534,24 +453,33 @@ const AramaAnalizi = () => {
                                                         <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
                                                 </td>
-                                                <td>
-                                                    <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
-                                                        {formatDateTime(a.completedAt || a.dueDate || a.createdAt)}
-                                                    </span>
-                                                </td>
                                                 <td style={{ textAlign: 'center' }}>
                                                     {isCompleted ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
-                                                            ✓ Ulaşıldı
-                                                        </span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✓ Tamamlandı</span>
                                                     ) : isPlanned ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
-                                                            ⏳ Bekliyor
-                                                        </span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>⏳ Bekliyor</span>
                                                     ) : (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
-                                                            ✗ Ulaşılamadı
-                                                        </span>
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✗ İptal</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {a.callSuccessful === true ? (
+                                                        <span style={{ fontSize: '0.68rem', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✓ Ulaşıldı</span>
+                                                    ) : a.callSuccessful === false ? (
+                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>✗ Ulaşılamadı</span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    {a.callSentiment === 'Positive' ? (
+                                                        <span style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: 600 }}>😊 Olumlu</span>
+                                                    ) : a.callSentiment === 'Negative' ? (
+                                                        <span style={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 600 }}>😔 Olumsuz</span>
+                                                    ) : a.callSentiment === 'Neutral' ? (
+                                                        <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>😐 Nötr</span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
                                                 </td>
                                                 <td>
