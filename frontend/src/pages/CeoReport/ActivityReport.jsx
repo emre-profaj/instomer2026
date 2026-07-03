@@ -202,7 +202,7 @@ const ActivityReport = () => {
                         <div style={{ marginBottom: 20 }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Handshake size={15} style={{ color: '#6366f1' }} /> Görüşmeler <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({meet.total || 0} toplam)</span></div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                {dateFilterOptions.map(item => (
+                                {[{ label: 'Planlanan', value: meet.planned, color: '#f59e0b', icon: '📅' }, { label: 'Tamamlanan', value: meet.completed, color: '#10b981', icon: '✅' }, { label: 'Tarihi Geçmiş', value: meet.overdue, color: '#ef4444', icon: '⏰' }, { label: 'İptal Edildi', value: meet.cancelled, color: '#64748b', icon: '❌' }].map(item => (
                                     <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
                                         <div style={{ fontSize: 20 }}>{item.icon}</div>
                                         <div><div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div></div>
@@ -213,7 +213,7 @@ const ActivityReport = () => {
                         <div style={{ marginBottom: 20 }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={15} style={{ color: '#0ea5e9' }} /> Randevular <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#94a3b8', marginLeft: 4 }}>({appt.total || 0} toplam)</span></div>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-                                {dateFilterOptions.map(item => (
+                                {[{ label: 'Planlanan', value: appt.scheduled, color: '#f59e0b', icon: '📅' }, { label: 'Tamamlanan', value: appt.completed, color: '#10b981', icon: '✅' }, { label: 'Tarihi Geçmiş', value: appt.overdue, color: '#ef4444', icon: '⏰' }, { label: 'İptal Edildi', value: appt.cancelled, color: '#64748b', icon: '❌' }].map(item => (
                                     <div key={item.label} style={{ background: '#f8fafc', padding: '14px 12px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #f1f5f9' }}>
                                         <div style={{ fontSize: 20 }}>{item.icon}</div>
                                         <div><div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#64748b' }}>{item.label}</div><div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>{item.value || 0}</div></div>
