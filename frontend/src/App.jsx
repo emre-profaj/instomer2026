@@ -20,7 +20,6 @@ import Leads from './pages/Leads/Leads';
 import KnowledgeBase from './pages/KnowledgeBase/KnowledgeBase';
 import Emails from './pages/Emails/Emails';
 import AramaAnalizi from './pages/Analytics/AramaAnalizi';
-import AgentPerformance from './pages/AgentPerformance/AgentPerformance';
 import AICallAnalytics from './pages/AICallAnalytics/AICallAnalytics';
 import CeoReport from './pages/CeoReport/CeoReport';
 import GeneralReport from './pages/CeoReport/GeneralReport';
@@ -109,7 +108,6 @@ function App() {
               <Route path="general-report/sales" element={<SalesReport />} />
               <Route path="general-report/requests" element={<RequestReport />} />
               <Route path="call-analytics" element={<AramaAnalizi />} />
-              <Route path="agent-performance" element={<AgentPerformance />} />
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
               <Route path="calendar" element={<Navigate to="/activities/calendar" replace />} />
               <Route path="activities/calendar" element={<Calendar />} />
