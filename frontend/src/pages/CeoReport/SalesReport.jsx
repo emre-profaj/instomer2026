@@ -93,8 +93,10 @@ const SalesReport = () => {
         );
     }
 
+    const orderDeals = (ds.recentDeals || []).filter(deal => deal.stage === 'ORDER');
+
     const getGroupedSubjects = () => {
-        if (!ds.recentDeals || ds.recentDeals.length === 0) return [];
+        if (!orderDeals || orderDeals.length === 0) return [];
         const groups = {};
 
         const normalizeTitle = (str) => {
@@ -112,7 +114,7 @@ const SalesReport = () => {
                 .trim();
         };
 
-        ds.recentDeals.forEach(deal => {
+        orderDeals.forEach(deal => {
             let title = (deal.title || 'Belirtilmemiş').trim();
             const key = normalizeTitle(title);
             
@@ -138,10 +140,10 @@ const SalesReport = () => {
     };
 
     const getGroupedSources = () => {
-        if (!ds.recentDeals || ds.recentDeals.length === 0) return [];
+        if (!orderDeals || orderDeals.length === 0) return [];
         const groups = {};
 
-        ds.recentDeals.forEach(deal => {
+        orderDeals.forEach(deal => {
             const rawSource = deal.contact?.source || 'MANUAL';
             const title = rawSource.charAt(0).toUpperCase() + rawSource.slice(1).toLowerCase();
             const key = title.toLowerCase();
@@ -409,7 +411,7 @@ const SalesReport = () => {
             )}
 
             {/* Satış Listesi */}
-            {ds.recentDeals?.length > 0 && (
+            {orderDeals?.length > 0 && (
                 <div className="ceo-section" style={{ marginBottom: 20 }}>
                     <div className="ceo-section-header">
                         <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><FileText size={18} /></div>
@@ -429,7 +431,7 @@ const SalesReport = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {ds.recentDeals.map((deal, idx) => {
+                                {orderDeals.map((deal, idx) => {
                                     const statusConfig = {
                                         'OPEN': { label: 'Açık', bg: '#eff6ff', color: '#3b82f6' },
                                         'WON': { label: 'Tamamlandı', bg: '#f0fdf4', color: '#10b981' },
