@@ -1771,7 +1771,7 @@ const Customers = () => {
                         </div>
                     )}
                     
-                    <div style={{ display: viewMode === 'list' ? 'block' : 'none' }}>
+                    <div style={{ display: viewMode === 'list' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
                     {/* Dynamic Tabs */}
                     <div className="contacts-tabs" style={{ display: 'none', gap: '8px', padding: '0 24px', marginBottom: '16px', overflowX: 'auto' }}>
