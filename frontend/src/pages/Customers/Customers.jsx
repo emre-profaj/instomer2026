@@ -766,8 +766,10 @@ const Customers = () => {
 
                 // Get assigned agent
                 let assignedTo = '---';
-                if (contact.conversations && contact.conversations.length > 0 && contact.conversations[0]?.assignedTo?.name) {
-                    assignedTo = contact.conversations[0].assignedTo.name;
+                const convs = contact.conversations || [];
+                const lastConv = convs.length > 0 ? convs[convs.length - 1] : null;
+                if (lastConv?.assignedTo?.name) {
+                    assignedTo = lastConv.assignedTo.name;
                 }
 
                 return [
@@ -2429,7 +2431,9 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 {/* ATANAN */}
                                                 <td className="contact-assigned" style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                                                     {(() => {
-                                                        const conv = contact.conversations?.[0];
+                                                        // En son konuşmayı al (sidebar ile aynı kaynağı kullan)
+                                                        const convs = contact.conversations || [];
+                                                        const conv = convs.length > 0 ? convs[convs.length - 1] : null;
                                                         if (!conv) return '---';
                                                         const teamId = conv.assignedTeamId || (() => {
                                                             try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
