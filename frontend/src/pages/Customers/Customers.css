@@ -13,6 +13,7 @@
     flex-direction: column;
     min-height: 0;
     min-width: 0;
+    overflow: hidden;
     border-right: 1px solid #e5e7eb;
 }
 
@@ -721,13 +722,16 @@
 .contact-sidebar {
     width: 320px;
     min-width: 320px;
-    max-height: 100vh;
+    height: calc(100vh - 60px);
+    height: calc(100dvh - 60px);
     background: #ffffff;
     border-left: 1px solid #e5e7eb;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    position: relative;
+    position: sticky;
+    top: 0;
+    flex-shrink: 0;
 }
 
 .sidebar-close {
