@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { cascadeAssignment } from './cascadeAssignment.service.js';
 
 /**
  * Dağıtım metoduna göre uygun üyeyi seç ve ata
@@ -57,6 +58,12 @@ async function distributeByMethod(team, conversationId, method) {
             where: { id: conversationId },
             data: { assignedToId: assignedUserId, assignedTeamId: team.id }
         });
+        // 🔄 Case ve kardeş konuşmalara yansıt
+        await cascadeAssignment(conversationId, team.workspaceId, {
+            assignedToId: assignedUserId,
+            assignedTeamId: team.id,
+            source: 'TeamDistribution'
+        });
     }
     return assignedUserId;
 }
@@ -101,6 +108,11 @@ export async function assignToTeamMember(teamId, conversationId) {
                     where: { id: conversationId },
                     data: { assignedTeamId: teamId }
                 });
+                // 🔄 Case'e takım atamasını yansıt
+                await cascadeAssignment(conversationId, team.workspaceId, {
+                    assignedTeamId: teamId,
+                    source: 'TeamPool'
+                });
                 return null;
             }
 
@@ -113,6 +125,11 @@ export async function assignToTeamMember(teamId, conversationId) {
                     await prisma.conversation.update({
                         where: { id: conversationId },
                         data: { assignedTeamId: teamId }
+                    });
+                    // 🔄 Case'e takım atamasını yansıt
+                    await cascadeAssignment(conversationId, team.workspaceId, {
+                        assignedTeamId: teamId,
+                        source: 'TeamDistributeFallback'
                     });
                 }
                 return result;
@@ -168,6 +185,11 @@ export async function assignToTeamMember(teamId, conversationId) {
                     where: { id: conversationId },
                     data: { assignedTeamId: teamId }
                 });
+                // 🔄 Case'e takım atamasını yansıt
+                await cascadeAssignment(conversationId, team.workspaceId, {
+                    assignedTeamId: teamId,
+                    source: 'TeamConditionalPool'
+                });
                 return null;
             }
 
@@ -178,6 +200,11 @@ export async function assignToTeamMember(teamId, conversationId) {
                     await prisma.conversation.update({
                         where: { id: conversationId },
                         data: { assignedTeamId: teamId }
+                    });
+                    // 🔄 Case'e takım atamasını yansıt
+                    await cascadeAssignment(conversationId, team.workspaceId, {
+                        assignedTeamId: teamId,
+                        source: 'TeamLegacyPool'
                     });
                     return null;
                 }
