@@ -419,7 +419,14 @@ const Customers = () => {
             if (response.data.allImportGroups) {
                 setAvailableImportGroups(response.data.allImportGroups);
             }
-            // NOTE: We intentionally do NOT change selectedContact here
+            // Seçili kişi varsa güncel verisini API yanıtından al (atama değişikliği yansısın)
+            const currentSelected = selectedContactRef.current;
+            if (currentSelected) {
+                const freshContact = response.data.contacts.find(c => c.id === currentSelected.id);
+                if (freshContact) {
+                    setSelectedContact(prev => ({ ...prev, ...freshContact }));
+                }
+            }
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
@@ -3024,6 +3031,15 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                 if (!skipApi) {
                                     await conversationAPI.assign(currentWorkspace.id, convId, { teamId });
                                 }
+                                // Anında lokal güncelle — tabloyu bekletme
+                                const teamObj = teamId ? teams.find(t => t.id === teamId) : null;
+                                setContacts(prev => prev.map(c => {
+                                    if (c.id !== selectedContact.id) return c;
+                                    const convs = (c.conversations || []).map(cv =>
+                                        cv.id === convId ? { ...cv, assignedTeamId: teamId || null, teamIds: teamId ? JSON.stringify([teamId]) : '[]' } : cv
+                                    );
+                                    return { ...c, conversations: convs };
+                                }));
                                 silentReloadContacts();
                             } catch (err) { console.error('Team assign error:', err); }
                         }}
@@ -3032,6 +3048,16 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                 if (!skipApi) {
                                     await conversationAPI.assign(currentWorkspace.id, convId, { userId: userId || null });
                                 }
+                                // Anında lokal güncelle — tabloyu bekletme
+                                const foundMember = userId ? (members.find(m => (m.user?.id || m.userId) === userId) || members.find(m => m.id === userId)) : null;
+                                const agentObj = foundMember ? { id: userId, name: foundMember.user?.name || foundMember.name || 'Agent' } : (userId ? { id: userId, name: 'Agent' } : null);
+                                setContacts(prev => prev.map(c => {
+                                    if (c.id !== selectedContact.id) return c;
+                                    const convs = (c.conversations || []).map(cv =>
+                                        cv.id === convId ? { ...cv, assignedToId: userId || null, assignedTo: agentObj } : cv
+                                    );
+                                    return { ...c, conversations: convs };
+                                }));
                                 silentReloadContacts();
                             } catch (err) { console.error('User assign error:', err); }
                         }}
