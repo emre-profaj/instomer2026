@@ -419,6 +419,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     const { emitToWorkspace } = await import('../socket.js');
                     emitToWorkspace(workspaceId, 'funnel_stage_updated', {
                         conversationId,
+                        contactId,
                         funnelType: targetFunnelId,
                         funnelStageId: targetStageId
                     });

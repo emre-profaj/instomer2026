@@ -481,15 +481,31 @@ const Customers = () => {
                 silentReloadContacts();
             }
         };
+        const handleFunnelStageUpdate = (event) => {
+            const data = event.detail;
+            if (currentWorkspace && data.contactId) {
+                console.log('🔄 [Customers] Funnel stage updated via socket, locally updating contact...');
+                setContacts(prev => prev.map(c =>
+                    c.id === data.contactId ? { ...c, funnelStageId: data.funnelStageId, funnelType: data.funnelType } : c
+                ));
+                
+                const current = selectedContactRef.current;
+                if (current && data.contactId === current.id) {
+                    setSelectedContact(prev => ({ ...prev, funnelStageId: data.funnelStageId, funnelType: data.funnelType }));
+                }
+            }
+        };
 
         window.addEventListener('websocket:contact_updated', handleContactUpdate);
         window.addEventListener('websocket:new_conversation', handleNewConversation);
         window.addEventListener('websocket:new_message', handleNewMessage);
+        window.addEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
 
         return () => {
             window.removeEventListener('websocket:contact_updated', handleContactUpdate);
             window.removeEventListener('websocket:new_conversation', handleNewConversation);
             window.removeEventListener('websocket:new_message', handleNewMessage);
+            window.removeEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
         };
     }, [currentWorkspace, silentReloadContacts]);
 

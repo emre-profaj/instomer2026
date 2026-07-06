@@ -60,8 +60,15 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     // Listen for funnel stage updates from Inbox header or socket to keep local case state in sync
     useEffect(() => {
         const handler = (e) => {
-            const { conversationId: updatedConvId, funnelStageId } = e.detail || {};
-            if (updatedConvId !== conversationId || !funnelStageId) return;
+            const { conversationId: updatedConvId, contactId: updatedContactId, funnelStageId } = e.detail || {};
+            if (!funnelStageId) return;
+            
+            // If we know this update belongs to the active contact, reload to get fresh data
+            if (updatedContactId === contactId) {
+                loadCases();
+                return;
+            }
+
             // Update local case that owns this conversation
             setCases(prev => prev.map(c => {
                 const ownsConv = c.conversations?.some(cv => cv.id === updatedConvId);
@@ -79,7 +86,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         };
         window.addEventListener('websocket:funnel_stage_updated', handler);
         return () => window.removeEventListener('websocket:funnel_stage_updated', handler);
-    }, [conversationId, funnels]);
+    }, [conversationId, contactId, funnels]);
 
     // Refresh cases when case_updated or case_cards_refresh is received
     useEffect(() => {
