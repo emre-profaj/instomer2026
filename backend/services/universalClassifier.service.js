@@ -385,6 +385,23 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     where: { id: contactId },
                     data: { funnelType: targetFunnelId, funnelStageId: targetStageId }
                 });
+                
+                // ── AUTO-SYNC: Update active cases associated with this contact/conversation ──
+                try {
+                    await prisma.case.updateMany({
+                        where: {
+                            contactId: contactId,
+                            status: 'ACTIVE'
+                        },
+                        data: {
+                            funnelType: targetFunnelId,
+                            funnelStageId: targetStageId
+                        }
+                    });
+                } catch (caseErr) {
+                    console.error('⚠️ [Classifier] Active case funnel update hatası:', caseErr.message);
+                }
+                
                 console.log(`📊 [Classifier] Akış atandı: ${targetFunnelId} / Stage: ${targetStageId}`);
 
                 // Entry Rules ile en uygun aşamayı bul (classifier'ın seçtiği stage'den daha yüksek olabilir)

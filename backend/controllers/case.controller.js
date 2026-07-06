@@ -210,8 +210,8 @@ export const getContactCases = async (req, res) => {
             const updateData = {};
 
             // Funnel stage sync
-            if (!c.funnelStageId && c.conversations?.length > 0) {
-                const convWithStage = c.conversations.find(cv => cv.funnelStageId);
+            if (!c.funnelStageId) {
+                const convWithStage = c.conversations?.find(cv => cv.funnelStageId);
                 if (convWithStage) {
                     updateData.funnelStageId = convWithStage.funnelStageId;
                     updateData.funnelType = convWithStage.funnelType || null;
@@ -219,6 +219,53 @@ export const getContactCases = async (req, res) => {
                     c.funnelType = convWithStage.funnelType || null;
                     needsUpdate = true;
                     console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} funnelStageId from conversation`);
+                } else {
+                    // Try from contact or legacy status
+                    const contactInfo = await prisma.contact.findUnique({
+                        where: { id: contactId },
+                        select: { funnelStageId: true, funnelType: true, status: true }
+                    });
+                    
+                    if (contactInfo?.funnelStageId) {
+                        updateData.funnelStageId = contactInfo.funnelStageId;
+                        updateData.funnelType = contactInfo.funnelType || null;
+                        c.funnelStageId = contactInfo.funnelStageId;
+                        c.funnelType = contactInfo.funnelType || null;
+                        needsUpdate = true;
+                        console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} funnelStageId from contact`);
+                    } else if (contactInfo?.status) {
+                        // Legacy status mapping
+                        let targetFunnelName = null;
+                        let targetStageName = null;
+                        if (contactInfo.status === 'OPPORTUNITY') { targetFunnelName = 'Satış Akışı'; targetStageName = 'Fırsat'; }
+                        else if (contactInfo.status === 'HOT_OPPORTUNITY') { targetFunnelName = 'Satış Akışı'; targetStageName = 'Sıcak Fırsat'; }
+                        else if (contactInfo.status === 'WON') { targetFunnelName = 'Satış Akışı'; targetStageName = 'Kazanıldı'; }
+                        else if (contactInfo.status === 'LOST') { targetFunnelName = 'Satış Akışı'; targetStageName = 'Kaybedildi'; }
+
+                        if (targetFunnelName && targetStageName) {
+                            const funnel = await prisma.funnel.findFirst({
+                                where: { workspaceId, name: targetFunnelName },
+                                include: { stages: true }
+                            });
+                            if (funnel) {
+                                const stage = funnel.stages.find(s => s.name === targetStageName);
+                                if (stage) {
+                                    updateData.funnelStageId = stage.id;
+                                    updateData.funnelType = funnel.id;
+                                    c.funnelStageId = stage.id;
+                                    c.funnelType = funnel.id;
+                                    needsUpdate = true;
+                                    console.log(`🔄 [AutoSync] Backfilled case ${c.caseNumber} funnelStageId from legacy status (${contactInfo.status})`);
+                                    
+                                    // Also update contact to keep it clean
+                                    await prisma.contact.update({
+                                        where: { id: contactId },
+                                        data: { funnelStageId: stage.id, funnelType: funnel.id }
+                                    });
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
