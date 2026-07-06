@@ -1005,7 +1005,14 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
                 select: { name: true, email: true, tags: true, notes: true, source: true }
             });
             if (contact) {
-                if (contact.name && !dynVars.customer_name) dynVars.customer_name = contact.name;
+                if (contact.name && !dynVars.customer_name) {
+                    dynVars.customer_name = contact.name;
+                    const nameParts = contact.name.trim().split(/\s+/);
+                    if (nameParts.length > 0) {
+                        dynVars.customer_first_name = nameParts[0];
+                        dynVars.customer_last_name = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+                    }
+                }
                 if (contact.email) dynVars.customer_email = contact.email;
                 if (contact.source) dynVars.lead_source = contact.source;
                 try {
@@ -1013,14 +1020,26 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
                     if (tags.length > 0) dynVars.customer_tags = tags.join(', ');
                 } catch (_) {}
             }
-            // Get conversation topic
-            const latestConv = await prisma.conversation.findFirst({
-                where: { contactId, workspaceId },
-                orderBy: { lastMessageAt: 'desc' },
-                select: { aiTopic: true, channel: true }
+            
+            // Get the active Case (if any) to use as topic
+            const activeCase = await prisma.case.findFirst({
+                where: { contactId, workspaceId, status: 'ACTIVE' },
+                orderBy: { createdAt: 'desc' },
+                select: { title: true }
             });
-            if (latestConv?.aiTopic) dynVars.interest_topic = latestConv.aiTopic;
-            if (latestConv?.channel) dynVars.contact_channel = latestConv.channel;
+            
+            if (activeCase?.title) {
+                dynVars.interest_topic = activeCase.title;
+            } else {
+                // Fallback to conversation topic
+                const latestConv = await prisma.conversation.findFirst({
+                    where: { contactId, workspaceId },
+                    orderBy: { lastMessageAt: 'desc' },
+                    select: { aiTopic: true, channel: true }
+                });
+                if (latestConv?.aiTopic) dynVars.interest_topic = latestConv.aiTopic;
+                if (latestConv?.channel) dynVars.contact_channel = latestConv.channel;
+            }
         } catch (e) { console.warn('⚠️ [Call] Failed to build dynamic vars:', e.message); }
     }
 
