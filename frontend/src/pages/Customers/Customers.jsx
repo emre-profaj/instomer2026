@@ -258,7 +258,7 @@ const Customers = () => {
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
 
     // Date filter
-    const [dateFilter, setDateFilter] = useState(sf.dateFilter || 'ALL');
+    const [dateFilter, setDateFilter] = useState(sf.dateFilter || 'MONTH');
     const [dateFrom, setDateFrom] = useState(sf.dateFrom || '');
     const [dateTo, setDateTo] = useState(sf.dateTo || '');
 
