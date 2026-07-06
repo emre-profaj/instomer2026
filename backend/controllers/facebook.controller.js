@@ -869,7 +869,8 @@ async function processWebhookAsync(body) {
                                             data: {
                                                 name: commenterName,
                                                 facebookId: commenterId,
-                                                workspaceId: facebookPage.workspaceId
+                                                workspaceId: facebookPage.workspaceId,
+                                                source: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
                                             }
                                         });
                                         console.log(`✅ Created contact for commenter: ${commenterName}`);
@@ -1402,7 +1403,8 @@ async function processWebhookAsync(body) {
                             workspaceId: facebookPage.workspaceId,
                             facebookId: contactFacebookId,
                             name: finalName,
-                            avatar: avatarUrl
+                            avatar: avatarUrl,
+                            source: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
                         }
                     });
                 } else {
