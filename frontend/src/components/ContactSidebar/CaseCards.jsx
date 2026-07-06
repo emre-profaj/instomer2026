@@ -277,7 +277,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                 detail: { caseId, changes: { funnelType, funnelStageId, status: newStatus } }
             }));
             window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
-                detail: { conversationId, funnelStageId, stageName, stageColor }
+                detail: { conversationId, contactId, funnelType, funnelStageId, stageName, stageColor }
             }));
             window.dispatchEvent(new CustomEvent('case_cards_refresh'));
         } catch (err) {
