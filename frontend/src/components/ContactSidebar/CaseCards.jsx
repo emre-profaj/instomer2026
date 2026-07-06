@@ -303,8 +303,8 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                     <div style={{ padding: '2px 12px 4px' }}>
                         <div ref={megaRef} style={{ position: 'relative' }}>
                             {activeFunnel ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '2px 0' }}>
-                                    <span style={{ fontSize: '9px', fontWeight: 600, color: currentStageColor, textTransform: 'uppercase', letterSpacing: '0.02em', background: `${currentStageColor}1a`, padding: '2px 6px', borderRadius: '4px', alignSelf: 'flex-start' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '2px 0' }}>
+                                    <span style={{ fontSize: '10px', fontWeight: 600, color: currentStageColor, textTransform: 'uppercase', letterSpacing: '0.04em', background: `${currentStageColor}15`, padding: '3px 8px', borderRadius: '6px', alignSelf: 'flex-start' }}>
                                         {activeFunnel.name}
                                     </span>
                                     <div 
@@ -314,11 +314,11 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                             setMegaHoverFunnel(activeFunnel.id);
                                             setMegaOpen(v => !v);
                                         }}
-                                        style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', padding: '4px 6px', borderRadius: '4px', background: '#f8fafc', border: '1px solid #e2e8f0', transition: 'all 0.2s', alignSelf: 'flex-start' }}
+                                        style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '5px 10px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', transition: 'all 0.2s', width: '100%' }}
                                     >
                                         <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: currentStageColor, flexShrink: 0 }}></span>
-                                        <span style={{ fontSize: '11px', fontWeight: 500, color: '#334155' }}>{activeStageLabel || 'Aşama Seç'}</span>
-                                        <ChevronDown size={10} color="#64748b" style={{ marginLeft: '2px' }} />
+                                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>{activeStageLabel || 'Aşama Seç'}</span>
+                                        <ChevronDown size={14} color="#64748b" style={{ marginLeft: 'auto', flexShrink: 0 }} />
                                     </div>
                                 </div>
                             ) : (
