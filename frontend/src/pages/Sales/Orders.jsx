@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { dealAPI, contactAPI } from '../../services/api';
+import { dealAPI, contactAPI, productAPI } from '../../services/api';
 import { Search, ArrowRight, TrendingUp, Plus, X, Trash2, ShoppingCart, Edit2, User, Calendar } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import './Sales.css';
@@ -49,6 +49,7 @@ const Orders = () => {
     const [stats, setStats] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [contacts, setContacts] = useState([]);
+    const [catalogProducts, setCatalogProducts] = useState([]);
     const [users, setUsers] = useState([]);
     const [editingDeal, setEditingDeal] = useState(null);
     const [contactSearch, setContactSearch] = useState('');
@@ -91,6 +92,7 @@ const Orders = () => {
             fetchStats();
             fetchContacts();
             fetchUsers();
+            fetchCatalogProducts();
         }
     }, [currentWorkspace?.id]);
 
@@ -137,18 +139,29 @@ const Orders = () => {
         }
     };
 
+    const fetchCatalogProducts = async () => {
+        try {
+            const res = await productAPI.getAll(currentWorkspace.id, { limit: 500 });
+            setCatalogProducts(res.data.products || []);
+        } catch (err) {
+            console.error('Failed to fetch catalog products:', err);
+        }
+    };
+
     const handleSaveOrder = async (e) => {
         e.preventDefault();
         try {
-            const totalAmount = formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
             const productsWithTotal = formData.products.map(p => ({
                 ...p,
-                total: p.quantity * p.unitPrice
+                total: (p.discountedPrice || p.unitPrice) * p.quantity
             }));
+            const subtotal = productsWithTotal.reduce((sum, p) => sum + p.total, 0);
+            const totalTax = formData.products.reduce((sum, p) => sum + ((p.discountedPrice || p.unitPrice) * p.quantity * (p.tax1Rate || 0) / 100), 0);
 
             const payload = {
                 ...formData,
-                amount: totalAmount,
+                amount: subtotal,
+                vatRate: subtotal > 0 ? (totalTax / subtotal * 100) : 0,
                 products: productsWithTotal,
                 stage: 'ORDER'
             };
@@ -165,8 +178,8 @@ const Orders = () => {
             fetchDeals();
             fetchStats();
         } catch (error) {
-            console.error('Failed to save order:', error);
-            alert('Sipariş kaydedilemedi');
+            console.error('Failed to save order:', error?.response?.data || error);
+            alert('Sipariş kaydedilemedi: ' + (error?.response?.data?.error || error.message || 'Bilinmeyen hata'));
         }
     };
 
@@ -258,7 +271,24 @@ const Orders = () => {
 
     const updateProduct = (index, field, value) => {
         const newProducts = [...formData.products];
-        newProducts[index][field] = field === 'quantity' || field === 'unitPrice' ? parseFloat(value) || 0 : value;
+        if (field === 'name') {
+            newProducts[index].name = value;
+            const catalogMatch = catalogProducts.find(cp => cp.name === value);
+            if (catalogMatch) {
+                const priceKey = formData.currency === 'USD' ? 'priceUSD' : formData.currency === 'EUR' ? 'priceEUR' : formData.currency === 'GBP' ? 'priceGBP' : 'price';
+                newProducts[index].unitPrice = catalogMatch[priceKey] || catalogMatch.price || 0;
+                if (catalogMatch.groupName) newProducts[index].group = catalogMatch.groupName;
+                if (catalogMatch.description) newProducts[index].description = catalogMatch.description;
+                if (catalogMatch.discountedPrice) newProducts[index].discountedPrice = catalogMatch.discountedPrice;
+                if (catalogMatch.tax1Type) newProducts[index].tax1Type = catalogMatch.tax1Type;
+                newProducts[index].tax1Rate = catalogMatch.tax1Rate || 0;
+                if (catalogMatch.tax2Type) newProducts[index].tax2Type = catalogMatch.tax2Type;
+                newProducts[index].tax2Rate = catalogMatch.tax2Rate || 0;
+                if (catalogMatch.unit) newProducts[index].unit = catalogMatch.unit;
+            }
+        } else {
+            newProducts[index][field] = field === 'quantity' || field === 'unitPrice' ? parseFloat(value) || 0 : value;
+        }
         setFormData({ ...formData, products: newProducts });
     };
 
@@ -769,45 +799,108 @@ const Orders = () => {
                             <div className="form-group products-section">
                                 <label>{t('sales.productsServices')}</label>
                                 {formData.products.map((product, index) => (
-                                    <div key={index} className="product-input-row">
-                                        <input
-                                            type="text"
-                                            placeholder="Ürün adı"
-                                            value={product.name}
-                                            onChange={(e) => updateProduct(index, 'name', e.target.value)}
-                                        />
-                                        <input
-                                            type="number"
-                                            placeholder="Adet"
-                                            value={product.quantity}
-                                            onChange={(e) => updateProduct(index, 'quantity', e.target.value)}
-                                            min="1"
-                                        />
-                                        <input
-                                            type="number"
-                                            placeholder="Birim Fiyat"
-                                            value={product.unitPrice}
-                                            onChange={(e) => updateProduct(index, 'unitPrice', e.target.value)}
-                                            min="0"
-                                        />
-                                        <span className="product-total">
-                                            {formatCurrency(product.quantity * product.unitPrice, formData.currency)}
-                                        </span>
-                                        {formData.products.length > 1 && (
-                                            <button type="button" className="btn-icon-sm" onClick={() => removeProduct(index)}>
-                                                <X size={16} />
-                                            </button>
+                                    <div key={index} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px', marginBottom: '10px', background: '#fafbfc' }}>
+                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: product.description || product.tax1Rate ? '8px' : 0 }}>
+                                            <div style={{ position: 'relative', flex: 2 }}>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Ürün adı yazın veya seçin"
+                                                    value={product.name}
+                                                    onChange={(e) => updateProduct(index, 'name', e.target.value)}
+                                                    list={`order-product-list-${index}`}
+                                                    style={{ width: '100%' }}
+                                                />
+                                                <datalist id={`order-product-list-${index}`}>
+                                                    {catalogProducts.filter(cp => cp.name.toLowerCase().includes((product.name || '').toLowerCase())).map(cp => (
+                                                        <option key={cp.id} value={cp.name} label={`${cp.name} - ₺${cp.price}`} />
+                                                    ))}
+                                                </datalist>
+                                            </div>
+                                            <input
+                                                type="number"
+                                                placeholder="Adet"
+                                                value={product.quantity}
+                                                onChange={(e) => updateProduct(index, 'quantity', e.target.value)}
+                                                min="1"
+                                                style={{ width: '70px' }}
+                                            />
+                                            <input
+                                                type="number"
+                                                placeholder="Birim Fiyat"
+                                                value={product.unitPrice}
+                                                onChange={(e) => updateProduct(index, 'unitPrice', e.target.value)}
+                                                min="0"
+                                                style={{ width: '100px' }}
+                                            />
+                                            <span className="product-total" style={{ minWidth: '70px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>
+                                                {formatCurrency(product.quantity * product.unitPrice, formData.currency)}
+                                            </span>
+                                            {formData.products.length > 1 && (
+                                                <button type="button" className="btn-icon-sm" onClick={() => removeProduct(index)}>
+                                                    <X size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {(product.description || product.discountedPrice || product.tax1Rate > 0) && (
+                                            <div style={{ background: '#f1f5f9', borderRadius: '8px', padding: '10px 12px', fontSize: '0.78rem', color: '#475569' }}>
+                                                {product.description && (
+                                                    <div style={{ marginBottom: '4px' }}><span style={{ fontWeight: 600, color: '#334155' }}>Açıklama:</span> {product.description}</div>
+                                                )}
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '4px' }}>
+                                                    {product.discountedPrice > 0 && (
+                                                        <div>
+                                                            <span style={{ fontWeight: 600, color: '#334155' }}>İndirimli:</span>{' '}
+                                                            <span style={{ color: '#dc2626', fontWeight: 700, textDecoration: 'line-through', marginRight: '4px' }}>
+                                                                {formatCurrency(product.unitPrice, formData.currency)}
+                                                            </span>
+                                                            <span style={{ color: '#16a34a', fontWeight: 700 }}>
+                                                                {formatCurrency(product.discountedPrice, formData.currency)}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {product.tax1Rate > 0 && (
+                                                        <div>
+                                                            <span style={{ fontWeight: 600, color: '#334155' }}>KDV:</span>{' '}
+                                                            <span style={{ fontWeight: 700, color: '#6366f1' }}>%{product.tax1Rate}</span>
+                                                            <span style={{ marginLeft: '6px', fontWeight: 600, color: '#334155' }}>
+                                                                ({formatCurrency((product.discountedPrice || product.unitPrice) * product.quantity * product.tax1Rate / 100, formData.currency)})
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    {product.tax1Rate > 0 && (
+                                                        <div>
+                                                            <span style={{ fontWeight: 600, color: '#334155' }}>KDV Dahil:</span>{' '}
+                                                            <span style={{ fontWeight: 800, color: '#059669' }}>
+                                                                {formatCurrency(
+                                                                    (product.discountedPrice || product.unitPrice) * product.quantity * (1 + product.tax1Rate / 100),
+                                                                    formData.currency
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 ))}
                                 <button type="button" className="btn-secondary btn-sm" onClick={addProduct}>
                                     <Plus size={16} /> Ürün Ekle
                                 </button>
-                                <div className="products-total">
-                                    Toplam: {formatCurrency(
-                                        formData.products.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0),
-                                        formData.currency
-                                    )}
+                                <div className="products-total" style={{ marginTop: '8px' }}>
+                                    {(() => {
+                                        const subtotal = formData.products.reduce((sum, p) => sum + ((p.discountedPrice || p.unitPrice) * p.quantity), 0);
+                                        const totalTax = formData.products.reduce((sum, p) => sum + ((p.discountedPrice || p.unitPrice) * p.quantity * (p.tax1Rate || 0) / 100), 0);
+                                        const grandTotal = subtotal + totalTax;
+                                        return (
+                                            <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
+                                                <div style={{ color: '#64748b' }}>Ara Toplam: {formatCurrency(subtotal, formData.currency)}</div>
+                                                {totalTax > 0 && <div style={{ color: '#6366f1' }}>KDV: {formatCurrency(totalTax, formData.currency)}</div>}
+                                                <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1e293b', marginTop: '2px' }}>
+                                                    Genel Toplam: {formatCurrency(grandTotal, formData.currency)}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 

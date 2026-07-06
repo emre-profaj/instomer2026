@@ -62,6 +62,7 @@ import appointmentConfigRoutes from './routes/appointmentConfig.routes.js';
 import healthSystemRoutes from './routes/probel_proxy.routes.js';
 import routerRuleRoutes from './routes/routerRule.routes.js';
 import caseRoutes from './routes/case.routes.js';
+import productRoutes from './routes/product.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -195,6 +196,7 @@ app.use('/api/appointment-config', appointmentConfigRoutes);
 app.use('/api/health-system', healthSystemRoutes);
 app.use('/api/workspaces', routerRuleRoutes);
 app.use('/api/contact-cases', caseRoutes);
+app.use('/api/workspaces', productRoutes);
 
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {

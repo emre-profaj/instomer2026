@@ -138,6 +138,7 @@ model Workspace {
   botTools             AIBotTool[]
   retellActions        RetellAction[]
   cases                Case[]
+  products             Product[]
 
   // Retell AI Voice
   retellApiKey          String?
@@ -1632,4 +1633,31 @@ model Case {
   @@index([workspaceId, status])
   @@index([caseNumber])
   @@map("cases")
+}
+
+model Product {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  name            String
+  description     String?
+  groupName       String?
+  unit            String?
+  price           Float    @default(0)
+  priceUSD        Float?
+  priceEUR        Float?
+  priceGBP        Float?
+  discountedPrice Float?
+  tax1Type        String?
+  tax1Rate        Float    @default(0)
+  tax2Type        String?
+  tax2Rate        Float    @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, groupName])
+  @@map("products")
 }

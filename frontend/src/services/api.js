@@ -609,6 +609,16 @@ export const dealAPI = {
         api.patch(`/workspaces/${workspaceId}/deals/${dealId}/payment`, data)
 };
 
+// Product / Service Catalog API
+export const productAPI = {
+    getAll: (workspaceId, params = {}) => api.get(`/workspaces/${workspaceId}/products`, { params }),
+    getById: (workspaceId, productId) => api.get(`/workspaces/${workspaceId}/products/${productId}`),
+    create: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/products`, data),
+    update: (workspaceId, productId, data) => api.put(`/workspaces/${workspaceId}/products/${productId}`, data),
+    delete: (workspaceId, productId) => api.delete(`/workspaces/${workspaceId}/products/${productId}`),
+    getGroups: (workspaceId) => api.get(`/workspaces/${workspaceId}/products/groups`)
+};
+
 // Notification API
 export const notificationAPI = {
     getAll: (workspaceId, limit = 50, offset = 0) => api.get(`/notifications/${workspaceId}?limit=${limit}&offset=${offset}`),
@@ -759,5 +769,8 @@ export const caseAPI = {
         api.delete(`/contact-cases/${workspaceId}/cases/${caseId}/unlink/${conversationId}`),
     // Case sil
     delete: (workspaceId, caseId) =>
-        api.delete(`/contact-cases/${workspaceId}/cases/${caseId}`)
+        api.delete(`/contact-cases/${workspaceId}/cases/${caseId}`),
+    // Kapanış aşaması senkronizasyonu
+    syncClosingStages: (workspaceId, dryRun = false) =>
+        api.post(`/contact-cases/${workspaceId}/sync-closing-stages${dryRun ? '?dryRun=true' : ''}`)
 };

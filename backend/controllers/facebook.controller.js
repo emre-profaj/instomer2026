@@ -3252,6 +3252,19 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('⚠️ [LEADGEN Routing] Error:', routingErr.message);
         }
 
+        // 3.6. Kanal yönlendirmesi (akış/aşama + takım ataması)
+        try {
+            const { applyChannelRouting } = await import('../services/conversationRouting.service.js');
+            const routingResult = await applyChannelRouting(facebookPage.workspaceId, conversation.id, 'LEAD', true);
+            if (routingResult) {
+                console.log(`✅ [LEADGEN] Channel routing applied: team=${routingResult.teamId}, funnel assigned`);
+            } else {
+                console.log(`ℹ️ [LEADGEN] No channel routing for LEAD channel, default funnel may be assigned`);
+            }
+        } catch (chRoutingErr) {
+            console.error('⚠️ [LEADGEN] Channel routing error:', chRoutingErr.message);
+        }
+
         // 4. Create Message with lead info (Clean format)
         // Build extra fields - skip contact info fields
         const skipFields = ['full_name', 'name', 'email', 'phone_number', 'phone', 'phonenumber', 'first_name', 'last_name', 'tel', 'telefon', 'e_mail', 'mail'];

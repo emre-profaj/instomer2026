@@ -428,19 +428,20 @@ const AramaAnalizi = () => {
 
                 {/* TAB 1: Arama Listesi */}
                 {bottomTab === 'calls' && (
-                    <div className="table-responsive">
-                        <table className="modern-table" style={{ fontSize: '0.82rem' }}>
+                    <div className="contacts-table-container" style={{ marginTop: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'auto' }}>
+                        <table className="contacts-table" style={{ width: '100%' }}>
                             <thead>
                                 <tr>
-                                    <th>Tarih</th>
-                                    <th>Temsilci</th>
-                                    <th>Müşteri</th>
-                                    <th>Konu</th>
-                                    <th style={{ textAlign: 'center' }}>Durum</th>
-                                    <th style={{ textAlign: 'center' }}>Ulaşılabilirlik</th>
-                                    <th style={{ textAlign: 'center' }}>Değerlendirme</th>
-                                    <th>Arama Notu</th>
-                                    <th style={{ textAlign: 'center', width: '130px' }}>İşlem</th>
+                                    <th style={{ width: '40px', paddingLeft: '12px', paddingRight: '4px' }}>Tarih</th>
+                                    <th style={{ padding: '8px 4px' }}>Temsilci</th>
+                                    <th style={{ padding: '8px 4px' }}>Müşteri</th>
+                                    <th style={{ padding: '8px 4px' }}>Konu</th>
+                                    <th style={{ padding: '8px 4px' }}>Aşama</th>
+                                    <th style={{ padding: '8px 4px' }}>Durum</th>
+                                    <th style={{ padding: '8px 4px' }}>Ulaşılabilirlik</th>
+                                    <th style={{ padding: '8px 4px' }}>Değerlendirme</th>
+                                    <th style={{ padding: '8px 4px' }}>Arama Notu</th>
+                                    <th style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>İşlem</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -452,7 +453,7 @@ const AramaAnalizi = () => {
                                             return (
                                                 (a.contact?.name || '').toLowerCase().includes(q) ||
                                                 (a.contact?.phone || '').includes(q) ||
-                                                (a.assignee?.name || '').toLowerCase().includes(q)
+                                                ((a.contact?.activeAssigneeName || a.contact?.assigneeName) || '').toLowerCase().includes(q)
                                             );
                                         })
                                         .sort((a, b) => new Date(b.dueDate || b.createdAt) - new Date(a.dueDate || a.createdAt));
@@ -460,7 +461,7 @@ const AramaAnalizi = () => {
                                     if (callList.length === 0) {
                                         return (
                                             <tr>
-                                                <td colSpan="6" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
+                                                <td colSpan="9" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
                                                     Eşleşen sonuç bulunamadı.
                                                 </td>
                                             </tr>
@@ -469,7 +470,6 @@ const AramaAnalizi = () => {
                                     return callList.map(a => {
                                         const isCompleted = a.status === 'COMPLETED';
                                         const isPlanned = a.status === 'PLANNED';
-                                        // Resolve funnel stage
                                         let stageName = '';
                                         let stageColor = '#6b7280';
                                         if (a.contact?.funnelStageId && funnels.length > 0) {
@@ -484,75 +484,100 @@ const AramaAnalizi = () => {
                                         }
                                         return (
                                             <tr key={a.id}>
-                                                <td>
-                                                    <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
-                                                        {formatDateTime(a.completedAt || a.dueDate || a.createdAt)}
-                                                    </span>
+                                                <td style={{ paddingLeft: '12px', paddingRight: '4px', color: '#64748b', fontSize: '0.76rem' }}>
+                                                    {formatDateTime(a.completedAt || a.dueDate || a.createdAt)}
                                                 </td>
-                                                <td>
-                                                    {a.assignee ? (
-                                                        <span style={{ fontSize: '0.72rem', background: '#eef2ff', color: '#6366f1', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-                                                            {a.assignee.name}
+                                                <td style={{ padding: '8px 4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        {a.contact?.activeAssigneeName || a.contact?.assigneeName ? (
+                                                            <>
+                                                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700 }}>
+                                                                    {(a.contact.activeAssigneeName || a.contact.assigneeName).substring(0, 2).toUpperCase()}
+                                                                </div>
+                                                                <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>
+                                                                    {a.contact.activeAssigneeName || a.contact.assigneeName}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>Atanmamış</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '8px 4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
+                                                            {a.contact?.name ? a.contact.name.charAt(0).toUpperCase() : '👤'}
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.8rem' }}>{a.contact?.name || 'Bilinmiyor'}</div>
+                                                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{a.contact?.phone || '-'}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '8px 4px', maxWidth: '120px' }}>
+                                                    {a.contact?.aiTopic ? (
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 6px',
+                                                            backgroundColor: '#f0f9ff',
+                                                            color: '#0369a1',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 500,
+                                                            maxWidth: '100%',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {a.contact.aiTopic}
                                                         </span>
-                                                    ) : (
-                                                        <span style={{ color: '#cbd5e1', fontSize: '0.78rem' }}>Atanmamış</span>
-                                                    )}
+                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
                                                 </td>
-                                                <td>
-                                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{a.contact?.name || 'Bilinmiyor'}</div>
-                                                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontFamily: 'monospace' }}>{a.contact?.phone || ''}</div>
-                                                </td>
-                                                <td>
+                                                <td style={{ padding: '8px 4px' }}>
                                                     {stageName ? (
-                                                        <span style={{ fontSize: '0.72rem', background: `${stageColor}1a`, color: stageColor, padding: '2px 8px', borderRadius: '8px', fontWeight: 600, border: `1px solid ${stageColor}33` }}>
+                                                        <span style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: '999px', background: `${stageColor}1a`, color: stageColor, fontWeight: 600, border: `1px solid ${stageColor}33`, display: 'inline-block', whiteSpace: 'nowrap' }}>
                                                             {stageName}
                                                         </span>
                                                     ) : (
-                                                        <span style={{ color: '#cbd5e1' }}>—</span>
+                                                        <span style={{ color: '#d1d5db' }}>—</span>
                                                     )}
                                                 </td>
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td style={{ padding: '8px 4px' }}>
                                                     {isCompleted ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✓ Tamamlandı</span>
+                                                        <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#15803d', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✓ Tamamlandı</span>
                                                     ) : isPlanned ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>⏳ Bekliyor</span>
+                                                        <span style={{ fontSize: '0.7rem', background: '#fff7ed', color: '#c2410c', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>⏳ Bekliyor</span>
                                                     ) : (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✗ İptal</span>
+                                                        <span style={{ fontSize: '0.7rem', background: '#fef2f2', color: '#dc2626', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✗ İptal</span>
                                                     )}
                                                 </td>
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td style={{ padding: '8px 4px' }}>
                                                     {a.callSuccessful === true ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✓ Ulaşıldı</span>
+                                                        <span style={{ fontSize: '0.7rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✓ Ulaşıldı</span>
                                                     ) : a.callSuccessful === false ? (
-                                                        <span style={{ fontSize: '0.68rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '999px', padding: '2px 10px', fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>✗ Ulaşılamadı</span>
+                                                        <span style={{ fontSize: '0.7rem', background: '#fef2f2', color: '#dc2626', borderRadius: '999px', padding: '4px 8px', fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>✗ Ulaşılamadı</span>
                                                     ) : (
                                                         <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
                                                 </td>
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td style={{ padding: '8px 4px' }}>
                                                     {a.callSentiment === 'Positive' ? (
-                                                        <span style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: 600 }}>😊 Olumlu</span>
+                                                        <span style={{ fontSize: '0.7rem', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>😊 Olumlu</span>
                                                     ) : a.callSentiment === 'Negative' ? (
-                                                        <span style={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 600 }}>😔 Olumsuz</span>
+                                                        <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap' }}>😔 Olumsuz</span>
                                                     ) : a.callSentiment === 'Neutral' ? (
-                                                        <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>😐 Nötr</span>
+                                                        <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>😐 Nötr</span>
                                                     ) : (
                                                         <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
                                                 </td>
-                                                <td>
-                                                    {a.result ? (
-                                                        <span style={{ fontSize: '0.76rem', color: '#334155', fontStyle: 'italic' }} title={a.result}>
-                                                            "{a.result.length > 40 ? a.result.substring(0, 40) + '...' : a.result}"
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ color: '#cbd5e1' }}>—</span>
-                                                    )}
+                                                <td style={{ maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.75rem', color: '#334155', fontStyle: 'italic', padding: '8px 4px' }}>
+                                                    {a.result ? `"${a.result}"` : '—'}
                                                 </td>
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>
                                                     <button 
-                                                        className="btn btn-outline" 
-                                                        style={{ padding: '4px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                        className="btn btn-sm btn-outline" 
+                                                        style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                         onClick={() => handleOpenNoteModal(a.contact?.id || a.contactId)}
                                                     >
                                                         <FileText size={12} />
@@ -570,16 +595,18 @@ const AramaAnalizi = () => {
 
                 {/* TAB 2: Aranmayanlar Listesi */}
                 {bottomTab === 'uncalled' && (
-                    <div className="table-responsive">
-                        <table className="modern-table" style={{ fontSize: '0.82rem' }}>
+                    <div className="contacts-table-container" style={{ marginTop: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'auto' }}>
+                        <table className="contacts-table" style={{ width: '100%' }}>
                             <thead>
                                 <tr>
-                                    <th>Kişi Adı</th>
-                                    <th>Telefon</th>
-                                    <th>Firma</th>
-                                    <th>Aşama / Durum</th>
-                                    <th>Kayıt Tarihi</th>
-                                    <th style={{ textAlign: 'center', width: '130px' }}>İşlem</th>
+                                    <th style={{ paddingLeft: '12px', paddingRight: '4px' }}>Kişi Adı</th>
+                                    <th style={{ padding: '8px 4px' }}>Telefon</th>
+                                    <th style={{ padding: '8px 4px' }}>Firma</th>
+                                    <th style={{ padding: '8px 4px' }}>Temsilci</th>
+                                    <th style={{ padding: '8px 4px' }}>Konu</th>
+                                    <th style={{ padding: '8px 4px' }}>Aşama / Durum</th>
+                                    <th style={{ padding: '8px 4px' }}>Kayıt Tarihi</th>
+                                    <th style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>İşlem</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -595,7 +622,7 @@ const AramaAnalizi = () => {
                                     if (uncalledList.length === 0) {
                                         return (
                                             <tr>
-                                                <td colSpan="5" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
+                                                <td colSpan="6" style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0' }}>
                                                     Tüm numaralı kişiler aranmış! 🎉
                                                 </td>
                                             </tr>
@@ -616,33 +643,73 @@ const AramaAnalizi = () => {
                                         }
                                         return (
                                             <tr key={c.contactId}>
-                                                <td>
-                                                    <div style={{ fontWeight: 700, color: '#0f172a' }}>{c.name}</div>
+                                                <td style={{ paddingLeft: '12px', paddingRight: '4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
+                                                            {c.name ? c.name.charAt(0).toUpperCase() : '👤'}
+                                                        </div>
+                                                        <div style={{ fontWeight: 600, color: '#1e293b', fontSize: '0.8rem' }}>{c.name}</div>
+                                                    </div>
                                                 </td>
-                                                <td style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.78rem' }}>
+                                                <td style={{ fontFamily: 'monospace', color: '#475569', fontSize: '0.75rem', padding: '8px 4px' }}>
                                                     {c.phone}
                                                 </td>
-                                                <td style={{ color: '#475569', fontSize: '0.78rem' }}>
+                                                <td style={{ color: '#475569', fontSize: '0.75rem', padding: '8px 4px' }}>
                                                     {c.company || '—'}
                                                 </td>
-                                                <td>
+                                                <td style={{ padding: '8px 4px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        {c.activeAssigneeName || c.assigneeName ? (
+                                                            <>
+                                                                <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700 }}>
+                                                                    {(c.activeAssigneeName || c.assigneeName).substring(0, 2).toUpperCase()}
+                                                                </div>
+                                                                <span style={{ fontSize: '0.75rem', color: '#475569', fontWeight: 500 }}>
+                                                                    {c.activeAssigneeName || c.assigneeName}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span style={{ color: '#cbd5e1', fontSize: '0.7rem' }}>Atanmamış</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '8px 4px', maxWidth: '120px' }}>
+                                                    {c.aiTopic ? (
+                                                        <span style={{
+                                                            display: 'inline-block',
+                                                            padding: '2px 6px',
+                                                            backgroundColor: '#f0f9ff',
+                                                            color: '#0369a1',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 500,
+                                                            maxWidth: '100%',
+                                                            overflow: 'hidden',
+                                                            textOverflow: 'ellipsis',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {c.aiTopic}
+                                                        </span>
+                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
+                                                </td>
+                                                <td style={{ padding: '8px 4px' }}>
                                                     {stageName ? (
-                                                        <span style={{ fontSize: '0.72rem', background: `${stageColor}1a`, color: stageColor, padding: '2px 8px', borderRadius: '8px', fontWeight: 600, border: `1px solid ${stageColor}33` }}>
+                                                        <span style={{ fontSize: '0.7rem', background: `${stageColor}1a`, color: stageColor, padding: '4px 8px', borderRadius: '999px', fontWeight: 600, border: `1px solid ${stageColor}33`, whiteSpace: 'nowrap' }}>
                                                             {stageName}
                                                         </span>
                                                     ) : (
                                                         <span style={{ color: '#cbd5e1' }}>—</span>
                                                     )}
                                                 </td>
-                                                <td>
-                                                    <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                                <td style={{ padding: '8px 4px' }}>
+                                                    <span style={{ color: '#64748b', fontSize: '0.7rem' }}>
                                                         {formatDateTime(c.createdAt)}
                                                     </span>
                                                 </td>
-                                                <td style={{ textAlign: 'center' }}>
+                                                <td style={{ textAlign: 'right', paddingRight: '12px', paddingLeft: '4px' }}>
                                                     <button 
-                                                        className="btn btn-outline" 
-                                                        style={{ padding: '4px 8px', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                        className="btn btn-sm btn-outline" 
+                                                        style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                                         onClick={() => handleOpenNoteModal(c.contactId)}
                                                     >
                                                         <FileText size={12} />
@@ -785,62 +852,84 @@ const AramaAnalizi = () => {
                         </div>
                         
                         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-                                    Arama Durumu
-                                </label>
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>📞 Arama Başarılı mı?</label>
                                 <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button 
+                                    <button
+                                        type="button"
                                         onClick={() => setNoteSuccess('SUCCESS')}
-                                        style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${noteSuccess === 'SUCCESS' ? '#10b981' : '#e2e8f0'}`, background: noteSuccess === 'SUCCESS' ? '#ecfdf5' : 'white', color: noteSuccess === 'SUCCESS' ? '#047857' : '#475569', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                                        style={{
+                                            flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                            borderColor: noteSuccess === 'SUCCESS' ? '#16a34a' : '#e5e7eb',
+                                            background: noteSuccess === 'SUCCESS' ? '#dcfce7' : '#fff',
+                                            color: noteSuccess === 'SUCCESS' ? '#15803d' : '#6b7280',
+                                            fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
                                     >
-                                        ✓ Ulaşıldı
+                                        ✅ Ulaşıldı
+                                        <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Görüşme sağlandı</div>
                                     </button>
-                                    <button 
-                                        onClick={() => setNoteSuccess('FAILED')}
-                                        style={{ flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${noteSuccess === 'FAILED' ? '#ef4444' : '#e2e8f0'}`, background: noteSuccess === 'FAILED' ? '#fef2f2' : 'white', color: noteSuccess === 'FAILED' ? '#b91c1c' : '#475569', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}
+                                    <button
+                                        type="button"
+                                        onClick={() => { setNoteSuccess('FAILED'); setNoteSentiment(null); }}
+                                        style={{
+                                            flex: 1, padding: '10px', borderRadius: '10px', border: '2px solid',
+                                            borderColor: noteSuccess === 'FAILED' ? '#ef4444' : '#e5e7eb',
+                                            background: noteSuccess === 'FAILED' ? '#fef2f2' : '#fff',
+                                            color: noteSuccess === 'FAILED' ? '#dc2626' : '#6b7280',
+                                            fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                            transition: 'all 0.2s ease'
+                                        }}
                                     >
-                                        ✗ Ulaşılamadı
+                                        ❌ Ulaşılamadı
+                                        <div style={{ fontSize: '0.68rem', fontWeight: 400, marginTop: '2px', opacity: 0.8 }}>Açmadı veya meşgul</div>
                                     </button>
                                 </div>
                             </div>
 
-                            {noteSuccess === 'SUCCESS' && (
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-                                        Görüşme Nasıl Geçti?
-                                    </label>
-                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                        <button 
-                                            onClick={() => setNoteSentiment('Positive')}
-                                            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${noteSentiment === 'Positive' ? '#10b981' : '#e2e8f0'}`, background: noteSentiment === 'Positive' ? '#ecfdf5' : 'white', color: noteSentiment === 'Positive' ? '#047857' : '#475569', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
+                            {/* Duygu Analizi */}
+                            {noteSuccess !== 'FAILED' && (
+                            <div style={{ marginBottom: '12px' }}>
+                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>🎭 Görüşme Nasıl Geçti?</label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {[
+                                        { key: 'Positive', emoji: '😊', label: 'Olumlu', color: '#16a34a', bg: '#dcfce7' },
+                                        { key: 'Neutral', emoji: '😐', label: 'Nötr', color: '#6b7280', bg: '#f3f4f6' },
+                                        { key: 'Negative', emoji: '😞', label: 'Olumsuz', color: '#ef4444', bg: '#fef2f2' }
+                                    ].map(s => (
+                                        <button
+                                            key={s.key}
+                                            type="button"
+                                            onClick={() => setNoteSentiment(s.key)}
+                                            style={{
+                                                flex: 1, padding: '10px 6px', borderRadius: '10px', border: '2px solid',
+                                                borderColor: noteSentiment === s.key ? s.color : '#e5e7eb',
+                                                background: noteSentiment === s.key ? s.bg : '#fff',
+                                                color: noteSentiment === s.key ? s.color : '#6b7280',
+                                                fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                                transition: 'all 0.2s ease', textAlign: 'center'
+                                            }}
                                         >
-                                            😊 Olumlu
+                                            <div style={{ fontSize: '1.4rem', marginBottom: '2px' }}>{s.emoji}</div>
+                                            {s.label}
                                         </button>
-                                        <button 
-                                            onClick={() => setNoteSentiment('Neutral')}
-                                            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${noteSentiment === 'Neutral' ? '#6366f1' : '#e2e8f0'}`, background: noteSentiment === 'Neutral' ? '#eef2ff' : 'white', color: noteSentiment === 'Neutral' ? '#4338ca' : '#475569', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
-                                        >
-                                            😐 Nötr
-                                        </button>
-                                        <button 
-                                            onClick={() => setNoteSentiment('Negative')}
-                                            style={{ flex: 1, padding: '8px', borderRadius: '8px', border: `1px solid ${noteSentiment === 'Negative' ? '#ef4444' : '#e2e8f0'}`, background: noteSentiment === 'Negative' ? '#fef2f2' : 'white', color: noteSentiment === 'Negative' ? '#b91c1c' : '#475569', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}
-                                        >
-                                            😔 Olumsuz
-                                        </button>
-                                    </div>
+                                    ))}
                                 </div>
+                            </div>
                             )}
 
                             <div>
-                                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
-                                    Arama Notu
+                                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>
+                                    📝 Notlar
                                 </label>
                                 <textarea 
-                                    className="modal-search"
-                                    style={{ width: '100%', minHeight: '100px', resize: 'vertical' }}
-                                    placeholder="Görüşme ile ilgili notlarınızı buraya yazın..."
+                                    style={{ 
+                                        width: '100%', minHeight: '110px', padding: '12px', 
+                                        border: '1.5px solid #e5e7eb', borderRadius: '10px',
+                                        fontSize: '0.85rem', fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical', outline: 'none'
+                                    }}
+                                    placeholder="Görüşme detaylarını girin..."
                                     value={noteDesc}
                                     onChange={(e) => setNoteDesc(e.target.value)}
                                 ></textarea>

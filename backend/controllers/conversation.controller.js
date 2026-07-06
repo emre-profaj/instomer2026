@@ -250,7 +250,8 @@ export const getConversations = async (req, res) => {
                         assignedToId: true,
                         assignedTeamId: true,
                         funnelType: true,
-                        funnelStageId: true
+                        funnelStageId: true,
+                        assignedTo: { select: { id: true, name: true } }
                     }
                 }
             },
@@ -505,7 +506,8 @@ export const getConversation = async (req, res) => {
                         assignedToId: true,
                         assignedTeamId: true,
                         funnelType: true,
-                        funnelStageId: true
+                        funnelStageId: true,
+                        assignedTo: { select: { id: true, name: true } }
                     }
                 }
             }

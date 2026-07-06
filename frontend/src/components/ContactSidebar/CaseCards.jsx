@@ -17,7 +17,7 @@ const PRIORITY_ICONS = {
     URGENT: '🔴'
 };
 
-const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversationId, onCaseLinked, inline = false, onStageChanged = null, onCaseInfo = null, showOnly = null }) => {
+const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversationId, activeCaseId = null, onCaseLinked, inline = false, onStageChanged = null, onCaseInfo = null, onCasesLoaded = null, showOnly = null }) => {
     // Flatten hierarchical teams
     const flatTeams = (() => {
         const result = [];
@@ -105,8 +105,24 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                 if (changes?.assignedTeamId !== undefined) updates.assignedTeamId = changes.assignedTeamId;
                 return Object.keys(updates).length > 0 ? { ...c, ...updates } : c;
             }));
+            // Parent'ı bilgilendir — sidebar status pill anında güncellensin
+            if (onCaseInfo && changes) {
+                // closingStages ve openStages bilgisini de gönder
+                const updatedCase = cases.find(c => c.id === caseId);
+                const ft = changes?.funnelType || updatedCase?.funnelType;
+                const currentFunnel = ft ? funnels.find(f => f.id === ft) : null;
+                const closingStages = currentFunnel?.stages
+                    ?.filter(s => s.isClosing)
+                    ?.map(s => ({ id: s.id, name: s.name, color: s.color, statusType: s.statusType }))
+                    || [];
+                const openStages = currentFunnel?.stages
+                    ?.filter(s => !s.isClosing)
+                    ?.map(s => ({ id: s.id, name: s.name, color: s.color }))
+                    || [];
+                onCaseInfo({ caseId, ...changes, closingStages, openStages });
+            }
         };
-        const handleRefresh = () => { fetchCases(); };
+        const handleRefresh = () => { setTimeout(() => fetchCases(), 500); };
 
         window.addEventListener('websocket:case_updated', handleCaseUpdated);
         window.addEventListener('case_cards_refresh', handleRefresh);
@@ -119,7 +135,41 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const fetchCases = async () => {
         try {
             const res = await caseAPI.getByContact(workspaceId, contactId);
-            setCases(res.data || []);
+            const fetched = res.data || [];
+            setCases(fetched);
+            if (onCasesLoaded) onCasesLoaded(fetched);
+            // Re-fetch sonrası linked case bilgisini parent'a ilet
+            if (onCaseInfo && conversationId && fetched.length > 0) {
+                const linkedCase = (activeCaseId && fetched.find(c => c.id === activeCaseId))
+                    || fetched.find(c => c.conversations?.some(cv => cv.id === conversationId))
+                    || fetched.find(c => c.status === 'ACTIVE')
+                    || fetched[0];
+                if (linkedCase) {
+                    // İlgili akışın kapanış adımlarını bul
+                    const currentFunnel = funnels.find(f => f.id === linkedCase.funnelType);
+                    const closingStages = currentFunnel?.stages
+                        ?.filter(s => s.isClosing)
+                        ?.map(s => ({ id: s.id, name: s.name, color: s.color, statusType: s.statusType }))
+                        || [];
+                    const openStages = currentFunnel?.stages
+                        ?.filter(s => !s.isClosing)
+                        ?.map(s => ({ id: s.id, name: s.name, color: s.color }))
+                        || [];
+                    onCaseInfo({
+                        caseId: linkedCase.id,
+                        caseNumber: linkedCase.caseNumber,
+                        title: linkedCase.title,
+                        status: linkedCase.status,
+                        funnelType: linkedCase.funnelType,
+                        funnelStageId: linkedCase.funnelStageId,
+                        assignedToId: linkedCase.assignedToId,
+                        assignedTeamId: linkedCase.assignedTeamId,
+                        assignedTo: linkedCase.assignedTo || null,
+                        closingStages,
+                        openStages,
+                    });
+                }
+            }
         } catch (err) {
             console.error('Case fetch error:', err);
         } finally {
@@ -174,35 +224,62 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
 
     const handleUpdateStage = async (caseId, funnelType, funnelStageId) => {
         try {
-            await caseAPI.update(workspaceId, caseId, { funnelType, funnelStageId });
-            setCases(prev => prev.map(c => c.id === caseId ? { ...c, funnelType, funnelStageId } : c));
-
-            // Also sync conversation's funnelStageId (bidirectional sync)
-            if (conversationId && workspaceId) {
-                try {
-                    await conversationAPI.updateFunnel(workspaceId, conversationId, { funnelStageId, funnelType });
-                } catch (_) {}
-            }
-
-            // Note: Contact status/funnelStageId sync is handled by backend cascade
-            // (updateCase → contact update, updateFunnel → contact update)
-
-            // Find stage info for callback
+            // Find the selected stage to check isClosing / statusType
+            let selectedStage = null;
             let stageName = '', stageColor = '#6366f1';
             for (const f of funnels) {
                 const s = (f.stages || []).find(s => s.id === funnelStageId);
-                if (s) { stageName = s.name; stageColor = s.color || '#6366f1'; break; }
+                if (s) { selectedStage = s; stageName = s.name; stageColor = s.color || '#6366f1'; break; }
             }
 
-            // Notify parent (ContactSidebar → Inbox) about the change
+            // Kapanış aşaması mı? Case status'ünü otomatik güncelle
+            const newStatus = selectedStage?.isClosing
+                ? (selectedStage.statusType || 'CLOSED')
+                : 'ACTIVE';
+
+            await caseAPI.update(workspaceId, caseId, { funnelType, funnelStageId, status: newStatus });
+            setCases(prev => prev.map(c => c.id === caseId ? { ...c, funnelType, funnelStageId, status: newStatus } : c));
+
+            // Also sync conversation's funnelStageId + status (bidirectional sync)
+            if (conversationId && workspaceId) {
+                try {
+                    await conversationAPI.updateFunnel(workspaceId, conversationId, { funnelStageId, funnelType });
+                    // Kapanış aşamasına geçtiyse conversation'ı da RESOLVED yap
+                    // Açık aşamaya geçtiyse conversation'ı OPEN yap
+                    if (selectedStage?.isClosing) {
+                        await conversationAPI.updateStatus(workspaceId, conversationId, { status: 'RESOLVED' });
+                    } else {
+                        await conversationAPI.updateStatus(workspaceId, conversationId, { status: 'OPEN' });
+                    }
+                } catch (_) {}
+            }
+
+            // Notify parent — sidebar status pill + funnel pill güncellensin
+            if (onCaseInfo) {
+                // İlgili akışın kapanış adımlarını bul
+                const currentFunnel = funnels.find(f => f.id === funnelType);
+                const closingStages = currentFunnel?.stages
+                    ?.filter(s => s.isClosing)
+                    ?.map(s => ({ id: s.id, name: s.name, color: s.color, statusType: s.statusType }))
+                    || [];
+                const openStages = currentFunnel?.stages
+                    ?.filter(s => !s.isClosing)
+                    ?.map(s => ({ id: s.id, name: s.name, color: s.color }))
+                    || [];
+                onCaseInfo({ caseId, funnelType, funnelStageId, status: newStatus, closingStages, openStages });
+            }
             if (onStageChanged) {
                 onStageChanged({ funnelType, funnelStageId, stageName, stageColor });
             }
 
-            // Dispatch custom event for any listener (ContactSidebar funnelStage state)
+            // Dispatch events for all listeners
+            window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                detail: { caseId, changes: { funnelType, funnelStageId, status: newStatus } }
+            }));
             window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
                 detail: { conversationId, funnelStageId, stageName, stageColor }
             }));
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
         } catch (err) {
             console.error('Stage update error:', err);
         }
@@ -211,14 +288,46 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const handleAssign = async (caseId, assignedToId, assignedTeamId) => {
         try {
             const res = await caseAPI.assign(workspaceId, caseId, { assignedToId, assignedTeamId });
+            const updatedAssignedTo = members.find(m => (m.user?.id || m.userId || m.id) === assignedToId)?.user || null;
+            const updatedTeam = flatTeams.find(t => t.id === assignedTeamId) || null;
             setCases(prev => prev.map(c => c.id === caseId ? {
                 ...c,
                 assignedToId,
                 assignedTeamId,
-                assignedTo: members.find(m => (m.user?.id || m.userId || m.id) === assignedToId)?.user || null,
-                team: flatTeams.find(t => t.id === assignedTeamId) || null
+                assignedTo: updatedAssignedTo,
+                team: updatedTeam
             } : c));
             setAssigningCaseId(null);
+            // Parent'ı bilgilendir — tablo + sidebar güncellensin
+            if (onCaseInfo) {
+                onCaseInfo({
+                    caseId,
+                    assignedToId,
+                    assignedTeamId,
+                    assignedTo: updatedAssignedTo,
+                    assignedToName: updatedAssignedTo?.name || null,
+                    team: updatedTeam
+                });
+            }
+            // Inbox header'ı bilgilendir — conversation ataması anında güncellensin
+            window.dispatchEvent(new CustomEvent('websocket:case_assignment_updated', {
+                detail: {
+                    caseId,
+                    assignedToId,
+                    assignedTeamId,
+                    assignedToName: updatedAssignedTo?.name || null
+                }
+            }));
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+            // Conversation'ın assignedTo'sunu da güncelle
+            if (conversationId && workspaceId && assignedToId) {
+                try {
+                    await conversationAPI.updateFunnel(workspaceId, conversationId, {
+                        assignedToId,
+                        confirmAssignmentUpdate: true
+                    });
+                } catch (_) {}
+            }
             if (res.data?.cascaded) {
                 const { conversations, activities } = res.data.cascaded;
                 if (conversations > 0 || activities > 0) {
@@ -235,6 +344,11 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         try {
             await caseAPI.update(workspaceId, caseId, { status });
             setCases(prev => prev.map(c => c.id === caseId ? { ...c, status } : c));
+            // Parent'ı bilgilendir — sidebar'daki status pill güncellensin
+            if (onCaseInfo) {
+                onCaseInfo({ caseId, status });
+            }
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
         } catch (err) {
             console.error('Status update error:', err);
         }
@@ -265,11 +379,23 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     // Notify parent about the active case info (for header display) — MUST be at top level, not inside conditional
     useEffect(() => {
         if (inline && displayCase && onCaseInfo) {
-            onCaseInfo({ caseNumber: displayCase.caseNumber, caseId: displayCase.id, title: displayCase.title, status: displayCase.status });
+            onCaseInfo({
+                caseNumber: displayCase.caseNumber,
+                caseId: displayCase.id,
+                title: displayCase.title,
+                status: displayCase.status,
+                funnelType: displayCase.funnelType || null,
+                funnelStageId: displayCase.funnelStageId || null,
+                assignedToId: displayCase.assignedToId || null,
+                assignedTeamId: displayCase.assignedTeamId || null,
+                assignedTo: displayCase.assignedTo || null,
+                team: displayCase.team || null
+            });
         }
-    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title]);
+    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title, displayCase?.assignedToId, displayCase?.assignedTeamId, displayCase?.funnelType, displayCase?.funnelStageId]);
 
     if (loading) {
+        if (showOnly === 'actions') return null;
         return (
             <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, color: '#9ca3af', fontSize: '0.82rem' }}>
                 <Loader size={14} className="spin" /> Case'ler yükleniyor...
@@ -307,7 +433,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             <>
                 {/* ── Akış / Aşama Mega Menü Trigger ── */}
                 {(!showOnly || showOnly === 'stages') && (
-                    <div style={{ padding: '2px 12px 4px' }}>
+                    <div style={{ padding: 0 }}>
                         <div ref={megaRef} style={{ position: 'relative' }}>
                             <button
                                 onClick={e => {
@@ -317,11 +443,11 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     setMegaOpen(v => !v);
                                 }}
                                 style={{
-                                    display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-                                    background: '#f8fafc', border: '1px solid #e2e8f0',
-                                    borderRadius: 8, padding: '4px 10px',
-                                    cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, color: '#374151',
-                                    whiteSpace: 'nowrap', overflow: 'hidden'
+                                display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                                background: '#f8fafc', border: '1px solid #e2e8f0',
+                                borderRadius: 10, padding: '0 10px', height: 32,
+                                cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600, color: '#374151',
+                                whiteSpace: 'nowrap', overflow: 'hidden'
                                 }}
                             >
                                 <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />

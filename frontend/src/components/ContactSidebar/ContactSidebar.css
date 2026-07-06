@@ -3178,7 +3178,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 10px;
+    padding: 0 10px;
     border-radius: 20px;
     border: 1px solid #d1d5db;
     background: #fff;
@@ -3188,7 +3188,7 @@
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
-    height: 28px;
+    height: 34px;
     line-height: 1;
 }
 .stage-mega-trigger:hover {
@@ -3206,7 +3206,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 10px;
+    padding: 0 10px;
     border-radius: 20px;
     border: 1px solid #bbf7d0;
     background: #f0fdf4;
@@ -3216,7 +3216,7 @@
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
-    height: 28px;
+    height: 34px;
     line-height: 1;
 }
 .assign-claim-btn:hover {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -70,7 +70,8 @@ const Sidebar = () => {
     const salesSubItems = [
         { path: '/quotes', icon: FileText, label: 'Teklifler' },
         { path: '/orders', icon: ShoppingCart, label: 'Siparişler' },
-        { path: '/invoices', icon: Receipt, label: 'Faturalar' }
+        { path: '/invoices', icon: Receipt, label: 'Faturalar' },
+        { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' }
     ];
 
     const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
@@ -173,7 +174,7 @@ const Sidebar = () => {
         setIsContactsOpen(path === '/customers');
         setIsActivitiesOpen(path.startsWith('/activities') || path === '/calendar');
         setIsRealEstateOpen(path.startsWith('/real-estate'));
-        setIsSalesOpen(['/quotes', '/orders', '/invoices'].some(p => path === p));
+        setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
         setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
         setIsSettingsOpen(['/channels', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
     }, [location.pathname]);

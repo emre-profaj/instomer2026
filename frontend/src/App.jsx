@@ -39,6 +39,7 @@ import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
 import Invoices from './pages/Sales/Invoices';
+import Products from './pages/Sales/Products';
 import Funnels from './pages/Funnels/Funnels';
 import RealEstateAdmin from './pages/RealEstate/RealEstateAdmin';
 import RealEstateWizard from './pages/RealEstate/RealEstateWizard';
@@ -125,6 +126,7 @@ function App() {
               <Route path="quotes" element={<Quotes />} />
               <Route path="orders" element={<Orders />} />
               <Route path="invoices" element={<Invoices />} />
+              <Route path="products" element={<Products />} />
               <Route path="pipeline" element={<Navigate to="/inbox" replace />} />
               <Route path="funnels" element={<Funnels />} />
               <Route path="real-estate" element={<RealEstateAdmin />} />

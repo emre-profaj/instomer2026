@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { smartFieldMatcher } from '../utils/fieldMatcher.js';
 import { executeWebFormAutomation } from './automation.controller.js';
-import { assignDefaultFunnel } from '../services/conversationRouting.service.js';
+import { assignDefaultFunnel, applyChannelRouting } from '../services/conversationRouting.service.js';
 
 
 // Generate unique webhook URL and token
@@ -332,17 +332,77 @@ export const handleFormSubmission = async (req, res) => {
         let isNewConversation = false;
         if (conversation) {
             console.log(`🔗 [Form Merge] Reusing existing ${conversation.channel} conversation ${conversation.id} (within 24h)`);
+            // aiTopic boşsa form'dan gelen konu ile doldur
+            const formTopic = subject || product || null;
+            // webhook.name yerine form'daki gerçek konuyu kullan
+            const realTopic = formTopic || (() => {
+                // Elementor title map'ten anlamlı bir başlık bul
+                const titleMap = normalizedData._fieldTitleMap || {};
+                // product/subject dışı unmapped alanlardan konu çıkarmayı dene
+                const candidateKeys = Object.keys(normalizedData).filter(k => 
+                    !k.startsWith('_') && 
+                    typeof normalizedData[k] === 'string' && 
+                    normalizedData[k].length > 2 &&
+                    normalizedData[k] !== name &&
+                    normalizedData[k] !== email &&
+                    normalizedData[k] !== phone &&
+                    normalizedData[k] !== company
+                );
+                // Title map'te 'konu', 'ilgi', 'tedavi', 'hizmet' gibi anahtar kelimeler ara
+                for (const [fid, title] of Object.entries(titleMap)) {
+                    const tLow = (title || '').toLowerCase();
+                    if (['konu', 'ilgi', 'tedavi', 'hizmet', 'ürün', 'urun', 'subject', 'topic', 'interest', 'service', 'product'].some(k => tLow.includes(k))) {
+                        if (normalizedData[fid]) return normalizedData[fid];
+                    }
+                }
+                return null;
+            })();
+            if (!conversation.aiTopic && realTopic) {
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { aiTopic: realTopic }
+                });
+                conversation.aiTopic = realTopic;
+            }
         } else {
+            // Konu belirleme: subject/product > Elementor title map > webhook adı (son çare)
+            const formTopic = subject || product || null;
+            const realTopic = formTopic || (() => {
+                const titleMap = normalizedData._fieldTitleMap || {};
+                for (const [fid, title] of Object.entries(titleMap)) {
+                    const tLow = (title || '').toLowerCase();
+                    if (['konu', 'ilgi', 'tedavi', 'hizmet', 'ürün', 'urun', 'subject', 'topic', 'interest', 'service', 'product'].some(k => tLow.includes(k))) {
+                        if (normalizedData[fid]) return normalizedData[fid];
+                    }
+                }
+                return null;
+            })();
+
             // Create conversation for this form submission
             conversation = await prisma.conversation.create({
                 data: {
                     workspaceId: webhook.workspaceId,
                     contactId: contact?.id,
                     channel: 'FORM',
-                    status: 'OPEN'
+                    status: 'OPEN',
+                    aiTopic: realTopic || null
                 }
             });
-            assignDefaultFunnel(webhook.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Form error:', e.message));
+
+            // Kanal yönlendirme kurallarını uygula (akış + takım ataması)
+            try {
+                const routingResult = await applyChannelRouting(
+                    webhook.workspaceId,
+                    conversation.id,
+                    'FORM',
+                    true // isNewConversation
+                );
+                console.log(`📡 [FormWebhook] Channel routing applied:`, routingResult);
+            } catch (routingErr) {
+                console.error('⚠️ [FormWebhook] Channel routing error:', routingErr.message);
+                // Routing başarısız olursa yine de default funnel'ı ata
+                assignDefaultFunnel(webhook.workspaceId, conversation.id).catch(e => console.error('❌ [AutoFunnel] Form error:', e.message));
+            }
             isNewConversation = true;
         }
 

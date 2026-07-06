@@ -50,7 +50,8 @@ import {
     UserCheck,
     CircleOff,
     KanbanSquare,
-    List
+    List,
+    FileText
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -107,10 +108,13 @@ const Customers = () => {
     const SOURCE_OPTIONS = [
         { value: 'ALL', label: t('contacts.sourceAll'), icon: Users },
         { value: 'FACEBOOK', label: 'Facebook', icon: Facebook, color: '#1877f2' },
+        { value: 'FACEBOOK_LEAD', label: 'Facebook Lead', icon: Facebook, color: '#1877f2' },
         { value: 'INSTAGRAM', label: 'Instagram', icon: Instagram, color: '#e4405f' },
         { value: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle, color: '#25d366' },
         { value: 'WIDGET', label: 'Web Widget', icon: MessageSquare, color: '#6366f1' },
         { value: 'EMAIL', label: t('contacts.sourceEmail'), icon: Mail, color: '#f59e0b' },
+        { value: 'WEB_FORM', label: 'Form', icon: FileText, color: '#f97316' },
+        { value: 'FORM', label: 'Form', icon: FileText, color: '#f97316' },
         { value: 'LEAD', label: 'Lead', icon: User, color: '#8b5cf6' },
         { value: 'MANUAL', label: t('contacts.sourceManual'), icon: Plus, color: '#6b7280' }
     ];
@@ -254,7 +258,7 @@ const Customers = () => {
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
 
     // Date filter
-    const [dateFilter, setDateFilter] = useState(sf.dateFilter || 'ALL'); // ALL | TODAY | WEEK | MONTH | CUSTOM
+    const [dateFilter, setDateFilter] = useState(sf.dateFilter || 'ALL');
     const [dateFrom, setDateFrom] = useState(sf.dateFrom || '');
     const [dateTo, setDateTo] = useState(sf.dateTo || '');
 
@@ -496,16 +500,23 @@ const Customers = () => {
             }
         };
 
+        const handleCaseCardsRefresh = () => {
+            console.log('🔄 [Customers] Case assignment changed, refreshing table...');
+            silentReloadContacts();
+        };
+
         window.addEventListener('websocket:contact_updated', handleContactUpdate);
         window.addEventListener('websocket:new_conversation', handleNewConversation);
         window.addEventListener('websocket:new_message', handleNewMessage);
         window.addEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
+        window.addEventListener('case_cards_refresh', handleCaseCardsRefresh);
 
         return () => {
             window.removeEventListener('websocket:contact_updated', handleContactUpdate);
             window.removeEventListener('websocket:new_conversation', handleNewConversation);
             window.removeEventListener('websocket:new_message', handleNewMessage);
             window.removeEventListener('websocket:funnel_stage_updated', handleFunnelStageUpdate);
+            window.removeEventListener('case_cards_refresh', handleCaseCardsRefresh);
         };
     }, [currentWorkspace, silentReloadContacts]);
 
@@ -789,8 +800,8 @@ const Customers = () => {
 
                 // Get assigned agent
                 let assignedTo = '---';
-                const convs = contact.conversations || [];
-                const lastConv = convs.length > 0 ? convs[convs.length - 1] : null;
+                const convs = [...(contact.conversations || [])].sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt));
+                const lastConv = convs.length > 0 ? convs[0] : null;
                 if (lastConv?.assignedTo?.name) {
                     assignedTo = lastConv.assignedTo.name;
                 }
@@ -1321,7 +1332,7 @@ const Customers = () => {
                     {/* Header */}
                     <div className="contacts-header">
                         <h1>Kişiler</h1>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '480px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '800px' }}>
                             <div className="contacts-search" style={{ flex: 1, maxWidth: 'none' }}>
                                 <Search size={18} className="search-icon" />
                                 <input
@@ -1342,20 +1353,20 @@ const Customers = () => {
                                     style={{
                                         display: 'inline-flex',
                                         alignItems: 'center',
-                                        gap: '6px',
-                                        height: '38px',
-                                        padding: '0 12px',
+                                        gap: '4px',
+                                        height: '28px',
+                                        padding: '0 8px',
                                         border: '1px solid #cbd5e1',
-                                        borderRadius: '8px',
+                                        borderRadius: '6px',
                                         background: '#ffffff',
-                                        fontSize: '0.8rem',
+                                        fontSize: '0.72rem',
                                         fontWeight: 600,
                                         color: '#475569',
                                         cursor: 'pointer',
                                         transition: 'all 0.15s'
                                     }}
                                 >
-                                    <Filter size={14} />
+                                    <Filter size={12} />
                                     <span>Filtreler</span>
                                     {(() => {
                                         let activeCount = 0;
@@ -1380,6 +1391,7 @@ const Customers = () => {
                                         ) : null;
                                     })()}
                                 </button>
+
 
                                 {filtersDropdownOpen && (
                                     <div className="contacts-filters-dropdown" style={{
@@ -1638,26 +1650,32 @@ const Customers = () => {
                         {/* Date Preset Buttons — horizontal inline */}
                         <div className="contacts-date-presets">
                             {[
-                                { key: 'ALL', label: 'Tümü' },
-                                { key: 'TODAY', label: 'Bugün' },
-                                { key: 'YESTERDAY', label: 'Dün' },
-                                { key: 'WEEK', label: 'Bu Hafta' },
-                                { key: 'MONTH', label: 'Bu Ay' },
-                            ].map(({ key, label }) => (
-                                <button
-                                    key={key}
-                                    className={`date-preset-btn${dateFilter === key && dateFilter !== 'CUSTOM' ? ' active' : ''}`}
-                                    onClick={() => { setDateFilter(key); setDateFrom(''); setDateTo(''); setPage(1); }}
-                                >
-                                    {label}
-                                </button>
+                                ['TODAY', 'Bugün', 'YESTERDAY', 'Dün'],
+                                ['WEEK', 'Bu Hafta', 'LAST_WEEK', 'Geçen Hafta'],
+                                ['MONTH', 'Bu Ay', 'LAST_MONTH', 'Geçen Ay'],
+                                ['YEAR', 'Bu Yıl', 'LAST_YEAR', 'Geçen Yıl'],
+                            ].map(([k1, l1, k2, l2]) => (
+                                <div key={k1} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <button
+                                        className={`date-preset-btn${dateFilter === k1 && dateFilter !== 'CUSTOM' ? ' active' : ''}`}
+                                        onClick={() => { setDateFilter(k1); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                    >{l1}</button>
+                                    <button
+                                        className={`date-preset-btn${dateFilter === k2 && dateFilter !== 'CUSTOM' ? ' active' : ''}`}
+                                        onClick={() => { setDateFilter(k2); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                    >{l2}</button>
+                                </div>
                             ))}
-                            <div className="date-preset-custom" ref={dateFilterRef}>
+                            <div className="date-preset-custom" ref={dateFilterRef} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <button
+                                    className={`date-preset-btn${dateFilter === 'ALL' ? ' active' : ''}`}
+                                    onClick={() => { setDateFilter('ALL'); setDateFrom(''); setDateTo(''); setPage(1); }}
+                                >Tümü</button>
                                 <button
                                     className={`date-preset-btn${dateFilter === 'CUSTOM' ? ' active' : ''}`}
                                     onClick={() => setDateFilterOpen(o => !o)}
                                 >
-                                    <Calendar size={13} />
+                                    <Calendar size={11} />
                                     {dateFilter === 'CUSTOM' && (dateFrom || dateTo) ? `${dateFrom || '...'} — ${dateTo || '...'}` : 'Özel'}
                                 </button>
                                 {dateFilterOpen && (
@@ -1670,90 +1688,22 @@ const Customers = () => {
                                     </div>
                                 )}
                             </div>
-                        </div>
-                        {/* Clear All Filters Button — only visible when any filter is active */}
-                        {(() => {
-                            const hasActiveFilter = 
-                                dateFilter !== 'ALL' || 
-                                funnelFilter !== 'ALL' || 
-                                funnelStageFilter !== 'ALL' || 
-                                mergedFunnelIds || 
-                                selectedFunnelIds.length > 0 ||
-                                assignmentFilter !== 'all' || 
-                                sourceFilter !== 'ALL' || 
-                                tagFilter !== 'ALL' || 
-                                categoryFilter !== 'ALL' ||
-                                statusFilter !== 'ALL' ||
-                                contactInfoFilter !== 'ALL' || 
-                                callStatusFilter !== 'ALL' || 
-                                importGroupFilter !== 'ALL' ||
-                                quickFilterMode !== 'ALL' ||
-                                search !== '';
-                            return hasActiveFilter ? (
-                                <button
-                                    className="btn-clear-all-filters"
-                                    onClick={() => {
-                                        setDateFilter('ALL');
-                                        setDateFrom('');
-                                        setDateTo('');
-                                        setFunnelFilter('ALL');
-                                        setFunnelStageFilter('ALL');
-                                        setMergedFunnelIds(null);
-                                        setSelectedFunnelIds([]);
-                                        setAssignmentFilter('all');
-                                        setSourceFilter('ALL');
-                                        setTagFilter('ALL');
-                                        setCategoryFilter('ALL');
-                                        setStatusFilter('ALL');
-                                        setContactInfoFilter('ALL');
-                                        setCallStatusFilter('ALL');
-                                        setImportGroupFilter('ALL');
-                                        setQuickFilterMode('ALL');
-                                        setSearch('');
-                                        setPage(1);
-                                        try { sessionStorage.removeItem(FILTER_STORAGE_KEY); } catch {}
-                                    }}
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        height: '30px',
-                                        padding: '0 12px',
-                                        border: '1px solid #fecaca',
-                                        borderRadius: '8px',
-                                        background: '#fef2f2',
-                                        fontSize: '0.75rem',
-                                        fontWeight: 600,
-                                        color: '#dc2626',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s',
-                                        whiteSpace: 'nowrap',
-                                        marginLeft: '6px',
-                                        flexShrink: 0
-                                    }}
-                                    onMouseEnter={(e) => { e.target.style.background = '#fee2e2'; e.target.style.borderColor = '#fca5a5'; }}
-                                    onMouseLeave={(e) => { e.target.style.background = '#fef2f2'; e.target.style.borderColor = '#fecaca'; }}
-                                    title="Tüm filtreleri kaldır"
-                                >
-                                    <X size={13} />
-                                    Filtreleri Kaldır
-                                </button>
-                            ) : null;
-                        })()}
-                        <div className="header-right-actions">
-                            <label className="active-only-check" title="İşaretlenirse sadece aktif kişiler gösterilir">
+                            <label className="active-only-check" style={{ marginLeft: 'auto' }} title="İşaretlenirse kapanan aşamadaki kişiler gizlenir">
                                 <input
                                     type="checkbox"
                                     checked={onlyOpenCases}
                                     onChange={() => setOnlyOpenCases(!onlyOpenCases)}
                                 />
-                                <span>Sadece Aktifleri Göster</span>
+                                <span>Kapananları Gizle</span>
                             </label>
+                        </div>
+
+                        <div className="header-right-actions">
                             <button
                                 className="btn-add-contact"
                                 onClick={() => setIsModalOpen(true)}
                             >
-                                <Plus size={18} />
+                                <Plus size={14} />
                             </button>
                             <button
                                 className={`inbox-view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
@@ -1874,10 +1824,10 @@ const Customers = () => {
 
                         {/* Hızlı Filtre Pill'leri — Tümü yok, diğerleri pill */}
                         {[
-                            { key: 'NO_PHONE', label: 'Numarasız Başvurular', icon: PhoneOff, count: quickStats.noPhoneCount, colorClass: 'today' },
+                            { key: 'NO_PHONE', label: 'Numarasızlar', icon: PhoneOff, count: quickStats.noPhoneCount, colorClass: 'today' },
                             { key: 'HAS_PHONE', label: 'Numaralılar', icon: Phone, count: quickStats.withPhoneCount, colorClass: 'phone' },
-                            { key: 'AGENT_CALLS', label: 'Agent Aramaları', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
-                            { key: 'NO_ACTIVITY', label: 'İletişim Yok', icon: CircleOff, count: quickStats.noActivityCount, colorClass: 'no-activity' },
+                            { key: 'AGENT_CALLS', label: 'Aramalar', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
+                            { key: 'NO_ACTIVITY', label: 'Aranmayanlar', icon: CircleOff, count: quickStats.noActivityCount, colorClass: 'no-activity' },
                             { key: 'AI_CALLS', label: 'AI Aramaları', icon: Bot, count: quickStats.aiCalledCount, colorClass: 'ai' },
                         ].map(btn => {
                             const isActive = quickFilterMode === btn.key;
@@ -2115,14 +2065,14 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                             />
                                         </th>
                                         {[
-                                            { key: 'name', label: 'KİŞİ', style: { minWidth: '220px', maxWidth: '300px' } },
-                                            { key: null, label: 'KONU', style: { minWidth: '80px', maxWidth: '140px' } },
-                                            { key: 'status', label: 'DURUM', style: { minWidth: '120px', maxWidth: '200px' } },
-                                            { key: null, label: 'ATANAN', style: { minWidth: '80px', maxWidth: '140px' } },
-                                            { key: null, label: 'AKTİVİTELER', style: { minWidth: '120px', maxWidth: '180px' } },
-                                            { key: null, label: 'SON NOT', style: { minWidth: '100px', maxWidth: '160px' } },
-                                            { key: 'createdAt', label: 'İLK YAZMA', style: { minWidth: '90px', maxWidth: '110px' } },
-                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '90px', maxWidth: '110px' } },
+                                            { key: 'name', label: 'KİŞİ', style: { minWidth: '140px', maxWidth: '180px' } },
+                                            { key: null, label: 'KONU', style: { minWidth: '70px', maxWidth: '120px' } },
+                                            { key: 'status', label: 'DURUM', style: { minWidth: '80px', maxWidth: '120px' } },
+                                            { key: null, label: 'ATANAN', style: { minWidth: '70px', maxWidth: '120px' } },
+                                            { key: null, label: 'AKTİVİTELER', style: { minWidth: '100px', maxWidth: '140px' } },
+                                            { key: null, label: 'SON NOT', style: { minWidth: '90px', maxWidth: '130px' } },
+                                            { key: 'createdAt', label: 'İLK YAZMA', style: { minWidth: '75px', maxWidth: '95px' } },
+                                            { key: 'lastMessageAt', label: 'SON YAZMA', style: { minWidth: '75px', maxWidth: '95px' } },
                                         ].map(col => (
                                             <th
                                                 key={col.label}
@@ -2211,24 +2161,32 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                     </div>
                                                 </td>
                                                 {/* KONU */}
-                                                <td className="contact-topic" title={contact.aiTopic || ''} style={{ maxWidth: '140px' }}>
-                                                    {contact.aiTopic ? (
-                                                        <span style={{
-                                                            display: 'inline-block',
-                                                            padding: '2px 6px',
-                                                            backgroundColor: '#f0f9ff',
-                                                            color: '#0369a1',
-                                                            borderRadius: '4px',
-                                                            fontSize: '11px',
-                                                            fontWeight: 500,
-                                                            maxWidth: '130px',
-                                                            overflow: 'hidden',
-                                                            textOverflow: 'ellipsis',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            {contact.aiTopic}
-                                                        </span>
-                                                    ) : <span style={{color: '#94a3b8'}}>---</span>}
+                                                <td className="contact-topic" title={(() => { const c = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0]; return c?.title || contact.aiTopic || ''; })()} style={{ maxWidth: '140px' }}>
+                                                    {(() => {
+                                                        // Case title varsa onu göster, yoksa aiTopic'e fallback
+                                                        const activeCase = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0];
+                                                        const caseTitle = activeCase?.title;
+                                                        const raw = caseTitle || contact.aiTopic || '';
+                                                        const isDecorative = raw.includes('━') || raw.includes('═') || raw.includes('🎯');
+                                                        const topic = isDecorative ? null : raw;
+                                                        return topic ? (
+                                                            <span style={{
+                                                                display: 'inline-block',
+                                                                padding: '2px 6px',
+                                                                backgroundColor: caseTitle ? '#f5f3ff' : '#f0f9ff',
+                                                                color: caseTitle ? '#7c3aed' : '#0369a1',
+                                                                borderRadius: '4px',
+                                                                fontSize: '11px',
+                                                                fontWeight: 500,
+                                                                maxWidth: '130px',
+                                                                overflow: 'hidden',
+                                                                textOverflow: 'ellipsis',
+                                                                whiteSpace: 'nowrap'
+                                                            }}>
+                                                                {topic}
+                                                            </span>
+                                                        ) : <span style={{color: '#94a3b8'}}>---</span>;
+                                                    })()}
                                                 </td>
                                                 {/* DURUM = Akış / Aşama - Tıklanabilir */}
                                                 <td className="contact-status" style={{ maxWidth: '200px', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
@@ -2239,9 +2197,19 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         let displayBg = '#6b72801a';
                                                         let currentFunnelId = null;
 
-                                                        if (contact.funnelStageId && availableFunnels.length > 0) {
+                                                        // Case'den oku — contact.cases dizisinden direkt hesapla
+                                                        const casesForFunnel = contact.cases || [];
+                                                        const liveCaseForFunnel = casesForFunnel
+                                                            .filter(c => c.status === 'ACTIVE')
+                                                            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
+                                                            || contact.activeCase
+                                                            || casesForFunnel[0]
+                                                            || null;
+                                                        const effectiveFunnelStageId = liveCaseForFunnel?.funnelStageId || contact.activeCase?.funnelStageId || contact.funnelStageId;
+
+                                                        if (effectiveFunnelStageId && availableFunnels.length > 0) {
                                                             for (const funnel of availableFunnels) {
-                                                                const s = funnel.stages?.find(x => x.id === contact.funnelStageId);
+                                                                const s = funnel.stages?.find(x => x.id === effectiveFunnelStageId);
                                                                 if (s) {
                                                                     funnelName = funnel.name;
                                                                     stageName = s.name;
@@ -2454,16 +2422,48 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                 {/* ATANAN */}
                                                 <td className="contact-assigned" style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                                                     {(() => {
-                                                        // En son konuşmayı al (sidebar ile aynı kaynağı kullan)
-                                                        const convs = contact.conversations || [];
-                                                        const conv = convs.length > 0 ? convs[convs.length - 1] : null;
-                                                        if (!conv) return '---';
-                                                        const teamId = conv.assignedTeamId || (() => {
-                                                            try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
-                                                        })();
+                                                        let teamId = null;
+                                                        let agentName = null;
+
+                                                        // 1. Cases dizisinden aktif case'i bul (backend mapping'e bağımlı OLMA)
+                                                        const cases = contact.cases || [];
+                                                        const liveActiveCase = cases
+                                                            .filter(c => c.status === 'ACTIVE')
+                                                            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
+                                                            || contact.activeCase
+                                                            || cases[0]
+                                                            || null;
+
+                                                        if (liveActiveCase && (liveActiveCase.assignedTeamId || liveActiveCase.assignedToId)) {
+                                                            teamId = liveActiveCase.assignedTeamId;
+                                                            agentName = liveActiveCase.assignedTo?.name
+                                                                || liveActiveCase.assignedToName
+                                                                || members.find(m => m.userId === liveActiveCase.assignedToId)?.user?.name
+                                                                || null;
+                                                        } else {
+                                                            // 2. Case yoksa veya case'de atama yoksa → konuşmadan çek
+                                                            const convs = [...(contact.conversations || [])].sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt));
+                                                            let conv = null;
+                                                            if (liveActiveCase?.id) {
+                                                                conv = convs.find(c => c.caseId === liveActiveCase.id) || convs[0];
+                                                            } else {
+                                                                conv = convs[0] || null;
+                                                            }
+                                                            if (!conv) return '---';
+                                                            
+                                                            teamId = conv.assignedTeamId || (() => {
+                                                                try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
+                                                            })();
+                                                            agentName = conv.assignedTo?.name || null;
+                                                        }
+
+                                                        if (agentName && agentName.includes('@')) {
+                                                            const parts = agentName.split('@')[0].split('.');
+                                                            agentName = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+                                                        }
+
                                                         const team = teamId ? teams.find(t => t.id === teamId) : null;
-                                                        const agentName = conv.assignedTo?.name;
-                                                        if (team && agentName) return `${team.name} / ${agentName}`;
+                                                        if (team && agentName) return `${agentName} / ${team.name}`;
                                                         if (team) return team.name;
                                                         if (agentName) return agentName;
                                                         return '---';
@@ -3036,6 +3036,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                 {/* Right Sidebar - Shared ContactSidebar Component */}
                 {selectedContact && (
                     <ContactSidebar
+                        key={selectedContact.id}
                         contactId={selectedContact.id}
                         isOpen={!!selectedContact}
                         onClose={() => setSelectedContact(null)}
@@ -3047,34 +3048,56 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                 if (!skipApi) {
                                     await conversationAPI.assign(currentWorkspace.id, convId, { teamId });
                                 }
-                                // Anında lokal güncelle — tabloyu bekletme
                                 const teamObj = teamId ? teams.find(t => t.id === teamId) : null;
+                                const targetContactId = selectedContact.id;
                                 setContacts(prev => prev.map(c => {
-                                    if (c.id !== selectedContact.id) return c;
+                                    if (c.id !== targetContactId) return c;
                                     const convs = (c.conversations || []).map(cv =>
                                         cv.id === convId ? { ...cv, assignedTeamId: teamId || null, teamIds: teamId ? JSON.stringify([teamId]) : '[]' } : cv
                                     );
-                                    return { ...c, conversations: convs };
+                                    let newActiveCase = c.activeCase;
+                                    if (newActiveCase) {
+                                        newActiveCase = { ...newActiveCase, assignedTeamId: teamId || null };
+                                    }
+                                    return { ...c, conversations: convs, activeCase: newActiveCase };
                                 }));
                                 silentReloadContacts();
                             } catch (err) { console.error('Team assign error:', err); }
                         }}
-                        onAssignUser={async (convId, userId, skipApi) => {
+                        onAssignUser={async (convId, userId, skipApi, teamId) => {
                             try {
                                 if (!skipApi) {
-                                    await conversationAPI.assign(currentWorkspace.id, convId, { userId: userId || null });
+                                    const payload = { userId: userId || null };
+                                    if (teamId !== undefined) payload.teamId = teamId || null;
+                                    await conversationAPI.assign(currentWorkspace.id, convId, payload);
                                 }
                                 // Anında lokal güncelle — tabloyu bekletme
                                 const foundMember = userId ? (members.find(m => (m.user?.id || m.userId) === userId) || members.find(m => m.id === userId)) : null;
                                 const agentObj = foundMember ? { id: userId, name: foundMember.user?.name || foundMember.name || 'Agent' } : (userId ? { id: userId, name: 'Agent' } : null);
+                                const targetContactId = selectedContact.id;
                                 setContacts(prev => prev.map(c => {
-                                    if (c.id !== selectedContact.id) return c;
-                                    const convs = (c.conversations || []).map(cv =>
-                                        cv.id === convId ? { ...cv, assignedToId: userId || null, assignedTo: agentObj } : cv
-                                    );
-                                    return { ...c, conversations: convs };
+                                    if (c.id !== targetContactId) return c;
+                                    const convs = (c.conversations || []).map(cv => {
+                                        if (cv.id !== convId) return cv;
+                                        const updatedCv = { ...cv, assignedToId: userId || null, assignedTo: agentObj };
+                                        if (teamId !== undefined) {
+                                            updatedCv.assignedTeamId = teamId || null;
+                                            updatedCv.teamIds = teamId ? JSON.stringify([teamId]) : '[]';
+                                        }
+                                        return updatedCv;
+                                    });
+                                    let newActiveCase = c.activeCase;
+                                    if (newActiveCase) {
+                                        newActiveCase = { ...newActiveCase, assignedToId: userId || null, assignedToName: agentObj?.name || null };
+                                        if (teamId !== undefined) {
+                                            newActiveCase.assignedTeamId = teamId || null;
+                                        }
+                                    }
+                                    return { ...c, conversations: convs, activeCase: newActiveCase };
                                 }));
-                                silentReloadContacts();
+                                setTimeout(() => {
+                                    silentReloadContacts();
+                                }, 300);
                             } catch (err) { console.error('User assign error:', err); }
                         }}
                         onTakeOver={async (convId) => {

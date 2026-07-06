@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     DollarSign, ShoppingCart, FileText, RefreshCw, Filter, ArrowLeft,
     TrendingUp, UserCheck, Receipt, XCircle, CheckCircle2, Clock,
-    ArrowUpRight, ArrowDownRight, PieChart
+    ArrowUpRight, ArrowDownRight, PieChart, Package
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -175,8 +175,61 @@ const SalesReport = () => {
         return Object.values(groups).sort((a, b) => b.count - a.count);
     };
 
+    const getGroupedProducts = () => {
+        if (!orderDeals || orderDeals.length === 0) return [];
+        const products = {};
+        orderDeals.forEach(deal => {
+            let items = [];
+            try {
+                items = typeof deal.products === 'string' ? JSON.parse(deal.products || '[]') : (deal.products || []);
+            } catch { return; }
+            items.forEach(item => {
+                if (!item.name) return;
+                const key = item.name.trim().toLowerCase();
+                if (!products[key]) {
+                    products[key] = { name: item.name.trim(), totalQty: 0, totalRevenue: 0, dealCount: 0 };
+                }
+                products[key].totalQty += (item.quantity || 1);
+                products[key].totalRevenue += ((item.quantity || 1) * (item.unitPrice || 0));
+                products[key].dealCount += 1;
+            });
+        });
+        return Object.values(products).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    };
+
+    const getGroupedProductGroups = () => {
+        // Group products by their catalog group if possible — 
+        // since deals store products inline without group info,
+        // we group by product name prefix or just show per-product
+        // For now, we'll aggregate all unique product names and group by first word as category
+        if (!orderDeals || orderDeals.length === 0) return [];
+        const groups = {};
+        orderDeals.forEach(deal => {
+            let items = [];
+            try {
+                items = typeof deal.products === 'string' ? JSON.parse(deal.products || '[]') : (deal.products || []);
+            } catch { return; }
+            items.forEach(item => {
+                if (!item.name) return;
+                // Use item.group if available (new catalog items may have it), otherwise use product name as group
+                const groupName = item.group || item.name.trim();
+                const key = groupName.toLowerCase();
+                if (!groups[key]) {
+                    groups[key] = { name: groupName, totalQty: 0, totalRevenue: 0, productCount: 0, dealCount: 0 };
+                }
+                groups[key].totalQty += (item.quantity || 1);
+                groups[key].totalRevenue += ((item.quantity || 1) * (item.unitPrice || 0));
+                groups[key].productCount += 1;
+                groups[key].dealCount += 1;
+            });
+        });
+        return Object.values(groups).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    };
+
     const groupedSubjects = getGroupedSubjects();
     const groupedSources = getGroupedSources();
+    const groupedProducts = getGroupedProducts();
+    const groupedProductGroups = getGroupedProductGroups();
 
     return (
         <div className="ceo-report">
@@ -410,6 +463,106 @@ const SalesReport = () => {
                                         <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(grp.amount)}</span></td>
                                     </tr>
                                 ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Ürün Bazlı Satışlar */}
+            {groupedProducts.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 20 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#fce7f3', color: '#db2777' }}><Package size={18} /></div>
+                        <h2>Ürün Bazlı Satışlar</h2>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>Ürün</th>
+                                    <th>Satış Adedi</th>
+                                    <th>Toplam Miktar</th>
+                                    <th>Toplam Ciro</th>
+                                    <th>Oran</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groupedProducts.map((prod, idx) => {
+                                    const totalRev = groupedProducts.reduce((s, p) => s + p.totalRevenue, 0);
+                                    const pct = totalRev > 0 ? ((prod.totalRevenue / totalRev) * 100).toFixed(1) : 0;
+                                    return (
+                                        <tr key={idx}>
+                                            <td>
+                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{prod.name}</div>
+                                            </td>
+                                            <td><span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{prod.dealCount}</span></td>
+                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{prod.totalQty}</span></td>
+                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(prod.totalRevenue)}</span></td>
+                                            <td>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #ec4899, #db2777)', borderRadius: 3, transition: 'width 0.6s' }} />
+                                                    </div>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#db2777', minWidth: 36 }}>%{pct}</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Ürün Grubu Bazlı Satışlar */}
+            {groupedProductGroups.length > 1 && (
+                <div className="ceo-section" style={{ marginBottom: 20 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#ede9fe', color: '#7c3aed' }}><PieChart size={18} /></div>
+                        <h2>Ürün Grubu Bazlı Satışlar</h2>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>Grup</th>
+                                    <th>Ürün Çeşidi</th>
+                                    <th>Toplam Miktar</th>
+                                    <th>Toplam Ciro</th>
+                                    <th>Oran</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groupedProductGroups.map((grp, idx) => {
+                                    const totalRev = groupedProductGroups.reduce((s, g) => s + g.totalRevenue, 0);
+                                    const pct = totalRev > 0 ? ((grp.totalRevenue / totalRev) * 100).toFixed(1) : 0;
+                                    return (
+                                        <tr key={idx}>
+                                            <td>
+                                                <span style={{
+                                                    display: 'inline-block', padding: '3px 10px',
+                                                    background: '#ede9fe', color: '#7c3aed',
+                                                    borderRadius: 6, fontSize: '0.78rem', fontWeight: 700
+                                                }}>
+                                                    {grp.name}
+                                                </span>
+                                            </td>
+                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{grp.productCount}</span></td>
+                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{grp.totalQty}</span></td>
+                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(grp.totalRevenue)}</span></td>
+                                            <td>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden' }}>
+                                                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #7c3aed)', borderRadius: 3, transition: 'width 0.6s' }} />
+                                                    </div>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7c3aed', minWidth: 36 }}>%{pct}</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

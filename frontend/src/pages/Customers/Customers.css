@@ -21,17 +21,18 @@
 .contacts-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 24px;
+    gap: 8px;
+    padding: 8px 16px;
     border-bottom: 1px solid #e5e7eb;
     background: #ffffff;
 }
 
 .contacts-header h1 {
-    font-size: 24px;
+    font-size: 16px;
     font-weight: 700;
     color: #1f2937;
     margin: 0;
+    white-space: nowrap;
 }
 
 .contacts-search {
@@ -70,17 +71,18 @@
 }
 
 .btn-add-contact {
-    width: 40px;
-    height: 40px;
+    width: 30px;
+    height: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #ef4444;
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s;
+    flex-shrink: 0;
 }
 
 .btn-add-contact:hover {
@@ -2408,24 +2410,26 @@
 .contacts-date-presets {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
     flex-shrink: 0;
+    flex-wrap: wrap;
 }
 
 .date-preset-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 6px 14px;
+    gap: 2px;
+    padding: 3px 6px;
     border: 1px solid #e5e7eb;
-    border-radius: 20px;
+    border-radius: 10px;
     background: #ffffff;
     color: #6b7280;
-    font-size: 12px;
+    font-size: 10.5px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
     white-space: nowrap;
+    line-height: 1.3;
 }
 
 .date-preset-btn:hover {

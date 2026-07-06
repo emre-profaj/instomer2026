@@ -83,7 +83,23 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
             WEB_WIDGET: '🌐 Web Widget'
         };
         const channelLabel = channelLabels[conv.channel] || conv.channel || 'Yeni İletişim';
-        const title = conv.aiTopic || channelLabel;
+        
+        // aiTopic'ten dekoratif başlıkları temizle (form mesaj headerları)
+        let topic = conv.aiTopic;
+        if (topic && (topic.includes('━') || topic.includes('═') || topic.includes('🎯'))) {
+            topic = null; // Dekoratif başlık, gerçek konu değil
+        }
+        
+        // FORM kanalı için topic boşsa, formSubmission'dan konu çek
+        if (!topic && conv.channel === 'FORM') {
+            const latestSubmission = await prisma.formSubmission.findFirst({
+                where: { conversationId },
+                orderBy: { createdAt: 'desc' },
+                select: { message: true, formWebhook: { select: { name: true } } }
+            });
+            topic = latestSubmission?.message || latestSubmission?.formWebhook?.name || null;
+        }
+        const title = topic || channelLabel;
 
         const newCase = await prisma.case.create({
             data: {
@@ -205,6 +221,7 @@ export const getContactCases = async (req, res) => {
         // ── AUTO-SYNC: Case funnelStageId boşsa ama bağlı conversation'da doluysa, case'i güncelle ──
         // + Case title generic kanal etiketi ise ama conversation'da aiTopic varsa, case title'ı güncelle
         const GENERIC_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case'];
+        const isGenericOrDecorative = (t) => !t || GENERIC_TITLES.includes(t.trim()) || t.includes('━') || t.includes('═') || t.includes('🎯');
         for (const c of cases) {
             let needsUpdate = false;
             const updateData = {};
@@ -269,10 +286,10 @@ export const getContactCases = async (req, res) => {
                 }
             }
 
-            // Title sync: generic kanal etiketi → conversation aiTopic
-            if (c.conversations?.length > 0 && (!c.title || GENERIC_TITLES.includes(c.title.trim()))) {
+            // Title sync: generic/dekoratif başlık → conversation aiTopic
+            if (c.conversations?.length > 0 && isGenericOrDecorative(c.title)) {
                 const convWithTopic = c.conversations
-                    .filter(cv => cv.aiTopic && !GENERIC_TITLES.includes(cv.aiTopic.trim()))
+                    .filter(cv => cv.aiTopic && !isGenericOrDecorative(cv.aiTopic))
                     .sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0))[0];
                 if (convWithTopic) {
                     updateData.title = convWithTopic.aiTopic.trim().substring(0, 200);
@@ -795,5 +812,93 @@ export const deleteCase = async (req, res) => {
     } catch (err) {
         console.error('deleteCase error:', err);
         res.status(500).json({ error: 'Case silinemedi' });
+    }
+};
+
+// ─── Sync Closing Stages ─────────────────────────────────────────────
+// Kapanış aşamasında olup status'u hâlâ ACTIVE olan case'leri düzeltir
+export const syncClosingStages = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const dryRun = req.query.dryRun === 'true';
+
+        // 1. Bu workspace'teki kapanış aşamalarını bul
+        const closingStages = await prisma.funnelStage.findMany({
+            where: {
+                isClosing: true,
+                funnel: { workspaceId }
+            },
+            include: { funnel: { select: { name: true } } }
+        });
+
+        const closingStageIds = closingStages.map(s => s.id);
+        if (closingStageIds.length === 0) {
+            return res.json({ message: 'Kapanış aşaması bulunamadı', fixed: 0 });
+        }
+
+        // 2. Tutarsız case'leri bul
+        const mismatchedCases = await prisma.case.findMany({
+            where: {
+                workspaceId,
+                status: 'ACTIVE',
+                funnelStageId: { in: closingStageIds }
+            },
+            include: {
+                conversations: { select: { id: true, status: true } },
+                contact: { select: { name: true } }
+            }
+        });
+
+        if (dryRun) {
+            return res.json({
+                message: `${mismatchedCases.length} tutarsız case bulundu (dry-run)`,
+                count: mismatchedCases.length,
+                cases: mismatchedCases.map(c => ({
+                    caseNumber: c.caseNumber,
+                    contact: c.contact?.name,
+                    currentStage: closingStages.find(s => s.id === c.funnelStageId)?.name,
+                    newStatus: closingStages.find(s => s.id === c.funnelStageId)?.statusType || 'CLOSED'
+                }))
+            });
+        }
+
+        // 3. Güncelle
+        let updatedCases = 0;
+        let updatedConversations = 0;
+
+        for (const c of mismatchedCases) {
+            const stage = closingStages.find(s => s.id === c.funnelStageId);
+            const newStatus = stage?.statusType || 'CLOSED';
+
+            await prisma.case.update({
+                where: { id: c.id },
+                data: {
+                    status: newStatus,
+                    closedAt: newStatus === 'CLOSED' ? new Date() : undefined,
+                    wonAt: newStatus === 'WON' ? new Date() : undefined,
+                    lostAt: newStatus === 'LOST' ? new Date() : undefined
+                }
+            });
+            updatedCases++;
+
+            for (const conv of c.conversations) {
+                if (conv.status === 'OPEN') {
+                    await prisma.conversation.update({
+                        where: { id: conv.id },
+                        data: { status: 'RESOLVED' }
+                    });
+                    updatedConversations++;
+                }
+            }
+        }
+
+        res.json({
+            message: 'Senkronizasyon tamamlandı',
+            updatedCases,
+            updatedConversations
+        });
+    } catch (err) {
+        console.error('syncClosingStages error:', err);
+        res.status(500).json({ error: 'Senkronizasyon hatası' });
     }
 };

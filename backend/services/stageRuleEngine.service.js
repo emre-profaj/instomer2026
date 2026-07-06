@@ -71,7 +71,7 @@ function evaluateRule(rule, context) {
 
         case 'MESSAGE_COUNT_GT': {
             const totalMessages = context.conversations?.reduce(
-                (sum, c) => sum + (c.messageCount || 0), 0
+                (sum, c) => sum + (c._count?.messages || 0), 0
             ) || 0;
             return totalMessages > (rule.value || 0);
         }
@@ -290,7 +290,7 @@ async function _loadContext(contactId, workspaceId) {
             select: {
                 id: true,
                 aiTopic: true,
-                messageCount: true,
+                _count: { select: { messages: true } },
                 funnelType: true,
                 funnelStageId: true,
             },

@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, knowledgeBaseAPI, retellAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck } from 'lucide-react';
+import { workspaceAPI, knowledgeBaseAPI, retellAPI, productAPI } from '../../services/api';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, Package, Check } from 'lucide-react';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -49,12 +49,118 @@ const KnowledgeBase = () => {
     });
     const [savingCompany, setSavingCompany] = useState(false);
 
+    // Product KB Integration States
+    const [productKbEnabled, setProductKbEnabled] = useState(false);
+    const [productKbGroups, setProductKbGroups] = useState([]); // available groups
+    const [productKbSelectedGroups, setProductKbSelectedGroups] = useState([]); // 'ALL' or array of group names
+    const [productKbIncludePrice, setProductKbIncludePrice] = useState(false);
+    const [productKbSaving, setProductKbSaving] = useState(false);
+    const [productKbSynced, setProductKbSynced] = useState(false);
+
     useEffect(() => {
         if (currentWorkspace) {
             loadKnowledgeBase();
             loadCompanyInfo();
+            loadProductKbSettings();
+            loadProductGroups();
         }
     }, [currentWorkspace]);
+
+    const loadProductGroups = async () => {
+        try {
+            const res = await productAPI.getGroups(currentWorkspace.id);
+            setProductKbGroups((res.data.groups || []).map(g => g.groupName).filter(Boolean));
+        } catch (err) {
+            console.error('Error loading product groups:', err);
+        }
+    };
+
+    const loadProductKbSettings = async () => {
+        try {
+            // Load saved product KB settings from knowledge base (stored as a special entry)
+            const response = await knowledgeBaseAPI.getAll(currentWorkspace.id);
+            const entries = response.data.entries || [];
+            const productEntry = entries.find(e => e.sourceType === 'PRODUCT_CATALOG');
+            if (productEntry) {
+                setProductKbEnabled(true);
+                try {
+                    const meta = JSON.parse(productEntry.title || '{}');
+                    setProductKbIncludePrice(meta.includePrice || false);
+                    setProductKbSelectedGroups(meta.selectedGroups || []);
+                } catch { }
+            }
+        } catch (err) {
+            console.error('Error loading product KB settings:', err);
+        }
+    };
+
+    const handleSaveProductKb = async () => {
+        setProductKbSaving(true);
+        setProductKbSynced(false);
+        try {
+            // First delete existing product catalog entries
+            const response = await knowledgeBaseAPI.getAll(currentWorkspace.id);
+            const entries = response.data.entries || [];
+            const existingProductEntries = entries.filter(e => e.sourceType === 'PRODUCT_CATALOG');
+            for (const entry of existingProductEntries) {
+                await knowledgeBaseAPI.delete(currentWorkspace.id, entry.id);
+            }
+
+            if (productKbEnabled) {
+                // Fetch products based on group selection
+                const params = { limit: 9999 };
+                const res = await productAPI.getAll(currentWorkspace.id, params);
+                let products = res.data.products || [];
+
+                // Filter by selected groups
+                if (productKbSelectedGroups.length > 0) {
+                    products = products.filter(p => productKbSelectedGroups.includes(p.groupName));
+                }
+
+                // Build content text
+                let content = '=== ÜRÜN VE HİZMET KATALOĞU ===\n\n';
+                if (products.length === 0) {
+                    content += 'Henüz ürün/hizmet eklenmemiş.\n';
+                } else {
+                    for (const p of products) {
+                        content += `Ürün: ${p.name}\n`;
+                        if (p.description) content += `Açıklama: ${p.description}\n`;
+                        if (p.groupName) content += `Grup: ${p.groupName}\n`;
+                        if (p.unit) content += `Birim: ${p.unit}\n`;
+                        if (productKbIncludePrice) {
+                            content += `Fiyat: ${p.price ? p.price.toLocaleString('tr-TR') + ' ₺' : 'Belirtilmemiş'}\n`;
+                            if (p.discountedPrice) content += `İndirimli Fiyat: ${p.discountedPrice.toLocaleString('tr-TR')} ₺\n`;
+                            if (p.priceUSD) content += `USD Fiyat: $${p.priceUSD}\n`;
+                            if (p.priceEUR) content += `EUR Fiyat: €${p.priceEUR}\n`;
+                        }
+                        content += '\n---\n\n';
+                    }
+                }
+
+                // Save as a KB entry with sourceType PRODUCT_CATALOG
+                const meta = JSON.stringify({
+                    includePrice: productKbIncludePrice,
+                    selectedGroups: productKbSelectedGroups,
+                    productCount: products.length
+                });
+
+                await knowledgeBaseAPI.create(currentWorkspace.id, {
+                    title: meta,
+                    content: content,
+                    sourceType: 'PRODUCT_CATALOG'
+                });
+
+                setProductKbSynced(true);
+                setTimeout(() => setProductKbSynced(false), 5000);
+            }
+
+            loadKnowledgeBase();
+        } catch (err) {
+            console.error('Error saving product KB:', err);
+        } finally {
+            setProductKbSaving(false);
+        }
+    };
 
     const loadKnowledgeBase = async () => {
         try {
@@ -377,6 +483,13 @@ const KnowledgeBase = () => {
                 >
                     <Database size={16} />
                     Tüm Bilgiler ({knowledgeEntries.length})
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'products' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('products')}
+                >
+                    <Package size={16} />
+                    Ürünler
                 </button>
             </div>
 
@@ -753,6 +866,162 @@ Hizmet bölgeleri: [Türkiye, Avrupa, Ortadoğu vb.]
                             {scraping ? 'Veri Çekiliyor...' : 'Feed Bağla ve Ekle'}
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* Products Integration Tab */}
+            {activeTab === 'products' && (
+                <div className="card" style={{ padding: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                        <Package size={24} style={{ color: '#6366f1' }} />
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#1e293b' }}>Ürün Kataloğu Entegrasyonu</h3>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.8rem', color: '#64748b' }}>AI asistanınızın ürün/hizmet bilgilerini kullanmasını sağlayın.</p>
+                        </div>
+                    </div>
+
+                    {/* Enable Toggle */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: productKbEnabled ? '#f0fdf4' : '#f8fafc', borderRadius: '10px', border: `1px solid ${productKbEnabled ? '#bbf7d0' : '#e2e8f0'}`, marginBottom: '16px' }}>
+                        <div>
+                            <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>Ürün bilgilerini AI’a aktar</div>
+                            <div style={{ fontSize: '0.76rem', color: '#64748b' }}>Açık olduğunda AI asistan müşterilere ürünler hakkında bilgi verebilir.</div>
+                        </div>
+                        <label style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={productKbEnabled} onChange={(e) => setProductKbEnabled(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+                            <span style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: productKbEnabled ? '#22c55e' : '#cbd5e1', borderRadius: '12px', transition: 'all 0.3s' }}>
+                                <span style={{ position: 'absolute', left: productKbEnabled ? '22px' : '2px', top: '2px', width: '20px', height: '20px', background: '#fff', borderRadius: '50%', transition: 'all 0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)' }} />
+                            </span>
+                        </label>
+                    </div>
+
+                    {productKbEnabled && (
+                        <>
+                            {/* Info Level */}
+                            <div style={{ marginBottom: '16px' }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Hangi bilgiler eklensin?</label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        onClick={() => setProductKbIncludePrice(false)}
+                                        style={{
+                                            flex: 1, padding: '10px 14px', borderRadius: '8px',
+                                            border: `2px solid ${!productKbIncludePrice ? '#6366f1' : '#e2e8f0'}`,
+                                            background: !productKbIncludePrice ? '#eef2ff' : '#fff',
+                                            fontSize: '0.82rem', fontWeight: 600,
+                                            color: !productKbIncludePrice ? '#4f46e5' : '#64748b',
+                                            cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
+                                        }}
+                                    >
+                                        <div>📦 Sadece Ürün Bilgileri</div>
+                                        <div style={{ fontSize: '0.7rem', fontWeight: 400, marginTop: '2px' }}>Ad, açıklama, birim, grup</div>
+                                    </button>
+                                    <button
+                                        onClick={() => setProductKbIncludePrice(true)}
+                                        style={{
+                                            flex: 1, padding: '10px 14px', borderRadius: '8px',
+                                            border: `2px solid ${productKbIncludePrice ? '#6366f1' : '#e2e8f0'}`,
+                                            background: productKbIncludePrice ? '#eef2ff' : '#fff',
+                                            fontSize: '0.82rem', fontWeight: 600,
+                                            color: productKbIncludePrice ? '#4f46e5' : '#64748b',
+                                            cursor: 'pointer', transition: 'all 0.2s', textAlign: 'left'
+                                        }}
+                                    >
+                                        <div>💰 Ürün + Fiyat Bilgileri</div>
+                                        <div style={{ fontSize: '0.7rem', fontWeight: 400, marginTop: '2px' }}>Ad, açıklama, birim, grup, fiyat, indirimli fiyat</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Group Selection */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Hangi ürün grupları dahil edilsin?</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                    <button
+                                        onClick={() => setProductKbSelectedGroups([])}
+                                        style={{
+                                            padding: '6px 12px', borderRadius: '6px',
+                                            border: `1.5px solid ${productKbSelectedGroups.length === 0 ? '#6366f1' : '#e2e8f0'}`,
+                                            background: productKbSelectedGroups.length === 0 ? '#eef2ff' : '#fff',
+                                            fontSize: '0.78rem', fontWeight: 600,
+                                            color: productKbSelectedGroups.length === 0 ? '#4f46e5' : '#64748b',
+                                            cursor: 'pointer', transition: 'all 0.15s'
+                                        }}
+                                    >
+                                        {productKbSelectedGroups.length === 0 && <Check size={13} style={{ marginRight: '4px' }} />}
+                                        Tümü
+                                    </button>
+                                    {productKbGroups.map(g => {
+                                        const isSelected = productKbSelectedGroups.includes(g);
+                                        return (
+                                            <button
+                                                key={g}
+                                                onClick={() => {
+                                                    if (isSelected) {
+                                                        setProductKbSelectedGroups(prev => prev.filter(x => x !== g));
+                                                    } else {
+                                                        setProductKbSelectedGroups(prev => [...prev, g]);
+                                                    }
+                                                }}
+                                                style={{
+                                                    padding: '6px 12px', borderRadius: '6px',
+                                                    border: `1.5px solid ${isSelected ? '#8b5cf6' : '#e2e8f0'}`,
+                                                    background: isSelected ? '#ede9fe' : '#fff',
+                                                    fontSize: '0.78rem', fontWeight: 600,
+                                                    color: isSelected ? '#7c3aed' : '#64748b',
+                                                    cursor: 'pointer', transition: 'all 0.15s'
+                                                }}
+                                            >
+                                                {isSelected && <Check size={13} style={{ marginRight: '4px' }} />}
+                                                {g}
+                                            </button>
+                                        );
+                                    })}
+                                    {productKbGroups.length === 0 && (
+                                        <span style={{ fontSize: '0.78rem', color: '#94a3b8', padding: '6px 0' }}>Henüz ürün grubu tanımlanmamış.</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Save Button */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <button
+                                    onClick={handleSaveProductKb}
+                                    disabled={productKbSaving}
+                                    style={{
+                                        padding: '10px 22px', borderRadius: '8px',
+                                        border: 'none', background: productKbSaving ? '#a5b4fc' : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                        fontSize: '0.85rem', fontWeight: 600, color: '#fff',
+                                        cursor: productKbSaving ? 'not-allowed' : 'pointer',
+                                        boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                >
+                                    <RefreshCw size={15} style={{ animation: productKbSaving ? 'spin 1s linear infinite' : 'none' }} />
+                                    {productKbSaving ? 'Kaydediliyor...' : 'Kaydet ve Senkronize Et'}
+                                </button>
+                                {productKbSynced && (
+                                    <span style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <CheckCircle2 size={16} /> Ürünler bilgi bankasına eklendi!
+                                    </span>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {/* If disabled, show save to remove */}
+                    {!productKbEnabled && (
+                        <button
+                            onClick={handleSaveProductKb}
+                            disabled={productKbSaving}
+                            style={{
+                                padding: '8px 16px', borderRadius: '8px',
+                                border: '1px solid #e2e8f0', background: '#fff',
+                                fontSize: '0.82rem', fontWeight: 600, color: '#64748b',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Kaydet
+                        </button>
+                    )}
                 </div>
             )}
 

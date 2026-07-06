@@ -410,6 +410,28 @@ export const getContacts = async (req, res) => {
                 gte = new Date(gte.getTime() + offsetMs);
                 const lastDay = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth() + 1, 0));
                 lte = new Date(lastDay.getTime() + offsetMs + 24 * 60 * 60 * 1000 - 1);
+            } else if (dateFilter === 'LAST_WEEK') {
+                const day = nowLocal.getUTCDay();
+                const diffToMonday = day === 0 ? 6 : day - 1;
+                const thisMonday = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate() - diffToMonday));
+                gte = new Date(thisMonday.getTime() - 7 * 24 * 60 * 60 * 1000);
+                gte = new Date(gte.getTime() + offsetMs);
+                lte = new Date(gte.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+            } else if (dateFilter === 'LAST_MONTH') {
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth() - 1, 1));
+                gte = new Date(gte.getTime() + offsetMs);
+                const lastDay = new Date(Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), 0));
+                lte = new Date(lastDay.getTime() + offsetMs + 24 * 60 * 60 * 1000 - 1);
+            } else if (dateFilter === 'YEAR') {
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear(), 0, 1));
+                gte = new Date(gte.getTime() + offsetMs);
+                lte = new Date(Date.UTC(nowLocal.getUTCFullYear(), 11, 31));
+                lte = new Date(lte.getTime() + offsetMs + 24 * 60 * 60 * 1000 - 1);
+            } else if (dateFilter === 'LAST_YEAR') {
+                gte = new Date(Date.UTC(nowLocal.getUTCFullYear() - 1, 0, 1));
+                gte = new Date(gte.getTime() + offsetMs);
+                lte = new Date(Date.UTC(nowLocal.getUTCFullYear() - 1, 11, 31));
+                lte = new Date(lte.getTime() + offsetMs + 24 * 60 * 60 * 1000 - 1);
             } else if (dateFilter === 'CUSTOM') {
                 if (dateFrom) { gte = parseDateStartTR(dateFrom); }
                 if (dateTo)   { lte = parseDateEndTR(dateTo); }
@@ -776,7 +798,12 @@ export const getContacts = async (req, res) => {
         // Helper function to add source field and message dates
         const enrichContactWithSource = (contact) => {
             const channels = contact.conversations?.map(c => c.channel) || [];
-            let contactSource = 'MANUAL';
+            // DB'deki source sadece anlamlı bir değerse kullan
+            // MANUAL veya null ise → en eski conversation channel'ını tercih et
+            const MEANINGFUL_SOURCES = ['FACEBOOK_LEAD', 'WEB_FORM', 'FORM', 'WHATSAPP', 'INSTAGRAM', 'FACEBOOK', 'EMAIL', 'WIDGET', 'LEAD'];
+            const dbSource = contact.source || null;
+            const hasMeaningfulSource = dbSource && MEANINGFUL_SOURCES.includes(dbSource.toUpperCase());
+            let contactSource = hasMeaningfulSource ? dbSource : null;
 
             let firstMessageAt = null;
             let lastMessageAt = null;
@@ -796,13 +823,16 @@ export const getContacts = async (req, res) => {
                     lastMessageAt = new Date(Math.max(...lastMsgDates.map(d => new Date(d).getTime())));
                 }
 
-                const channelCounts = channels.reduce((acc, ch) => {
-                    acc[ch] = (acc[ch] || 0) + 1;
-                    return acc;
-                }, {});
-                contactSource = Object.entries(channelCounts)
-                    .sort((a, b) => b[1] - a[1])[0][0];
+                // Anlamlı DB source yoksa → en eski conversation'ın channel'ını kullan
+                if (!contactSource) {
+                    const sortedByCreated = [...contact.conversations].sort(
+                        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+                    );
+                    contactSource = sortedByCreated[0]?.channel || 'MANUAL';
+                }
             }
+
+            if (!contactSource) contactSource = 'MANUAL';
 
             // Get topic: prioritize last active case title, fallback to conversation aiTopic
             const lastActiveCase = contact.cases
@@ -893,14 +923,61 @@ export const getContacts = async (req, res) => {
             }
 
             // Build active case info for display
+            // Case'de atama yoksa, bağlı konuşmadan atama bilgisini çek
+            let caseAssignedToId = lastActiveCase?.assignedToId || null;
+            let caseAssignedTeamId = lastActiveCase?.assignedTeamId || null;
+            let caseAssignedToName = lastActiveCase?.assignedTo?.name || null;
+
+            if (lastActiveCase && !caseAssignedToId && !caseAssignedTeamId) {
+                // Case'e bağlı konuşmayı bul
+                const caseConv = (contact.conversations || []).find(cv => cv.caseId === lastActiveCase.id);
+                if (caseConv) {
+                    caseAssignedToId = caseConv.assignedToId || null;
+                    caseAssignedTeamId = caseConv.assignedTeamId || (() => {
+                        try { return JSON.parse(caseConv.teamIds || '[]')[0] || null; } catch { return null; }
+                    })();
+                    caseAssignedToName = caseConv.assignedTo?.name || null;
+                } else if (contact.conversations?.length > 0) {
+                    // Case'e bağlı konuşma bulunamazsa en son konuşmayı kullan
+                    const lastConv = [...contact.conversations].sort((a, b) =>
+                        new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt)
+                    )[0];
+                    caseAssignedToId = lastConv.assignedToId || null;
+                    caseAssignedTeamId = lastConv.assignedTeamId || (() => {
+                        try { return JSON.parse(lastConv.teamIds || '[]')[0] || null; } catch { return null; }
+                    })();
+                    caseAssignedToName = lastConv.assignedTo?.name || null;
+                }
+            }
+            // Funnel: Case'den, yoksa conversation'dan
+            let caseFunnelStageId = lastActiveCase?.funnelStageId || null;
+            let caseFunnelType = lastActiveCase?.funnelType || null;
+
+            if (lastActiveCase && !caseFunnelStageId) {
+                const caseConvForFunnel = (contact.conversations || []).find(cv => cv.caseId === lastActiveCase.id);
+                if (caseConvForFunnel) {
+                    caseFunnelStageId = caseConvForFunnel.funnelStageId || null;
+                    caseFunnelType = caseConvForFunnel.funnelType || caseFunnelType;
+                }
+            }
+
             const activeCase = lastActiveCase ? {
                 id: lastActiveCase.id,
                 caseNumber: lastActiveCase.caseNumber || null,
                 title: lastActiveCase.title || null,
                 status: lastActiveCase.status || null,
-                funnelStageId: lastActiveCase.funnelStageId || null,
-                funnelType: lastActiveCase.funnelType || null
+                funnelStageId: caseFunnelStageId,
+                funnelType: caseFunnelType,
+                assignedToId: caseAssignedToId,
+                assignedTeamId: caseAssignedTeamId,
+                assignedToName: caseAssignedToName,
+                assignedTo: lastActiveCase.assignedTo || null
             } : null;
+
+            // DEBUG: activeCase veri izleme (TÜM kişiler)
+            if (lastActiveCase) {
+                console.log(`🔍 [CASE-DEBUG] ${contact.name} → case#${lastActiveCase.caseNumber}, assignedTo: ${JSON.stringify(lastActiveCase.assignedTo)}, assignedToId: ${lastActiveCase.assignedToId}, assignedTeamId: ${lastActiveCase.assignedTeamId}, caseAssignedToName: ${caseAssignedToName}, funnelStageId: ${lastActiveCase.funnelStageId}`);
+            }
 
             return {
                 ...contact,
@@ -945,6 +1022,10 @@ export const getContacts = async (req, res) => {
                             classificationData: true,
                             teamIds: true,
                             assignedTeamId: true,
+                            assignedToId: true,
+                            caseId: true,
+                            funnelStageId: true,
+                            funnelType: true,
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -971,7 +1052,15 @@ export const getContacts = async (req, res) => {
                                 funnelStageId: true,
                                 funnelType: true,
                                 createdAt: true,
-                                updatedAt: true
+                                updatedAt: true,
+                                assignedToId: true,
+                                assignedTeamId: true,
+                                assignedTo: {
+                                    select: {
+                                        id: true,
+                                        name: true
+                                    }
+                                }
                             },
                             orderBy: { updatedAt: 'desc' },
                             take: 3
@@ -1056,6 +1145,10 @@ export const getContacts = async (req, res) => {
                             classificationData: true,
                             teamIds: true,
                             assignedTeamId: true,
+                            assignedToId: true,
+                            caseId: true,
+                            funnelStageId: true,
+                            funnelType: true,
                             assignedTo: {
                                 select: {
                                     id: true,
@@ -1082,7 +1175,15 @@ export const getContacts = async (req, res) => {
                                 funnelStageId: true,
                                 funnelType: true,
                                 createdAt: true,
-                                updatedAt: true
+                                updatedAt: true,
+                                assignedToId: true,
+                                assignedTeamId: true,
+                                assignedTo: {
+                                    select: {
+                                        id: true,
+                                        name: true
+                                    }
+                                }
                             },
                             orderBy: { updatedAt: 'desc' },
                             take: 3
@@ -2295,9 +2396,22 @@ export const getContactAnalytics = async (req, res) => {
                 createdAt: true,
                 completedAt: true,
                 assignedToId: true,
-                callSuccessful: true,
                 callSentiment: true,
-                contact: { select: { id: true, name: true, phone: true, source: true, status: true, funnelStageId: true } },
+                contact: { 
+                    select: { 
+                        id: true, 
+                        name: true, 
+                        phone: true, 
+                        source: true, 
+                        status: true,
+                        funnelStageId: true,
+                        conversations: {
+                            orderBy: { createdAt: 'desc' },
+                            select: { aiTopic: true, assignedTo: { select: { id: true, name: true } } },
+                            take: 1
+                        }
+                    } 
+                },
                 assignee: { select: { id: true, name: true } }
             }
         });
@@ -2341,7 +2455,12 @@ export const getContactAnalytics = async (req, res) => {
                 status: true,
                 funnelStageId: true,
                 company: true,
-                createdAt: true
+                createdAt: true,
+                conversations: {
+                    orderBy: { createdAt: 'desc' },
+                    select: { aiTopic: true, assignedTo: { select: { id: true, name: true } } },
+                    take: 1
+                }
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -2361,7 +2480,9 @@ export const getContactAnalytics = async (req, res) => {
                 completedCalls: detail?.completedCalls || 0,
                 plannedCalls: detail?.plannedCalls || 0,
                 lastCallDate: detail?.lastCallDate || null,
-                assigneeName: detail?.assigneeName || null
+                assigneeName: detail?.assigneeName || null,
+                aiTopic: c.conversations?.[0]?.aiTopic || null,
+                activeAssigneeName: c.conversations?.[0]?.assignedTo?.name || null
             };
         });
 

@@ -941,27 +941,50 @@ const Inbox = () => {
         };
 
         const handleCaseAssignment = (e) => {
-            const { caseId, assignedToId, assignedTeamId } = e.detail || {};
+            const { caseId, assignedToId, assignedTeamId, assignedToName } = e.detail || {};
             if (!caseId) return;
 
-            setInboxItems(prev => prev.map(item => {
-                if (item.caseId !== caseId) return item;
+            const buildAssignUpdates = () => {
                 const updates = {};
-                if (assignedToId !== undefined) updates.assignedToId = assignedToId;
+                if (assignedToId !== undefined) {
+                    updates.assignedToId = assignedToId;
+                    if (assignedToName) {
+                        updates.assignedTo = { name: assignedToName };
+                    }
+                }
                 if (assignedTeamId !== undefined) {
                     updates.assignedTeamId = assignedTeamId;
                     updates.teamIds = assignedTeamId ? JSON.stringify([assignedTeamId]) : '[]';
+                }
+                return updates;
+            };
+
+            setInboxItems(prev => prev.map(item => {
+                if (item.caseId !== caseId) return item;
+                const updates = buildAssignUpdates();
+                // Nested case objesini de güncelle (header linkedCase'den okuyor)
+                if (item.case) {
+                    updates.case = {
+                        ...item.case,
+                        assignedToId: assignedToId !== undefined ? assignedToId : item.case.assignedToId,
+                        assignedTeamId: assignedTeamId !== undefined ? assignedTeamId : item.case.assignedTeamId,
+                        ...(assignedToName ? { assignedTo: { ...(item.case.assignedTo || {}), name: assignedToName } } : {})
+                    };
                 }
                 return Object.keys(updates).length > 0 ? { ...item, ...updates } : item;
             }));
 
             setSelectedItem(prev => {
                 if (!prev || prev.caseId !== caseId) return prev;
-                const updates = {};
-                if (assignedToId !== undefined) updates.assignedToId = assignedToId;
-                if (assignedTeamId !== undefined) {
-                    updates.assignedTeamId = assignedTeamId;
-                    updates.teamIds = assignedTeamId ? JSON.stringify([assignedTeamId]) : '[]';
+                const updates = buildAssignUpdates();
+                // Nested case objesini de güncelle
+                if (prev.case) {
+                    updates.case = {
+                        ...prev.case,
+                        assignedToId: assignedToId !== undefined ? assignedToId : prev.case.assignedToId,
+                        assignedTeamId: assignedTeamId !== undefined ? assignedTeamId : prev.case.assignedTeamId,
+                        ...(assignedToName ? { assignedTo: { ...(prev.case.assignedTo || {}), name: assignedToName } } : {})
+                    };
                 }
                 return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
             });
@@ -1990,12 +2013,28 @@ const Inbox = () => {
                     conv._effectiveStageId = conv.funnelStageId || conv.contact?.funnelStageId || null;
 
                     // ── Case as Source of Truth ──
-                    // When conversation is linked to a case, inherit case properties
+                    // When conversation is linked to a case, inherit ALL case properties
                     if (conv.case) {
                         conv._caseNumber = conv.case.caseNumber;
                         conv._caseTitle = conv.case.title;
                         conv._caseStatus = conv.case.status; // ACTIVE, WON, LOST, CLOSED
-                        // Case statusünü closingStatus olarak kullan — sayfa yenilendiğinde de doğru pill görünsün
+
+                        // Case'i ana veri kaynağı olarak kullan
+                        if (conv.case.title) conv.aiTopic = conv.case.title;
+                        if (conv.case.funnelType) conv.funnelType = conv.case.funnelType;
+                        if (conv.case.funnelStageId) {
+                            conv.funnelStageId = conv.case.funnelStageId;
+                            conv._effectiveStageId = conv.case.funnelStageId;
+                        }
+                        if (conv.case.assignedToId) {
+                            conv.assignedToId = conv.case.assignedToId;
+                            conv.assignedTo = conv.case.assignedTo || conv.assignedTo;
+                        }
+                        if (conv.case.assignedTeamId) {
+                            conv.assignedTeamId = conv.case.assignedTeamId;
+                        }
+
+                        // Case statusünü closingStatus olarak kullan
                         if (conv.status === 'RESOLVED' && conv.case.status && conv.case.status !== 'ACTIVE') {
                             conv.closingStatus = conv.case.status; // WON, LOST, CLOSED
                         }
@@ -2908,11 +2947,61 @@ const Inbox = () => {
         try {
             const res = await conversationAPI.assignNew(currentWorkspace.id, selectedItem.id, { teamId, agentId });
             const conv = res.data.conversation;
+            const agentName = conv.assignedTo?.name || members.find(m => (m.user?.id || m.userId || m.id) === agentId)?.user?.name || null;
             const updateFn = item => item.id === selectedItem.id
-                ? { ...item, assignedToId: conv.assignedToId, assignedTo: conv.assignedTo, teamIds: conv.teamIds }
+                ? {
+                    ...item,
+                    assignedToId: conv.assignedToId,
+                    assignedTo: conv.assignedTo,
+                    teamIds: conv.teamIds,
+                    // Nested case objesini de güncelle
+                    ...(item.case ? {
+                        case: {
+                            ...item.case,
+                            assignedToId: agentId || item.case.assignedToId,
+                            assignedTeamId: teamId || item.case.assignedTeamId,
+                            ...(conv.assignedTo ? { assignedTo: conv.assignedTo } : {})
+                        }
+                    } : {})
+                }
                 : item;
-            setSelectedItem(prev => ({ ...prev, assignedToId: conv.assignedToId, assignedTo: conv.assignedTo, teamIds: conv.teamIds }));
+            setSelectedItem(prev => ({
+                ...prev,
+                assignedToId: conv.assignedToId,
+                assignedTo: conv.assignedTo,
+                teamIds: conv.teamIds,
+                ...(prev.case ? {
+                    case: {
+                        ...prev.case,
+                        assignedToId: agentId || prev.case.assignedToId,
+                        assignedTeamId: teamId || prev.case.assignedTeamId,
+                        ...(conv.assignedTo ? { assignedTo: conv.assignedTo } : {})
+                    }
+                } : {})
+            }));
             setInboxItems(prev => prev.map(updateFn));
+
+            // Linked case varsa case atamasını da güncelle
+            const linkedCaseId = selectedItem.caseId;
+            if (linkedCaseId) {
+                try {
+                    await caseAPI.assign(currentWorkspace.id, linkedCaseId, {
+                        assignedToId: agentId,
+                        assignedTeamId: teamId
+                    });
+                } catch (_) {}
+            }
+
+            // Sidebar'ı bilgilendir — case assignment event
+            window.dispatchEvent(new CustomEvent('websocket:case_assignment_updated', {
+                detail: {
+                    caseId: linkedCaseId,
+                    assignedToId: agentId,
+                    assignedTeamId: teamId,
+                    assignedToName: agentName
+                }
+            }));
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
         } catch (e) {
             console.error('Assign error:', e);
             alert('Atama yapılamadı: ' + (e?.response?.data?.error || e?.message || 'Bilinmeyen hata'));
@@ -2926,10 +3015,39 @@ const Inbox = () => {
         try {
             const res = await conversationAPI.claim(currentWorkspace.id, selectedItem.id);
             const conv = res.data.conversation;
-            setSelectedItem(prev => ({ ...prev, assignedToId: user.id, assignedTo: { id: user.id, name: user.name } }));
+            const assignData = { assignedToId: user.id, assignedTo: { id: user.id, name: user.name } };
+            setSelectedItem(prev => ({
+                ...prev,
+                ...assignData,
+                ...(prev.case ? { case: { ...prev.case, ...assignData } } : {})
+            }));
             setInboxItems(prev => prev.map(item => item.id === selectedItem.id
-                ? { ...item, assignedToId: user.id, assignedTo: { id: user.id, name: user.name } }
+                ? {
+                    ...item,
+                    ...assignData,
+                    ...(item.case ? { case: { ...item.case, ...assignData } } : {})
+                }
                 : item));
+
+            // Linked case varsa case atamasını da güncelle
+            const linkedCaseId = selectedItem.caseId;
+            if (linkedCaseId) {
+                try {
+                    await caseAPI.assign(currentWorkspace.id, linkedCaseId, {
+                        assignedToId: user.id
+                    });
+                } catch (_) {}
+            }
+
+            // Sidebar'ı bilgilendir
+            window.dispatchEvent(new CustomEvent('websocket:case_assignment_updated', {
+                detail: {
+                    caseId: linkedCaseId,
+                    assignedToId: user.id,
+                    assignedToName: user.name
+                }
+            }));
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
         } catch (e) {
             console.error('Claim error:', e);
         } finally {
@@ -3954,6 +4072,18 @@ const Inbox = () => {
                                         </div>
 
                                         <div className="profile-bar-actions">
+                                            {/* Case Numarası Badge */}
+                                            {selectedItem._caseNumber && (
+                                                <span style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                    padding: '2px 7px', borderRadius: 6,
+                                                    background: '#f0f9ff', border: '1px solid #bae6fd',
+                                                    color: '#0369a1', fontSize: '0.65rem', fontWeight: 700,
+                                                    whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.3px'
+                                                }}>
+                                                    📋 {selectedItem._caseNumber}
+                                                </span>
+                                            )}
                                             {/* Konu Başlığı Input with Fixed Dropdown */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (() => {
                                                 const contactId = selectedItem.contact?.id;
@@ -4043,13 +4173,16 @@ const Inbox = () => {
                                             {/* Case Bağlama Butonu — Konu başlığının yanında */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact?.id && (() => {
                                                 const currentCaseId = selectedItem.caseId;
-                                                const linkedCase = currentCaseId ? contactCases.find(c => c.id === currentCaseId) : null;
+                                                const linkedCase = currentCaseId
+                                                    ? (contactCases.find(c => c.id === currentCaseId) || selectedItem.case || null)
+                                                    : null;
+                                                const displayCaseNumber = linkedCase?.caseNumber || (currentCaseId ? `CSE-...` : null);
 
                                                 return (
                                                     <div ref={caseLinkDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
                                                         <button
                                                             className="case-link-btn"
-                                                            title={linkedCase ? `Bağlı: ${linkedCase.title}` : 'Case\'e bağla'}
+                                                            title={linkedCase ? `Bağlı: ${linkedCase.title || ''}` : 'Case\'e bağla'}
                                                             onClick={async () => {
                                                                 if (caseLinkDropdownOpen) {
                                                                     setCaseLinkDropdownOpen(false);
@@ -4068,19 +4201,19 @@ const Inbox = () => {
                                                                 }
                                                             }}
                                                             style={{
-                                                                background: linkedCase ? '#f5f3ff' : 'transparent',
-                                                                border: linkedCase ? '1px solid #c4b5fd' : '1px solid transparent',
+                                                                background: currentCaseId ? '#f5f3ff' : 'transparent',
+                                                                border: currentCaseId ? '1px solid #c4b5fd' : '1px solid transparent',
                                                                 borderRadius: 6, padding: '3px 6px', cursor: 'pointer',
                                                                 display: 'flex', alignItems: 'center', gap: 4,
-                                                                color: linkedCase ? '#7c3aed' : '#9ca3af',
+                                                                color: currentCaseId ? '#7c3aed' : '#9ca3af',
                                                                 fontSize: '0.72rem', fontWeight: 500,
                                                                 transition: 'all 0.15s', whiteSpace: 'nowrap'
                                                             }}
                                                         >
                                                             <Briefcase size={13} />
-                                                            {linkedCase && (
+                                                            {displayCaseNumber && (
                                                                 <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                    {linkedCase.caseNumber}
+                                                                    {displayCaseNumber}
                                                                 </span>
                                                             )}
                                                         </button>
@@ -4277,22 +4410,25 @@ const Inbox = () => {
                                                 );
                                             })()}
 
-                                            {/* Konuşma Durumu — Aktif stili pill dropdown */}
+                                            {/* Konuşma Durumu — Açık/Kapalı toggle with dynamic funnel stages */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (
                                                 <>
                                                     <div className="closing-dropdown-wrapper" ref={closingDropdownRef} style={{ position: 'relative', display: 'inline-flex' }}>
                                                         {(() => {
                                                             const isResolved = selectedItem.status === 'RESOLVED';
-                                                            const closingSub = selectedItem.closingStatus;
-                                                            const subStyles = {
-                                                                WON: { bg: '#ecfdf5', color: '#10b981', border: '#a7f3d0', dotColor: '#10b981', label: 'Satış' },
-                                                                LOST: { bg: '#f8fafc', color: '#64748b', border: '#cbd5e1', dotColor: '#64748b', label: 'Ulaşılamadı' },
-                                                                CLOSED: { bg: '#fef2f2', color: '#ef4444', border: '#fecaca', dotColor: '#ef4444', label: 'Kayıp' },
-                                                            };
-                                                            const pillStyle = isResolved
-                                                                ? (subStyles[closingSub] || { bg: '#f3f4f6', color: '#6b7280', border: '#d1d5db', dotColor: '#94a3b8' })
+                                                            const isClosed = isResolved;
+                                                            const pillStyle = isClosed
+                                                                ? { bg: '#fef2f2', color: '#ef4444', border: '#fecaca', dotColor: '#ef4444' }
                                                                 : { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0', dotColor: '#22c55e' };
-                                                            const label = isResolved ? (subStyles[closingSub]?.label || 'Kapatıldı') : 'Aktif';
+                                                            const label = isClosed ? 'Kapalı' : 'Açık';
+
+                                                            // Mevcut akışın aşamalarını bul
+                                                            const currentFunnelId = selectedItem.funnelType;
+                                                            const currentFunnel = currentFunnelId ? funnelOptions.find(f => f.value === currentFunnelId) : null;
+                                                            const allStages = currentFunnel?.stages || [];
+                                                            const closingStages = allStages.filter(s => s.isClosing);
+                                                            const openStages = allStages.filter(s => !s.isClosing);
+
                                                             return (
                                                                 <>
                                                                     <button
@@ -4318,77 +4454,203 @@ const Inbox = () => {
                                                                     {closingDropdownOpen && (
                                                                         <div
                                                                             style={{
-                                                                                position: 'fixed', top: closingDropdownRef.current?.getBoundingClientRect?.().bottom + 4 || 0, left: closingDropdownRef.current?.getBoundingClientRect?.().left || 0, zIndex: 99999,
+                                                                                position: 'fixed',
+                                                                                top: closingDropdownRef.current?.getBoundingClientRect?.().bottom + 4 || 0,
+                                                                                left: closingDropdownRef.current?.getBoundingClientRect?.().left || 0,
+                                                                                zIndex: 99999,
                                                                                 background: '#fff', border: '1px solid #e5e7eb',
                                                                                 borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                                                                                 minWidth: 200, overflow: 'hidden', padding: '4px 0'
                                                                             }}
                                                                             onClick={e => e.stopPropagation()}
                                                                         >
-                                                                            {/* AKTİF seçeneği */}
-                                                                            <div
-                                                                                onClick={() => {
-                                                                                    if (isResolved) {
-                                                                                        handleConversationStatusChange(selectedItem.id, 'OPEN');
-                                                                                    }
-                                                                                    setClosingDropdownOpen(false);
-                                                                                }}
-                                                                                style={{
-                                                                                    padding: '10px 14px', cursor: isResolved ? 'pointer' : 'default',
-                                                                                    display: 'flex', alignItems: 'center', gap: 8,
-                                                                                    fontSize: '0.82rem', fontWeight: 700,
-                                                                                    color: '#16a34a',
-                                                                                    background: !isResolved ? '#f0fdf4' : 'transparent',
-                                                                                    transition: 'background 0.1s',
-                                                                                    textTransform: 'uppercase', letterSpacing: '0.3px'
-                                                                                }}
-                                                                                onMouseEnter={e => { if (isResolved) e.currentTarget.style.background = '#f0fdf4'; }}
-                                                                                onMouseLeave={e => { if (isResolved) e.currentTarget.style.background = 'transparent'; }}
-                                                                            >
-                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
-                                                                                AKTİF
-                                                                                {!isResolved && (
-                                                                                    <span style={{ marginLeft: 'auto' }}>
-                                                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                                                                    </span>
-                                                                                )}
+                                                                            {/* Başlık */}
+                                                                            <div style={{ padding: '8px 14px 4px', fontSize: '0.72rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                                {isClosed ? 'Tekrar Aç' : 'Nasıl kapandı?'}
                                                                             </div>
-                                                                            {/* Sabit kapanış seçenekleri: Satış, Ulaşılamadı, Kayıp */}
-                                                                            {[
-                                                                                { value: 'WON', label: 'SATIŞ', color: '#10b981', dotColor: '#10b981' },
-                                                                                { value: 'LOST', label: 'ULAŞILAMADI', color: '#64748b', dotColor: '#64748b' },
-                                                                                { value: 'CLOSED', label: 'KAYIP', color: '#ef4444', dotColor: '#ef4444' },
-                                                                            ].map(opt => {
-                                                                                const isActiveOpt = isResolved && (selectedItem.closingStatus === opt.value);
-                                                                                return (
+                                                                            <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
+
+                                                                            {isClosed ? (
+                                                                                /* KAPALI → Açık aşamaları göster */
+                                                                                openStages.length > 0 ? openStages.map(stage => (
                                                                                     <div
-                                                                                        key={opt.value}
-                                                                                        onClick={() => {
-                                                                                            handleConversationStatusChange(selectedItem.id, 'RESOLVED', opt.value);
+                                                                                        key={stage.value}
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                // Case'i güncelle: ACTIVE + seçilen açık aşama
+                                                                                                if (selectedItem.caseId) {
+                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                                                        status: 'ACTIVE',
+                                                                                                        funnelStageId: stage.value
+                                                                                                    });
+                                                                                                }
+                                                                                                // Conversation'ı aç
+                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
+                                                                                                // Conversation funnelStageId güncelle
+                                                                                                await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                                                    funnelStageId: stage.value,
+                                                                                                    funnelType: currentFunnelId,
+                                                                                                    confirmAssignmentUpdate: false
+                                                                                                }).catch(() => {});
+                                                                                                // Local state güncelle
+                                                                                                setSelectedItem(prev => ({ ...prev, status: 'OPEN', closingStatus: null, funnelStageId: stage.value }));
+                                                                                                setInboxItems(prev => prev.map(i =>
+                                                                                                    i.id === selectedItem.id ? { ...i, status: 'OPEN', closingStatus: null, funnelStageId: stage.value } : i
+                                                                                                ));
+                                                                                                // Senkron event'ler
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE', funnelStageId: stage.value } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                                                                    detail: { conversationId: selectedItem.id, funnelStageId: stage.value, stageName: stage.label, stageColor: stage.color }
+                                                                                                }));
+                                                                                            } catch (err) { console.error('Status update error:', err); }
                                                                                             setClosingDropdownOpen(false);
                                                                                         }}
                                                                                         style={{
                                                                                             padding: '10px 14px', cursor: 'pointer',
                                                                                             display: 'flex', alignItems: 'center', gap: 8,
-                                                                                            fontSize: '0.82rem', fontWeight: 700,
-                                                                                            color: opt.color,
-                                                                                            background: isActiveOpt ? '#f3f4f6' : 'transparent',
-                                                                                            transition: 'background 0.1s',
-                                                                                            textTransform: 'uppercase', letterSpacing: '0.3px'
+                                                                                            fontSize: '0.82rem', fontWeight: 600,
+                                                                                            color: '#374151', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
                                                                                         }}
-                                                                                        onMouseEnter={e => { if (!isActiveOpt) e.currentTarget.style.background = '#f9fafb'; }}
-                                                                                        onMouseLeave={e => { if (!isActiveOpt) e.currentTarget.style.background = isActiveOpt ? '#f3f4f6' : 'transparent'; }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                                                                     >
-                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: opt.dotColor, flexShrink: 0 }} />
-                                                                                        {opt.label}
-                                                                                        {isActiveOpt && (
-                                                                                            <span style={{ marginLeft: 'auto' }}>
-                                                                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={opt.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                                                                            </span>
-                                                                                        )}
+                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#22c55e', flexShrink: 0 }} />
+                                                                                        {stage.label}
                                                                                     </div>
-                                                                                );
-                                                                            })}
+                                                                                )) : (
+                                                                                    <div
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                if (selectedItem.caseId) {
+                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { status: 'ACTIVE' });
+                                                                                                }
+                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'OPEN' });
+                                                                                                setSelectedItem(prev => ({ ...prev, status: 'OPEN', closingStatus: null }));
+                                                                                                setInboxItems(prev => prev.map(i =>
+                                                                                                    i.id === selectedItem.id ? { ...i, status: 'OPEN', closingStatus: null } : i
+                                                                                                ));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: 'ACTIVE' } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setClosingDropdownOpen(false);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '10px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.82rem', fontWeight: 600,
+                                                                                            color: '#16a34a', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f0fdf4'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />
+                                                                                        Tekrar Aç
+                                                                                    </div>
+                                                                                )
+                                                                            ) : (
+                                                                                /* AÇIK → Kapanış aşamalarını göster */
+                                                                                closingStages.length > 0 ? closingStages.map(stage => (
+                                                                                    <div
+                                                                                        key={stage.value}
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                const newCaseStatus = stage.statusType || 'CLOSED';
+                                                                                                // Case'i güncelle: kapanış status + kapanış aşaması
+                                                                                                if (selectedItem.caseId) {
+                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                                                        status: newCaseStatus,
+                                                                                                        funnelStageId: stage.value
+                                                                                                    });
+                                                                                                }
+                                                                                                // Conversation'ı kapat
+                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, {
+                                                                                                    status: 'RESOLVED',
+                                                                                                    closingStageId: stage.value
+                                                                                                });
+                                                                                                // Conversation funnelStageId güncelle
+                                                                                                await conversationAPI.updateFunnel(currentWorkspace.id, selectedItem.id, {
+                                                                                                    funnelStageId: stage.value,
+                                                                                                    funnelType: currentFunnelId,
+                                                                                                    confirmAssignmentUpdate: false
+                                                                                                }).catch(() => {});
+                                                                                                // Local state güncelle
+                                                                                                setSelectedItem(prev => ({
+                                                                                                    ...prev,
+                                                                                                    status: 'RESOLVED',
+                                                                                                    closingStatus: newCaseStatus,
+                                                                                                    funnelStageId: stage.value
+                                                                                                }));
+                                                                                                setInboxItems(prev => prev.map(i =>
+                                                                                                    i.id === selectedItem.id ? { ...i, status: 'RESOLVED', closingStatus: newCaseStatus, funnelStageId: stage.value } : i
+                                                                                                ));
+                                                                                                // Senkron event'ler
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: newCaseStatus, funnelStageId: stage.value } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
+                                                                                                    detail: { conversationId: selectedItem.id, funnelStageId: stage.value, stageName: stage.label, stageColor: stage.color }
+                                                                                                }));
+                                                                                                loadInboxItems(false);
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setClosingDropdownOpen(false);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '10px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.82rem', fontWeight: 600,
+                                                                                            color: stage.color || '#ef4444', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: stage.color || '#ef4444', flexShrink: 0 }} />
+                                                                                        {stage.label}
+                                                                                    </div>
+                                                                                )) : (
+                                                                                    /* Kapanış aşaması tanımlı değilse fallback */
+                                                                                    <div
+                                                                                        onClick={async () => {
+                                                                                            try {
+                                                                                                if (selectedItem.caseId) {
+                                                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, { status: 'CLOSED' });
+                                                                                                }
+                                                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, { status: 'RESOLVED' });
+                                                                                                setSelectedItem(prev => ({ ...prev, status: 'RESOLVED', closingStatus: 'CLOSED' }));
+                                                                                                setInboxItems(prev => prev.map(i =>
+                                                                                                    i.id === selectedItem.id ? { ...i, status: 'RESOLVED', closingStatus: 'CLOSED' } : i
+                                                                                                ));
+                                                                                                window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                                                    detail: { caseId: selectedItem.caseId, changes: { status: 'CLOSED' } }
+                                                                                                }));
+                                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                                loadInboxItems(false);
+                                                                                            } catch (err) { console.error('Status update error:', err); }
+                                                                                            setClosingDropdownOpen(false);
+                                                                                        }}
+                                                                                        style={{
+                                                                                            padding: '10px 14px', cursor: 'pointer',
+                                                                                            display: 'flex', alignItems: 'center', gap: 8,
+                                                                                            fontSize: '0.82rem', fontWeight: 600,
+                                                                                            color: '#ef4444', background: 'transparent',
+                                                                                            transition: 'background 0.1s'
+                                                                                        }}
+                                                                                        onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                                                                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                                    >
+                                                                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', flexShrink: 0 }} />
+                                                                                        Kapat
+                                                                                    </div>
+                                                                                )
+                                                                            )}
                                                                         </div>
                                                                     )}
                                                                 </>
@@ -4413,12 +4675,15 @@ const Inbox = () => {
                                         {/* Left Group: Akış Seç + Müşteri Durumu */}
                                         <div className="assignment-left-group">
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && selectedItem.contact && (() => {
-                                                // Get active funnel's stages, fallback to default CUSTOMER_STATUS_OPTIONS
-                                                const activeFunnel = funnelOptions.find(o => o.value === (selectedItem.funnelType || ''));
+                                                // Get active funnel's stages — case varsa case'den oku
+                                                const caseForFunnel = selectedItem.case;
+                                                const effectiveFunnelType = caseForFunnel?.funnelType || selectedItem.funnelType || '';
+                                                const effectiveFunnelStageId = caseForFunnel?.funnelStageId || selectedItem._effectiveStageId || selectedItem.funnelStageId || selectedItem.contact?.funnelStageId;
+                                                const activeFunnel = funnelOptions.find(o => o.value === effectiveFunnelType);
                                                 const stageOptions = (activeFunnel && activeFunnel.stages && activeFunnel.stages.length > 0)
                                                     ? activeFunnel.stages
                                                     : CUSTOMER_STATUS_OPTIONS;
-                                                const activeStageVal = selectedItem._effectiveStageId || selectedItem.funnelStageId || selectedItem.contact?.funnelStageId || stageOptions[0]?.value;
+                                                const activeStageVal = effectiveFunnelStageId || stageOptions[0]?.value;
                                                 const currentStageColor = stageOptions.find(o => o.value === activeStageVal)?.color || '#3b82f6';
                                                 // Seçili aşamanın adını bul (tüm funnel'lardan)
                                                 const activeStageLabel = (() => {
@@ -4432,6 +4697,10 @@ const Inbox = () => {
                                                 const handleStageSelect = async (newFunnel, newStage, changedStage) => {
                                                     setStageMegaMenuOpen(false);
                                                     try {
+                                                        const isClosingStage = changedStage?.isClosing === true;
+                                                        const newCaseStatus = isClosingStage ? (changedStage.statusType || 'CLOSED') : 'ACTIVE';
+                                                        const newConvStatus = isClosingStage ? 'RESOLVED' : 'OPEN';
+
                                                         // Always send funnelType so backend can detect funnel changes
                                                         // and trigger team auto-assignment
                                                         const updatePayload = { funnelStageId: newStage, funnelType: newFunnel };
@@ -4448,6 +4717,37 @@ const Inbox = () => {
                                                             });
                                                         }
 
+                                                        // Kapanış adımına geçtiyse case ve conversation statusunu güncelle
+                                                        if (isClosingStage && selectedItem.caseId) {
+                                                            try {
+                                                                await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                    status: newCaseStatus,
+                                                                    funnelStageId: newStage
+                                                                });
+                                                            } catch (_) {}
+                                                            // Conversation status da RESOLVED yap
+                                                            try {
+                                                                await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, {
+                                                                    status: newConvStatus,
+                                                                    closingStageId: newStage
+                                                                });
+                                                            } catch (_) {}
+                                                        } else if (!isClosingStage && selectedItem.caseId) {
+                                                            // Açık aşamaya geçtiyse case'i ACTIVE yap
+                                                            const wasClosing = selectedItem.status === 'RESOLVED' || selectedItem.closingStatus;
+                                                            if (wasClosing) {
+                                                                try {
+                                                                    await caseAPI.update(currentWorkspace.id, selectedItem.caseId, {
+                                                                        status: 'ACTIVE',
+                                                                        funnelStageId: newStage
+                                                                    });
+                                                                    await conversationAPI.updateStatus(currentWorkspace.id, selectedItem.id, {
+                                                                        status: 'OPEN'
+                                                                    });
+                                                                } catch (_) {}
+                                                            }
+                                                        }
+
                                                         const responseData = res.data;
                                                         setSelectedItem(prev => ({ 
                                                             ...prev, 
@@ -4455,6 +4755,8 @@ const Inbox = () => {
                                                             contact: { ...prev.contact, status: newStage }, 
                                                             funnelStageId: newStage, 
                                                             _effectiveStageId: newStage,
+                                                            status: isClosingStage ? 'RESOLVED' : (prev.status === 'RESOLVED' ? 'OPEN' : prev.status),
+                                                            closingStatus: isClosingStage ? newCaseStatus : null,
                                                             assignedTeamId: responseData.assignedTeamId || prev.assignedTeamId,
                                                             assignedToId: responseData.assignedToId || prev.assignedToId,
                                                             assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : prev.assignedTo,
@@ -4466,15 +4768,51 @@ const Inbox = () => {
                                                                 funnelType: newFunnel, 
                                                                 funnelStageId: newStage, 
                                                                 _effectiveStageId: newStage,
+                                                                status: isClosingStage ? 'RESOLVED' : (item.status === 'RESOLVED' ? 'OPEN' : item.status),
+                                                                closingStatus: isClosingStage ? newCaseStatus : null,
                                                                 assignedTeamId: responseData.assignedTeamId || item.assignedTeamId,
                                                                 assignedToId: responseData.assignedToId || item.assignedToId,
                                                                 assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : item.assignedTo,
                                                                 teamIds: responseData.teamIds || item.teamIds
                                                             } : item
                                                         ));
+                                                        // Nested case objesini de güncelle
+                                                        setSelectedItem(prev => {
+                                                            if (!prev?.case) return prev;
+                                                            return {
+                                                                ...prev,
+                                                                case: {
+                                                                    ...prev.case,
+                                                                    funnelType: newFunnel,
+                                                                    funnelStageId: newStage,
+                                                                    status: isClosingStage ? newCaseStatus : (prev.case.status !== 'ACTIVE' ? 'ACTIVE' : prev.case.status),
+                                                                    assignedTeamId: responseData.assignedTeamId || prev.case.assignedTeamId,
+                                                                    assignedToId: responseData.assignedToId || prev.case.assignedToId,
+                                                                    assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : prev.case.assignedTo
+                                                                }
+                                                            };
+                                                        });
                                                         window.dispatchEvent(new CustomEvent('websocket:funnel_stage_updated', {
                                                             detail: { conversationId: selectedItem.id, funnelStageId: newStage, stageName: changedStage?.label || changedStage?.name || newStage, stageColor: changedStage?.color || '#6366f1' }
                                                         }));
+                                                        // Sidebar'ın activeCaseInfo'sunu güncelle
+                                                        if (selectedItem.caseId) {
+                                                            window.dispatchEvent(new CustomEvent('websocket:case_updated', {
+                                                                detail: {
+                                                                    caseId: selectedItem.caseId,
+                                                                    changes: {
+                                                                        funnelType: newFunnel,
+                                                                        funnelStageId: newStage,
+                                                                        status: isClosingStage ? newCaseStatus : 'ACTIVE',
+                                                                        assignedToId: responseData.assignedToId,
+                                                                        assignedTeamId: responseData.assignedTeamId,
+                                                                        assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : undefined
+                                                                    }
+                                                                }
+                                                            }));
+                                                        }
+                                                        // Sidebar CaseCards'ı bilgilendir
+                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
 
                                                         // Safety fallback re-fetch (delayed) to catch any async updates
                                                         setTimeout(async () => {
@@ -4648,21 +4986,27 @@ const Inbox = () => {
 
                                             {/* ── Atama Pill Widget ── */}
                                             {(selectedItemType === INBOX_TYPES.MESSAGE || selectedItemType === INBOX_TYPES.EMAIL) && (() => {
-                                                // Mevcut atama bilgisini oluştur
+                                                // Case varsa case'den oku, yoksa konuşmadan fallback
+                                                const linkedCase = selectedItem.case;
                                                 let convTeamIds = [];
                                                 try { convTeamIds = JSON.parse(selectedItem.teamIds || '[]'); } catch {}
-                                                const assignedTeam = convTeamIds.length > 0 ? teams.find(t => t.id === convTeamIds[0]) : null;
-                                                const assignedAgent = selectedItem.assignedTo || (selectedItem.assignedToId ? members.find(m => m.userId === selectedItem.assignedToId || m.user?.id === selectedItem.assignedToId) : null);
+
+                                                const effectiveTeamId = linkedCase?.assignedTeamId || (convTeamIds.length > 0 ? convTeamIds[0] : null);
+                                                const effectiveAgentId = linkedCase?.assignedToId || selectedItem.assignedToId;
+                                                const assignedTeam = effectiveTeamId ? teams.find(t => t.id === effectiveTeamId) : null;
+                                                const assignedAgent = linkedCase?.assignedTo
+                                                    || selectedItem.assignedTo
+                                                    || (effectiveAgentId ? members.find(m => m.userId === effectiveAgentId || m.user?.id === effectiveAgentId) : null);
 
                                                 // Pill label
                                                 let pillLabel = 'Atanmadı';
                                                 const agentName = assignedAgent?.name || assignedAgent?.user?.name;
-                                                if (assignedTeam && agentName) pillLabel = `${assignedTeam.name} / ${agentName}`;
+                                                if (assignedTeam && agentName) pillLabel = `${agentName} / ${assignedTeam.name}`;
                                                 else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
                                                 else if (agentName) pillLabel = agentName;
 
-                                                // Üstlen butonu: konuşma bana atanmamışsa göster
-                                                const canClaim = !selectedItem.assignedToId || selectedItem.assignedToId !== user?.id;
+                                                // Üstlen butonu: case'deki atamaya göre
+                                                const canClaim = !effectiveAgentId || effectiveAgentId !== user?.id;
 
                                                 return (
                                                     <>

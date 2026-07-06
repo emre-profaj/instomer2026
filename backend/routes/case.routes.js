@@ -8,7 +8,8 @@ import {
     assignCase,
     linkConversation,
     unlinkConversation,
-    deleteCase
+    deleteCase,
+    syncClosingStages
 } from '../controllers/case.controller.js';
 
 const router = express.Router();
@@ -37,5 +38,8 @@ router.delete('/:workspaceId/cases/:caseId/unlink/:conversationId', requireWorks
 
 // Case sil
 router.delete('/:workspaceId/cases/:caseId', requireWorkspaceAccess, deleteCase);
+
+// Kapanış aşaması senkronizasyonu (eski verileri düzeltir)
+router.post('/:workspaceId/sync-closing-stages', requireWorkspaceAccess, syncClosingStages);
 
 export default router;
