@@ -302,48 +302,29 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                 {(!showOnly || showOnly === 'stages') && (
                     <div style={{ padding: '2px 12px 4px' }}>
                         <div ref={megaRef} style={{ position: 'relative' }}>
-                            {activeFunnel ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', padding: '2px 0' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 600, color: currentStageColor, textTransform: 'uppercase', letterSpacing: '0.04em', background: `${currentStageColor}15`, padding: '3px 8px', borderRadius: '6px', alignSelf: 'flex-start' }}>
-                                        {activeFunnel.name}
-                                    </span>
-                                    <div 
-                                        onClick={e => {
-                                            const rect = e.currentTarget.getBoundingClientRect();
-                                            setMegaPos({ top: rect.bottom + 4, right: Math.max(10, window.innerWidth - rect.right) });
-                                            setMegaHoverFunnel(activeFunnel.id);
-                                            setMegaOpen(v => !v);
-                                        }}
-                                        style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', padding: '5px 10px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', transition: 'all 0.2s', width: '100%' }}
-                                    >
-                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: currentStageColor, flexShrink: 0 }}></span>
-                                        <span style={{ fontSize: '12px', fontWeight: 600, color: '#334155' }}>{activeStageLabel || 'Aşama Seç'}</span>
-                                        <ChevronDown size={14} color="#64748b" style={{ marginLeft: 'auto', flexShrink: 0 }} />
-                                    </div>
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={e => {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setMegaPos({ top: rect.bottom + 4, right: Math.max(10, window.innerWidth - rect.right) });
-                                        setMegaHoverFunnel(null);
-                                        setMegaOpen(v => !v);
-                                    }}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-                                        background: '#f8fafc', border: '1px solid #e2e8f0',
-                                        borderRadius: 8, padding: '4px 10px',
-                                        cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, color: '#374151',
-                                        whiteSpace: 'nowrap', overflow: 'hidden'
-                                    }}
-                                >
-                                    <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />
-                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, textAlign: 'left' }}>
-                                        {pillLabel}
-                                    </span>
-                                    <ChevronDown size={14} color="#64748b" style={{ marginLeft: 'auto', flexShrink: 0 }} />
-                                </button>
-                            )}
+                            <button
+                                onClick={e => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    setMegaPos({ top: rect.bottom + 4, right: Math.max(10, window.innerWidth - rect.right) });
+                                    setMegaHoverFunnel(activeFunnel?.id || null);
+                                    setMegaOpen(v => !v);
+                                }}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                                    borderRadius: 8, padding: '4px 10px',
+                                    cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, color: '#374151',
+                                    whiteSpace: 'nowrap', overflow: 'hidden'
+                                }}
+                            >
+                                <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, backgroundColor: currentStageColor }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, textAlign: 'left' }}>
+                                    {activeFunnel ? (
+                                        <><span style={{ color: '#94a3b8', fontWeight: 500 }}>{activeFunnel.name}</span><span style={{ color: '#94a3b8', margin: '0 3px' }}>/</span><span>{activeStageLabel || 'Aşama Seç'}</span></>
+                                    ) : (pillLabel)}
+                                </span>
+                                <ChevronDown size={14} color="#64748b" style={{ marginLeft: 'auto', flexShrink: 0 }} />
+                            </button>
 
                             {/* ── Mega Menü Portal ── */}
                             {megaOpen && ReactDOM.createPortal(
