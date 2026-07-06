@@ -972,33 +972,20 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
     }
 };
 
-// Execute a phone call via Retell API (used by both immediate & scheduled calls)
-async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '', dynamicVariables = null) {
-    const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true, companyName: true, defaultLanguage: true }
-    });
-    if (!workspace?.retellApiKey) throw new Error('No AI Call API key');
+// Helper to build dynamic variables for Retell LLM
+async function buildRetellDynamicVariables(workspaceId, contactId, contactName, initialVars = {}) {
+    const dynVars = { ...(initialVars || {}) };
     
-    // Check if there is a team-specific agent first if agentId is not passed
-    let effectiveAgentId = agentId;
-    if (!effectiveAgentId) {
-        const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, null);
-        effectiveAgentId = teamAgentId || workspace.retellAgentId;
+    if (contactName && !dynVars.customer_name) {
+        dynVars.customer_name = contactName;
+        const nameParts = contactName.trim().split(/\s+/);
+        if (nameParts.length > 0) {
+            dynVars.customer_first_name = nameParts[0];
+            dynVars.customer_last_name = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+        }
     }
-    
-    if (!effectiveAgentId) throw new Error('No AI Call Agent ID configured/provided');
 
-    const client = new Retell({ apiKey: workspace.retellApiKey });
-    const formattedFrom = normalizePhone(workspace.retellFromNumber);
-
-    // Build dynamic variables for the AI agent
-    const dynVars = { ...(dynamicVariables || {}) };
-    if (contactName && !dynVars.customer_name) dynVars.customer_name = contactName;
-    if (workspace.companyName && !dynVars.company_name) dynVars.company_name = workspace.companyName;
-    
-    // If no dynamic vars were passed, try to build from contact record
-    if (!dynamicVariables && contactId) {
+    if (contactId) {
         try {
             const contact = await prisma.contact.findUnique({
                 where: { id: contactId },
@@ -1042,6 +1029,34 @@ async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, c
             }
         } catch (e) { console.warn('⚠️ [Call] Failed to build dynamic vars:', e.message); }
     }
+    return dynVars;
+}
+
+// Execute a phone call via Retell API (used by both immediate & scheduled calls)
+async function executeScheduledCall(workspaceId, toNumber, agentId, contactId, contactName, triggerSource = 'AUTO', createdById = '', dynamicVariables = null) {
+    const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { retellApiKey: true, retellFromNumber: true, retellAgentId: true, companyName: true, defaultLanguage: true }
+    });
+    if (!workspace?.retellApiKey) throw new Error('No AI Call API key');
+    
+    // Check if there is a team-specific agent first if agentId is not passed
+    let effectiveAgentId = agentId;
+    if (!effectiveAgentId) {
+        const teamAgentId = await getTeamAgentIdForContactOrConversation(workspaceId, contactId, null);
+        effectiveAgentId = teamAgentId || workspace.retellAgentId;
+    }
+    
+    if (!effectiveAgentId) throw new Error('No AI Call Agent ID configured/provided');
+
+    const client = new Retell({ apiKey: workspace.retellApiKey });
+    const formattedFrom = normalizePhone(workspace.retellFromNumber);
+
+    // Build dynamic variables for the AI agent
+    let dynVars = { ...(dynamicVariables || {}) };
+    if (workspace.companyName && !dynVars.company_name) dynVars.company_name = workspace.companyName;
+    
+    dynVars = await buildRetellDynamicVariables(workspaceId, contactId, contactName, dynVars);
 
     const callParams = {
         from_number: formattedFrom,
@@ -1634,10 +1649,9 @@ export const makeCall = async (req, res) => {
             }
         };
 
-        if (contactName) {
-            callParams.retell_llm_dynamic_variables = {
-                customer_name: contactName
-            };
+        const dynVars = await buildRetellDynamicVariables(workspaceId, contactId, contactName);
+        if (Object.keys(dynVars).length > 0) {
+            callParams.retell_llm_dynamic_variables = dynVars;
         }
 
         const callResponse = await client.call.createPhoneCall(callParams);
@@ -1755,7 +1769,9 @@ export const bulkRetryCall = async (req, res) => {
             try {
                 const formattedTo = normalizePhone(call.toNumber);
 
-                const callResponse = await client.call.createPhoneCall({
+                const dynVars = await buildRetellDynamicVariables(workspaceId, call.contactId, null);
+                
+                const callParams = {
                     from_number: workspace.retellFromNumber,
                     to_number: formattedTo,
                     override_agent_id: workspace.retellAgentId,
@@ -1765,11 +1781,14 @@ export const bulkRetryCall = async (req, res) => {
                         contactName: null,
                         createdById: userId,
                         retryOf: call.id
-                    },
-                    retell_llm_dynamic_variables: {
-                        customer_name: 'Müşteri'
                     }
-                });
+                };
+                
+                if (Object.keys(dynVars).length > 0) {
+                    callParams.retell_llm_dynamic_variables = dynVars;
+                }
+
+                const callResponse = await client.call.createPhoneCall(callParams);
 
                 await prisma.retellCall.create({
                     data: {
@@ -3177,7 +3196,9 @@ export const executeScheduledCalls = async () => {
                 const client = new Retell({ apiKey: workspace.retellApiKey });
                 const formattedTo = sc.toNumber.startsWith('+') ? sc.toNumber : `+${sc.toNumber}`;
 
-                const callResponse = await client.call.createPhoneCall({
+                const dynVars = await buildRetellDynamicVariables(workspace.id, sc.contactId, sc.contactName);
+                
+                const callParams = {
                     from_number: workspace.retellFromNumber,
                     to_number: formattedTo,
                     override_agent_id: workspace.retellAgentId,
@@ -3187,11 +3208,14 @@ export const executeScheduledCalls = async () => {
                         contactName: sc.contactName || null,
                         createdById: sc.createdById,
                         scheduledCallId: sc.id
-                    },
-                    retell_llm_dynamic_variables: {
-                        customer_name: sc.contactName || 'Müşteri'
                     }
-                });
+                };
+                
+                if (Object.keys(dynVars).length > 0) {
+                    callParams.retell_llm_dynamic_variables = dynVars;
+                }
+
+                const callResponse = await client.call.createPhoneCall(callParams);
 
                 // Save call record
                 await prisma.retellCall.create({
