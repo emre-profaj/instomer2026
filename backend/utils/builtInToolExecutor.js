@@ -110,12 +110,14 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                 where: { contactId: conv.contactId, funnelId: funnel.id }
             });
 
+            let isNewDeal = false;
             if (deal) {
                 deal = await prisma.deal.update({
                     where: { id: deal.id },
                     data: { stageId: stage.id }
                 });
             } else {
+                isNewDeal = true;
                 deal = await prisma.deal.create({
                     data: {
                         title: `${contact?.firstName || 'Müşteri'} ${contact?.lastName || ''} - ${funnel.name}`,
@@ -126,6 +128,20 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                         contactId: conv.contactId
                     }
                 });
+            }
+
+            if (isNewDeal) {
+                const targetTeamId = stage.assignedTeamId || funnel.assignedTeamId;
+                if (targetTeamId) {
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: {
+                            teamIds: JSON.stringify([targetTeamId]),
+                            assignedToId: null,
+                            botEnabled: false
+                        }
+                    });
+                }
             }
 
             return { success: true, message: `Müşteri '${funnel.name}' akışındaki '${stage.name}' aşamasına taşındı.`, dealId: deal.id };

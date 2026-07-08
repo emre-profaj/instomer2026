@@ -2165,10 +2165,14 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                     {(() => {
                                                         // Case title varsa onu göster, yoksa aiTopic'e fallback
                                                         const activeCase = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0];
-                                                        const caseTitle = activeCase?.title;
-                                                        const raw = caseTitle || contact.aiTopic || '';
-                                                        const isDecorative = raw.includes('━') || raw.includes('═') || raw.includes('🎯');
-                                                        const topic = isDecorative ? null : raw;
+                                                        const isGeneric = (t) => {
+                                                            if (!t) return true;
+                                                            const upper = t.toUpperCase().trim();
+                                                            return upper === 'LEAD' || upper === 'WHATSAPP' || upper === 'FACEBOOK' || upper === 'INSTAGRAM' || upper === 'MESSENGER' || upper === 'EMAIL' || upper === 'FORM' || upper === 'MANUAL' || t.includes('━') || t.includes('═') || t.includes('🎯');
+                                                        };
+                                                        const caseTitle = !isGeneric(activeCase?.title) ? activeCase.title : null;
+                                                        const fallbackTopic = !isGeneric(contact.aiTopic) ? contact.aiTopic : null;
+                                                        const topic = caseTitle || fallbackTopic;
                                                         return topic ? (
                                                             <span style={{
                                                                 display: 'inline-block',

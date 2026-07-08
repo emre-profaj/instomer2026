@@ -317,6 +317,7 @@ const Sidebar = () => {
                                                 <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
                                                     {[
                                                         { label: 'Takvim', path: '/activities/calendar', icon: Calendar },
+                                                        ...(user?.role === 'SUPER_ADMIN' ? [{ label: 'Takvim 2', path: '/activities/takvim2', icon: Calendar }] : []),
                                                         { label: 'Aramalar', path: '/activities/calls', icon: Phone },
                                                         { label: 'Randevular', path: '/activities/appointments', icon: CalendarClock },
                                                         { label: 'Görüşmeler', path: '/activities/meetings', icon: Handshake },

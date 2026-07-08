@@ -788,21 +788,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (isCallType && completeCallSuccess === null) {
             return alert('Lütfen aramanın durumunu (Ulaşıldı / Ulaşılamadı) seçin.');
         }
-        if (isCallType && completeCallSuccess !== 'UNREACHABLE' && !completeCallSentiment) {
+        if (isCallType && completeCallSuccess !== 'FAILED' && !completeCallSentiment) {
             return alert('Lütfen görüşmenin nasıl geçtiğini (Duygu Durumu) seçin.');
         }
         
         try {
             const rawId = completingActivity.id.replace(/^act_/, '');
             let finalResult = completeResult;
-            if (isCallType && completeCallSuccess === 'UNREACHABLE') {
+            if (isCallType && completeCallSuccess === 'FAILED') {
                 finalResult = finalResult ? `📵 Ulaşılamadı: ${finalResult}` : '📵 Ulaşılamadı';
             }
             await activityAPI.completeActivity(
                 rawId,
                 finalResult,
                 isCallType ? (completeCallSuccess === 'SUCCESS') : undefined,
-                isCallType && completeCallSuccess !== 'UNREACHABLE' ? completeCallSentiment : undefined
+                isCallType && completeCallSuccess !== 'FAILED' ? completeCallSentiment : undefined
             );
             // Planned'dan kaldır, past'a ekle
             const completedItem = {
@@ -812,7 +812,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 status: 'COMPLETED',
                 content: finalResult || completingActivity.content,
                 callSuccessful: isCallType ? (completeCallSuccess === 'SUCCESS') : undefined,
-                callSentiment: isCallType && completeCallSuccess !== 'UNREACHABLE' ? completeCallSentiment : undefined
+                callSentiment: isCallType && completeCallSuccess !== 'FAILED' ? completeCallSentiment : undefined
             };
             setPlannedTimeline(prev => prev.filter(i => i.id !== completingActivity.id));
             setPastTimeline(prev => [completedItem, ...prev]);

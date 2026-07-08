@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import { X, Loader, Send, ExternalLink, User, Check, CheckCheck, StickyNote, Users, ChevronDown, CheckCircle2, Circle, Trash2, UserCheck, Bot, Sparkles, Smile, BookOpen, AlertCircle } from 'lucide-react';
-import { conversationAPI, funnelAPI, workspaceAPI, teamAPI, contactAPI } from '../../services/api';
+import { conversationAPI, funnelAPI, workspaceAPI, teamAPI, contactAPI, caseAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import { useAuth } from '../../context/AuthContext';
 import './ChatPopup.css';
@@ -435,6 +435,11 @@ const ChatPopup = ({ conversationId, onClose }) => {
         const newTopic = e.target.value;
         try {
             await conversationAPI.updateTopic(currentWorkspace.id, conversation.id, newTopic);
+            // Case title'ı da senkronize et (Yazışma konusu = Case konusu)
+            if (conversation.caseId) {
+                await caseAPI.update(currentWorkspace.id, conversation.caseId, { title: newTopic });
+                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+            }
         } catch (err) { 
             console.error('Topic update error:', err); 
         }

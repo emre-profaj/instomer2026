@@ -94,7 +94,7 @@ export const deleteBranch = async (req, res) => {
 export const createDoctor = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { branchId, name, title, workingDays, workStart, workEnd, slotMinutes } = req.body;
+        const { branchId, name, title, userId, workingDays, workStart, workEnd, slotMinutes } = req.body;
 
         if (!branchId || !name) {
             return res.status(400).json({ error: 'Branş ve doktor adı gereklidir' });
@@ -109,6 +109,7 @@ export const createDoctor = async (req, res) => {
                 branchId,
                 name,
                 title: title || null,
+                userId: userId || null,
                 workingDays: workingDays ? JSON.stringify(workingDays) : JSON.stringify(["monday", "tuesday", "wednesday", "thursday", "friday"]),
                 workStart: workStart || '09:00',
                 workEnd: workEnd || '17:00',
@@ -126,7 +127,7 @@ export const createDoctor = async (req, res) => {
 export const updateDoctor = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
-        const { name, title, workingDays, workStart, workEnd, slotMinutes, isActive } = req.body;
+        const { name, title, userId, workingDays, workStart, workEnd, slotMinutes, isActive } = req.body;
 
         // Verify doctor's branch belongs to workspace
         const doctor = await prisma.appointmentDoctor.findFirst({
@@ -140,6 +141,7 @@ export const updateDoctor = async (req, res) => {
         const updateData = {};
         if (name !== undefined) updateData.name = name;
         if (title !== undefined) updateData.title = title;
+        if (userId !== undefined) updateData.userId = userId;
         if (workingDays !== undefined) updateData.workingDays = JSON.stringify(workingDays);
         if (workStart !== undefined) updateData.workStart = workStart;
         if (workEnd !== undefined) updateData.workEnd = workEnd;

@@ -799,6 +799,7 @@ model AppointmentDoctor {
   branchId    String
   name        String // "Dr. Ahmet Yılmaz"
   title       String? // "Prof. Dr.", "Uzm. Dr."
+  userId      String? // Tied to an actual System User
   workingDays String? // JSON: ["monday","tuesday","wednesday","thursday","friday"]
   workStart   String? // "09:00"
   workEnd     String? // "17:00"

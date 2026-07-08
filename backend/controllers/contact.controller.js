@@ -839,12 +839,12 @@ export const getContacts = async (req, res) => {
                 ?.filter(c => c.status === 'ACTIVE')
                 ?.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
                 ?.[0];
-            const GENERIC_CASE_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case'];
+            const GENERIC_CASE_TITLES = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', 'LEAD'];
             const rawCaseTopic = lastActiveCase?.title || null;
             // Generic kanal etiketi case title'larını atla
-            const caseTopic = (rawCaseTopic && !GENERIC_CASE_TITLES.includes(rawCaseTopic.trim())) ? rawCaseTopic : null;
+            const caseTopic = (rawCaseTopic && !GENERIC_CASE_TITLES.includes(rawCaseTopic.trim()) && rawCaseTopic.trim().toUpperCase() !== 'LEAD') ? rawCaseTopic : null;
             // Generic source labels that should NOT be used as topic
-            const GENERIC_LABELS = ['form', 'web widget', 'web_widget', 'whatsapp', 'instagram', 'facebook', 'messenger', 'email', 'manual'];
+            const GENERIC_LABELS = ['form', 'web widget', 'web_widget', 'whatsapp', 'instagram', 'facebook', 'messenger', 'email', 'manual', 'lead'];
             let rawConvAiTopic = contact.conversations
                 ?.filter(c => c.aiTopic)
                 ?.sort((a, b) => new Date(b.lastMessageAt || b.createdAt) - new Date(a.lastMessageAt || a.createdAt))

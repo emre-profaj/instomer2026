@@ -33,6 +33,8 @@ import SalesReport from './pages/CeoReport/SalesReport';
 import RequestReport from './pages/CeoReport/RequestReport';
 import Calendar from './pages/Calendar/Calendar';
 import Activities from './pages/Activities/Activities';
+import Calendar2 from './pages/Calendar2/Calendar2';
+
 import Automations from './pages/Automations/Automations';
 import Functions from './pages/Automations/Functions';
 import WebForms from './pages/WebForms/WebForms';
@@ -116,6 +118,7 @@ function App() {
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
               <Route path="calendar" element={<Navigate to="/activities/calendar" replace />} />
               <Route path="activities/calendar" element={<Calendar />} />
+              <Route path="activities/takvim2" element={<Calendar2 />} />
               <Route path="activities/calls" element={<Activities />} />
               <Route path="activities/meetings" element={<Activities />} />
               <Route path="activities/tasks" element={<Activities />} />
