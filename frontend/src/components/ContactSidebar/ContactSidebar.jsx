@@ -774,7 +774,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             // Görüşme notu giren kişi otomatik olarak atanır (backend tarafında)
         } catch (err) {
             console.error('Save activity err:', err);
-            alert('Aktivite kaydedilirken hata oluştu.');
+            const errorMsg = err.response?.data?.error || err.message || 'Aktivite kaydedilirken hata oluştu.';
+            alert('Hata: ' + errorMsg);
         } finally {
             setActivitySaving(false);
         }
