@@ -44,7 +44,13 @@ export const createActivity = async (req, res) => {
 
         // Yetki Kontrolü
         const contact = await prisma.contact.findFirst({
-            where: { id: contactId, workspaceId }
+            where: { 
+                id: contactId, 
+                OR: [
+                    { workspaceId: workspaceId },
+                    { conversations: { some: { workspaceId: workspaceId } } }
+                ]
+            }
         });
 
         if (!contact) {
