@@ -38,9 +38,7 @@ export const DEFAULT_SALES_RULES = {
     },
     'Teklif Aşaması': {
         matchType: 'ALL',
-        rules: [
-            { type: 'DEAL_EXISTS', value: true }
-        ]
+        rules: []
     },
     'Satış': {
         matchType: 'ALL',

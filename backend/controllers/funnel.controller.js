@@ -191,6 +191,10 @@ const migrateStageNames = async (funnelId) => {
 // ensureDefaultFunnels: Workspace'in eksik default akışlarını oluşturur
 // ────────────────────────────────────────────────────────────────────────────
 const ensureDefaultFunnels = async (workspaceId, existingFunnels) => {
+    // Sadece workspace yeni açıldığında (hiç akış yoksa) varsayılanları oluştur.
+    // Aksi takdirde kullanıcının sildiği akışlar geri gelir.
+    if (existingFunnels.length > 0) return false;
+
     const existingNames = existingFunnels.map(f => normalizeTR(f.name));
     let created = false;
 

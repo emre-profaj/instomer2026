@@ -48,7 +48,8 @@ function evaluateRule(rule, context) {
         }
 
         case 'DEAL_EXISTS': {
-            return (context.cases || []).length > 0;
+            // Disabled: Every conversation has a case, causing unwanted auto-skips to Teklif Aşaması
+            return false;
         }
 
         case 'DEAL_STATUS': {

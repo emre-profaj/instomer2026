@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI } from '../../services/api';
 import { Plus, Trash2, Edit2, Check, X, Loader, Kanban, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
+import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import './Funnels.css';
 
@@ -18,6 +19,7 @@ const STAGE_COLORS = [
 const Funnels = () => {
     const { t } = useTranslation();
     const { currentWorkspace } = useAuth();
+    const { showError } = useToast();
     const [funnels, setFunnels] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -122,7 +124,10 @@ const Funnels = () => {
             await funnelAPI.delete(currentWorkspace.id, id);
             setFunnels(prev => prev.filter(f => f.id !== id));
             if (expandedFunnel === id) setExpandedFunnel(null);
-        } catch (err) { console.error(err); }
+        } catch (err) { 
+            console.error(err); 
+            showError(err.response?.data?.error || 'Akış silinemedi');
+        }
     };
 
     const toggleExpand = (funnelId) => {
@@ -439,7 +444,7 @@ const Funnels = () => {
                                                     }} title={t('common.edit')}>
                                                         <Edit2 size={15} />
                                                     </button>
-                                                    {!isMain && (
+                                                    {!isMain && !funnel.isDefault && (
                                                         <button className="funnels-icon-btn funnels-icon-btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(funnel.id); }} title={t('common.delete')}>
                                                             <Trash2 size={15} />
                                                         </button>

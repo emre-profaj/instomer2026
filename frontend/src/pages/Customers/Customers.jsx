@@ -490,7 +490,13 @@ const Customers = () => {
             if (currentWorkspace && data.contactId) {
                 console.log('🔄 [Customers] Funnel stage updated via socket, locally updating contact...');
                 setContacts(prev => prev.map(c =>
-                    c.id === data.contactId ? { ...c, funnelStageId: data.funnelStageId, funnelType: data.funnelType } : c
+                    c.id === data.contactId ? { 
+                        ...c, 
+                        funnelStageId: data.funnelStageId, 
+                        funnelType: data.funnelType,
+                        cases: (c.cases || []).map(cs => cs.status === 'ACTIVE' ? { ...cs, funnelStageId: data.funnelStageId, funnelType: data.funnelType } : cs),
+                        activeCase: c.activeCase ? { ...c.activeCase, funnelStageId: data.funnelStageId, funnelType: data.funnelType } : c.activeCase
+                    } : c
                 ));
                 
                 const current = selectedContactRef.current;
@@ -1149,7 +1155,13 @@ const Customers = () => {
         try {
             // Optimistic local update
             setContacts(prev => prev.map(c =>
-                c.id === contact.id ? { ...c, funnelStageId: stageId, funnelType: funnelId } : c
+                c.id === contact.id ? { 
+                    ...c, 
+                    funnelStageId: stageId, 
+                    funnelType: funnelId,
+                    cases: (c.cases || []).map(cs => cs.status === 'ACTIVE' ? { ...cs, funnelStageId: stageId, funnelType: funnelId } : cs),
+                    activeCase: c.activeCase ? { ...c.activeCase, funnelStageId: stageId, funnelType: funnelId } : c.activeCase
+                } : c
             ));
             // 1. Update contact record
             await contactAPI.update(currentWorkspace.id, contact.id, {
