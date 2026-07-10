@@ -247,11 +247,28 @@ export async function checkAvailability(workspaceId, params = {}) {
 
                 // Geçmişi atla (bugün ise şu andan sonrasını al)
                 const now = new Date();
-                if (slotStart < now) {
-                    // Şu anki saatten sonraki ilk slot'a yuvarla
-                    const minutesSinceStart = Math.ceil((now - slotStart) / 60000);
-                    const slotsToSkip = Math.ceil(minutesSinceStart / provider.slotMinutes);
-                    slotStart = addMinutes(slotStart, slotsToSkip * provider.slotMinutes);
+                const nowTRDate = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
+                const slotTRDate = currentDay.toLocaleDateString('en-CA', { timeZone: 'Europe/Istanbul' });
+
+                if (slotTRDate <= nowTRDate) {
+                    const nowTRTime = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+                    // formatTime, '09:00' formatında döner (Eğer setHours UTC ise bu TR karşılığı farklı olabilir, bu yüzden string yerine kendi oluşturduğu saati alalım)
+                    const slotTimeStr = `${String(slotStart.getHours()).padStart(2, '0')}:${String(slotStart.getMinutes()).padStart(2, '0')}`;
+                    // Daha iyisi, setTime ile ayarlandığı için provider.workStart saatine göre kıyaslama yapalım
+                    
+                    // Doğru TR saati kıyaslaması için manuel diff hesabı:
+                    // slotStart nesnesinin İstanbul'daki saatine bakalım:
+                    const slotTRTimeFull = slotStart.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
+                    
+                    if (slotTRDate < nowTRDate || slotTRTimeFull < nowTRTime) {
+                        // Eğer sunucu saat farkından dolayı nesneler kaydıysa, 
+                        // Slot'u 'now' nesnesinden sonraki geçerli ilk dilime çek:
+                        const diffMins = Math.ceil((now - slotStart) / 60000);
+                        if (diffMins > 0) {
+                            const slotsToSkip = Math.ceil(diffMins / provider.slotMinutes);
+                            slotStart = addMinutes(slotStart, slotsToSkip * provider.slotMinutes);
+                        }
+                    }
                 }
 
                 while (slotStart < dayEnd) {
