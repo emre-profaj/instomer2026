@@ -3343,6 +3343,44 @@ export const getAgentPerformance = async (req, res) => {
                 dealTotalAmount += amount;
             }
 
+            // Group WON deals by product/topic
+            const wonDeals = await prisma.deal.findMany({
+                where: {
+                    workspaceId,
+                    assignedToId: userId,
+                    status: 'WON',
+                    ...dateFilter
+                },
+                select: {
+                    title: true,
+                    products: true,
+                    amount: true
+                }
+            });
+
+            const salesByProduct = {};
+            for (const d of wonDeals) {
+                let parsedProducts = [];
+                try {
+                    parsedProducts = JSON.parse(d.products || '[]');
+                } catch (e) {}
+
+                if (parsedProducts.length > 0) {
+                    for (const p of parsedProducts) {
+                        const name = p.name || 'Bilinmeyen Ürün';
+                        if (!salesByProduct[name]) salesByProduct[name] = { count: 0, amount: 0 };
+                        salesByProduct[name].count += (p.quantity || 1);
+                        salesByProduct[name].amount += (p.total || (p.unitPrice * (p.quantity || 1)) || 0);
+                    }
+                } else {
+                    // Fallback to title if no products attached
+                    const name = d.title || 'İsimsiz Satış';
+                    if (!salesByProduct[name]) salesByProduct[name] = { count: 0, amount: 0 };
+                    salesByProduct[name].count += 1;
+                    salesByProduct[name].amount += (d.amount || 0);
+                }
+            }
+
             // ── Randevu Sayısı (appointment tablosu + aşama değişikliği) ──
             const appointmentFromTable = await prisma.appointment.count({
                 where: {
@@ -3413,6 +3451,7 @@ export const getAgentPerformance = async (req, res) => {
                 dealOpen,
                 dealTotalAmount,
                 dealWonAmount,
+                salesByProduct,
                 // Randevu
                 appointmentCount,
                 teams: myTeams

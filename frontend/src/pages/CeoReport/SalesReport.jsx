@@ -85,8 +85,13 @@ const SalesReport = () => {
     };
 
     // Agent sales sorted by order amount
-    const salesAgents = [...agents].filter(a => (a.dealOrders || 0) > 0 || (a.dealTotalAmount || 0) > 0)
+    const salesAgents = [...agents].filter(a => (a.dealOrders || 0) > 0 || (a.dealTotalAmount || 0) > 0 || (a.dealWon || 0) > 0)
         .sort((a, b) => (b.dealTotalAmount || 0) - (a.dealTotalAmount || 0));
+
+    // Extract unique product names for agent table
+    const uniqueProductNames = [...new Set(
+        salesAgents.flatMap(a => Object.keys(a.salesByProduct || {}))
+    )].sort();
 
     if (loading && !analytics) {
         return (
@@ -558,6 +563,71 @@ const SalesReport = () => {
                                                         <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #7c3aed)', borderRadius: 3, transition: 'width 0.6s' }} />
                                                     </div>
                                                     <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7c3aed', minWidth: 36 }}>%{pct}</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Temsilci Bazlı Ürün/Konu Satışları */}
+            {salesAgents.length > 0 && uniqueProductNames.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 20 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#dcfce7', color: '#16a34a' }}><UserCheck size={18} /></div>
+                        <h2>Temsilci ve Konu Bazlı Satışlar (Tamamlanan)</h2>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>Temsilci</th>
+                                    {uniqueProductNames.map(name => (
+                                        <th key={name}>{name}</th>
+                                    ))}
+                                    <th>Genel Toplam</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {salesAgents.map((agent, idx) => {
+                                    const products = agent.salesByProduct || {};
+                                    let agentTotalCount = 0;
+                                    let agentTotalAmount = 0;
+                                    return (
+                                        <tr key={idx}>
+                                            <td>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <img src={agent.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(agent.name || 'U') + '&background=f1f5f9&color=64748b'} alt={agent.name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{agent.name}</div>
+                                                </div>
+                                            </td>
+                                            {uniqueProductNames.map(name => {
+                                                const p = products[name];
+                                                const c = p ? p.count : 0;
+                                                const a = p ? p.amount : 0;
+                                                agentTotalCount += c;
+                                                agentTotalAmount += a;
+                                                return (
+                                                    <td key={name}>
+                                                        {c > 0 ? (
+                                                            <div>
+                                                                <span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{c}</span>
+                                                                <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>{formatCurrency(a)}</div>
+                                                            </div>
+                                                        ) : (
+                                                            <span style={{ color: '#cbd5e1' }}>-</span>
+                                                        )}
+                                                    </td>
+                                                );
+                                            })}
+                                            <td>
+                                                <div>
+                                                    <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem' }}>{agentTotalCount}</span>
+                                                    <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700 }}>{formatCurrency(agentTotalAmount)}</div>
                                                 </div>
                                             </td>
                                         </tr>
