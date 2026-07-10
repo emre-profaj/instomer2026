@@ -3359,6 +3359,14 @@ export const getAgentPerformance = async (req, res) => {
             });
 
             const salesByProduct = {};
+            const normalizeProductName = (rawName) => {
+                let name = (rawName || 'Bilinmeyen Ürün').trim().toLocaleUpperCase('tr-TR');
+                const dogumVariants = ['DOGUM PAKETİ', 'DOGUM PAKETI', 'DOĞUM', 'DOĞUM PAKET', 'DOGUM PAKET', 'DOGUM'];
+                if (dogumVariants.includes(name)) return 'DOĞUM PAKETİ';
+                // Remove trailing dashes or spaces
+                return name.replace(/\s*-\s*$/, '');
+            };
+
             for (const d of wonDeals) {
                 let parsedProducts = [];
                 try {
@@ -3367,14 +3375,14 @@ export const getAgentPerformance = async (req, res) => {
 
                 if (parsedProducts.length > 0) {
                     for (const p of parsedProducts) {
-                        const name = p.name || 'Bilinmeyen Ürün';
+                        const name = normalizeProductName(p.name);
                         if (!salesByProduct[name]) salesByProduct[name] = { count: 0, amount: 0 };
                         salesByProduct[name].count += (p.quantity || 1);
                         salesByProduct[name].amount += (p.total || (p.unitPrice * (p.quantity || 1)) || 0);
                     }
                 } else {
                     // Fallback to title if no products attached
-                    const name = d.title || 'İsimsiz Satış';
+                    const name = normalizeProductName(d.title);
                     if (!salesByProduct[name]) salesByProduct[name] = { count: 0, amount: 0 };
                     salesByProduct[name].count += 1;
                     salesByProduct[name].amount += (d.amount || 0);
