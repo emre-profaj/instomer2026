@@ -11,18 +11,23 @@ const FunnelPipeline = ({
     onFunnelSettingsClick,
     onAddStageClick,
     onStageReorder,
+    depth = 0,
     children, // sub-funnels rendered as children
 }) => {
-    const [isExpanded, setIsExpanded] = useState(funnel.funnelType === 'MAIN');
+    const [isExpanded, setIsExpanded] = useState(true);
     const stages = (funnel.stages || []).sort((a, b) => a.order - b.order);
     const totalCount = stages.reduce((sum, s) => sum + (stageCounts[s.id] || 0), 0);
 
     return (
-        <div className={`funnel-card${funnel.funnelType === 'MAIN' ? ' main-funnel' : ''}`}>
+        <div
+            className={`funnel-card${funnel.funnelType === 'MAIN' ? ' main-funnel' : ''}${depth > 0 ? ' sub-funnel' : ''}`}
+            style={depth > 0 ? { marginLeft: depth * 28, borderLeft: '3px solid ' + (funnel.color || '#e2e8f0') } : undefined}
+        >
             <div className="funnel-card-header" onClick={() => setIsExpanded(prev => !prev)}>
                 <span style={{ fontSize: 18 }}>{funnel.icon || '📁'}</span>
                 <span className="funnel-name">{funnel.name}</span>
                 {funnel.funnelType === 'MAIN' && <span className="funnel-badge">ANA AKIŞ</span>}
+                {depth > 0 && <span className="funnel-badge sub">ALT AKIŞ</span>}
                 <div className="funnel-header-right">
                     <span className="funnel-stage-count">
                         {totalCount} kişi · {stages.length} aşama
@@ -83,7 +88,6 @@ const FunnelPipeline = ({
                                 )}
                             </>
                         ))}
-                        {/* Add stage button at the end */}
                         {stages.length > 0 && (
                             <span className="stage-arrow">
                                 <ChevronRight size={14} />

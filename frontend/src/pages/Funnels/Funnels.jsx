@@ -341,16 +341,14 @@ const Funnels = () => {
     const mainFunnel = funnels.find(f => f.funnelType === 'MAIN');
     const childrenMap = {};
     funnels.forEach(f => {
-        if (f.parentId && f.parentId !== mainFunnel?.id) {
-            if (!childrenMap[f.parentId]) childrenMap[f.parentId] = [];
-            childrenMap[f.parentId].push(f);
+        const parentKey = f.parentId || (f.funnelType !== 'MAIN' ? mainFunnel?.id : null);
+        if (parentKey && f.id !== mainFunnel?.id) {
+            if (!childrenMap[parentKey]) childrenMap[parentKey] = [];
+            childrenMap[parentKey].push(f);
         }
     });
-    const topLevel = funnels.filter(f =>
-        f.id !== mainFunnel?.id && (!f.parentId || f.parentId === mainFunnel?.id)
-    );
 
-    const renderFunnelTree = (funnel) => {
+    const renderFunnelTree = (funnel, depth = 0) => {
         const childFunnels = childrenMap[funnel.id] || [];
 
         return (
@@ -364,13 +362,12 @@ const Funnels = () => {
                 onFunnelSettingsClick={openFunnelPanel}
                 onStageReorder={handleStageReorder}
                 onAddStageClick={(f) => { setAddStageFunnelId(f.id); setNewStageName(''); setNewStageColor(STAGE_COLORS[0]); }}
+                depth={depth}
             >
-                {childFunnels.map(child => renderFunnelTree(child))}
+                {childFunnels.map(child => renderFunnelTree(child, depth + 1))}
             </FunnelPipeline>
         );
     };
-
-    const orderedList = mainFunnel ? [mainFunnel, ...topLevel] : topLevel;
 
     return (
         <div className="funnels-page">
@@ -457,7 +454,7 @@ const Funnels = () => {
                     <p>{t('funnels.empty')}</p>
                 </div>
             ) : (
-                orderedList.map(funnel => renderFunnelTree(funnel))
+                mainFunnel ? renderFunnelTree(mainFunnel) : funnels.filter(f => !f.parentId).map(f => renderFunnelTree(f))
             )}
 
             {/* Add Stage Modal (simple inline) */}

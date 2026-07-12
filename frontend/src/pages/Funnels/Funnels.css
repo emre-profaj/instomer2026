@@ -188,10 +188,23 @@
 
 /* ── Sub Funnels ── */
 .sub-funnels {
-    margin-left: 24px;
-    padding-left: 20px;
-    border-left: 2px solid #e2e8f0;
     margin-top: 4px;
+    padding-left: 0;
+}
+
+.funnel-card.sub-funnel {
+    border-radius: 10px;
+    background: rgba(248, 250, 252, 0.7);
+}
+
+.funnel-badge.sub {
+    background: #eff6ff;
+    color: #3b82f6;
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
 /* ── Funnel Settings Button ── */
