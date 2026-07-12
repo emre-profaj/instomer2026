@@ -185,10 +185,13 @@
     display: flex;
     align-items: center;
 }
+/* ── Sub Funnels & Tree Connectors ── */
+.funnel-tree-node {
+    position: relative;
+}
 
-/* ── Sub Funnels ── */
 .sub-funnels {
-    margin-top: 4px;
+    margin-top: 0;
     padding-left: 0;
 }
 
@@ -197,14 +200,82 @@
     background: rgba(248, 250, 252, 0.7);
 }
 
-.funnel-badge.sub {
-    background: #eff6ff;
-    color: #3b82f6;
-    font-size: 9px;
-    padding: 2px 6px;
+/* Tree vertical line (ancestor continuation) */
+.tree-line-vertical {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #cbd5e1;
+    z-index: 1;
+}
+
+/* Tree branch connector (vertical part going down to this node) */
+.tree-line-branch {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 50%;
+    background: #cbd5e1;
+    z-index: 1;
+}
+
+.tree-line-branch:not(.last) {
+    height: 100%;
+}
+
+/* Tree horizontal connector */
+.tree-line-horizontal {
+    position: absolute;
+    top: 50%;
+    height: 2px;
+    background: #cbd5e1;
+    z-index: 1;
+    transform: translateX(2px);
+}
+
+/* Junction dot */
+.tree-line-horizontal::before {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #cbd5e1;
+}
+
+/* ── Funnel Drag & Drop ── */
+.funnel-drag-handle {
+    display: flex;
+    align-items: center;
+    color: #94a3b8;
+    cursor: grab;
+    padding: 2px;
+    margin-right: 4px;
     border-radius: 4px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.funnel-drag-handle:hover {
+    color: #475569;
+    background: #f1f5f9;
+}
+
+.funnel-drag-handle:active {
+    cursor: grabbing;
+}
+
+.funnel-card.dragging-funnel {
+    opacity: 0.4;
+    border-style: dashed;
+}
+
+.funnel-card.drop-highlight {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), inset 0 0 12px rgba(59, 130, 246, 0.05);
+    background: rgba(239, 246, 255, 0.5);
 }
 
 /* ── Funnel Settings Button ── */

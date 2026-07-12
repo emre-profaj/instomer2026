@@ -348,8 +348,38 @@ const Funnels = () => {
         }
     });
 
-    const renderFunnelTree = (funnel, depth = 0) => {
+    // Re-parent a funnel via drag-and-drop
+    const handleFunnelReparent = async (draggedFunnelId, targetParentId) => {
+        if (draggedFunnelId === targetParentId) return;
+        // Prevent circular: can't drop onto own descendant
+        const isDescendant = (parentId, checkId) => {
+            const children = childrenMap[checkId] || [];
+            for (const c of children) {
+                if (c.id === parentId) return true;
+                if (isDescendant(parentId, c.id)) return true;
+            }
+            return false;
+        };
+        if (isDescendant(targetParentId, draggedFunnelId)) return;
+
+        // Optimistic update
+        setFunnels(prev => prev.map(f =>
+            f.id === draggedFunnelId ? { ...f, parentId: targetParentId } : f
+        ));
+
+        try {
+            await funnelAPI.update(currentWorkspace.id, draggedFunnelId, { parentId: targetParentId });
+        } catch (err) {
+            console.error('Reparent error:', err);
+            loadFunnels();
+        }
+    };
+
+    const renderFunnelTree = (funnel, depth = 0, isLast = true, ancestorLines = []) => {
         const childFunnels = childrenMap[funnel.id] || [];
+
+        // connectorLines: array of booleans per ancestor depth — true means draw a vertical line at that depth
+        const myConnectorLines = depth > 0 ? [...ancestorLines] : [];
 
         return (
             <FunnelPipeline
@@ -361,10 +391,18 @@ const Funnels = () => {
                 onStageSettingsClick={(stage) => openStagePanel(stage, funnel.id)}
                 onFunnelSettingsClick={openFunnelPanel}
                 onStageReorder={handleStageReorder}
+                onFunnelDrop={handleFunnelReparent}
                 onAddStageClick={(f) => { setAddStageFunnelId(f.id); setNewStageName(''); setNewStageColor(STAGE_COLORS[0]); }}
                 depth={depth}
+                isLast={isLast}
+                connectorLines={myConnectorLines}
             >
-                {childFunnels.map(child => renderFunnelTree(child, depth + 1))}
+                {childFunnels.map((child, i) => {
+                    const childIsLast = i === childFunnels.length - 1;
+                    // For children, pass down whether ancestor lines continue
+                    const childAncestorLines = [...myConnectorLines, !isLast];
+                    return renderFunnelTree(child, depth + 1, childIsLast, childAncestorLines);
+                })}
             </FunnelPipeline>
         );
     };
