@@ -128,7 +128,7 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
  * @param {boolean} isNewConversation - Yeni konuşma mı?
  * @returns {Object} - Yönlendirme bilgisi
  */
-export async function applyChannelRouting(workspaceId, conversationId, channel, isNewConversation = true) {
+export async function applyChannelRouting(workspaceId, conversationId, channel, isNewConversation = true, pageId = null) {
     try {
         console.log(`📡 [Routing] Applying routing for channel ${channel} in workspace ${workspaceId} (isNew: ${isNewConversation})`);
 
@@ -154,29 +154,47 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
             };
         }
 
-        // Kanal yönlendirmesini bul
-        const routing = await prisma.channelRouting.findUnique({
-            where: {
-                workspaceId_channel: {
-                    workspaceId,
-                    channel
-                }
-            },
-            include: {
-                team: {
-                    include: {
-                        assignedBot: true,
-                        members: {
-                            include: {
-                                user: {
-                                    select: { id: true, name: true, email: true }
+        // Kanal yönlendirmesini bul - önce sayfa bazlı, sonra genel
+        let routing = null;
+        if (pageId) {
+            routing = await prisma.channelRouting.findFirst({
+                where: { workspaceId, channel, pageId, isActive: true },
+                include: {
+                    team: {
+                        include: {
+                            assignedBot: true,
+                            members: {
+                                include: {
+                                    user: {
+                                        select: { id: true, name: true, email: true }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
+        // Sayfa bazlı bulunamadıysa genel kanal yönlendirmesine düş
+        if (!routing) {
+            routing = await prisma.channelRouting.findFirst({
+                where: { workspaceId, channel, pageId: null, isActive: true },
+                include: {
+                    team: {
+                        include: {
+                            assignedBot: true,
+                            members: {
+                                include: {
+                                    user: {
+                                        select: { id: true, name: true, email: true }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         if (!routing || !routing.isActive) {
             console.log(`📡 [Routing] No active routing for channel ${channel}`);
@@ -231,12 +249,35 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
 
         console.log(`📡 [Routing] ✅ Channel ${channel} → Team "${routing.team?.name}" (Bot delay: ${isNewConversation ? botDelaySeconds + 's' : 'SKIPPED'}, Bot: ${routing.botEnabled ? 'Active' : 'Disabled'})`);
 
-        // ── Varsayılan akış ataması (akışın takımı kanal yönlendirmesini ezer) ──
+        // ── Akış ataması: routing'de funnelId varsa onu kullan, yoksa varsayılanı ata ──
         if (isNewConversation) {
-            const funnelResult = await assignDefaultFunnel(workspaceId, conversationId);
-            if (funnelResult?.funnelTeamId) {
-                // Akışın takımı varsa, son durumu güncelle
-                updatedConversation.assignedTeamId = funnelResult.funnelTeamId;
+            if (routing.funnelId) {
+                // Routing'deki özel funnel'ı kullan
+                const funnel = await prisma.funnel.findUnique({
+                    where: { id: routing.funnelId },
+                    include: { stages: { orderBy: { order: 'asc' } } }
+                });
+                if (funnel && funnel.stages.length > 0) {
+                    const firstStage = funnel.stages[0];
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: { funnelType: funnel.id, funnelStageId: firstStage.id }
+                    });
+                    // Contact'ı da güncelle
+                    const conv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { contactId: true } });
+                    if (conv?.contactId) {
+                        await prisma.contact.update({
+                            where: { id: conv.contactId },
+                            data: { funnelType: funnel.id, funnelStageId: firstStage.id }
+                        });
+                    }
+                }
+            } else {
+                const funnelResult = await assignDefaultFunnel(workspaceId, conversationId);
+                if (funnelResult?.funnelTeamId) {
+                    // Akışın takımı varsa, son durumu güncelle
+                    updatedConversation.assignedTeamId = funnelResult.funnelTeamId;
+                }
             }
         }
 

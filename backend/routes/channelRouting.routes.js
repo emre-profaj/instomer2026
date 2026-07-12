@@ -2,7 +2,8 @@ import express from 'express';
 import {
     getChannelRoutings,
     upsertChannelRouting,
-    deleteChannelRouting
+    deleteChannelRouting,
+    getRoutingsByFunnel
 } from '../controllers/channelRouting.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -30,6 +31,14 @@ router.delete(
     authenticateJWT,
     requireWorkspaceAccess,
     deleteChannelRouting
+);
+
+// Belirli bir funnel için yönlendirmeleri getir
+router.get(
+    '/:workspaceId/by-funnel/:funnelId',
+    authenticateJWT,
+    requireWorkspaceAccess,
+    getRoutingsByFunnel
 );
 
 export default router;

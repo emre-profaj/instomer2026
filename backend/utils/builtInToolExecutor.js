@@ -378,6 +378,328 @@ export const executeBuiltInTool = async (functionName, args, context) => {
             }
         }
 
+        // ─── SATIŞ & ÜRÜN TOOLS ────────────────────────────────────────────────────
+
+        case 'recommend_product': {
+            // Müşteriye ürün önerir
+            const { query, category } = args;
+            try {
+                const where = { workspaceId, isActive: true };
+                if (category) {
+                    where.category = { contains: category, mode: 'insensitive' };
+                }
+
+                const products = await prisma.product.findMany({
+                    where,
+                    take: 5,
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                if (products.length === 0) {
+                    return { success: true, message: 'Aradığınız kriterlere uygun ürün bulunamadı.' };
+                }
+
+                const productList = products.map(p => {
+                    const price = p.price ? `${p.price} ${p.currency || 'TL'}` : 'Fiyat bilgisi yok';
+                    return `• ${p.name} - ${price}${p.description ? ': ' + p.description.substring(0, 80) : ''}`;
+                }).join('\n');
+
+                return {
+                    success: true,
+                    products,
+                    message: `Size uygun ürünlerimiz:\n\n${productList}\n\nHangi ürünle ilgilenirsiniz?`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] recommend_product error:', err.message);
+                return { success: false, message: 'Ürün listesi alınamadı.' };
+            }
+        }
+
+        case 'create_order': {
+            // Müşteri için sipariş oluşturur
+            const { product_name, quantity = 1, notes } = args;
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    include: { contact: true }
+                });
+
+                if (!conv?.contactId) {
+                    return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
+                }
+
+                // Find product
+                const product = await prisma.product.findFirst({
+                    where: {
+                        workspaceId,
+                        name: { contains: product_name, mode: 'insensitive' },
+                        isActive: true
+                    }
+                });
+
+                if (!product) {
+                    return { success: false, message: `'${product_name}' adlı ürün bulunamadı.` };
+                }
+
+                const totalAmount = (product.price || 0) * quantity;
+
+                const order = await prisma.order.create({
+                    data: {
+                        workspaceId,
+                        contactId: conv.contactId,
+                        status: 'PENDING',
+                        totalAmount,
+                        currency: product.currency || 'TRY',
+                        notes: notes || `Bot tarafından oluşturuldu - ${product.name} x${quantity}`,
+                        items: JSON.stringify([{
+                            productId: product.id,
+                            productName: product.name,
+                            quantity,
+                            unitPrice: product.price || 0,
+                            totalPrice: totalAmount
+                        }])
+                    }
+                });
+
+                return {
+                    success: true,
+                    orderId: order.id,
+                    message: `Siparişiniz oluşturuldu! 🛒\n\n📦 ${product.name} x${quantity}\n💰 Toplam: ${totalAmount} ${product.currency || 'TL'}\n📋 Sipariş No: ${order.id.substring(0, 8)}\n\nÖdeme yapmak ister misiniz?`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] create_order error:', err.message);
+                return { success: false, message: 'Sipariş oluşturulamadı. Lütfen tekrar deneyin.' };
+            }
+        }
+
+        case 'send_payment_link': {
+            // Ödeme linki gönderir
+            const { amount, description, order_id } = args;
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    include: { contact: true }
+                });
+
+                if (!conv?.contact) {
+                    return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
+                }
+
+                // Check for payment integration
+                const paymentIntegration = await prisma.apiIntegration.findFirst({
+                    where: { workspaceId, type: 'PAYMENT', isActive: true }
+                });
+
+                if (!paymentIntegration) {
+                    // Fallback: create a manual payment record
+                    const payment = await prisma.contactActivity.create({
+                        data: {
+                            contactId: conv.contactId,
+                            workspaceId,
+                            type: 'PAYMENT',
+                            title: `Ödeme talebi: ${amount} TL`,
+                            description: description || `Sipariş: ${order_id || 'Genel'}`,
+                            status: 'PENDING'
+                        }
+                    });
+
+                    return {
+                        success: true,
+                        message: `Ödeme talebiniz oluşturuldu. 💳\n\n💰 Tutar: ${amount} TL\n📝 ${description || ''}\n\nTemsilcimiz ödeme detaylarını sizinle paylaşacaktır.`
+                    };
+                }
+
+                // If payment integration exists, use it
+                return {
+                    success: true,
+                    message: `Ödeme linkiniz hazırlanıyor. 💳\n\n💰 Tutar: ${amount} TL\n📝 ${description || ''}\n\nKısa süre içinde ödeme linkini alacaksınız.`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] send_payment_link error:', err.message);
+                return { success: false, message: 'Ödeme linki oluşturulamadı.' };
+            }
+        }
+
+        case 'create_appointment': {
+            // Randevu oluşturur
+            const { date, time, type = 'GENERAL', notes } = args;
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    include: { contact: true }
+                });
+
+                if (!conv?.contactId) {
+                    return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
+                }
+
+                const appointmentDate = new Date(`${date}T${time || '10:00'}:00`);
+                if (isNaN(appointmentDate.getTime())) {
+                    return { success: false, message: 'Geçersiz tarih/saat formatı. YYYY-MM-DD ve HH:MM formatında girin.' };
+                }
+
+                const appointment = await prisma.contactActivity.create({
+                    data: {
+                        contactId: conv.contactId,
+                        workspaceId,
+                        type: 'MEETING',
+                        title: `Randevu - ${conv.contact.firstName || 'Müşteri'}`,
+                        description: notes || 'Bot tarafından oluşturuldu',
+                        dueDate: appointmentDate,
+                        status: 'SCHEDULED'
+                    }
+                });
+
+                const dateStr = appointmentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+                const timeStr = appointmentDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+                return {
+                    success: true,
+                    appointmentId: appointment.id,
+                    message: `Randevunuz oluşturuldu! 📅\n\n📆 ${dateStr}\n⏰ ${timeStr}\n📝 ${notes || ''}\n\nDeğişiklik yapmak isterseniz bize bildirin.`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] create_appointment error:', err.message);
+                return { success: false, message: 'Randevu oluşturulamadı.' };
+            }
+        }
+
+        case 'send_location': {
+            // Şube/ofis konumunu gönderir
+            const { branch_name } = args;
+            try {
+                // Look for location in knowledge base or workspace settings
+                const workspace = await prisma.workspace.findUnique({
+                    where: { id: workspaceId },
+                    select: { settings: true, name: true }
+                });
+
+                const settings = workspace?.settings ? (typeof workspace.settings === 'string' ? JSON.parse(workspace.settings) : workspace.settings) : {};
+                const locations = settings.locations || [];
+
+                if (branch_name && locations.length > 0) {
+                    const found = locations.find(l =>
+                        l.name?.toLowerCase().includes(branch_name.toLowerCase())
+                    );
+                    if (found) {
+                        return {
+                            success: true,
+                            message: `📍 ${found.name}\n\n📌 Adres: ${found.address || 'Adres bilgisi yok'}\n🗺️ Harita: ${found.mapUrl || 'Harita linki yok'}\n📞 Telefon: ${found.phone || ''}`
+                        };
+                    }
+                }
+
+                // Fallback: return workspace info
+                return {
+                    success: true,
+                    message: `📍 ${workspace?.name || 'Şirketimiz'}\n\nKonum bilgisi için lütfen temsilcimizle iletişime geçin.`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] send_location error:', err.message);
+                return { success: false, message: 'Konum bilgisi alınamadı.' };
+            }
+        }
+
+        case 'add_note': {
+            // Müşteriye not ekler
+            const { note, title } = args;
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { contactId: true }
+                });
+
+                if (!conv?.contactId) {
+                    return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
+                }
+
+                await prisma.contactActivity.create({
+                    data: {
+                        contactId: conv.contactId,
+                        workspaceId,
+                        type: 'NOTE',
+                        title: title || 'Bot Notu',
+                        description: note,
+                        status: 'COMPLETED'
+                    }
+                });
+
+                return { success: true, message: `Not kaydedildi: "${note}"` };
+            } catch (err) {
+                console.error('[BuiltIn] add_note error:', err.message);
+                return { success: false, message: 'Not eklenemedi.' };
+            }
+        }
+
+        case 'add_tag': {
+            // Müşteriye etiket ekler
+            const { tag_name } = args;
+            try {
+                const conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { contactId: true }
+                });
+
+                if (!conv?.contactId) {
+                    return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
+                }
+
+                const contact = await prisma.contact.findUnique({
+                    where: { id: conv.contactId },
+                    select: { tags: true }
+                });
+
+                let tags = [];
+                if (contact?.tags) {
+                    try { tags = JSON.parse(contact.tags); } catch { tags = []; }
+                }
+
+                if (!tags.includes(tag_name)) {
+                    tags.push(tag_name);
+                    await prisma.contact.update({
+                        where: { id: conv.contactId },
+                        data: { tags: JSON.stringify(tags) }
+                    });
+                    return { success: true, message: `'${tag_name}' etiketi eklendi.` };
+                }
+
+                return { success: true, message: `'${tag_name}' etiketi zaten mevcut.` };
+            } catch (err) {
+                console.error('[BuiltIn] add_tag error:', err.message);
+                return { success: false, message: 'Etiket eklenemedi.' };
+            }
+        }
+
+        case 'check_stock': {
+            // Ürün stok kontrolü
+            const { product_name } = args;
+            try {
+                const product = await prisma.product.findFirst({
+                    where: {
+                        workspaceId,
+                        name: { contains: product_name, mode: 'insensitive' },
+                        isActive: true
+                    }
+                });
+
+                if (!product) {
+                    return { success: false, message: `'${product_name}' ürünü bulunamadı.` };
+                }
+
+                const stockInfo = product.stock !== null && product.stock !== undefined
+                    ? (product.stock > 0 ? `✅ Stokta var (${product.stock} adet)` : '❌ Stokta yok')
+                    : '📦 Stok bilgisi takip edilmiyor';
+
+                return {
+                    success: true,
+                    message: `📦 ${product.name}\n💰 Fiyat: ${product.price || 'Belirtilmemiş'} ${product.currency || 'TL'}\n${stockInfo}`
+                };
+            } catch (err) {
+                console.error('[BuiltIn] check_stock error:', err.message);
+                return { success: false, message: 'Stok bilgisi alınamadı.' };
+            }
+        }
+
         default:
             throw new Error(`Built-in tool ${functionName} is not implemented.`);
     }

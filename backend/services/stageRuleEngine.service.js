@@ -363,6 +363,16 @@ export async function applyStageChange(contactId, workspaceId, stageResult) {
 
     const { stageId, funnelId } = stageResult;
 
+    // Capture previous stage ID before updates (for exit actions)
+    let previousStageId = null;
+    try {
+        const currentContact = await prisma.contact.findUnique({
+            where: { id: contactId },
+            select: { funnelStageId: true }
+        });
+        previousStageId = currentContact?.funnelStageId || null;
+    } catch (_) {}
+
     // Contact güncelle
     await prisma.contact.update({
         where: { id: contactId },
@@ -398,6 +408,24 @@ export async function applyStageChange(contactId, workspaceId, stageResult) {
             funnelType: funnelId,
         }
     });
+
+    // Execute stage automations
+    try {
+        const { executeEntryActions, scheduleTimedActions, executeExitActions } = await import('./stageAutomation.service.js');
+        
+        // Exit actions for old stage
+        if (previousStageId && previousStageId !== stageId) {
+            await executeExitActions(previousStageId, contactId, workspaceId);
+        }
+        
+        // Entry actions for new stage
+        await executeEntryActions(stageId, contactId, workspaceId);
+        
+        // Schedule timed actions
+        await scheduleTimedActions(stageId, contactId, workspaceId);
+    } catch (automationErr) {
+        console.error('[StageRuleEngine] Automation execution error:', automationErr.message);
+    }
 
     // Socket ile UI güncelle
     try {

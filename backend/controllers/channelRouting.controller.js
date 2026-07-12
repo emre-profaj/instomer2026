@@ -21,7 +21,8 @@ export const getChannelRoutings = async (req, res) => {
                             }
                         }
                     }
-                }
+                },
+                funnel: true
             },
             orderBy: { channel: 'asc' }
         });
@@ -53,7 +54,7 @@ export const getChannelRoutings = async (req, res) => {
 export const upsertChannelRouting = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { channel, teamId, botDelay, botEnabled, isActive } = req.body;
+        const { channel, teamId, botDelay, botEnabled, isActive, funnelId, pageId, accountName } = req.body;
 
         if (!channel || !teamId) {
             return res.status(400).json({ error: 'Kanal ve ekip gereklidir' });
@@ -81,13 +82,19 @@ export const upsertChannelRouting = async (req, res) => {
                 teamId,
                 botDelay: botDelay ?? 30,
                 botEnabled: botEnabled ?? true,
-                isActive: isActive ?? true
+                isActive: isActive ?? true,
+                funnelId: funnelId || null,
+                pageId: pageId || null,
+                accountName: accountName || null
             },
             update: {
                 teamId,
                 botDelay: botDelay ?? 30,
                 botEnabled: botEnabled ?? true,
-                isActive: isActive ?? true
+                isActive: isActive ?? true,
+                funnelId: funnelId || null,
+                pageId: pageId || null,
+                accountName: accountName || null
             },
             include: {
                 team: {
@@ -168,4 +175,18 @@ export const getRoutingForChannel = async (workspaceId, channel) => {
     }
 };
 
-
+// Belirli bir funnel için tüm kanal yönlendirmelerini getir
+export const getRoutingsByFunnel = async (req, res) => {
+    try {
+        const { workspaceId, funnelId } = req.params;
+        const routings = await prisma.channelRouting.findMany({
+            where: { workspaceId, funnelId },
+            include: { team: true },
+            orderBy: { priority: 'desc' }
+        });
+        res.json({ routings });
+    } catch (error) {
+        console.error('getRoutingsByFunnel error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};

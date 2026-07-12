@@ -684,7 +684,7 @@ export const createStage = async (req, res) => {
 export const updateStage = async (req, res) => {
     try {
         const { workspaceId, funnelId, stageId } = req.params;
-        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType, entryRules, entryPriority } = req.body;
+        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType, entryRules, entryPriority, entryActions, timedActions, exitActions, requiredFields } = req.body;
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
@@ -704,7 +704,11 @@ export const updateStage = async (req, res) => {
                 ...(isClosing !== undefined && { isClosing }),
                 ...(statusType !== undefined && { statusType: statusType || null }),
                 ...(entryRules !== undefined && { entryRules: entryRules || null }),
-                ...(entryPriority !== undefined && { entryPriority })
+                ...(entryPriority !== undefined && { entryPriority }),
+                ...(entryActions !== undefined && { entryActions: entryActions || null }),
+                ...(timedActions !== undefined && { timedActions: timedActions || null }),
+                ...(exitActions !== undefined && { exitActions: exitActions || null }),
+                ...(requiredFields !== undefined && { requiredFields: requiredFields || null }),
             }
         });
         res.json({ stage });
@@ -851,5 +855,32 @@ export const setDefaultFunnel = async (req, res) => {
     } catch (error) {
         console.error('Set default funnel error:', error);
         res.status(500).json({ error: 'Varsayılan akış ayarlanamadı' });
+    }
+};
+
+// Aşama bazlı kişi sayıları
+export const getStageCounts = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        
+        const contactCounts = await prisma.contact.groupBy({
+            by: ['funnelStageId'],
+            where: {
+                workspaceId,
+                funnelStageId: { not: null },
+                isArchived: { not: true }
+            },
+            _count: { id: true }
+        });
+        
+        const counts = {};
+        contactCounts.forEach(c => {
+            if (c.funnelStageId) counts[c.funnelStageId] = c._count.id;
+        });
+        
+        res.json({ counts });
+    } catch (error) {
+        console.error('getStageCounts error:', error);
+        res.status(500).json({ error: error.message });
     }
 };

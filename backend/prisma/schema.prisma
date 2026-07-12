@@ -656,12 +656,15 @@ model Team {
   @@map("teams")
 }
 
-// Kanal → Ekip Yönlendirme
+// Kanal → Ekip + Akış Yönlendirme
 model ChannelRouting {
   id          String   @id @default(uuid())
   workspaceId String
-  channel     String // INSTAGRAM, FACEBOOK, WHATSAPP, EMAIL, WEB_WIDGET, FORM
+  channel     String // INSTAGRAM, FACEBOOK, WHATSAPP, EMAIL, WEB_WIDGET, FORM, LEAD
   teamId      String
+  funnelId    String?  // Hangi akışa yönlendirilecek
+  pageId      String?  // Spesifik Facebook/Instagram sayfa ID veya WhatsApp numara ID
+  accountName String?  // Hesap adı (görüntüleme amaçlı)
   botDelay    Int      @default(30) // Bot devreye girmeden önce bekleme süresi (saniye)
   botEnabled  Boolean  @default(true) // Bu kanal için bot aktif mi
   priority    Int      @default(0) // Birden fazla kural varsa öncelik
@@ -669,10 +672,12 @@ model ChannelRouting {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  funnel      Funnel?  @relation("FunnelChannelRoutings", fields: [funnelId], references: [id], onDelete: SetNull)
 
-  @@unique([workspaceId, channel]) // Her kanal için tek yönlendirme
+  @@unique([workspaceId, channel, pageId]) // Her kanal+sayfa için tek yönlendirme
   @@index([workspaceId])
   @@index([teamId])
+  @@index([funnelId])
   @@map("channel_routings")
 }
 
@@ -1232,6 +1237,7 @@ model Funnel {
   createdAt              DateTime      @default(now())
   workspace              Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages                 FunnelStage[]
+  channelRoutings        ChannelRouting[] @relation("FunnelChannelRoutings")
 
   @@index([workspaceId])
   @@index([parentId])
@@ -1253,6 +1259,10 @@ model FunnelStage {
   statusType     String?  // WON, LOST, CLOSED — null = ACTIVE (açık aşama). Case durumunu otomatik günceller.
   entryRules     String?  @db.Text // JSON: { matchType: 'ALL'|'ANY', rules: [{ type, field, values, ... }] }
   entryPriority  Int      @default(0) // Yüksek = önce kontrol edilir
+  entryActions   String?  @db.Text // JSON: Aşamaya girişte yapılacak aksiyonlar
+  timedActions   String?  @db.Text // JSON: Zamanlı aksiyonlar (X gün sonra hatırlat vb.)
+  exitActions    String?  @db.Text // JSON: Aşamadan çıkışta yapılacak aksiyonlar
+  requiredFields String?  @db.Text // JSON: Zorunlu alanlar/kayıtlar (not, teklif vb.)
   createdAt      DateTime @default(now())
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
 

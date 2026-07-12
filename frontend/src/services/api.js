@@ -342,7 +342,8 @@ export const funnelAPI = {
     // Stages
     createStage: (workspaceId, funnelId, data) => api.post(`/funnels/${workspaceId}/${funnelId}/stages`, data),
     updateStage: (workspaceId, funnelId, stageId, data) => api.put(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`, data),
-    deleteStage: (workspaceId, funnelId, stageId) => api.delete(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`)
+    deleteStage: (workspaceId, funnelId, stageId) => api.delete(`/funnels/${workspaceId}/${funnelId}/stages/${stageId}`),
+    getStageCounts: (workspaceId) => api.get(`/funnels/${workspaceId}/stage-counts`)
 };
 
 // AI API
@@ -417,7 +418,8 @@ export const teamAPI = {
 export const channelRoutingAPI = {
     getAll: (workspaceId) => api.get(`/channel-routing/${workspaceId}`),
     upsert: (workspaceId, data) => api.post(`/channel-routing/${workspaceId}`, data),
-    delete: (workspaceId, channel) => api.delete(`/channel-routing/${workspaceId}/${channel}`)
+    delete: (workspaceId, channel) => api.delete(`/channel-routing/${workspaceId}/${channel}`),
+    getByFunnel: (workspaceId, funnelId) => api.get(`/channel-routing/${workspaceId}/by-funnel/${funnelId}`)
 };
 
 export const contactAPI = {
