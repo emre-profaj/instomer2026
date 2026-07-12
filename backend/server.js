@@ -469,6 +469,20 @@ setTimeout(() => {
   }, 30 * 60 * 1000); // 30 dakikada bir kontrol
 }, 70000);
 
+// Timed Action Processor Cron: aşama bazlı zamanlı aksiyonları işle (her 5 dk)
+import { processTimedActions } from './services/timedActionProcessor.js';
+setTimeout(() => {
+  console.log('⏱️ [TimedAction] Starting timed action processor (every 5 minutes)');
+  processTimedActions();
+  setInterval(async () => {
+    try {
+      await processTimedActions();
+    } catch (err) {
+      console.error('❌ [TimedAction] Processor error:', err.message);
+    }
+  }, 5 * 60 * 1000); // 5 dakikada bir
+}, 75000);
+
 // Sentiment Analyzer Cron Kapatıldı
 // import { startSentimentAnalyzer } from './services/sentiment.service.js';
 // setTimeout(() => {

@@ -1950,6 +1950,100 @@ ${systemPrompt}${appointmentContextPrompt}`;
                         },
                         required: ["template_name"]
                     }
+                },
+                {
+                    name: "recommend_product",
+                    description: "Müşteriye ürün kategori veya arama kriterine göre ürün önerir",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            query: { type: "string", description: "Arama terimi" },
+                            category: { type: "string", description: "Ürün kategorisi" }
+                        }
+                    }
+                },
+                {
+                    name: "create_order",
+                    description: "Müşteri için sipariş oluşturur",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            product_name: { type: "string", description: "Ürün adı" },
+                            quantity: { type: "number", description: "Adet" },
+                            notes: { type: "string", description: "Sipariş notu" }
+                        },
+                        required: ["product_name"]
+                    }
+                },
+                {
+                    name: "send_payment_link",
+                    description: "Müşteriye ödeme linki veya ödeme talebi gönderir",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            amount: { type: "number", description: "Ödeme tutarı (TL)" },
+                            description: { type: "string", description: "Ödeme açıklaması" },
+                            order_id: { type: "string", description: "İlişkili sipariş ID" }
+                        },
+                        required: ["amount"]
+                    }
+                },
+                {
+                    name: "create_appointment",
+                    description: "Müşteri için randevu oluşturur",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            date: { type: "string", description: "Tarih (YYYY-MM-DD)" },
+                            time: { type: "string", description: "Saat (HH:MM)" },
+                            notes: { type: "string", description: "Randevu notu" }
+                        },
+                        required: ["date"]
+                    }
+                },
+                {
+                    name: "send_location",
+                    description: "Şube veya ofis konum bilgisini gönderir",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            branch_name: { type: "string", description: "Şube adı" }
+                        }
+                    }
+                },
+                {
+                    name: "add_note",
+                    description: "Müşteri kaydına not ekler",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            note: { type: "string", description: "Not içeriği" },
+                            title: { type: "string", description: "Not başlığı" }
+                        },
+                        required: ["note"]
+                    }
+                },
+                {
+                    name: "add_tag",
+                    description: "Müşteriye etiket ekler",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            tag_name: { type: "string", description: "Etiket adı" }
+                        },
+                        required: ["tag_name"]
+                    }
+                },
+                {
+                    name: "check_stock",
+                    description: "Ürün stok durumunu kontrol eder",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            product_name: { type: "string", description: "Ürün adı" }
+                        },
+                        required: ["product_name"]
+                    }
                 }
             ];
 
@@ -1990,6 +2084,100 @@ ${systemPrompt}${appointmentContextPrompt}`;
                             template_name: { type: "string", description: "Gönderilecek şablonun adı" }
                         },
                         required: ["template_name"]
+                    }
+                },
+                {
+                    name: "recommend_product",
+                    description: "Müşteriye ürün kategori veya arama kriterine göre ürün önerir",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            query: { type: "string", description: "Arama terimi" },
+                            category: { type: "string", description: "Ürün kategorisi" }
+                        }
+                    }
+                },
+                {
+                    name: "create_order",
+                    description: "Müşteri için sipariş oluşturur",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            product_name: { type: "string", description: "Ürün adı" },
+                            quantity: { type: "number", description: "Adet" },
+                            notes: { type: "string", description: "Sipariş notu" }
+                        },
+                        required: ["product_name"]
+                    }
+                },
+                {
+                    name: "send_payment_link",
+                    description: "Müşteriye ödeme linki veya ödeme talebi gönderir",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            amount: { type: "number", description: "Ödeme tutarı (TL)" },
+                            description: { type: "string", description: "Ödeme açıklaması" },
+                            order_id: { type: "string", description: "İlişkili sipariş ID" }
+                        },
+                        required: ["amount"]
+                    }
+                },
+                {
+                    name: "create_appointment",
+                    description: "Müşteri için randevu oluşturur",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            date: { type: "string", description: "Tarih (YYYY-MM-DD)" },
+                            time: { type: "string", description: "Saat (HH:MM)" },
+                            notes: { type: "string", description: "Randevu notu" }
+                        },
+                        required: ["date"]
+                    }
+                },
+                {
+                    name: "send_location",
+                    description: "Şube veya ofis konum bilgisini gönderir",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            branch_name: { type: "string", description: "Şube adı" }
+                        }
+                    }
+                },
+                {
+                    name: "add_note",
+                    description: "Müşteri kaydına not ekler",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            note: { type: "string", description: "Not içeriği" },
+                            title: { type: "string", description: "Not başlığı" }
+                        },
+                        required: ["note"]
+                    }
+                },
+                {
+                    name: "add_tag",
+                    description: "Müşteriye etiket ekler",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            tag_name: { type: "string", description: "Etiket adı" }
+                        },
+                        required: ["tag_name"]
+                    }
+                },
+                {
+                    name: "check_stock",
+                    description: "Ürün stok durumunu kontrol eder",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            product_name: { type: "string", description: "Ürün adı" }
+                        },
+                        required: ["product_name"]
                     }
                 }
             ];
@@ -2068,7 +2256,7 @@ ${systemPrompt}${appointmentContextPrompt}`;
                                 }
                             });
                         }
-                    } else if (['transfer_to_team', 'change_funnel_stage', 'send_whatsapp_template'].includes(call.name)) {
+                    } else if (['transfer_to_team', 'change_funnel_stage', 'send_whatsapp_template', 'recommend_product', 'create_order', 'send_payment_link', 'create_appointment', 'send_location', 'add_note', 'add_tag', 'check_stock'].includes(call.name)) {
                         try {
                             const { executeBuiltInTool } = await import('../utils/builtInToolExecutor.js');
                             // Need to pass conversation if available

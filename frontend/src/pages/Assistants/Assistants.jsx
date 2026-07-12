@@ -147,6 +147,23 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
     const [handoffMessage, setHandoffMessage] = useState(bot.handoffMessage || '');
     const [updating, setUpdating] = useState(false);
 
+    // Built-in tools state
+    const [enabledTools, setEnabledTools] = useState(() => {
+        try {
+            return bot.enabledTools ? JSON.parse(bot.enabledTools) : [
+                'transfer_to_team', 'change_funnel_stage', 'send_whatsapp_template',
+                'recommend_product', 'create_order', 'send_payment_link',
+                'create_appointment', 'send_location', 'add_note', 'add_tag', 'check_stock'
+            ];
+        } catch {
+            return [
+                'transfer_to_team', 'change_funnel_stage', 'send_whatsapp_template',
+                'recommend_product', 'create_order', 'send_payment_link',
+                'create_appointment', 'send_location', 'add_note', 'add_tag', 'check_stock'
+            ];
+        }
+    });
+
     // Automations state
     const [selectedAutomations, setSelectedAutomations] = useState(() => {
         try {
@@ -252,6 +269,15 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
         } catch {
             setSelectedAutomations([]);
         }
+        try {
+            setEnabledTools(bot.enabledTools ? JSON.parse(bot.enabledTools) : [
+                'transfer_to_team', 'change_funnel_stage', 'send_whatsapp_template',
+                'recommend_product', 'create_order', 'send_payment_link',
+                'create_appointment', 'send_location', 'add_note', 'add_tag', 'check_stock'
+            ]);
+        } catch {
+            // keep current
+        }
     }, [bot]);
 
     const daysOfWeek = [
@@ -302,7 +328,9 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 // Linked automations
                 automations: selectedAutomations.length > 0 ? selectedAutomations : null,
                 // Handoff message
-                handoffMessage: handoffMessage || null
+                handoffMessage: handoffMessage || null,
+                // Built-in tools
+                enabledTools: JSON.stringify(enabledTools)
             });
             alert('Bot ayarları güncellendi!');
             if (onRefresh) onRefresh();
@@ -681,7 +709,64 @@ const BotItem = ({ bot, workspaceId, onDelete, onRefresh, automationsList }) => 
                 </div>
             </div>
 
-
+            {/* Built-in Tools Toggle Section */}
+            <div className="bot-settings-section">
+                <div className="section-header-toggle">
+                    <div className="section-title-group">
+                        <Zap size={18} />
+                        <span>Bot Yetenekleri (Araçlar)</span>
+                    </div>
+                </div>
+                <div className="section-content">
+                    <p className="section-description" style={{ marginBottom: '12px' }}>
+                        Botun kullanabileceği yerleşik araçları açıp kapatabilirsiniz. Kapalı araçlar AI&apos;a sunulmaz.
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                        {[
+                            { key: 'transfer_to_team', icon: '🔄', label: 'Takıma Devret' },
+                            { key: 'change_funnel_stage', icon: '📊', label: 'Huni Aşaması Değiştir' },
+                            { key: 'send_whatsapp_template', icon: '💬', label: 'WhatsApp Şablon Gönder' },
+                            { key: 'recommend_product', icon: '🛍️', label: 'Ürün Öner' },
+                            { key: 'create_order', icon: '🛒', label: 'Sipariş Oluştur' },
+                            { key: 'send_payment_link', icon: '💳', label: 'Ödeme Linki Gönder' },
+                            { key: 'create_appointment', icon: '📅', label: 'Randevu Oluştur' },
+                            { key: 'send_location', icon: '📍', label: 'Konum Gönder' },
+                            { key: 'add_note', icon: '📝', label: 'Not Ekle' },
+                            { key: 'add_tag', icon: '🏷️', label: 'Etiket Ekle' },
+                            { key: 'check_stock', icon: '📦', label: 'Stok Kontrol' }
+                        ].map(tool => (
+                            <label key={tool.key} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                border: `1px solid ${enabledTools.includes(tool.key) ? '#c7d2fe' : '#e2e8f0'}`,
+                                background: enabledTools.includes(tool.key) ? '#eef2ff' : '#f8fafc',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                userSelect: 'none'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={enabledTools.includes(tool.key)}
+                                    onChange={(e) => {
+                                        if (e.target.checked) {
+                                            setEnabledTools(prev => [...prev, tool.key]);
+                                        } else {
+                                            setEnabledTools(prev => prev.filter(t => t !== tool.key));
+                                        }
+                                    }}
+                                    style={{ accentColor: '#6366f1', width: '15px', height: '15px', flexShrink: 0 }}
+                                />
+                                <span style={{ fontSize: '13px', fontWeight: enabledTools.includes(tool.key) ? 600 : 400, color: enabledTools.includes(tool.key) ? '#4338ca' : '#64748b' }}>
+                                    {tool.icon} {tool.label}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            </div>
 
             {/* Appointment Bot Config — Branş & Doktor Yönetimi */}
             {bot.botType === 'APPOINTMENT' && (

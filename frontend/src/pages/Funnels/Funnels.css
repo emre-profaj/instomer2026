@@ -739,6 +739,30 @@
     font-size: 13px;
 }
 
+/* ── Drag & Drop ── */
+.stage-drag-wrapper {
+    display: flex;
+    align-items: center;
+}
+
+.stage-drag-wrapper.dragging .stage-pill {
+    opacity: 0.4;
+    border-style: dashed;
+}
+
+.stage-drag-wrapper.drag-over .stage-pill {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.stage-pill {
+    cursor: grab;
+}
+
+.stage-pill:active {
+    cursor: grabbing;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
     .funnels-page {

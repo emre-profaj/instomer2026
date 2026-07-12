@@ -10,6 +10,7 @@ const FunnelPipeline = ({
     onStageSettingsClick,
     onFunnelSettingsClick,
     onAddStageClick,
+    onStageReorder,
     children, // sub-funnels rendered as children
 }) => {
     const [isExpanded, setIsExpanded] = useState(funnel.funnelType === 'MAIN');
@@ -43,20 +44,44 @@ const FunnelPipeline = ({
                 <div className="pipeline-container">
                     <div className="pipeline-stages">
                         {stages.map((stage, i) => (
-                            <span key={stage.id} style={{ display: 'contents' }}>
-                                <StagePill
-                                    stage={stage}
-                                    count={stageCounts[stage.id] || 0}
-                                    isSelected={selectedStage === stage.id}
-                                    onClick={onStageClick}
-                                    onSettingsClick={onStageSettingsClick}
-                                />
+                            <>
+                                <div
+                                    key={stage.id}
+                                    draggable
+                                    onDragStart={e => {
+                                        e.dataTransfer.setData('stageId', stage.id);
+                                        e.dataTransfer.setData('funnelId', funnel.id);
+                                        e.dataTransfer.effectAllowed = 'move';
+                                        e.currentTarget.classList.add('dragging');
+                                    }}
+                                    onDragEnd={e => e.currentTarget.classList.remove('dragging')}
+                                    onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
+                                    onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+                                    onDrop={e => {
+                                        e.preventDefault();
+                                        e.currentTarget.classList.remove('drag-over');
+                                        const draggedStageId = e.dataTransfer.getData('stageId');
+                                        const draggedFunnelId = e.dataTransfer.getData('funnelId');
+                                        if (draggedFunnelId === funnel.id && draggedStageId !== stage.id) {
+                                            onStageReorder?.(funnel.id, draggedStageId, stage.order);
+                                        }
+                                    }}
+                                    className="stage-drag-wrapper"
+                                >
+                                    <StagePill
+                                        stage={stage}
+                                        count={stageCounts[stage.id] || 0}
+                                        isSelected={selectedStage === stage.id}
+                                        onClick={onStageClick}
+                                        onSettingsClick={onStageSettingsClick}
+                                    />
+                                </div>
                                 {i < stages.length - 1 && (
                                     <span className="stage-arrow">
                                         <ChevronRight size={14} />
                                     </span>
                                 )}
-                            </span>
+                            </>
                         ))}
                         {/* Add stage button at the end */}
                         {stages.length > 0 && (

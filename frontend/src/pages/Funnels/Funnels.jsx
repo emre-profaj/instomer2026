@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { funnelAPI, teamAPI, workspaceAPI, aiAPI } from '../../services/api';
+import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI } from '../../services/api';
 import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
@@ -138,6 +138,24 @@ const Funnels = () => {
                 parentId: funnelPanel.parentId || null
             });
             setFunnels(prev => prev.map(f => f.id === funnelPanel.id ? res.data.funnel : f));
+
+            // Save channel routings
+            if (funnelPanel._routings) {
+                for (const routing of funnelPanel._routings) {
+                    try {
+                        await channelRoutingAPI.upsert(currentWorkspace.id, {
+                            channel: routing.channel,
+                            pageId: routing.pageId || null,
+                            funnelId: funnelPanel.id,
+                            teamId: funnelPanel.assignedTeamId || teams[0]?.id,
+                            accountName: routing.accountName || null
+                        });
+                    } catch (err) {
+                        console.error('Routing save error:', err);
+                    }
+                }
+            }
+
             setFunnelPanel(null);
         } catch (err) { console.error(err); }
         finally { setSaving(false); }
@@ -232,6 +250,38 @@ const Funnels = () => {
         } catch (err) { console.error('Entry rules save error:', err); }
     };
 
+    const handleStageReorder = async (funnelId, draggedStageId, targetOrder) => {
+        const funnel = funnels.find(f => f.id === funnelId);
+        if (!funnel) return;
+
+        const stages = [...funnel.stages].sort((a, b) => a.order - b.order);
+        const draggedStage = stages.find(s => s.id === draggedStageId);
+        if (!draggedStage) return;
+
+        // Remove dragged and insert at target position
+        const filtered = stages.filter(s => s.id !== draggedStageId);
+        const targetIdx = filtered.findIndex(s => s.order >= targetOrder);
+        const newStages = targetIdx === -1
+            ? [...filtered, draggedStage]
+            : [...filtered.slice(0, targetIdx), draggedStage, ...filtered.slice(targetIdx)];
+
+        // Assign new orders
+        const updates = newStages.map((s, i) => ({ ...s, order: i }));
+
+        // Optimistic update
+        setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: updates } : f));
+
+        // Save each stage's new order
+        try {
+            await Promise.all(updates.map(s =>
+                funnelAPI.updateStage(currentWorkspace.id, funnelId, s.id, { order: s.order })
+            ));
+        } catch (err) {
+            console.error('Reorder error:', err);
+            loadFunnels(); // Reload on error
+        }
+    };
+
     // ── Panel openers ──
     const openStagePanel = (stage, funnelId) => {
         setStagePanel({
@@ -255,9 +305,17 @@ const Funnels = () => {
             classificationCriteria: funnel.classificationCriteria || '',
             color: funnel.color || nextColor(),
             icon: funnel.icon || '📁',
-            parentId: funnel.parentId || ''
+            parentId: funnel.parentId || '',
+            _routings: []
         });
         setStagePanel(null);
+        // Load existing routings
+        channelRoutingAPI.getByFunnel(currentWorkspace.id, funnel.id)
+            .then(res => {
+                const routings = res.data?.routings || [];
+                setFunnelPanel(p => p ? { ...p, _routings: routings } : p);
+            })
+            .catch(() => {});
     };
 
     // ── Helpers ──
@@ -304,6 +362,7 @@ const Funnels = () => {
                 onStageClick={(stage) => setSelectedStage(stage.id === selectedStage ? null : stage.id)}
                 onStageSettingsClick={(stage) => openStagePanel(stage, funnel.id)}
                 onFunnelSettingsClick={openFunnelPanel}
+                onStageReorder={handleStageReorder}
                 onAddStageClick={(f) => { setAddStageFunnelId(f.id); setNewStageName(''); setNewStageColor(STAGE_COLORS[0]); }}
             >
                 {childFunnels.map(child => renderFunnelTree(child))}

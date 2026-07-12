@@ -473,7 +473,6 @@ export const executeBuiltInTool = async (functionName, args, context) => {
         }
 
         case 'send_payment_link': {
-            // Ödeme linki gönderir
             const { amount, description, order_id } = args;
             try {
                 const conv = await prisma.conversation.findUnique({
@@ -485,35 +484,33 @@ export const executeBuiltInTool = async (functionName, args, context) => {
                     return { success: false, message: 'Müşteri bilgisi bulunamadı.' };
                 }
 
-                // Check for payment integration
-                const paymentIntegration = await prisma.apiIntegration.findFirst({
-                    where: { workspaceId, type: 'PAYMENT', isActive: true }
+                const { createPaymentLink } = await import('../services/payment.service.js');
+                const result = await createPaymentLink(workspaceId, {
+                    amount: parseFloat(amount),
+                    description,
+                    contactId: conv.contactId,
+                    orderId: order_id,
+                    buyerInfo: {
+                        firstName: conv.contact.firstName,
+                        lastName: conv.contact.lastName,
+                        email: conv.contact.email,
+                        phone: conv.contact.phone
+                    }
                 });
 
-                if (!paymentIntegration) {
-                    // Fallback: create a manual payment record
-                    const payment = await prisma.contactActivity.create({
-                        data: {
-                            contactId: conv.contactId,
-                            workspaceId,
-                            type: 'PAYMENT',
-                            title: `Ödeme talebi: ${amount} TL`,
-                            description: description || `Sipariş: ${order_id || 'Genel'}`,
-                            status: 'PENDING'
-                        }
-                    });
-
+                if (result.success) {
+                    if (result.paymentUrl) {
+                        return {
+                            success: true,
+                            message: `Ödeme linkiniz hazır! 💳\n\n💰 Tutar: ${amount} TL\n🔗 Link: ${result.paymentUrl}\n📝 ${description || ''}`
+                        };
+                    }
                     return {
                         success: true,
                         message: `Ödeme talebiniz oluşturuldu. 💳\n\n💰 Tutar: ${amount} TL\n📝 ${description || ''}\n\nTemsilcimiz ödeme detaylarını sizinle paylaşacaktır.`
                     };
                 }
-
-                // If payment integration exists, use it
-                return {
-                    success: true,
-                    message: `Ödeme linkiniz hazırlanıyor. 💳\n\n💰 Tutar: ${amount} TL\n📝 ${description || ''}\n\nKısa süre içinde ödeme linkini alacaksınız.`
-                };
+                return { success: false, message: result.message };
             } catch (err) {
                 console.error('[BuiltIn] send_payment_link error:', err.message);
                 return { success: false, message: 'Ödeme linki oluşturulamadı.' };
