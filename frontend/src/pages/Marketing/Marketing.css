@@ -63,13 +63,56 @@
 .mkt-bulk-actions { display: flex; align-items: center; gap: 8px; }
 
 .mkt-search-input {
-    border: 1px solid #d1d5db; border-radius: 8px;
+    border: 1px solid #d1d5db; border-radius: 8px 0 0 8px;
     padding: 7px 12px; font-size: 13px; color: #1f2937;
-    outline: none; width: 240px; font-family: inherit;
-    background: #fff;
-    transition: border-color .15s;
+    outline: none; width: 210px; font-family: inherit;
+    background: #fff; transition: border-color .15s;
+    border-right: none;
 }
 .mkt-search-input:focus { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,.08); }
+
+/* Search group: input + clear × + Ara button */
+.mkt-search-group {
+    display: flex; align-items: center;
+}
+.mkt-search-group .mkt-search-input {
+    border-radius: 8px 0 0 8px; border-right: none; width: 200px;
+}
+.mkt-search-clear {
+    background: #f3f4f6; border: 1px solid #d1d5db; border-left: none; border-right: none;
+    padding: 7px 8px; font-size: 13px; color: #9ca3af;
+    cursor: pointer; line-height: 1; font-family: inherit;
+    transition: all .15s;
+}
+.mkt-search-clear:hover { background: #e5e7eb; color: #374151; }
+.mkt-search-btn {
+    background: #ef4444; color: #fff; border: 1px solid #ef4444;
+    border-radius: 0 8px 8px 0; padding: 7px 13px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: all .15s; white-space: nowrap;
+}
+.mkt-search-btn:hover { background: #dc2626; }
+
+/* Search result header (analytics) */
+.mkt-search-result-header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 14px; background: #fef9ec; border-bottom: 1px solid #fde68a;
+    font-size: 12px; color: #92400e;
+}
+.mkt-search-result-badge {
+    background: #fef3c7; border: 1px solid #fde68a; border-radius: 20px;
+    padding: 2px 9px; font-weight: 600;
+}
+.mkt-search-result-count {
+    margin-left: auto; font-weight: 700; color: #78350f;
+}
+.mkt-search-result-clear {
+    background: none; border: 1px solid #d97706; border-radius: 6px;
+    padding: 3px 9px; font-size: 11px; font-weight: 600; color: #d97706;
+    cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.mkt-search-result-clear:hover { background: #fef3c7; }
+
 
 .mkt-filter-select {
     border: 1px solid #d1d5db; border-radius: 8px;

@@ -67,6 +67,7 @@ function BulkSendTab({ wsId }) {
     const [filterSources, setFilterSources] = useState([]);
 
     const [search, setSearch] = useState('');
+    const [inputSearch, setInputSearch] = useState(''); // raw input before commit
     const [statusFilter, setStatusFilter] = useState('');
     const [sourceFilter, setSourceFilter] = useState('');
 
@@ -109,9 +110,17 @@ function BulkSendTab({ wsId }) {
         } catch (e) { console.error(e); }
     };
 
-    const handleSearchChange = (val) => {
-        setSearch(val);
-        clearTimeout(searchTimer.current);
+    const handleSearchChange = (val) => setInputSearch(val);
+
+    const commitSearch = () => {
+        setSearch(inputSearch);
+        setSelectAllPages(false);
+    };
+
+    const clearSearch = () => {
+        setInputSearch('');
+        setSearch('');
+        setSelectAllPages(false);
     };
 
     const toggleSelect = (id) => {
@@ -172,22 +181,33 @@ function BulkSendTab({ wsId }) {
             {/* Toolbar */}
             <div className="mkt-bulk-toolbar">
                 <div className="mkt-bulk-filters">
-                    <input
-                        className="mkt-search-input"
-                        type="text"
-                        placeholder="🔍 İsim, telefon veya e-posta ara..."
-                        value={search}
-                        onChange={e => handleSearchChange(e.target.value)}
-                    />
-                    <select className="mkt-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                    <div className="mkt-search-group">
+                        <input
+                            className="mkt-search-input"
+                            type="text"
+                            placeholder="🔍 İsim, telefon veya e-posta..."
+                            value={inputSearch}
+                            onChange={e => handleSearchChange(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && commitSearch()}
+                        />
+                        {inputSearch && (
+                            <button className="mkt-search-clear" onClick={clearSearch} title="Temizle">×</button>
+                        )}
+                        <button className="mkt-search-btn" onClick={commitSearch}>
+                            🔍 Ara
+                        </button>
+                    </div>
+                    <select className="mkt-filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setSelectAllPages(false); }}>
                         <option value="">Tüm Durumlar</option>
                         {filterStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
                     </select>
-                    <select className="mkt-filter-select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
+                    <select className="mkt-filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); setSelectAllPages(false); }}>
                         <option value="">Tüm Kaynaklar</option>
                         {filterSources.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
-                    <span className="mkt-total-badge">{total.toLocaleString('tr-TR')} kişi</span>
+                    <span className="mkt-total-badge">
+                        {search || statusFilter || sourceFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
+                    </span>
                 </div>
 
                 <div className="mkt-bulk-actions">
@@ -409,8 +429,12 @@ function AnalyticsTab({ wsId }) {
     const [clearing, setClearing] = useState(false);
     const [statusFilter, setStatusFilter] = useState('');
     const [search, setSearch] = useState('');
+    const [inputSearch, setInputSearch] = useState('');
     const [sortCol, setSortCol] = useState('sentAt');
     const [sortDir, setSortDir] = useState('desc');
+
+    const commitSearch = () => setSearch(inputSearch);
+    const clearSearch  = () => { setInputSearch(''); setSearch(''); };
 
     const fetchAnalytics = useCallback(async () => {
         if (!wsId) return;
@@ -572,7 +596,20 @@ function AnalyticsTab({ wsId }) {
                                 </div>
 
                                 <div className="mkt-filters">
-                                    <input className="mkt-search-input" type="text" placeholder="🔍 İsim veya numara ara..." value={search} onChange={e => setSearch(e.target.value)} />
+                                    <div className="mkt-search-group">
+                                        <input
+                                            className="mkt-search-input"
+                                            type="text"
+                                            placeholder="🔍 İsim veya numara..."
+                                            value={inputSearch}
+                                            onChange={e => setInputSearch(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && commitSearch()}
+                                        />
+                                        {inputSearch && (
+                                            <button className="mkt-search-clear" onClick={clearSearch} title="Temizle">×</button>
+                                        )}
+                                        <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
+                                    </div>
                                     <div className="mkt-filter-tabs">
                                         {STATUS_FILTER_OPTS.map(opt => (
                                             <button key={opt.value} className={`mkt-filter-tab ${statusFilter === opt.value ? 'active' : ''}`} onClick={() => setStatusFilter(opt.value)}>
@@ -584,6 +621,15 @@ function AnalyticsTab({ wsId }) {
                                 </div>
 
                                 <div className="mkt-table-wrap">
+                                    {/* Search result header when filtering */}
+                                    {(search || statusFilter) && (
+                                        <div className="mkt-search-result-header">
+                                            {search && <span>🔍 <strong>{search}</strong> için arama sonucu</span>}
+                                            {statusFilter && <span className="mkt-search-result-badge">{STATUS_META[statusFilter]?.icon} {STATUS_META[statusFilter]?.label}</span>}
+                                            <span className="mkt-search-result-count">{filteredRecipients.length} sonuç</span>
+                                            <button className="mkt-search-result-clear" onClick={() => { clearSearch(); setStatusFilter(''); }}>× Filtreyi kaldır</button>
+                                        </div>
+                                    )}
                                     <table className="mkt-table">
                                         <thead>
                                             <tr>
