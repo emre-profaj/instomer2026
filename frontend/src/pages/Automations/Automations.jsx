@@ -34,7 +34,8 @@ const Automations = () => {
         headerHandle: '',
         headerMediaUrl: '',
         bodyText: '',
-        footerText: ''
+        footerText: '',
+        buttons: []
     });
 
     // Automations
@@ -212,7 +213,8 @@ const Automations = () => {
             bodyText: template.bodyText,
             headerType: template.headerType || '',
             headerContent: template.headerContent || '',
-            footerText: template.footerText || ''
+            footerText: template.footerText || '',
+            buttons: template.buttons ? (typeof template.buttons === 'string' ? JSON.parse(template.buttons) : template.buttons) : []
         });
         setShowTemplateModal(true);
     };
@@ -835,10 +837,112 @@ const Automations = () => {
                                     <label>Footer (Opsiyonel)</label>
                                     <input
                                         type="text"
+                                        className="form-control"
                                         value={templateForm.footerText}
                                         onChange={(e) => setTemplateForm({ ...templateForm, footerText: e.target.value })}
                                         placeholder="örn: Yanıt vermek için EVET yazın"
                                     />
+                                </div>
+
+                                <div className="form-group">
+                                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        Eylem Düğmeleri (Opsiyonel)
+                                        {templateForm.buttons.length < 3 && (
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary btn-sm"
+                                                style={{ padding: '4px 8px', fontSize: '12px' }}
+                                                onClick={() => {
+                                                    setTemplateForm({
+                                                        ...templateForm,
+                                                        buttons: [...templateForm.buttons, { type: 'URL', text: '', url: '' }]
+                                                    });
+                                                }}
+                                            >
+                                                <Plus size={14} style={{ marginRight: '4px' }} /> Düğme Ekle
+                                            </button>
+                                        )}
+                                    </label>
+                                    
+                                    {templateForm.buttons.map((btn, idx) => (
+                                        <div key={idx} style={{ display: 'flex', gap: '10px', marginBottom: '10px', background: '#f9fafb', padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', alignItems: 'center' }}>
+                                            <select
+                                                className="form-control"
+                                                value={btn.type}
+                                                onChange={(e) => {
+                                                    const newBtns = [...templateForm.buttons];
+                                                    const newType = e.target.value;
+                                                    newBtns[idx] = { type: newType, text: btn.text };
+                                                    if (newType === 'URL') newBtns[idx].url = '';
+                                                    if (newType === 'PHONE_NUMBER') newBtns[idx].phone_number = '';
+                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                }}
+                                                style={{ flex: '1', minWidth: '130px' }}
+                                            >
+                                                <option value="URL">🌐 Site Ziyareti (URL)</option>
+                                                <option value="PHONE_NUMBER">📞 Telefonla Ara</option>
+                                                <option value="QUICK_REPLY">💬 Hızlı Yanıt (Metin)</option>
+                                            </select>
+                                            
+                                            <input
+                                                className="form-control"
+                                                placeholder="Düğme Yazısı (Örn: İncele)"
+                                                value={btn.text}
+                                                onChange={(e) => {
+                                                    const newBtns = [...templateForm.buttons];
+                                                    newBtns[idx].text = e.target.value;
+                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                }}
+                                                style={{ flex: '1' }}
+                                                maxLength={20}
+                                            />
+                                            
+                                            {btn.type === 'URL' && (
+                                                <input
+                                                    className="form-control"
+                                                    placeholder="https://..."
+                                                    value={btn.url || ''}
+                                                    onChange={(e) => {
+                                                        const newBtns = [...templateForm.buttons];
+                                                        newBtns[idx].url = e.target.value;
+                                                        setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                    }}
+                                                    style={{ flex: '1.5' }}
+                                                />
+                                            )}
+                                            
+                                            {btn.type === 'PHONE_NUMBER' && (
+                                                <input
+                                                    className="form-control"
+                                                    placeholder="+90555..."
+                                                    value={btn.phone_number || ''}
+                                                    onChange={(e) => {
+                                                        const newBtns = [...templateForm.buttons];
+                                                        newBtns[idx].phone_number = e.target.value;
+                                                        setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                    }}
+                                                    style={{ flex: '1.5' }}
+                                                />
+                                            )}
+                                            
+                                            <button
+                                                type="button"
+                                                className="btn btn-danger btn-icon"
+                                                onClick={() => {
+                                                    const newBtns = templateForm.buttons.filter((_, i) => i !== idx);
+                                                    setTemplateForm({ ...templateForm, buttons: newBtns });
+                                                }}
+                                                style={{ flex: 'none', padding: '6px' }}
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {templateForm.buttons.length > 0 && (
+                                        <small style={{ color: '#6b7280', display: 'block', marginTop: '5px' }}>
+                                            * Maksimum 3 buton eklenebilir. (Meta kuralları gereği)
+                                        </small>
+                                    )}
                                 </div>
                             </div>
                             <div className="modal-footer">
