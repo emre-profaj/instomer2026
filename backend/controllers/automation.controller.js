@@ -413,11 +413,27 @@ export const deleteTemplate = async (req, res) => {
         const { workspaceId, templateId } = req.params;
 
         const existing = await prisma.whatsappTemplate.findFirst({
-            where: { id: templateId, workspaceId }
+            where: { id: templateId, workspaceId },
+            include: { whatsappPhoneNumber: true }
         });
 
         if (!existing) {
             return res.status(404).json({ error: 'Şablon bulunamadı' });
+        }
+
+        // Delete from Meta API if connected to a WhatsApp number
+        if (existing.whatsappPhoneNumber) {
+            try {
+                const phone = existing.whatsappPhoneNumber;
+                const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${phone.wabaId}/message_templates?name=${existing.name}`;
+                await axios.delete(apiUrl, {
+                    headers: { Authorization: `Bearer ${phone.accessToken}` }
+                });
+                console.log(`✅ [DELETE_TEMPLATE] Deleted from Meta: ${existing.name}`);
+            } catch (metaErr) {
+                console.error(`❌ [DELETE_TEMPLATE] Meta API Error:`, metaErr.response?.data || metaErr.message);
+                // We won't block local deletion if Meta deletion fails (e.g. if it was already deleted on Meta)
+            }
         }
 
         await prisma.whatsappTemplate.delete({

@@ -510,6 +510,10 @@ const Automations = () => {
                 <div className="header-actions">
                     {activeTab === 'templates' && (
                         <>
+                            <button className="btn btn-secondary" onClick={handleSyncTemplates} disabled={syncing} style={{ marginRight: '10px' }}>
+                                <RefreshCw size={16} className={syncing ? "spin" : ""} style={{ marginRight: '6px' }} />
+                                {syncing ? 'Eşitleniyor...' : 'Şablonları Eşitle'}
+                            </button>
                             <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
                                 <Plus size={16} />
                                 Şablon Ekle
