@@ -776,8 +776,7 @@ export const sendTemplateMessage = async (req, res) => {
         res.json({
             success: true,
             message: 'Şablon mesajı gönderildi',
-            whatsappMessageId: response.data.messages?.[0]?.id,
-            conversationId: conversation?.id
+            whatsappMessageId: response.data.messages?.[0]?.id
         });
     } catch (error) {
         console.error('❌ Send template message error:', error.response?.data || error);
