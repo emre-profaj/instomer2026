@@ -634,17 +634,38 @@ export const sendTemplateMessage = async (req, res) => {
                 });
             }
 
-            const headerComponent = {
-                type: 'header',
-                parameters: [{
+            // scontent.whatsapp.net URLs are temporary/signed and expire - must upload to Meta first
+            const needsUpload = mediaUrl.includes('scontent.whatsapp.net')
+                || mediaUrl.includes('scontent.cdninstagram.com')
+                || mediaUrl.includes('drive.google.com')
+                || mediaUrl.includes('drive.usercontent.google.com');
+
+            let headerParam;
+            if (needsUpload) {
+                console.log(`☁️ [sendTemplateMessage] Temporary URL detected, uploading to Meta Media API...`);
+                const mediaId = await uploadMediaToMeta(mediaUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
+                if (mediaId) {
+                    headerParam = {
+                        type: template.headerType.toLowerCase(),
+                        [template.headerType.toLowerCase()]: { id: mediaId }
+                    };
+                } else {
+                    console.warn(`⚠️ [sendTemplateMessage] Media upload failed, falling back to link`);
+                    headerParam = {
+                        type: template.headerType.toLowerCase(),
+                        [template.headerType.toLowerCase()]: { link: mediaUrl }
+                    };
+                }
+            } else {
+                headerParam = {
                     type: template.headerType.toLowerCase(),
-                    [template.headerType.toLowerCase()]: {
-                        link: mediaUrl
-                    }
-                }]
-            };
+                    [template.headerType.toLowerCase()]: { link: mediaUrl }
+                };
+            }
+
+            const headerComponent = { type: 'header', parameters: [headerParam] };
             components.push(headerComponent);
-            console.log('📎 Header component added:', headerComponent);
+            console.log('📎 Header component added:', JSON.stringify(headerComponent));
         }
 
         // Add body variables if provided and template has placeholders
