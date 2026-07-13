@@ -287,19 +287,17 @@ function BulkSendTab({ wsId }) {
                             <th>Ad Soyad</th>
                             <th>Telefon</th>
                             <th>E-posta</th>
-                            <th>Durum</th>
                             <th>Kaynak</th>
-                            <th>Etiketler</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading && (
-                            <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
+                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
                                 <div className="mkt-loading-spinner" style={{ margin: '0 auto 8px' }} />Yükleniyor...
                             </td></tr>
                         )}
                         {!loading && contacts.length === 0 && (
-                            <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
+                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
                                 Kişi bulunamadı
                             </td></tr>
                         )}
@@ -327,23 +325,7 @@ function BulkSendTab({ wsId }) {
                                 </td>
                                 <td><span className="mkt-phone">{c.phone}</span></td>
                                 <td style={{ fontSize: 12, color: '#6b7280' }}>{c.email || '—'}</td>
-                                <td>
-                                    <span className="mkt-status-badge" style={{
-                                        background: c.status === 'CUSTOMER' ? '#f0fdf4' : c.status === 'NEW' ? '#eff6ff' : '#f9fafb',
-                                        color: c.status === 'CUSTOMER' ? '#16a34a' : c.status === 'NEW' ? '#2563eb' : '#6b7280'
-                                    }}>
-                                        {STATUS_LABELS[c.status] || c.status}
-                                    </span>
-                                </td>
                                 <td style={{ fontSize: 12, color: '#6b7280' }}>{c.source || '—'}</td>
-                                <td>
-                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                        {(c.tags || []).slice(0, 3).map((t, i) => (
-                                            <span key={i} className="mkt-tag-chip">{t}</span>
-                                        ))}
-                                        {c.tags?.length > 3 && <span className="mkt-tag-chip">+{c.tags.length - 3}</span>}
-                                    </div>
-                                </td>
                             </tr>
                         ))}
                     </tbody>
