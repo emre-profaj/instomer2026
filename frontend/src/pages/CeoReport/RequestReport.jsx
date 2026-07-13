@@ -37,6 +37,21 @@ const RequestReport = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
+    const fetchData = async () => {
+        if (!currentWorkspace?.id) return;
+        setLoading(true);
+        try {
+            const dateParams = getDateRange();
+            const params = { ...dateParams, comparePrevious: true };
+            const res = await contactAPI.getAnalytics(currentWorkspace.id, params);
+            setAnalytics(res.data);
+        } catch (err) {
+            console.error('Request report fetch error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
 
     const reqAnalysis = analytics?.requestAnalysis || {};
