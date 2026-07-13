@@ -1605,6 +1605,196 @@ export const getAgents = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /retell/:workspaceId/call/bulk
+// Create a BulkCallBatch and start calling contacts in background
+// Body: { contactIds, agentId, agentName }  OR  { selectAll, filters, agentId, agentName }
+// ─────────────────────────────────────────────────────────────────────────────
+export const bulkCall = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { contactIds, selectAll, filters = {}, agentId, agentName } = req.body;
+        const userId = req.user?.id || '';
+
+        if (!agentId) return res.status(400).json({ error: 'Agent seçilmedi' });
+        if (!selectAll && !contactIds?.length) return res.status(400).json({ error: 'Kişi seçilmedi' });
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { retellApiKey: true, retellFromNumber: true }
+        });
+        if (!workspace?.retellApiKey)  return res.status(400).json({ error: 'Retell API key eksik' });
+        if (!workspace.retellFromNumber) return res.status(400).json({ error: 'Arama numarası yapılandırılmamış' });
+
+        // Build contact query
+        let where = { workspaceId, isDeleted: false, phone: { not: null } };
+        if (selectAll) {
+            const { search = '', status = '', source = '' } = filters;
+            if (search) where.OR = [
+                { name:     { contains: search, mode: 'insensitive' } },
+                { fullName: { contains: search, mode: 'insensitive' } },
+                { phone:    { contains: search } },
+            ];
+            if (status) where.status = status;
+            if (source) where.source = source;
+        } else {
+            where.id = { in: contactIds };
+        }
+
+        const contacts = await prisma.contact.findMany({
+            where,
+            select: { id: true, name: true, fullName: true, phone: true }
+        });
+
+        if (!contacts.length) return res.status(400).json({ error: 'Geçerli kişi bulunamadı' });
+
+        // Create batch with targets
+        const targets = contacts.map(c => ({
+            contactId: c.id,
+            name: c.fullName || c.name || c.phone,
+            phone: c.phone,
+            status: 'queued'
+        }));
+
+        const batch = await prisma.bulkCallBatch.create({
+            data: {
+                workspaceId,
+                agentId,
+                agentName: agentName || agentId,
+                targets: JSON.stringify(targets),
+                totalTarget: contacts.length,
+                totalCalled: 0,
+                totalFailed: 0,
+            }
+        });
+
+        // Respond immediately
+        res.json({
+            success: true,
+            batchId: batch.id,
+            queued: contacts.length,
+            message: `${contacts.length} kişilik arama başlatıldı`
+        });
+
+        // Background call loop
+        setImmediate(async () => {
+            const client = new Retell({ apiKey: workspace.retellApiKey });
+            let called = 0, failed = 0;
+
+            for (let i = 0; i < contacts.length; i++) {
+                const c = contacts[i];
+                try {
+                    let phone = (c.phone || '').replace(/[\s\+\-\(\)]/g, '');
+                    if (phone.startsWith('0')) phone = '90' + phone.substring(1);
+                    else if (!phone.startsWith('90') && phone.length === 10) phone = '90' + phone;
+
+                    const callResponse = await client.call.createPhoneCall({
+                        from_number: normalizePhone(workspace.retellFromNumber),
+                        to_number: phone,
+                        override_agent_id: agentId,
+                        metadata: { workspaceId, contactId: c.id, contactName: c.fullName || c.name, bulkBatchId: batch.id, createdById: userId }
+                    });
+
+                    await prisma.retellCall.create({
+                        data: {
+                            workspace: { connect: { id: workspaceId } },
+                            contactId: c.id,
+                            callId: callResponse.call_id,
+                            agentId,
+                            fromNumber: workspace.retellFromNumber,
+                            toNumber: phone,
+                            direction: 'outbound',
+                            status: callResponse.call_status || 'registered',
+                            bulkBatchId: batch.id,
+                            createdById: userId,
+                        }
+                    });
+
+                    // Update target status in batch
+                    const updTargets = JSON.parse((await prisma.bulkCallBatch.findUnique({ where: { id: batch.id }, select: { targets: true } })).targets);
+                    const idx = updTargets.findIndex(t => t.contactId === c.id);
+                    if (idx >= 0) updTargets[idx].status = 'called';
+                    called++;
+                    await prisma.bulkCallBatch.update({ where: { id: batch.id }, data: { targets: JSON.stringify(updTargets), totalCalled: called, totalFailed: failed } });
+
+                } catch (err) {
+                    failed++;
+                    console.error(`❌ [bulkCall] Failed for ${c.phone}:`, err.message);
+                    // Mark as failed in targets
+                    try {
+                        const batchData = await prisma.bulkCallBatch.findUnique({ where: { id: batch.id }, select: { targets: true } });
+                        const updTargets = JSON.parse(batchData.targets);
+                        const idx = updTargets.findIndex(t => t.contactId === c.id);
+                        if (idx >= 0) updTargets[idx].status = 'failed';
+                        await prisma.bulkCallBatch.update({ where: { id: batch.id }, data: { targets: JSON.stringify(updTargets), totalFailed: failed } });
+                    } catch {}
+                }
+                // Rate limit delay (800ms)
+                if (i < contacts.length - 1) await new Promise(r => setTimeout(r, 800));
+            }
+            console.log(`📞 [bulkCall] Batch ${batch.id}: ${called} called, ${failed} failed`);
+        });
+
+    } catch (error) {
+        console.error('❌ [bulkCall]', error);
+        res.status(500).json({ error: error.message || 'Toplu arama başlatılamadı' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /retell/:workspaceId/bulk-batches
+// ─────────────────────────────────────────────────────────────────────────────
+export const getBulkCallBatches = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { limit = 20, offset = 0 } = req.query;
+
+        const [batches, total] = await Promise.all([
+            prisma.bulkCallBatch.findMany({
+                where: { workspaceId },
+                orderBy: { createdAt: 'desc' },
+                take: parseInt(limit),
+                skip: parseInt(offset),
+                select: { id: true, agentName: true, totalTarget: true, totalCalled: true, totalFailed: true, createdAt: true }
+            }),
+            prisma.bulkCallBatch.count({ where: { workspaceId } })
+        ]);
+
+        res.json({ batches, total });
+    } catch (e) {
+        console.error('❌ [getBulkCallBatches]', e);
+        res.status(500).json({ error: 'Batch listesi alınamadı' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /retell/:workspaceId/bulk-batches/:batchId
+// ─────────────────────────────────────────────────────────────────────────────
+export const getBulkCallBatch = async (req, res) => {
+    try {
+        const { workspaceId, batchId } = req.params;
+
+        const batch = await prisma.bulkCallBatch.findFirst({
+            where: { id: batchId, workspaceId },
+            include: { calls: { select: { id: true, contactId: true, toNumber: true, status: true, duration: true, sentiment: true, cost: true, createdAt: true } } }
+        });
+
+        if (!batch) return res.status(404).json({ error: 'Batch bulunamadı' });
+
+        const targets = JSON.parse(batch.targets || '[]');
+        // Enrich targets with call data
+        const enriched = targets.map(t => {
+            const call = batch.calls.find(c => c.contactId === t.contactId);
+            return { ...t, call: call || null };
+        });
+
+        res.json({ ...batch, targets: enriched });
+    } catch (e) {
+        console.error('❌ [getBulkCallBatch]', e);
+        res.status(500).json({ error: 'Batch detayı alınamadı' });
+    }
+};
+
 // Make an outbound call
 export const makeCall = async (req, res) => {
     try {

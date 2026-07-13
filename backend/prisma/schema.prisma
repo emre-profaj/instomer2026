@@ -1158,18 +1158,40 @@ model RetellCall {
   endedReason    String?
   metadata       String?   @db.Text
   createdById    String    @default("")
+  bulkBatchId    String?   // FK to BulkCallBatch
   // Case (talep akışı) bağlantısı
   caseId         String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace  Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bulkBatch  BulkCallBatch? @relation(fields: [bulkBatchId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([contactId])
   @@index([callId])
   @@index([caseId])
+  @@index([bulkBatchId])
   @@map("retell_calls")
+}
+
+model BulkCallBatch {
+  id          String   @id @default(uuid())
+  workspaceId String
+  agentId     String?
+  agentName   String?
+  // JSON array of { contactId, name, phone, status: 'queued'|'called'|'failed' }
+  targets     String   @db.Text
+  totalTarget Int      @default(0)
+  totalCalled Int      @default(0)
+  totalFailed Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  calls RetellCall[]
+
+  @@index([workspaceId])
+  @@map("bulk_call_batches")
 }
 
 // Quick Reply Templates (Hazır Mesajlar)

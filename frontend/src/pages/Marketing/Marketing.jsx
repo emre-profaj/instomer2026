@@ -175,40 +175,28 @@ function BulkSendTab({ wsId }) {
         setSending(false);
     };
 
-    const handleBulkCall = async (agentId) => {
+    const handleBulkCall = async (agentId, agentName) => {
         if (!agentId) return alert('Lütfen bir agent seçin');
-        const contactList = selectAllPages
-            ? null  // will be fetched by confirming first
-            : contacts.filter(c => selected.has(c.id));
-
-        if (!selectAllPages && !contactList?.length) return alert('Kişi seçilmedi');
+        if (!selectAllPages && !selected.size) return alert('Kişi seçilmedi');
 
         setCalling(true);
         setCallResult(null);
-        let sent = 0, failed = 0;
-
-        const callContacts = contactList || contacts; // selectAll = current page at least
-        for (const c of callContacts) {
-            try {
-                await api.post(`/retell/${wsId}/call`, {
-                    toNumber: c.phone,
-                    contactId: c.id,
-                    contactName: c.name,
-                    agentId
-                });
-                sent++;
-            } catch (e) {
-                failed++;
-                console.error('Call failed for', c.phone, e.response?.data?.error);
+        try {
+            const body = { agentId, agentName };
+            if (selectAllPages) {
+                body.selectAll = true;
+                body.filters = { search, status: statusFilter, source: sourceFilter };
+            } else {
+                body.contactIds = [...selected];
             }
-            // Small delay between calls
-            await new Promise(r => setTimeout(r, 800));
+            const res = await api.post(`/retell/${wsId}/call/bulk`, body);
+            setCallResult({ queued: res.data.queued, batchId: res.data.batchId });
+            setSelected(new Set());
+            setSelectAllPages(false);
+        } catch (e) {
+            alert('Arama başlatılamadı: ' + (e.response?.data?.error || e.message));
         }
-
-        setCallResult({ sent, failed, total: callContacts.length });
         setCalling(false);
-        setSelected(new Set());
-        setSelectAllPages(false);
     };
 
     const allSelected   = contacts.length > 0 && selected.size === contacts.length;
@@ -422,18 +410,15 @@ function BulkCallModal({ count, wsId, calling, callResult, onCall, onClose }) {
                 {callResult ? (
                     <div className="mkt-modal-body">
                         <div className="mkt-success-box">
-                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>
-                                {callResult.failed === 0 ? '✅' : '⚠️'}
+                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>📞</div>
+                            <div style={{ fontWeight: 600, color: '#059669', marginBottom: 4 }}>
+                                Arama başlatıldı!
                             </div>
-                            <div style={{ fontWeight: 600, color: '#1f2937', marginBottom: 8 }}>
-                                Arama tamamlandı
+                            <div style={{ fontSize: 14, color: '#374151', marginBottom: 8 }}>
+                                <strong>{callResult.queued}</strong> kişi kuyruğa alındı. Aramalar arka planda devam ediyor.
                             </div>
-                            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: 14 }}>
-                                <span style={{ color: '#16a34a' }}>✅ Başarılı: <strong>{callResult.sent}</strong></span>
-                                {callResult.failed > 0 && <span style={{ color: '#dc2626' }}>❌ Başarısız: <strong>{callResult.failed}</strong></span>}
-                            </div>
-                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
-                                Aramalar Retell AI tarafından yönetilecek.
+                            <div style={{ fontSize: 12, color: '#6b7280' }}>
+                                📊 Arama Analizi sekmesinden durumu takip edebilirsiniz.
                             </div>
                         </div>
                         <button className="mkt-btn-primary" onClick={onClose} style={{ marginTop: 16, width: '100%' }}>Tamam</button>
@@ -466,17 +451,21 @@ function BulkCallModal({ count, wsId, calling, callResult, onCall, onClose }) {
                         </div>
 
                         <div className="mkt-modal-warning">
-                            ⚠️ Aramalar sırayla başlatılır, aralarına 0.8 sn gecikme eklenir. {count} kişi için tahmini süre: ~{Math.ceil(count * 0.8 / 60)} dakika.
+                            ⚠️ Aramalar arka planda sırayla başlatılır (0.8 sn aralıkla). Sonuçları Arama Analizi sekmesinden takip edin.
                         </div>
 
                         <div className="mkt-modal-actions">
                             <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
                             <button
                                 className="mkt-btn-call"
-                                onClick={() => onCall(agentId)}
+                                onClick={() => {
+                                    const selectedAgent = agents.find(a => (a.agent_id || a.id) === agentId);
+                                    const name = selectedAgent ? (selectedAgent.agent_name || selectedAgent.name || agentId) : agentId;
+                                    onCall(agentId, name);
+                                }}
                                 disabled={!agentId || calling || agents.length === 0}
                             >
-                                {calling ? `⏳ Aranıyor... ` : `📞 ${count} Kişiyi Ara`}
+                                {calling ? '⏳ Başlatılıyor...' : `📞 ${count} Kişiyi Ara`}
                             </button>
                         </div>
                     </div>
@@ -832,212 +821,251 @@ function AnalyticsTab({ wsId }) {
     );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CALL ANALYTICS TAB
-// ─────────────────────────────────────────────────────────────────────────────
-const CALL_STATUS_META = {
-    ended:      { label: 'Tamamlandı', bg: '#f0fdf4', text: '#16a34a', icon: '✅' },
-    registered: { label: 'Başlatıldı', bg: '#eff6ff', text: '#2563eb', icon: '📞' },
-    ongoing:    { label: 'Devam Ediyor', bg: '#fefce8', text: '#ca8a04', icon: '🔄' },
-    error:      { label: 'Hata',        bg: '#fef2f2', text: '#dc2626', icon: '❌' },
-    voicemail:  { label: 'Sesli Mesaj', bg: '#f3f4f6', text: '#6b7280', icon: '📬' },
+const TARGET_STATUS_META = {
+    queued:  { label: 'Bekliyor',  bg: '#f3f4f6', text: '#6b7280',  icon: '⏳' },
+    called:  { label: 'Arandı',    bg: '#f0fdf4', text: '#16a34a',  icon: '✅' },
+    failed:  { label: 'Aranamadı', bg: '#fef2f2', text: '#dc2626',  icon: '❌' },
 };
-
-const SENTIMENT_META = {
-    positive: { label: 'Olumlu',  color: '#16a34a', icon: '😊' },
-    negative: { label: 'Olumsuz', color: '#dc2626', icon: '😞' },
-    neutral:  { label: 'Nötr',    color: '#ca8a04', icon: '😐' },
-};
-
-function fmtDur(sec) {
-    if (!sec) return '—';
-    const m = Math.floor(sec / 60), s = sec % 60;
-    return m > 0 ? `${m}d ${s}s` : `${s}s`;
-}
 
 function CallAnalyticsTab({ wsId }) {
-    const [days, setDays] = useState(30);
-    const [stats, setStats] = useState(null);
-    const [calls, setCalls] = useState([]);
-    const [total, setTotal] = useState(0);
-    const [page, setPage] = useState(1);
-    const [loading, setLoading] = useState(true);
+    const [batches, setBatches]         = useState([]);
+    const [total, setTotal]             = useState(0);
+    const [loading, setLoading]         = useState(true);
+    const [selectedBatch, setSelected]  = useState(null); // batch detail object
+    const [detailLoading, setDetailL]   = useState(false);
+    const [statusFilter, setStatusFilter] = useState(''); // for detail view
     const [inputSearch, setInputSearch] = useState('');
-    const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('');
+    const [search, setSearch]           = useState('');
 
-    const limit = 50;
-
-    const fetchAll = useCallback(async (p = 1) => {
+    const fetchBatches = useCallback(async () => {
         if (!wsId) return;
         setLoading(true);
-        const now = new Date();
-        const start = new Date(now);
-        start.setDate(now.getDate() - days);
-
         try {
-            const params = new URLSearchParams({
-                startDate: start.toISOString(),
-                endDate: now.toISOString(),
-                limit,
-                offset: (p - 1) * limit,
-            });
-            if (search) { params.set('search', search); }
-            if (statusFilter) { params.set('status', statusFilter); }
-
-            const [statsRes, callsRes] = await Promise.all([
-                api.get(`/retell/${wsId}/analytics?startDate=${start.toISOString()}&endDate=${now.toISOString()}`),
-                api.get(`/retell/${wsId}/calls?${params}`)
-            ]);
-            setStats(statsRes.data);
-            setCalls(callsRes.data.calls || []);
-            setTotal(callsRes.data.total || 0);
+            const res = await api.get(`/retell/${wsId}/bulk-batches?limit=50`);
+            setBatches(res.data.batches || []);
+            setTotal(res.data.total || 0);
         } catch (e) { console.error(e); }
         setLoading(false);
-    }, [wsId, days, search, statusFilter]);
+    }, [wsId]);
 
-    useEffect(() => { fetchAll(1); setPage(1); }, [fetchAll]);
+    useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
-    const totalPages = Math.ceil(total / limit);
+    const openBatch = async (batchId) => {
+        setDetailL(true);
+        setSelected(null);
+        setStatusFilter('');
+        setInputSearch('');
+        setSearch('');
+        try {
+            const res = await api.get(`/retell/${wsId}/bulk-batches/${batchId}`);
+            setSelected(res.data);
+        } catch (e) { alert('Detay yüklenemedi'); }
+        setDetailL(false);
+    };
 
     const commitSearch = () => setSearch(inputSearch);
     const clearSearch  = () => { setInputSearch(''); setSearch(''); };
 
-    const s = stats || {};
-    const avgMin = s.avgDuration ? (s.avgDuration / 60).toFixed(1) : '0';
+    // Overall stats across all batches
+    const totalTarget = batches.reduce((s, b) => s + b.totalTarget, 0);
+    const totalCalled = batches.reduce((s, b) => s + b.totalCalled, 0);
+    const totalFailed = batches.reduce((s, b) => s + b.totalFailed, 0);
 
-    return (
-        <div className="mkt-analytics-wrap">
-            {/* Stats */}
-            <div className="mkt-stats-row" style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
-                <StatBig icon="📞" label="Toplam Arama"    value={s.totalCalls}                                   color="#2563eb" />
-                <StatBig icon="✅" label="Tamamlandı"      value={s.statusBreakdown?.ended || 0}                  color="#16a34a" />
-                <StatBig icon="⏱"  label="Ort. Süre"       value={`${avgMin}d`}                                   color="#ca8a04" sub={`Toplam: ${fmtDur(s.totalDuration)}`} />
-                <StatBig icon="😊" label="Olumlu Duygu"    value={`%${s.successRate || 0}`}                       color="#7c3aed" />
-                <StatBig icon="💰" label="Toplam Maliyet"  value={`$${(s.totalCost || 0).toFixed(2)}`}            color="#dc2626" />
-            </div>
+    // Detail view filters
+    const filteredTargets = selectedBatch ? (selectedBatch.targets || []).filter(t => {
+        if (statusFilter && t.status !== statusFilter) return false;
+        if (search) {
+            const q = search.toLowerCase();
+            return t.name?.toLowerCase().includes(q) || t.phone?.includes(q);
+        }
+        return true;
+    }) : [];
 
-            {/* Filter bar */}
-            <div className="mkt-analytics-bar">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <div className="mkt-day-selector">
-                        {DAY_OPTIONS.map(d => (
-                            <button key={d} className={`mkt-day-btn ${days === d ? 'active' : ''}`} onClick={() => setDays(d)}>
-                                Son {d} gün
-                            </button>
-                        ))}
+    if (selectedBatch) {
+        const b = selectedBatch;
+        const calledCount  = (b.targets || []).filter(t => t.status === 'called').length;
+        const failedCount  = (b.targets || []).filter(t => t.status === 'failed').length;
+        const queuedCount  = (b.targets || []).filter(t => t.status === 'queued').length;
+
+        return (
+            <div className="mkt-analytics-wrap">
+                {/* Batch header */}
+                <div className="mkt-detail-header">
+                    <div className="mkt-detail-title-row">
+                        <div>
+                            <span className="mkt-detail-tpl-name">📞 Toplu Arama — {new Date(b.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Agent: {b.agentName || b.agentId}</div>
+                        </div>
+                        <button className="mkt-close-btn" onClick={() => setSelected(null)}>✕ Listeye Dön</button>
                     </div>
+                    <div className="mkt-rate-row-grid">
+                        <div className="mkt-rate-item"><div className="mkt-rate-label">Hedef</div><div className="mkt-rate-val" style={{ color: '#1f2937' }}>{b.totalTarget}</div></div>
+                        <div className="mkt-rate-item"><div className="mkt-rate-label">Arandı</div><div className="mkt-rate-val" style={{ color: '#16a34a' }}>{calledCount} <small>%{b.totalTarget > 0 ? Math.round(calledCount/b.totalTarget*100) : 0}</small></div></div>
+                        <div className="mkt-rate-item"><div className="mkt-rate-label">Aranamadı</div><div className="mkt-rate-val" style={{ color: '#dc2626' }}>{failedCount}</div></div>
+                        <div className="mkt-rate-item"><div className="mkt-rate-label">Bekliyor</div><div className="mkt-rate-val" style={{ color: '#ca8a04' }}>{queuedCount}</div></div>
+                    </div>
+                </div>
+
+                {/* Filters */}
+                <div className="mkt-filters">
                     <div className="mkt-search-group">
-                        <input
-                            className="mkt-search-input"
-                            type="text"
-                            placeholder="🔍 Numara ara..."
-                            value={inputSearch}
-                            onChange={e => setInputSearch(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && commitSearch()}
-                        />
+                        <input className="mkt-search-input" type="text" placeholder="🔍 İsim veya numara..."
+                            value={inputSearch} onChange={e => setInputSearch(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && commitSearch()} />
                         {inputSearch && <button className="mkt-search-clear" onClick={clearSearch}>×</button>}
                         <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
                     </div>
-                    <select className="mkt-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                        <option value="">Tüm Durumlar</option>
-                        {Object.entries(CALL_STATUS_META).map(([k, v]) => (
-                            <option key={k} value={k}>{v.icon} {v.label}</option>
+                    <div className="mkt-filter-tabs">
+                        {[{ value: '', label: 'Tümü' }, { value: 'called', label: '✅ Arandı' }, { value: 'failed', label: '❌ Aranamadı' }, { value: 'queued', label: '⏳ Bekliyor' }].map(opt => (
+                            <button key={opt.value} className={`mkt-filter-tab ${statusFilter === opt.value ? 'active' : ''}`} onClick={() => setStatusFilter(opt.value)}>
+                                {opt.label}
+                                {opt.value === 'failed' && failedCount > 0 && <span className="mkt-badge-red">{failedCount}</span>}
+                            </button>
                         ))}
-                    </select>
+                    </div>
                 </div>
-                <button className="mkt-refresh-btn" onClick={() => fetchAll(page)} disabled={loading}>
+
+                {/* Table */}
+                <div className="mkt-table-wrap">
+                    {(search || statusFilter) && (
+                        <div className="mkt-search-result-header">
+                            {search && <span>🔍 <strong>{search}</strong> için sonuç</span>}
+                            {statusFilter && <span className="mkt-search-result-badge">{TARGET_STATUS_META[statusFilter]?.icon} {TARGET_STATUS_META[statusFilter]?.label}</span>}
+                            <span className="mkt-search-result-count">{filteredTargets.length} kişi</span>
+                            <button className="mkt-search-result-clear" onClick={() => { clearSearch(); setStatusFilter(''); }}>× Filtreyi kaldır</button>
+                        </div>
+                    )}
+                    <table className="mkt-table">
+                        <thead><tr>
+                            <th>Kişi</th>
+                            <th>Telefon</th>
+                            <th>Arama Durumu</th>
+                            <th>Çağrı Durumu</th>
+                            <th>Süre</th>
+                            <th>Duygu</th>
+                        </tr></thead>
+                        <tbody>
+                            {filteredTargets.length === 0 && (
+                                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>Kayıt bulunamadı.</td></tr>
+                            )}
+                            {filteredTargets.map((t, i) => {
+                                const ts = TARGET_STATUS_META[t.status] || TARGET_STATUS_META.queued;
+                                const cs = t.call ? (CALL_STATUS_META[t.call.status] || { label: t.call.status, bg: '#f3f4f6', text: '#6b7280', icon: '?' }) : null;
+                                const sm = t.call?.sentiment ? SENTIMENT_META[t.call.sentiment.toLowerCase()] : null;
+                                return (
+                                    <tr key={i} className={t.status === 'failed' ? 'row-failed' : ''}>
+                                        <td>
+                                            <div className="mkt-contact-cell">
+                                                <div className="mkt-contact-avatar">{t.name ? t.name.charAt(0).toUpperCase() : '?'}</div>
+                                                <span className="mkt-contact-name">{t.name || '—'}</span>
+                                            </div>
+                                        </td>
+                                        <td><span className="mkt-phone">{t.phone}</span></td>
+                                        <td>
+                                            <span className="mkt-status-badge" style={{ background: ts.bg, color: ts.text }}>
+                                                {ts.icon} {ts.label}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {cs ? <span className="mkt-status-badge" style={{ background: cs.bg, color: cs.text }}>{cs.icon} {cs.label}</span>
+                                                 : <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>}
+                                        </td>
+                                        <td className="mkt-date-cell">{fmtDur(t.call?.duration)}</td>
+                                        <td>{sm ? <span style={{ fontSize: 13, color: sm.color, fontWeight: 600 }}>{sm.icon} {sm.label}</span> : <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    // ── BATCH LIST VIEW ──
+    return (
+        <div className="mkt-analytics-wrap">
+            {/* Overall stats */}
+            <div className="mkt-stats-row">
+                <StatBig icon="📋" label="Toplam Kampanya" value={total}                                         color="#2563eb" />
+                <StatBig icon="👥" label="Toplam Hedef"    value={totalTarget.toLocaleString('tr-TR')}           color="#7c3aed" />
+                <StatBig icon="✅" label="Arandı"          value={totalCalled.toLocaleString('tr-TR')}           color="#16a34a" sub={totalTarget > 0 ? `%${Math.round(totalCalled/totalTarget*100)}` : ''} />
+                <StatBig icon="❌" label="Aranamadı"       value={totalFailed.toLocaleString('tr-TR')}           color="#dc2626" />
+            </div>
+
+            {/* Refresh bar */}
+            <div className="mkt-analytics-bar">
+                <span style={{ fontSize: 13, color: '#6b7280' }}>Toplu arama kampanyaları — en yeni önce</span>
+                <button className="mkt-refresh-btn" onClick={fetchBatches} disabled={loading}>
                     {loading ? '⏳' : '🔄'} Yenile
                 </button>
             </div>
 
-            {/* Table */}
+            {/* Batch list */}
             {loading ? (
                 <div className="mkt-loading"><div className="mkt-loading-spinner" />Yükleniyor...</div>
-            ) : calls.length === 0 ? (
+            ) : batches.length === 0 ? (
                 <div className="mkt-empty">
                     <div className="mkt-empty-icon">📭</div>
-                    <p>Son {days} günde arama kaydı bulunamadı.</p>
-                    <small>Toplu Gönderim sekmesinden Retell araması başlattığınızda burada görünecek.</small>
+                    <p>Henüz toplu arama kampanyası yok.</p>
+                    <small>Toplu Gönderim sekmesinde kişi seçip 📞 Kişiyi Ara butonuna basın.</small>
                 </div>
             ) : (
-                <>
-                    <div className="mkt-bulk-table-wrap">
-                        <table className="mkt-table">
-                            <thead>
-                                <tr>
-                                    <th>Kişi / Numara</th>
-                                    <th>Yön</th>
-                                    <th>Durum</th>
-                                    <th>Duygu</th>
-                                    <th>Süre</th>
-                                    <th>Maliyet</th>
-                                    <th>Tarih</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {calls.map(c => {
-                                    const st = CALL_STATUS_META[c.status] || { label: c.status, bg: '#f3f4f6', text: '#6b7280', icon: '?' };
-                                    const sm = c.sentiment ? SENTIMENT_META[c.sentiment.toLowerCase()] : null;
-                                    return (
-                                        <tr key={c.id}>
-                                            <td>
-                                                <div className="mkt-contact-cell">
-                                                    <div className="mkt-contact-avatar" style={{ background: '#f0fdf4', color: '#16a34a' }}>📞</div>
-                                                    <div>
-                                                        <div className="mkt-contact-name">{c.contactName || c.toNumber || '—'}</div>
-                                                        <div className="mkt-contact-email">{c.toNumber}</div>
-                                                    </div>
+                <div className="mkt-bulk-table-wrap">
+                    <table className="mkt-table">
+                        <thead><tr>
+                            <th>Tarih</th>
+                            <th>Agent</th>
+                            <th>Hedef</th>
+                            <th>Arandı</th>
+                            <th>Aranamadı</th>
+                            <th>Başarı %</th>
+                            <th></th>
+                        </tr></thead>
+                        <tbody>
+                            {batches.map(b => {
+                                const rate = b.totalTarget > 0 ? Math.round(b.totalCalled / b.totalTarget * 100) : 0;
+                                const queued = b.totalTarget - b.totalCalled - b.totalFailed;
+                                return (
+                                    <tr key={b.id} style={{ cursor: 'pointer' }} onClick={() => openBatch(b.id)}>
+                                        <td className="mkt-date-cell">
+                                            <div>{new Date(b.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                                            <div className="mkt-time">{new Date(b.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
+                                        </td>
+                                        <td style={{ fontSize: 13 }}>{b.agentName || '—'}</td>
+                                        <td><strong>{b.totalTarget}</strong></td>
+                                        <td><span style={{ color: '#16a34a', fontWeight: 600 }}>✅ {b.totalCalled}</span></td>
+                                        <td>
+                                            {b.totalFailed > 0
+                                                ? <span style={{ color: '#dc2626', fontWeight: 600 }}>❌ {b.totalFailed}</span>
+                                                : <span style={{ color: '#9ca3af' }}>—</span>}
+                                            {queued > 0 && <span style={{ color: '#ca8a04', fontSize: 12, marginLeft: 4 }}>⏳{queued}</span>}
+                                        </td>
+                                        <td>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <div style={{ flex: 1, height: 6, background: '#e5e7eb', borderRadius: 3, minWidth: 60 }}>
+                                                    <div style={{ width: `${rate}%`, height: '100%', background: rate > 80 ? '#16a34a' : rate > 50 ? '#ca8a04' : '#dc2626', borderRadius: 3, transition: 'width .3s' }} />
                                                 </div>
-                                            </td>
-                                            <td>
-                                                <span style={{ fontSize: 12 }}>
-                                                    {c.direction === 'outbound' ? '⬆️ Giden' : '⬇️ Gelen'}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span className="mkt-status-badge" style={{ background: st.bg, color: st.text }}>
-                                                    {st.icon} {st.label}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {sm ? (
-                                                    <span style={{ fontSize: 13, color: sm.color, fontWeight: 600 }}>
-                                                        {sm.icon} {sm.label}
-                                                    </span>
-                                                ) : <span style={{ color: '#9ca3af' }}>—</span>}
-                                            </td>
-                                            <td className="mkt-date-cell">{fmtDur(c.duration)}</td>
-                                            <td style={{ fontSize: 13, color: '#374151' }}>
-                                                {c.cost ? `$${(c.cost / 100).toFixed(3)}` : '—'}
-                                            </td>
-                                            <td className="mkt-date-cell">
-                                                <div>{new Date(c.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</div>
-                                                <div className="mkt-time">{new Date(c.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Pagination */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: '#fafafa', flexShrink: 0 }}>
-                        <span style={{ fontSize: 12, color: '#9ca3af' }}>{total.toLocaleString('tr-TR')} arama</span>
-                        {totalPages > 1 && (
-                            <div className="mkt-pagination" style={{ border: 'none', padding: 0 }}>
-                                <button className="mkt-page-btn" disabled={page === 1} onClick={() => { setPage(p => p - 1); fetchAll(page - 1); }}>‹ Önceki</button>
-                                <span className="mkt-page-info">{page} / {totalPages}</span>
-                                <button className="mkt-page-btn" disabled={page === totalPages} onClick={() => { setPage(p => p + 1); fetchAll(page + 1); }}>Sonraki ›</button>
-                            </div>
-                        )}
-                    </div>
-                </>
+                                                <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', minWidth: 28 }}>%{rate}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <button className="mkt-detail-btn" onClick={e => { e.stopPropagation(); openBatch(b.id); }}>
+                                                Detay →
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             )}
+            {detailLoading && <div className="mkt-loading"><div className="mkt-loading-spinner" />Detay yükleniyor...</div>}
         </div>
     );
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE

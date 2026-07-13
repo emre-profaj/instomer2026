@@ -15,7 +15,10 @@ import {
     recoverCallConversations,
     bulkRetryCall,
     syncRetellCalls,
-    syncSingleCall
+    syncSingleCall,
+    bulkCall,
+    getBulkCallBatches,
+    getBulkCallBatch
 } from '../controllers/retell.controller.js';
 import {
     handleRetellAction,
@@ -55,9 +58,12 @@ router.post('/:workspaceId/agents', requireWorkspaceAccess, createAgent);
 
 // Calls
 router.post('/:workspaceId/call', requireWorkspaceAccess, makeCall);
+router.post('/:workspaceId/call/bulk', requireWorkspaceAccess, bulkCall);
 router.post('/:workspaceId/bulk-retry', requireWorkspaceAccess, bulkRetryCall);
 router.get('/:workspaceId/calls', requireWorkspaceAccess, getCallHistory);
 router.get('/:workspaceId/analytics', requireWorkspaceAccess, getCallAnalytics);
+router.get('/:workspaceId/bulk-batches', requireWorkspaceAccess, getBulkCallBatches);
+router.get('/:workspaceId/bulk-batches/:batchId', requireWorkspaceAccess, getBulkCallBatch);
 
 // Scheduled Calls
 router.post('/:workspaceId/schedule-call', requireWorkspaceAccess, scheduleCall);
