@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
@@ -7,26 +7,34 @@ import './Marketing.css';
 const DAY_OPTIONS = [7, 14, 30, 90];
 
 const STATUS_META = {
-    SENT:      { label: 'Gönderildi',     bg: '#eff6ff', text: '#2563eb', icon: '📤' },
-    DELIVERED: { label: 'Teslim Edildi',  bg: '#f0fdf4', text: '#16a34a', icon: '📦' },
-    READ:      { label: 'Okundu',         bg: '#fefce8', text: '#ca8a04', icon: '👁'  },
-    FAILED:    { label: 'Başarısız',      bg: '#fef2f2', text: '#dc2626', icon: '❌' },
+    SENT:      { label: 'Gönderildi',    bg: '#eff6ff', text: '#2563eb', icon: '📤' },
+    DELIVERED: { label: 'Teslim Edildi', bg: '#f0fdf4', text: '#16a34a', icon: '📦' },
+    READ:      { label: 'Okundu',        bg: '#fefce8', text: '#ca8a04', icon: '👁'  },
+    FAILED:    { label: 'Başarısız',     bg: '#fef2f2', text: '#dc2626', icon: '❌' },
 };
 
-const STATUS_FILTER_OPTIONS = [
+const STATUS_FILTER_OPTS = [
     { value: '', label: 'Tümü' },
-    { value: 'READ', label: '👁 Okundu' },
+    { value: 'READ',      label: '👁 Okundu' },
     { value: 'DELIVERED', label: '📦 Teslim Edildi' },
-    { value: 'SENT', label: '📤 Gönderildi (Bekliyor)' },
-    { value: 'FAILED', label: '❌ Başarısız' },
+    { value: 'SENT',      label: '📤 Bekliyor' },
+    { value: 'FAILED',    label: '❌ Başarısız' },
 ];
+
+const STATUS_LABELS = {
+    NEW: '🔵 Yeni',
+    CUSTOMER: '🟢 Müşteri',
+    OPPORTUNITY: '🟡 Fırsat',
+    SPAM: '🔴 Spam',
+    VIP: '⭐ VIP',
+};
 
 function StatBig({ icon, label, value, sub, color }) {
     return (
         <div className="mkt-stat-card">
             <div className="mkt-stat-icon" style={{ background: color + '18' }}>{icon}</div>
             <div>
-                <div className="mkt-stat-value" style={{ color }}>{value?.toLocaleString('tr-TR')}</div>
+                <div className="mkt-stat-value" style={{ color }}>{(value ?? 0).toLocaleString('tr-TR')}</div>
                 <div className="mkt-stat-label">{label}</div>
                 {sub && <div className="mkt-stat-sub">{sub}</div>}
             </div>
@@ -46,22 +54,334 @@ function MiniBar({ value, max, color }) {
     );
 }
 
-export default function Marketing() {
-    const { currentWorkspace } = useAuth();
+// ─────────────────────────────────────────────────────────────────────────────
+// BULK SEND TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function BulkSendTab({ wsId }) {
+    const [contacts, setContacts] = useState([]);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+    const [page, setPage] = useState(1);
+    const [loading, setLoading] = useState(false);
+    const [filterStatuses, setFilterStatuses] = useState([]);
+    const [filterSources, setFilterSources] = useState([]);
+
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [sourceFilter, setSourceFilter] = useState('');
+
+    const [selected, setSelected] = useState(new Set());
+    const [templates, setTemplates] = useState([]);
+    const [showModal, setShowModal] = useState(false);
+    const [sending, setSending] = useState(false);
+    const [sentMsg, setSentMsg] = useState('');
+
+    const searchTimer = useRef(null);
+
+    const fetchContacts = useCallback(async (p = 1) => {
+        if (!wsId) return;
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({ page: p, limit: 50 });
+            if (search) params.set('search', search);
+            if (statusFilter) params.set('status', statusFilter);
+            if (sourceFilter) params.set('source', sourceFilter);
+
+            const res = await api.get(`/marketing/${wsId}/contacts?${params}`);
+            setContacts(res.data.contacts || []);
+            setTotal(res.data.total || 0);
+            setTotalPages(res.data.totalPages || 1);
+            if (res.data.filters) {
+                setFilterStatuses(res.data.filters.statuses || []);
+                setFilterSources(res.data.filters.sources || []);
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId, search, statusFilter, sourceFilter]);
+
+    useEffect(() => { fetchContacts(1); setPage(1); setSelected(new Set()); }, [fetchContacts]);
+
+    const fetchTemplates = async () => {
+        try {
+            const res = await api.get(`/automations/${wsId}/templates`);
+            setTemplates((res.data.templates || []).filter(t => t.status === 'APPROVED'));
+        } catch (e) { console.error(e); }
+    };
+
+    const handleSearchChange = (val) => {
+        setSearch(val);
+        clearTimeout(searchTimer.current);
+    };
+
+    const toggleSelect = (id) => {
+        setSelected(prev => {
+            const s = new Set(prev);
+            s.has(id) ? s.delete(id) : s.add(id);
+            return s;
+        });
+    };
+
+    const toggleAll = () => {
+        if (selected.size === contacts.length) {
+            setSelected(new Set());
+        } else {
+            setSelected(new Set(contacts.map(c => c.id)));
+        }
+    };
+
+    const openModal = async () => {
+        await fetchTemplates();
+        setShowModal(true);
+        setSentMsg('');
+    };
+
+    const handleBulkSend = async (templateId) => {
+        if (!templateId) return alert('Lütfen bir şablon seçin');
+        setSending(true);
+        try {
+            const res = await api.post(`/marketing/${wsId}/bulk-send`, {
+                contactIds: [...selected],
+                templateId
+            });
+            setSentMsg(res.data.message);
+            setSelected(new Set());
+        } catch (e) {
+            alert('Gönderim hatası: ' + (e.response?.data?.error || e.message));
+        }
+        setSending(false);
+    };
+
+    const allSelected = contacts.length > 0 && selected.size === contacts.length;
+    const someSelected = selected.size > 0 && selected.size < contacts.length;
+
+    return (
+        <div className="mkt-bulk-wrap">
+            {/* Toolbar */}
+            <div className="mkt-bulk-toolbar">
+                <div className="mkt-bulk-filters">
+                    <input
+                        className="mkt-search-input"
+                        type="text"
+                        placeholder="🔍 İsim, telefon veya e-posta ara..."
+                        value={search}
+                        onChange={e => handleSearchChange(e.target.value)}
+                    />
+                    <select className="mkt-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                        <option value="">Tüm Durumlar</option>
+                        {filterStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
+                    </select>
+                    <select className="mkt-filter-select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
+                        <option value="">Tüm Kaynaklar</option>
+                        {filterSources.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <span className="mkt-total-badge">{total.toLocaleString('tr-TR')} kişi</span>
+                </div>
+
+                <div className="mkt-bulk-actions">
+                    {selected.size > 0 && (
+                        <button className="mkt-btn-send-bulk" onClick={openModal}>
+                            📤 {selected.size} Kişiye Şablon Gönder
+                        </button>
+                    )}
+                    {selected.size === 0 && (
+                        <span className="mkt-hint">Kişi seçmek için checkbox'a tıklayın</span>
+                    )}
+                </div>
+            </div>
+
+            {/* Table */}
+            <div className="mkt-bulk-table-wrap">
+                <table className="mkt-table">
+                    <thead>
+                        <tr>
+                            <th style={{ width: 40 }}>
+                                <input
+                                    type="checkbox"
+                                    className="mkt-checkbox"
+                                    checked={allSelected}
+                                    ref={el => { if (el) el.indeterminate = someSelected; }}
+                                    onChange={toggleAll}
+                                />
+                            </th>
+                            <th>Ad Soyad</th>
+                            <th>Telefon</th>
+                            <th>E-posta</th>
+                            <th>Durum</th>
+                            <th>Kaynak</th>
+                            <th>Etiketler</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {loading && (
+                            <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
+                                <div className="mkt-loading-spinner" style={{ margin: '0 auto 8px' }} />Yükleniyor...
+                            </td></tr>
+                        )}
+                        {!loading && contacts.length === 0 && (
+                            <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: '#9ca3af' }}>
+                                Kişi bulunamadı
+                            </td></tr>
+                        )}
+                        {!loading && contacts.map(c => (
+                            <tr
+                                key={c.id}
+                                className={selected.has(c.id) ? 'row-selected' : ''}
+                                onClick={() => toggleSelect(c.id)}
+                            >
+                                <td onClick={e => e.stopPropagation()}>
+                                    <input
+                                        type="checkbox"
+                                        className="mkt-checkbox"
+                                        checked={selected.has(c.id)}
+                                        onChange={() => toggleSelect(c.id)}
+                                    />
+                                </td>
+                                <td>
+                                    <div className="mkt-contact-cell">
+                                        <div className="mkt-contact-avatar">
+                                            {c.name ? c.name.charAt(0).toUpperCase() : '?'}
+                                        </div>
+                                        <span className="mkt-contact-name">{c.name || '—'}</span>
+                                    </div>
+                                </td>
+                                <td><span className="mkt-phone">{c.phone}</span></td>
+                                <td style={{ fontSize: 12, color: '#6b7280' }}>{c.email || '—'}</td>
+                                <td>
+                                    <span className="mkt-status-badge" style={{
+                                        background: c.status === 'CUSTOMER' ? '#f0fdf4' : c.status === 'NEW' ? '#eff6ff' : '#f9fafb',
+                                        color: c.status === 'CUSTOMER' ? '#16a34a' : c.status === 'NEW' ? '#2563eb' : '#6b7280'
+                                    }}>
+                                        {STATUS_LABELS[c.status] || c.status}
+                                    </span>
+                                </td>
+                                <td style={{ fontSize: 12, color: '#6b7280' }}>{c.source || '—'}</td>
+                                <td>
+                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                        {(c.tags || []).slice(0, 3).map((t, i) => (
+                                            <span key={i} className="mkt-tag-chip">{t}</span>
+                                        ))}
+                                        {c.tags?.length > 3 && <span className="mkt-tag-chip">+{c.tags.length - 3}</span>}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="mkt-pagination">
+                    <button className="mkt-page-btn" disabled={page === 1} onClick={() => { setPage(p => p - 1); fetchContacts(page - 1); }}>‹ Önceki</button>
+                    <span className="mkt-page-info">{page} / {totalPages}</span>
+                    <button className="mkt-page-btn" disabled={page === totalPages} onClick={() => { setPage(p => p + 1); fetchContacts(page + 1); }}>Sonraki ›</button>
+                </div>
+            )}
+
+            {/* Bulk Send Modal */}
+            {showModal && (
+                <BulkSendModal
+                    count={selected.size}
+                    templates={templates}
+                    sending={sending}
+                    sentMsg={sentMsg}
+                    onSend={handleBulkSend}
+                    onClose={() => setShowModal(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+function BulkSendModal({ count, templates, sending, sentMsg, onSend, onClose }) {
+    const [templateId, setTemplateId] = useState('');
+    const selectedTpl = templates.find(t => t.id === templateId);
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div className="mkt-modal" onClick={e => e.stopPropagation()}>
+                <div className="mkt-modal-header">
+                    <div className="mkt-modal-title">📤 Toplu Şablon Gönderimi</div>
+                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                </div>
+
+                {sentMsg ? (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-success-box">
+                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>✅</div>
+                            <div style={{ fontWeight: 600, color: '#16a34a', marginBottom: 4 }}>{sentMsg}</div>
+                            <div style={{ fontSize: 13, color: '#6b7280' }}>Gönderimler arka planda devam ediyor. Analiz sekmesinden takip edebilirsiniz.</div>
+                        </div>
+                        <button className="mkt-btn-primary" onClick={onClose} style={{ marginTop: 16, width: '100%' }}>Tamam</button>
+                    </div>
+                ) : (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-modal-info">
+                            <span>📋 Seçilen kişi:</span>
+                            <strong>{count} kişi</strong>
+                        </div>
+
+                        <div className="mkt-form-group">
+                            <label>Gönderilecek Şablon</label>
+                            <select
+                                className="mkt-form-select"
+                                value={templateId}
+                                onChange={e => setTemplateId(e.target.value)}
+                            >
+                                <option value="">— Şablon seçin —</option>
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name} ({t.language})</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedTpl && (
+                            <div className="mkt-tpl-preview">
+                                <div className="mkt-tpl-preview-label">Önizleme</div>
+                                <div className="mkt-tpl-preview-body">{selectedTpl.bodyText}</div>
+                                {selectedTpl.bodyText?.includes('{{1}}') && (
+                                    <div className="mkt-tpl-preview-note">
+                                        💡 <code>{'{{1}}'}</code> → kişi adıyla otomatik doldurulacak
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="mkt-modal-warning">
+                            ⚠️ Mesajlar arasına 1.5 sn gecikme eklenir (WhatsApp rate limit). {count} kişi için tahmini süre: ~{Math.ceil(count * 1.5 / 60)} dakika.
+                        </div>
+
+                        <div className="mkt-modal-actions">
+                            <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
+                            <button
+                                className="mkt-btn-primary"
+                                onClick={() => onSend(templateId)}
+                                disabled={!templateId || sending}
+                            >
+                                {sending ? '⏳ Başlatılıyor...' : `📤 ${count} Kişiye Gönder`}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANALYTICS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function AnalyticsTab({ wsId }) {
     const navigate = useNavigate();
     const [days, setDays] = useState(30);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [selectedTemplate, setSelectedTemplate] = useState(null);
     const [clearing, setClearing] = useState(false);
-
-    // Detail table filters
     const [statusFilter, setStatusFilter] = useState('');
     const [search, setSearch] = useState('');
     const [sortCol, setSortCol] = useState('sentAt');
     const [sortDir, setSortDir] = useState('desc');
-
-    const wsId = currentWorkspace?.id;
 
     const fetchAnalytics = useCallback(async () => {
         if (!wsId) return;
@@ -69,41 +389,33 @@ export default function Marketing() {
         try {
             const res = await api.get(`/marketing/${wsId}/template-analytics?days=${days}`);
             setData(res.data);
-        } catch (e) {
-            console.error(e);
-        }
+        } catch (e) { console.error(e); }
         setLoading(false);
     }, [wsId, days]);
 
     useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
     const handleClearTemplate = async (templateName) => {
-        const confirmed = window.confirm(`"${templateName}" şablonuna ait tüm gönderim geçmişi silinecek.\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`);
-        if (!confirmed) return;
+        if (!window.confirm(`"${templateName}" şablonuna ait tüm gönderim geçmişi silinecek.\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`)) return;
         setClearing(true);
         try {
             const res = await api.delete(`/marketing/${wsId}/template-analytics?templateName=${encodeURIComponent(templateName)}`);
             alert(res.data.message);
             setSelectedTemplate(null);
             fetchAnalytics();
-        } catch (e) {
-            alert('Silme işlemi başarısız: ' + (e.response?.data?.error || e.message));
-        }
+        } catch (e) { alert('Silme hatası: ' + (e.response?.data?.error || e.message)); }
         setClearing(false);
     };
 
     const handleClearAll = async () => {
-        const confirmed = window.confirm(`TÜM şablon gönderim geçmişi silinecek.\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`);
-        if (!confirmed) return;
+        if (!window.confirm(`TÜM şablon gönderim geçmişi silinecek.\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`)) return;
         setClearing(true);
         try {
             const res = await api.delete(`/marketing/${wsId}/template-analytics`);
             alert(res.data.message);
             setSelectedTemplate(null);
             fetchAnalytics();
-        } catch (e) {
-            alert('Silme işlemi başarısız: ' + (e.response?.data?.error || e.message));
-        }
+        } catch (e) { alert('Silme hatası: ' + (e.response?.data?.error || e.message)); }
         setClearing(false);
     };
 
@@ -113,18 +425,14 @@ export default function Marketing() {
 
     const readRate = overall.totalSent > 0 ? Math.round((overall.totalRead / overall.totalSent) * 100) : 0;
     const deliveryRate = overall.totalSent > 0 ? Math.round((overall.totalDelivered / overall.totalSent) * 100) : 0;
+    const failedCount = sel ? (sel.recipients || []).filter(r => r.status === 'FAILED').length : 0;
 
-    // Filter & sort recipients for detail table
     const filteredRecipients = (sel?.recipients || [])
         .filter(r => {
             if (statusFilter && r.status !== statusFilter) return false;
             if (search) {
                 const q = search.toLowerCase();
-                return (
-                    (r.name && r.name.toLowerCase().includes(q)) ||
-                    (r.phone && r.phone.includes(q)) ||
-                    (r.email && r.email.toLowerCase().includes(q))
-                );
+                return (r.name?.toLowerCase().includes(q) || r.phone?.includes(q) || r.email?.toLowerCase().includes(q));
             }
             return true;
         })
@@ -143,32 +451,30 @@ export default function Marketing() {
     };
     const sortIcon = (col) => sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
-    // Failed recipients count for badge
-    const failedCount = sel ? (sel.recipients || []).filter(r => r.status === 'FAILED').length : 0;
-
     return (
-        <div className="mkt-page">
-            {/* ── Header ── */}
-            <div className="mkt-header">
-                <div className="mkt-header-left">
-                    <span className="mkt-header-icon">📊</span>
-                    <div>
-                        <h1 className="mkt-header-title">Pazarlama Analizi</h1>
-                        <p className="mkt-header-sub">WhatsApp şablon mesaj istatistikleri</p>
-                    </div>
+        <div className="mkt-analytics-wrap">
+            {/* Stats */}
+            <div className="mkt-stats-row">
+                <StatBig icon="📤" label="Toplam Gönderim"  value={overall.totalSent}      sub={`${overall.uniqueTemplates ?? 0} farklı şablon`} color="#2563eb" />
+                <StatBig icon="📦" label="Teslim Edildi"    value={overall.totalDelivered}  sub={`%${deliveryRate} teslim oranı`}                 color="#16a34a" />
+                <StatBig icon="👁"  label="Okundu"           value={overall.totalRead}       sub={`%${readRate} okunma oranı`}                     color="#ca8a04" />
+                <StatBig icon="❌" label="Başarısız"        value={overall.totalFailed}     sub=""                                                color="#dc2626" />
+            </div>
+
+            {/* Filter bar */}
+            <div className="mkt-analytics-bar">
+                <div className="mkt-day-selector">
+                    {DAY_OPTIONS.map(d => (
+                        <button key={d} className={`mkt-day-btn ${days === d ? 'active' : ''}`} onClick={() => { setDays(d); setSelectedTemplate(null); }}>
+                            Son {d} gün
+                        </button>
+                    ))}
                 </div>
-                <div className="mkt-header-actions">
-                    <div className="mkt-day-selector">
-                        {DAY_OPTIONS.map(d => (
-                            <button key={d} className={`mkt-day-btn ${days === d ? 'active' : ''}`} onClick={() => setDays(d)}>
-                                Son {d} gün
-                            </button>
-                        ))}
-                    </div>
+                <div style={{ display: 'flex', gap: 6 }}>
                     <button className="mkt-refresh-btn" onClick={fetchAnalytics} disabled={loading}>
                         {loading ? '⏳' : '🔄'} Yenile
                     </button>
-                    {(data?.overall?.totalSent > 0) && (
+                    {(overall.totalSent > 0) && (
                         <button className="mkt-clear-all-btn" onClick={handleClearAll} disabled={clearing}>
                             🗑️ Tüm Geçmişi Temizle
                         </button>
@@ -176,37 +482,25 @@ export default function Marketing() {
                 </div>
             </div>
 
-            {/* ── Overall Stats ── */}
-            <div className="mkt-stats-row">
-                <StatBig icon="📤" label="Toplam Gönderim"   value={overall.totalSent ?? 0}       sub={`${overall.uniqueTemplates ?? 0} farklı şablon`} color="#2563eb" />
-                <StatBig icon="📦" label="Teslim Edildi"     value={overall.totalDelivered ?? 0}  sub={`%${deliveryRate} teslim oranı`}                  color="#16a34a" />
-                <StatBig icon="👁"  label="Okundu"            value={overall.totalRead ?? 0}       sub={`%${readRate} okunma oranı`}                      color="#ca8a04" />
-                <StatBig icon="❌" label="Başarısız"         value={overall.totalFailed ?? 0}     sub=""                                                 color="#dc2626" />
-            </div>
-
-            {/* ── Main body ── */}
+            {/* Content */}
             {loading ? (
-                <div className="mkt-loading"><div className="mkt-loading-spinner" />Veriler yükleniyor...</div>
+                <div className="mkt-loading"><div className="mkt-loading-spinner" />Yükleniyor...</div>
             ) : templates.length === 0 ? (
                 <div className="mkt-empty">
                     <div className="mkt-empty-icon">📭</div>
                     <p>Son {days} günde gönderilmiş şablon mesajı bulunamadı.</p>
-                    <small>Otomasyonlar sayfasından WhatsApp şablonu gönderdiğinizde burada görünecek.</small>
+                    <small>Toplu Gönderim sekmesinden şablon gönderdiğinizde burada görünecek.</small>
                 </div>
             ) : (
                 <div className="mkt-body">
-                    {/* ── Left: template list ── */}
+                    {/* Template list */}
                     <div className="mkt-template-list">
                         <div className="mkt-list-header">Şablonlar ({templates.length})</div>
                         {templates.map(t => (
                             <div
                                 key={t.templateName}
                                 className={`mkt-template-row ${selectedTemplate === t.templateName ? 'selected' : ''}`}
-                                onClick={() => {
-                                    setSelectedTemplate(t.templateName === selectedTemplate ? null : t.templateName);
-                                    setStatusFilter('');
-                                    setSearch('');
-                                }}
+                                onClick={() => { setSelectedTemplate(t.templateName === selectedTemplate ? null : t.templateName); setStatusFilter(''); setSearch(''); }}
                             >
                                 <div className="mkt-tpl-top">
                                     <span className="mkt-tpl-name" title={t.templateName}>{t.templateName}</span>
@@ -217,9 +511,7 @@ export default function Marketing() {
                                     <span className="mkt-chip read">👁 {t.read}</span>
                                     {t.failed > 0 && <span className="mkt-chip failed">❌ {t.failed}</span>}
                                 </div>
-                                <div className="mkt-tpl-bar-row">
-                                    <MiniBar value={t.delivered + t.read} max={t.total} color="#16a34a" />
-                                </div>
+                                <MiniBar value={t.delivered + t.read} max={t.total} color="#16a34a" />
                                 <div className="mkt-tpl-date">
                                     {t.lastSentAt ? new Date(t.lastSentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
                                 </div>
@@ -227,83 +519,41 @@ export default function Marketing() {
                         ))}
                     </div>
 
-                    {/* ── Right: detail ── */}
+                    {/* Detail panel */}
                     <div className="mkt-detail-area">
                         {!sel ? (
-                            <div className="mkt-detail-placeholder">
-                                <div style={{ fontSize: '2.5rem' }}>👈</div>
-                                <p>Detay görmek için sol listeden bir şablon seçin.</p>
-                            </div>
+                            <div className="mkt-detail-placeholder"><div style={{ fontSize: '2.5rem' }}>👈</div><p>Şablon seçin</p></div>
                         ) : (
                             <>
-                                {/* Detail header */}
                                 <div className="mkt-detail-header">
                                     <div className="mkt-detail-title-row">
                                         <span className="mkt-detail-tpl-name">📄 {sel.templateName}</span>
                                         <div style={{ display: 'flex', gap: 6 }}>
-                                            <button
-                                                className="mkt-clear-tpl-btn"
-                                                onClick={() => handleClearTemplate(sel.templateName)}
-                                                disabled={clearing}
-                                                title="Bu şablonun gönderim geçmişini sil"
-                                            >
-                                                🗑️ Geçmişi Temizle
-                                            </button>
+                                            <button className="mkt-clear-tpl-btn" onClick={() => handleClearTemplate(sel.templateName)} disabled={clearing}>🗑️ Geçmişi Temizle</button>
                                             <button className="mkt-close-btn" onClick={() => setSelectedTemplate(null)}>✕</button>
                                         </div>
                                     </div>
-
-                                    {/* Rate summary */}
                                     <div className="mkt-rate-row-grid">
-                                        <div className="mkt-rate-item">
-                                            <div className="mkt-rate-label">Toplam</div>
-                                            <div className="mkt-rate-val" style={{ color: '#1f2937' }}>{sel.total}</div>
-                                        </div>
-                                        <div className="mkt-rate-item">
-                                            <div className="mkt-rate-label">Teslim</div>
-                                            <div className="mkt-rate-val" style={{ color: '#16a34a' }}>{sel.delivered + sel.read} <small>%{sel.deliveryRate}</small></div>
-                                        </div>
-                                        <div className="mkt-rate-item">
-                                            <div className="mkt-rate-label">Okundu</div>
-                                            <div className="mkt-rate-val" style={{ color: '#ca8a04' }}>{sel.read} <small>%{sel.readRate}</small></div>
-                                        </div>
-                                        <div className="mkt-rate-item">
-                                            <div className="mkt-rate-label">Bekliyor</div>
-                                            <div className="mkt-rate-val" style={{ color: '#2563eb' }}>{sel.sent}</div>
-                                        </div>
-                                        <div className="mkt-rate-item">
-                                            <div className="mkt-rate-label">Başarısız</div>
-                                            <div className="mkt-rate-val" style={{ color: '#dc2626' }}>{sel.failed} <small>%{sel.failRate}</small></div>
-                                        </div>
+                                        <div className="mkt-rate-item"><div className="mkt-rate-label">Toplam</div><div className="mkt-rate-val" style={{ color: '#1f2937' }}>{sel.total}</div></div>
+                                        <div className="mkt-rate-item"><div className="mkt-rate-label">Teslim</div><div className="mkt-rate-val" style={{ color: '#16a34a' }}>{sel.delivered + sel.read} <small>%{sel.deliveryRate}</small></div></div>
+                                        <div className="mkt-rate-item"><div className="mkt-rate-label">Okundu</div><div className="mkt-rate-val" style={{ color: '#ca8a04' }}>{sel.read} <small>%{sel.readRate}</small></div></div>
+                                        <div className="mkt-rate-item"><div className="mkt-rate-label">Bekliyor</div><div className="mkt-rate-val" style={{ color: '#2563eb' }}>{sel.sent}</div></div>
+                                        <div className="mkt-rate-item"><div className="mkt-rate-label">Başarısız</div><div className="mkt-rate-val" style={{ color: '#dc2626' }}>{sel.failed} <small>%{sel.failRate}</small></div></div>
                                     </div>
                                 </div>
 
-                                {/* Filters */}
                                 <div className="mkt-filters">
-                                    <input
-                                        className="mkt-search-input"
-                                        type="text"
-                                        placeholder="🔍 İsim veya numara ara..."
-                                        value={search}
-                                        onChange={e => setSearch(e.target.value)}
-                                    />
+                                    <input className="mkt-search-input" type="text" placeholder="🔍 İsim veya numara ara..." value={search} onChange={e => setSearch(e.target.value)} />
                                     <div className="mkt-filter-tabs">
-                                        {STATUS_FILTER_OPTIONS.map(opt => (
-                                            <button
-                                                key={opt.value}
-                                                className={`mkt-filter-tab ${statusFilter === opt.value ? 'active' : ''}`}
-                                                onClick={() => setStatusFilter(opt.value)}
-                                            >
+                                        {STATUS_FILTER_OPTS.map(opt => (
+                                            <button key={opt.value} className={`mkt-filter-tab ${statusFilter === opt.value ? 'active' : ''}`} onClick={() => setStatusFilter(opt.value)}>
                                                 {opt.label}
-                                                {opt.value === 'FAILED' && failedCount > 0 && (
-                                                    <span className="mkt-badge-red">{failedCount}</span>
-                                                )}
+                                                {opt.value === 'FAILED' && failedCount > 0 && <span className="mkt-badge-red">{failedCount}</span>}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
 
-                                {/* Recipients table */}
                                 <div className="mkt-table-wrap">
                                     <table className="mkt-table">
                                         <thead>
@@ -311,17 +561,13 @@ export default function Marketing() {
                                                 <th onClick={() => handleSort('name')} className="sortable">Ad Soyad{sortIcon('name')}</th>
                                                 <th onClick={() => handleSort('phone')} className="sortable">Telefon{sortIcon('phone')}</th>
                                                 <th onClick={() => handleSort('status')} className="sortable">Durum{sortIcon('status')}</th>
-                                                <th onClick={() => handleSort('sentAt')} className="sortable">Gönderim Tarihi{sortIcon('sentAt')}</th>
+                                                <th onClick={() => handleSort('sentAt')} className="sortable">Tarih{sortIcon('sentAt')}</th>
                                                 <th>İşlem</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {filteredRecipients.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={5} style={{ textAlign: 'center', color: '#9ca3af', padding: '32px' }}>
-                                                        Bu filtreyle eşleşen kayıt bulunamadı.
-                                                    </td>
-                                                </tr>
+                                                <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>Kayıt bulunamadı.</td></tr>
                                             )}
                                             {filteredRecipients.map(r => {
                                                 const st = STATUS_META[r.status] || { label: r.status, bg: '#f3f4f6', text: '#6b7280', icon: '?' };
@@ -329,39 +575,25 @@ export default function Marketing() {
                                                     <tr key={r.messageId} className={r.status === 'FAILED' ? 'row-failed' : ''}>
                                                         <td>
                                                             <div className="mkt-contact-cell">
-                                                                <div className="mkt-contact-avatar">
-                                                                    {(r.name && r.name !== '—') ? r.name.charAt(0).toUpperCase() : '?'}
-                                                                </div>
+                                                                <div className="mkt-contact-avatar">{(r.name && r.name !== '—') ? r.name.charAt(0).toUpperCase() : '?'}</div>
                                                                 <div>
                                                                     <div className="mkt-contact-name">{r.name || '—'}</div>
                                                                     {r.email && <div className="mkt-contact-email">{r.email}</div>}
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td>
-                                                            <span className="mkt-phone">{r.phone}</span>
-                                                        </td>
-                                                        <td>
-                                                            <span className="mkt-status-badge" style={{ background: st.bg, color: st.text }}>
-                                                                {st.icon} {st.label}
-                                                            </span>
-                                                        </td>
+                                                        <td><span className="mkt-phone">{r.phone}</span></td>
+                                                        <td><span className="mkt-status-badge" style={{ background: st.bg, color: st.text }}>{st.icon} {st.label}</span></td>
                                                         <td className="mkt-date-cell">
-                                                            <div>{new Date(r.sentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                                                            <div>{new Date(r.sentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</div>
                                                             <div className="mkt-time">{new Date(r.sentAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
                                                         </td>
                                                         <td>
-                                                            <div className="mkt-action-btns">
-                                                                {r.conversationId && (
-                                                                    <button
-                                                                        className="mkt-action-btn primary"
-                                                                        title="Konuşmaya git"
-                                                                        onClick={() => navigate('/inbox', { state: { conversationId: r.conversationId } })}
-                                                                    >
-                                                                        💬 Konuşma
-                                                                    </button>
-                                                                )}
-                                                            </div>
+                                                            {r.conversationId && (
+                                                                <button className="mkt-action-btn primary" onClick={() => navigate('/inbox', { state: { conversationId: r.conversationId } })}>
+                                                                    💬 Konuşma
+                                                                </button>
+                                                            )}
                                                         </td>
                                                     </tr>
                                                 );
@@ -369,9 +601,7 @@ export default function Marketing() {
                                         </tbody>
                                     </table>
                                     {filteredRecipients.length > 0 && (
-                                        <div className="mkt-table-footer">
-                                            {filteredRecipients.length} / {sel.recipients.length} kişi gösteriliyor
-                                        </div>
+                                        <div className="mkt-table-footer">{filteredRecipients.length} / {sel.recipients.length} kişi</div>
                                     )}
                                 </div>
                             </>
@@ -379,6 +609,46 @@ export default function Marketing() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────────────────────
+export default function Marketing() {
+    const { currentWorkspace } = useAuth();
+    const [activeTab, setActiveTab] = useState('bulk');
+    const wsId = currentWorkspace?.id;
+
+    return (
+        <div className="mkt-page">
+            {/* Header */}
+            <div className="mkt-header">
+                <div className="mkt-header-left">
+                    <span className="mkt-header-icon">📣</span>
+                    <div>
+                        <h1 className="mkt-header-title">Pazarlama</h1>
+                        <p className="mkt-header-sub">Toplu WhatsApp şablon gönderimi ve analiz</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="mkt-tabs">
+                <button className={`mkt-tab ${activeTab === 'bulk' ? 'active' : ''}`} onClick={() => setActiveTab('bulk')}>
+                    📤 Toplu Gönderim
+                </button>
+                <button className={`mkt-tab ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>
+                    📊 Analiz
+                </button>
+            </div>
+
+            {/* Tab content */}
+            <div className="mkt-tab-content">
+                {activeTab === 'bulk'      && <BulkSendTab wsId={wsId} />}
+                {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
+            </div>
         </div>
     );
 }

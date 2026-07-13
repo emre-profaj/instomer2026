@@ -3,6 +3,8 @@ import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.midd
 import {
     getTemplateAnalytics,
     clearTemplateHistory,
+    getMarketingContacts,
+    bulkSendTemplate,
     getCampaigns,
     getCampaignDetail,
     createCampaign,
@@ -15,11 +17,17 @@ const router = express.Router();
 
 router.use(authenticateJWT);
 
-// Template analytics (main feature)
+// Template analytics
 router.get('/:workspaceId/template-analytics', requireWorkspaceAccess, getTemplateAnalytics);
 router.delete('/:workspaceId/template-analytics', requireWorkspaceAccess, clearTemplateHistory);
 
-// Campaign routes (secondary)
+// Contacts (for bulk send)
+router.get('/:workspaceId/contacts', requireWorkspaceAccess, getMarketingContacts);
+
+// Bulk send
+router.post('/:workspaceId/bulk-send', requireWorkspaceAccess, bulkSendTemplate);
+
+// Campaign routes
 router.get('/:workspaceId/campaigns', requireWorkspaceAccess, getCampaigns);
 router.get('/:workspaceId/campaigns/:id', requireWorkspaceAccess, getCampaignDetail);
 router.post('/:workspaceId/campaigns', requireWorkspaceAccess, createCampaign);

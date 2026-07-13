@@ -164,6 +164,231 @@ export const clearTemplateHistory = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /marketing/:workspaceId/contacts
+// Paginated contact list with search & filters (only contacts with phone)
+// ─────────────────────────────────────────────────────────────────────────────
+export const getMarketingContacts = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { search = '', status = '', source = '', tag = '', page = 1, limit = 50 } = req.query;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const where = {
+            workspaceId,
+            isDeleted: false,
+            isBlocked: false,
+            phone: { not: null },  // Only contacts with phone (for WhatsApp)
+        };
+
+        if (search) {
+            where.OR = [
+                { name: { contains: search, mode: 'insensitive' } },
+                { fullName: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search } },
+                { email: { contains: search, mode: 'insensitive' } },
+            ];
+        }
+        if (status) where.status = status;
+        if (source) where.source = source;
+        if (tag) where.tags = { contains: tag };
+
+        const [contacts, total] = await Promise.all([
+            prisma.contact.findMany({
+                where,
+                select: {
+                    id: true,
+                    name: true,
+                    fullName: true,
+                    phone: true,
+                    email: true,
+                    status: true,
+                    source: true,
+                    tags: true,
+                    category: true,
+                    createdAt: true,
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: parseInt(limit),
+            }),
+            prisma.contact.count({ where }),
+        ]);
+
+        // Parse tags JSON string
+        const parsed = contacts.map(c => ({
+            ...c,
+            name: c.fullName || c.name || c.phone,
+            tags: (() => { try { return JSON.parse(c.tags || '[]'); } catch { return []; } })()
+        }));
+
+        // Get distinct values for filter dropdowns
+        const [statuses, sources] = await Promise.all([
+            prisma.contact.findMany({
+                where: { workspaceId, isDeleted: false, phone: { not: null } },
+                select: { status: true },
+                distinct: ['status']
+            }),
+            prisma.contact.findMany({
+                where: { workspaceId, isDeleted: false, phone: { not: null } },
+                select: { source: true },
+                distinct: ['source']
+            }),
+        ]);
+
+        res.json({
+            contacts: parsed,
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            totalPages: Math.ceil(total / parseInt(limit)),
+            filters: {
+                statuses: statuses.map(s => s.status).filter(Boolean),
+                sources: sources.map(s => s.source).filter(Boolean),
+            }
+        });
+    } catch (error) {
+        console.error('❌ [getMarketingContacts]', error);
+        res.status(500).json({ error: 'Kişiler yüklenemedi' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /marketing/:workspaceId/bulk-send
+// Send a WhatsApp template to multiple contacts (queued with delay)
+// Body: { contactIds: [...], templateId: "xxx", variables: [] }
+// ─────────────────────────────────────────────────────────────────────────────
+export const bulkSendTemplate = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { contactIds, templateId, variables = [] } = req.body;
+
+        if (!contactIds?.length) return res.status(400).json({ error: 'Kişi seçilmedi' });
+        if (!templateId) return res.status(400).json({ error: 'Şablon seçilmedi' });
+
+        // Fetch template
+        const template = await prisma.whatsappTemplate.findFirst({
+            where: { id: templateId, workspaceId, status: 'APPROVED' }
+        });
+        if (!template) return res.status(404).json({ error: 'Onaylı şablon bulunamadı' });
+
+        // Fetch WhatsApp phone
+        let whatsappPhone = null;
+        if (template.whatsappPhoneNumberId) {
+            whatsappPhone = await prisma.whatsappPhoneNumber.findUnique({
+                where: { id: template.whatsappPhoneNumberId }
+            });
+        }
+        if (!whatsappPhone) {
+            whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({ where: { workspaceId } });
+        }
+        if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
+
+        // Fetch contacts
+        const contacts = await prisma.contact.findMany({
+            where: {
+                id: { in: contactIds },
+                workspaceId,
+                isDeleted: false,
+                isBlocked: false,
+                phone: { not: null }
+            },
+            select: { id: true, name: true, fullName: true, phone: true }
+        });
+
+        // Respond immediately — send in background
+        res.json({
+            success: true,
+            queued: contacts.length,
+            templateName: template.name,
+            message: `${contacts.length} kişiye "${template.name}" şablonu gönderiliyor...`
+        });
+
+        // Background send with 1.5s delay between messages (WhatsApp rate limit)
+        setImmediate(async () => {
+            let sent = 0, failed = 0;
+
+            for (const contact of contacts) {
+                try {
+                    // Clean phone
+                    let phone = contact.phone.replace(/[\s\+\-\(\)]/g, '');
+                    if (phone.startsWith('0')) phone = '90' + phone.substring(1);
+                    else if (!phone.startsWith('90') && phone.length === 10) phone = '90' + phone;
+
+                    // Build payload
+                    const payload = {
+                        messaging_product: 'whatsapp',
+                        to: phone,
+                        type: 'template',
+                        template: {
+                            name: template.name,
+                            language: { code: template.language || 'tr' }
+                        }
+                    };
+
+                    // Body variables: {{1}} = contact name
+                    const placeholderCount = (template.bodyText?.match(/\{\{\d+\}\}/g) || []).length;
+                    if (placeholderCount > 0) {
+                        const params = [];
+                        const contactName = contact.fullName || contact.name || phone;
+                        params.push({ type: 'text', text: contactName });
+                        variables.forEach(v => { if (v?.trim()) params.push({ type: 'text', text: v }); });
+                        while (params.length < placeholderCount) params.push({ type: 'text', text: '' });
+                        payload.template.components = [{ type: 'body', parameters: params }];
+                    }
+
+                    const response = await axios.post(
+                        `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.phoneNumberId}/messages`,
+                        payload,
+                        { headers: { 'Authorization': `Bearer ${whatsappPhone.accessToken}`, 'Content-Type': 'application/json' } }
+                    );
+
+                    const waMessageId = response.data.messages?.[0]?.id;
+
+                    // Save to DB
+                    let conversation = await prisma.conversation.findFirst({
+                        where: { contactId: contact.id, workspaceId, channel: 'WHATSAPP' }
+                    });
+                    if (!conversation) {
+                        conversation = await prisma.conversation.create({
+                            data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN' }
+                        });
+                    }
+                    await prisma.message.create({
+                        data: {
+                            conversationId: conversation.id,
+                            content: `[Şablon: ${template.name}]\n${template.bodyText}`,
+                            messageType: 'TEMPLATE',
+                            isFromContact: false,
+                            whatsappMessageId: waMessageId,
+                            status: 'SENT'
+                        }
+                    });
+                    await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
+
+                    sent++;
+                    console.log(`📤 [BulkSend] ${sent}/${contacts.length} sent to ${phone}`);
+                } catch (err) {
+                    failed++;
+                    console.error(`❌ [BulkSend] Failed for contact ${contact.id}:`, err.response?.data?.error?.message || err.message);
+                }
+
+                // Rate limit delay
+                if (contacts.indexOf(contact) < contacts.length - 1) {
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+            }
+
+            console.log(`✅ [BulkSend] Done. Sent: ${sent}, Failed: ${failed}, Template: ${template.name}`);
+        });
+
+    } catch (error) {
+        console.error('❌ [bulkSendTemplate]', error);
+        res.status(500).json({ error: 'Toplu gönderim başlatılamadı' });
+    }
+};
+
 const WHATSAPP_API_VERSION = 'v22.0';
 
 // Helper: convert relative URL to absolute
