@@ -17,7 +17,6 @@ const STATUS_FILTER_OPTS = [
     { value: '', label: 'Tümü' },
     { value: 'READ',      label: '👁 Okundu' },
     { value: 'DELIVERED', label: '📦 Teslim Edildi' },
-    { value: 'SENT',      label: '📤 Bekliyor' },
     { value: 'FAILED',    label: '❌ Başarısız' },
 ];
 
