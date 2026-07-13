@@ -702,46 +702,75 @@ export const sendTemplateMessage = async (req, res) => {
 
         console.log('✅ Template message sent:', response.data);
 
-        // Find or create conversation
-        let conversation = null;
-        if (contact) {
-            conversation = await prisma.conversation.findFirst({
-                where: {
-                    contactId: contact.id,
-                    workspaceId,
-                    channel: 'WHATSAPP'
-                }
-            });
+        const whatsappMessageId = response.data.messages?.[0]?.id;
 
-            if (!conversation) {
-                conversation = await prisma.conversation.create({
-                    data: {
-                        contactId: contact.id,
+        // Find or create contact if not provided (e.g. manual phone number entry)
+        if (!contact && recipientPhone) {
+            try {
+                contact = await prisma.contact.findFirst({
+                    where: {
                         workspaceId,
-                        whatsappPhoneNumberId: whatsappPhone.id,
-                        channel: 'WHATSAPP',
-                        status: 'OPEN'
+                        OR: [
+                            { phone: recipientPhone },
+                            { phone: '+' + recipientPhone },
+                            { phone: '0' + recipientPhone.slice(2) }
+                        ]
                     }
                 });
-            }
-
-            // Save message to database
-            await prisma.message.create({
-                data: {
-                    conversationId: conversation.id,
-                    content: `[Şablon: ${template.name}]\n${template.bodyText}`,
-                    messageType: 'TEMPLATE',
-                    isFromContact: false,
-                    whatsappMessageId: response.data.messages?.[0]?.id,
-                    status: 'SENT'
+                if (!contact) {
+                    contact = await prisma.contact.create({
+                        data: {
+                            workspaceId,
+                            name: recipientPhone,
+                            phone: recipientPhone,
+                            source: 'WHATSAPP'
+                        }
+                    });
                 }
-            });
+            } catch (e) {
+                console.error('⚠️ [sendTemplate] Contact find/create failed:', e.message);
+            }
+        }
 
-            // Update conversation
-            await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { lastMessageAt: new Date() }
-            });
+        // Save message to database
+        if (contact) {
+            try {
+                let conversation = await prisma.conversation.findFirst({
+                    where: { contactId: contact.id, workspaceId, channel: 'WHATSAPP' }
+                });
+
+                if (!conversation) {
+                    conversation = await prisma.conversation.create({
+                        data: {
+                            contactId: contact.id,
+                            workspaceId,
+                            whatsappPhoneNumberId: whatsappPhone.id,
+                            channel: 'WHATSAPP',
+                            status: 'OPEN'
+                        }
+                    });
+                }
+
+                await prisma.message.create({
+                    data: {
+                        conversationId: conversation.id,
+                        content: `[Şablon: ${template.name}]\n${template.bodyText}`,
+                        messageType: 'TEMPLATE',
+                        isFromContact: false,
+                        whatsappMessageId,
+                        status: 'SENT'
+                    }
+                });
+
+                await prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { lastMessageAt: new Date() }
+                });
+
+                console.log(`✅ [sendTemplate] Message logged to DB for contact: ${contact.id}`);
+            } catch (dbErr) {
+                console.error('⚠️ [sendTemplate] DB logging failed:', dbErr.message);
+            }
         }
 
         res.json({
