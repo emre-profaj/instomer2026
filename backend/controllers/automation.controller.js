@@ -615,31 +615,34 @@ export const sendTemplateMessage = async (req, res) => {
 
         // Add header component for media templates (IMAGE, VIDEO, DOCUMENT)
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            // ONLY push header component if a dynamic override is provided.
-            // If omitted, Meta automatically uses the media approved with the template.
-            if (headerMediaUrl && !headerMediaUrl.includes('scontent.whatsapp.net')) {
-                let rawMediaUrl = headerMediaUrl;
-                // If it's a local relative path, convert to absolute (assuming app.instomer.com)
-                if (rawMediaUrl.startsWith('/api/uploads') || rawMediaUrl.startsWith('/uploads')) {
-                    rawMediaUrl = `https://app.instomer.com${rawMediaUrl}`;
-                }
-                
-                const mediaUrl = convertGoogleDriveLink(rawMediaUrl);
-                
-                const headerComponent = {
-                    type: 'header',
-                    parameters: [{
-                        type: template.headerType.toLowerCase(),
-                        [template.headerType.toLowerCase()]: {
-                            link: mediaUrl
-                        }
-                    }]
-                };
-                components.push(headerComponent);
-                console.log('📎 Header component added (dynamic):', headerComponent);
-            } else {
-                console.log('📎 Header component omitted (using Meta default media)');
+            // Meta REQUIRES the header component for media templates. We cannot omit it.
+            let rawMediaUrl = headerMediaUrl || template.headerContent;
+            
+            // If it's a local relative path, convert to absolute (assuming app.instomer.com)
+            if (rawMediaUrl && (rawMediaUrl.startsWith('/api/uploads') || rawMediaUrl.startsWith('/uploads'))) {
+                rawMediaUrl = `https://app.instomer.com${rawMediaUrl}`;
             }
+            
+            const mediaUrl = convertGoogleDriveLink(rawMediaUrl);
+            
+            if (!mediaUrl) {
+                return res.status(400).json({
+                    error: 'Bu şablon için medya URL\'si gereklidir',
+                    headerType: template.headerType
+                });
+            }
+
+            const headerComponent = {
+                type: 'header',
+                parameters: [{
+                    type: template.headerType.toLowerCase(),
+                    [template.headerType.toLowerCase()]: {
+                        link: mediaUrl
+                    }
+                }]
+            };
+            components.push(headerComponent);
+            console.log('📎 Header component added:', headerComponent);
         }
 
         // Add body variables if provided and template has placeholders
@@ -991,47 +994,56 @@ export const sendTemplateDynamic = async (req, res) => {
 
         // 4a. HEADER COMPONENT (for IMAGE, VIDEO, DOCUMENT templates)
         if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
-            if (headerMediaUrl && !headerMediaUrl.includes('scontent.whatsapp.net')) {
-                let rawUrl = headerMediaUrl;
-                if (rawUrl.startsWith('/api/uploads') || rawUrl.startsWith('/uploads')) {
-                    rawUrl = `https://app.instomer.com${rawUrl}`;
-                }
-                const mediaUrl = convertGoogleDriveLink(rawUrl);
+            let rawUrl = headerMediaUrl || template.headerContent;
+            
+            if (rawUrl && (rawUrl.startsWith('/api/uploads') || rawUrl.startsWith('/uploads'))) {
+                rawUrl = `https://app.instomer.com${rawUrl}`;
+            }
+            const mediaUrl = convertGoogleDriveLink(rawUrl);
 
-                // These URL types cannot be used directly as template header links:
-                // - Google Drive: requires redirect/auth that Meta can't follow
-                const needsUpload = mediaUrl.includes('drive.usercontent.google.com')
-                    || mediaUrl.includes('drive.google.com');
-                let headerParam;
+            if (!mediaUrl) {
+                console.error(`❌ [sendTemplateDynamic] Template "${template.name}" has ${template.headerType} header but no media URL provided`);
+                return res.status(400).json({
+                    error: `Bu şablon ${template.headerType} header içeriyor ancak medya URL'si eksik`,
+                    details: `"${template.name}" şablonu için headerMediaUrl parametresi gönderilmeli veya şablona headerContent kaydedilmeli`,
+                    headerType: template.headerType
+                });
+            }
 
-                if (needsUpload) {
-                    console.log(`☁️ [sendTemplateDynamic] Temporary/indirect URL detected, uploading to Meta Media API...`);
-                    const mediaId = await uploadMediaToMeta(mediaUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
-                    if (mediaId) {
-                        headerParam = {
-                            type: template.headerType.toLowerCase(),
-                            [template.headerType.toLowerCase()]: { id: mediaId }
-                        };
-                    } else {
-                        // Upload failed — fall back to link (may or may not work)
-                        console.warn(`⚠️ [sendTemplateDynamic] Media upload failed, falling back to link`);
-                        headerParam = {
-                            type: template.headerType.toLowerCase(),
-                            [template.headerType.toLowerCase()]: { link: mediaUrl }
-                        };
-                    }
+            // These URL types cannot be used directly as template header links:
+            // - Google Drive: requires redirect/auth that Meta can't follow
+            // - scontent.whatsapp.net: temporary signed URLs that expire (oe= param)
+            const needsUpload = mediaUrl.includes('drive.usercontent.google.com')
+                || mediaUrl.includes('drive.google.com')
+                || mediaUrl.includes('scontent.whatsapp.net')
+                || mediaUrl.includes('scontent.cdninstagram.com');
+            let headerParam;
+
+            if (needsUpload) {
+                console.log(`☁️ [sendTemplateDynamic] Temporary/indirect URL detected, uploading to Meta Media API...`);
+                const mediaId = await uploadMediaToMeta(mediaUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
+                if (mediaId) {
+                    headerParam = {
+                        type: template.headerType.toLowerCase(),
+                        [template.headerType.toLowerCase()]: { id: mediaId }
+                    };
                 } else {
+                    // Upload failed — fall back to link (may or may not work)
+                    console.warn(`⚠️ [sendTemplateDynamic] Media upload failed, falling back to link`);
                     headerParam = {
                         type: template.headerType.toLowerCase(),
                         [template.headerType.toLowerCase()]: { link: mediaUrl }
                     };
                 }
-
-                components.push({ type: 'header', parameters: [headerParam] });
-                console.log('📎 [sendTemplateDynamic] Header added (dynamic):', template.headerType, headerParam);
             } else {
-                console.log('📎 [sendTemplateDynamic] Header component omitted (using Meta default media)');
+                headerParam = {
+                    type: template.headerType.toLowerCase(),
+                    [template.headerType.toLowerCase()]: { link: mediaUrl }
+                };
             }
+
+            components.push({ type: 'header', parameters: [headerParam] });
+            console.log('📎 [sendTemplateDynamic] Header added:', template.headerType, headerParam);
         }
 
         // 4b. BODY COMPONENT - Dynamic variable substitution
