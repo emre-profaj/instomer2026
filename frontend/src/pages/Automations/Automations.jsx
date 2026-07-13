@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI } from '../../services/api';
+import api, { automationAPI, rulesAPI, teamAPI, emailAPI, funnelAPI, retellAPI, contactAPI, flowAPI } from '../../services/api';
 import {
     MessageSquare, Zap, Plus, Trash2, Edit2, Send, RefreshCw,
     CheckCircle, Clock, XCircle, Globe, Search, X,
@@ -19,17 +19,21 @@ const Automations = () => {
 
     // Templates
     const [templates, setTemplates] = useState([]);
+    const [showContactModal, setShowContactModal] = useState(false);
+    const [automationModalMode, setAutomationModalMode] = useState('add');
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [showTemplateModal, setShowTemplateModal] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState(null);
     const [templateForm, setTemplateForm] = useState({
-        templateId: '',
         name: '',
         language: 'tr',
         category: 'MARKETING',
-        status: 'APPROVED',
-        bodyText: '',
+        status: 'PENDING',
         headerType: '',
         headerContent: '',
+        headerHandle: '',
+        headerMediaUrl: '',
+        bodyText: '',
         footerText: ''
     });
 
@@ -167,6 +171,11 @@ const Automations = () => {
     // Template CRUD
     const handleSaveTemplate = async () => {
         try {
+            if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && !templateForm.headerHandle && !templateForm.headerMediaUrl) {
+                alert('Lütfen bir medya dosyası seçip yüklenmesini bekleyin.');
+                return;
+            }
+
             if (editingTemplate) {
                 await automationAPI.updateTemplate(currentWorkspace.id, editingTemplate.id, templateForm);
             } else {
@@ -196,7 +205,6 @@ const Automations = () => {
     const openEditTemplate = (template) => {
         setEditingTemplate(template);
         setTemplateForm({
-            templateId: template.templateId,
             name: template.name,
             language: template.language,
             category: template.category,
@@ -211,14 +219,15 @@ const Automations = () => {
 
     const resetTemplateForm = () => {
         setTemplateForm({
-            templateId: '',
             name: '',
             language: 'tr',
             category: 'MARKETING',
-            status: 'APPROVED',
-            bodyText: '',
+            status: 'PENDING',
             headerType: '',
             headerContent: '',
+            headerHandle: '',
+            headerMediaUrl: '',
+            bodyText: '',
             footerText: ''
         });
     };
@@ -499,10 +508,6 @@ const Automations = () => {
                 <div className="header-actions">
                     {activeTab === 'templates' && (
                         <>
-                            <button className="btn btn-secondary" onClick={handleSyncTemplates} disabled={syncing}>
-                                <RefreshCw size={16} className={syncing ? 'spinning' : ''} />
-                                {syncing ? 'Senkronize ediliyor...' : "WhatsApp'tan Senkronize Et"}
-                            </button>
                             <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
                                 <Plus size={16} />
                                 Şablon Ekle
@@ -554,10 +559,10 @@ const Automations = () => {
                             <div className="empty-state">
                                 <div className="icon">📝</div>
                                 <h3>Henüz şablon yok</h3>
-                                <p>{t('automations.syncDesc') || "WhatsApp şablonlarınızı görmek için senkronize edin."}</p>
-                                <button className="btn btn-primary" onClick={handleSyncTemplates}>
-                                    <RefreshCw size={18} />
-                                    Şablonları Senkronize Et
+                                <p>{t('automations.addTemplateDesc') || "Yeni bir şablon oluşturmak için Şablon Ekle butonuna tıklayın."}</p>
+                                <button className="btn btn-primary" onClick={() => { resetTemplateForm(); setEditingTemplate(null); setShowTemplateModal(true); }}>
+                                    <Plus size={18} />
+                                    Şablon Ekle
                                 </button>
                             </div>
                         ) : (
@@ -704,17 +709,11 @@ const Automations = () => {
                                 <button className="modal-close" onClick={() => setShowTemplateModal(false)}>×</button>
                             </div>
                             <div className="modal-body">
+                                <div className="form-info-note">
+                                    ℹ️ Şablonunuz kaydedildiğinde Meta'ya gönderilecek ve onay sürecine (PENDING) girecektir. Meta onayladığında otomatik olarak ONAYLI statüsüne geçer.
+                                </div>
                                 <div className="form-row">
-                                    <div className="form-group">
-                                        <label>Şablon ID *</label>
-                                        <input
-                                            type="text"
-                                            value={templateForm.templateId}
-                                            onChange={(e) => setTemplateForm({ ...templateForm, templateId: e.target.value })}
-                                            placeholder="Meta'dan alınan şablon ID"
-                                        />
-                                    </div>
-                                    <div className="form-group">
+                                    <div className="form-group" style={{ flex: 1 }}>
                                         <label>Şablon Adı *</label>
                                         <input
                                             type="text"
@@ -766,13 +765,57 @@ const Automations = () => {
                                     </div>
                                     {templateForm.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(templateForm.headerType) && (
                                         <div className="form-group">
-                                            <label>Varsayılan Medya URL (Opsiyonel)</label>
+                                            <label>Medya Dosyası (Zorunlu)</label>
                                             <input
-                                                type="url"
-                                                value={templateForm.headerContent}
-                                                onChange={(e) => setTemplateForm({ ...templateForm, headerContent: e.target.value })}
-                                                placeholder="https://example.com/media.jpg"
+                                                type="file"
+                                                accept={
+                                                    templateForm.headerType === 'IMAGE' ? 'image/jpeg,image/png' :
+                                                    templateForm.headerType === 'VIDEO' ? 'video/mp4' :
+                                                    '.pdf'
+                                                }
+                                                disabled={isUploadingMedia}
+                                                onChange={async (e) => {
+                                                    const file = e.target.files[0];
+                                                    if (!file) return;
+
+                                                    // Validate size
+                                                    const maxSize = templateForm.headerType === 'IMAGE' ? 5 : templateForm.headerType === 'VIDEO' ? 16 : 100;
+                                                    if (file.size > maxSize * 1024 * 1024) {
+                                                        alert(`Dosya boyutu en fazla ${maxSize}MB olabilir.`);
+                                                        return;
+                                                    }
+
+                                                    setIsUploadingMedia(true);
+                                                    const formData = new FormData();
+                                                    formData.append('file', file);
+
+                                                    try {
+                                                        const res = await api.post(`/api/automations/${currentWorkspace.id}/templates/upload-media`, formData, {
+                                                            headers: { 'Content-Type': 'multipart/form-data' }
+                                                        });
+                                                        setTemplateForm({
+                                                            ...templateForm,
+                                                            headerMediaUrl: res.data.mediaUrl,
+                                                            headerHandle: res.data.headerHandle,
+                                                            headerContent: res.data.mediaUrl
+                                                        });
+                                                    } catch (error) {
+                                                        console.error('Media upload error:', error);
+                                                        alert('Medya yüklenirken bir hata oluştu: ' + (error.response?.data?.error || error.message));
+                                                    } finally {
+                                                        setIsUploadingMedia(false);
+                                                    }
+                                                }}
                                             />
+                                            {isUploadingMedia && <span className="upload-status loading">⏳ Yükleniyor...</span>}
+                                            {!isUploadingMedia && templateForm.headerMediaUrl && (
+                                                <div className="upload-status success">
+                                                    ✅ Yüklendi!
+                                                    {templateForm.headerType === 'IMAGE' && (
+                                                        <img src={templateForm.headerMediaUrl} alt="Preview" style={{ display: 'block', marginTop: '10px', maxHeight: '100px', borderRadius: '8px' }} />
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>

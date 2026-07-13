@@ -9,6 +9,8 @@ import {
     syncTemplates,
     sendTemplateMessage,
     sendTemplateDynamic,
+    templateMediaUpload,
+    uploadTemplateMedia,
     // Automations
     getAutomations,
     createAutomation,
@@ -27,6 +29,7 @@ router.use(authenticateJWT);
 // ============================================
 router.get('/:workspaceId/templates', requireWorkspaceAccess, getTemplates);
 router.post('/:workspaceId/templates', requireWorkspaceAccess, createTemplate);
+router.post('/:workspaceId/templates/upload-media', requireWorkspaceAccess, templateMediaUpload.single('file'), uploadTemplateMedia);
 router.put('/:workspaceId/templates/:templateId', requireWorkspaceAccess, updateTemplate);
 router.delete('/:workspaceId/templates/:templateId', requireWorkspaceAccess, deleteTemplate);
 router.post('/:workspaceId/templates/sync', requireWorkspaceAccess, syncTemplates);

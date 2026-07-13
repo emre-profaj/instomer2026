@@ -1,5 +1,39 @@
 import prisma from '../lib/prisma.js';
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+import multer from 'multer';
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = './public/uploads/templates';
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+    const allowedTypes = ['.jpg', '.jpeg', '.png', '.mp4', '.pdf'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+        cb(null, true);
+    } else {
+        cb(new Error('Sadece JPG, PNG, MP4 ve PDF dosyaları yüklenebilir'), false);
+    }
+};
+
+export const templateMediaUpload = multer({ 
+    storage, 
+    fileFilter,
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB max (for PDFs)
+});
 
 const WHATSAPP_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v21.0';
 
@@ -129,33 +163,116 @@ export const getTemplates = async (req, res) => {
     }
 };
 
-// Create/Add a template manually
+// Create/Add a template manually (And create it on Meta)
 export const createTemplate = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const {
-            templateId, name, language, category, status,
-            headerType, headerContent, bodyText, footerText,
+            name, language, category, status,
+            headerType, headerContent, headerHandle, headerMediaUrl, bodyText, footerText,
             buttons, exampleValues, whatsappPhoneNumberId
         } = req.body;
 
-        if (!templateId || !name || !bodyText) {
+        if (!name || !bodyText) {
             return res.status(400).json({
-                error: 'Template ID, isim ve gövde metni gereklidir'
+                error: 'İsim ve gövde metni gereklidir'
             });
         }
 
+        // 1. Find a valid WhatsApp Phone Number
+        const whatsappPhone = whatsappPhoneNumberId
+            ? await prisma.whatsappPhoneNumber.findUnique({ where: { id: whatsappPhoneNumberId, workspaceId } })
+            : await prisma.whatsappPhoneNumber.findFirst({ where: { workspaceId } });
+
+        if (!whatsappPhone) {
+            return res.status(400).json({ error: 'Bu işlem için hesaba bağlı bir WhatsApp numarası bulunamadı.' });
+        }
+
+        // 2. Prepare components for Meta API
+        const components = [];
+
+        // Header Component
+        if (headerType && headerType !== '') {
+            let headerComponent = { type: 'HEADER', format: headerType };
+            if (headerType === 'TEXT' && headerContent) {
+                headerComponent.text = headerContent;
+            } else if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerType)) {
+                if (headerHandle) {
+                    headerComponent.example = { header_handle: [ headerHandle ] };
+                } else if (headerMediaUrl) {
+                    headerComponent.example = { header_handle: [ headerMediaUrl ] }; // Might fail in Meta, but fallback
+                }
+            }
+            components.push(headerComponent);
+        }
+
+        // Body Component
+        const bodyComponent = { type: 'BODY', text: bodyText };
+        const placeholderCount = (bodyText.match(/\{\{\d+\}\}/g) || []).length;
+        if (placeholderCount > 0) {
+            const examples = Array.from({ length: placeholderCount }, (_, i) => `Örnek ${i + 1}`);
+            bodyComponent.example = { body_text: [examples] };
+        }
+        components.push(bodyComponent);
+
+        // Footer Component
+        if (footerText) {
+            components.push({ type: 'FOOTER', text: footerText });
+        }
+
+        // Buttons Component
+        if (buttons) {
+            components.push({ type: 'BUTTONS', buttons: typeof buttons === 'string' ? JSON.parse(buttons) : buttons });
+        }
+
+        // 3. Call Meta API to create the template
+        const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.wabaId}/message_templates`;
+        console.log(`🚀 [CREATE_TEMPLATE] Calling Meta API: ${apiUrl}`);
+
+        let newTemplateId;
+        let metaStatus = 'PENDING';
+
+        try {
+            // Meta API requires template names to be lowercase and alphanumeric/underscore only
+            const sanitizedName = name.toLowerCase()
+                .replace(/ç/g, 'c').replace(/ğ/g, 'g').replace(/ı/g, 'i')
+                .replace(/ö/g, 'o').replace(/ş/g, 's').replace(/ü/g, 'u')
+                .replace(/[^a-z0-9_]/g, '_');
+
+            const metaRes = await axios.post(apiUrl, {
+                name: sanitizedName,
+                language: language || 'tr',
+                category: category || 'MARKETING',
+                components
+            }, {
+                headers: { Authorization: `Bearer ${whatsappPhone.accessToken}` }
+            });
+
+            newTemplateId = metaRes.data.id;
+            metaStatus = metaRes.data.status || 'PENDING';
+            name = sanitizedName; // Update name to sanitized version for DB
+        } catch (metaErr) {
+            console.error('❌ [CREATE_TEMPLATE] Meta API Error:', JSON.stringify(metaErr.response?.data || metaErr.message, null, 2));
+            const errorObj = metaErr.response?.data?.error;
+            let errDetail = 'Meta API şablon oluşturmayı reddetti.';
+            if (errorObj) {
+                errDetail = errorObj.error_user_msg || errorObj.message || JSON.stringify(errorObj);
+            }
+            return res.status(400).json({ error: `Meta API Hatası: ${errDetail}` });
+        }
+
+        // 4. Save to Database
         const template = await prisma.whatsappTemplate.create({
             data: {
                 workspaceId,
-                whatsappPhoneNumberId: whatsappPhoneNumberId || null,
-                templateId,
+                whatsappPhoneNumberId: whatsappPhone.id,
+                templateId: newTemplateId,
                 name,
                 language: language || 'tr',
                 category: category || 'MARKETING',
-                status: status || 'APPROVED',
+                status: metaStatus,
                 headerType,
-                headerContent,
+                headerContent: headerMediaUrl || headerContent, // Save the actual URL for local display
                 bodyText,
                 footerText,
                 buttons: buttons ? JSON.stringify(buttons) : null,
@@ -167,9 +284,89 @@ export const createTemplate = async (req, res) => {
     } catch (error) {
         console.error('Create template error:', error);
         if (error.code === 'P2002') {
-            return res.status(400).json({ error: 'Bu template ID zaten mevcut' });
+            return res.status(400).json({ error: 'Bu isimde bir şablon zaten mevcut.' });
         }
         res.status(500).json({ error: 'Şablon oluşturulurken hata oluştu' });
+    }
+};
+
+// Upload media for template creation (Resumable Upload to Meta)
+export const uploadTemplateMedia = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({ error: 'Dosya yüklenemedi' });
+        }
+
+        // 1. Get WhatsApp Phone Number to get the Access Token & WABA ID/App ID
+        const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({
+            where: { workspaceId }
+        });
+
+        if (!whatsappPhone) {
+            return res.status(400).json({ error: 'Hesaba bağlı WhatsApp numarası bulunamadı.' });
+        }
+
+        const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID;
+        if (!FACEBOOK_APP_ID) {
+            console.error('❌ [UPLOAD_MEDIA] FACEBOOK_APP_ID is missing in .env');
+            return res.status(500).json({ error: 'Sunucu yapılandırması eksik (App ID).' });
+        }
+
+        // 2. Start Resumable Upload Session
+        const fileSize = file.size;
+        const fileType = file.mimetype;
+        const sessionUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${FACEBOOK_APP_ID}/uploads`;
+
+        console.log(`☁️ [UPLOAD_MEDIA] Starting upload session on Meta...`);
+        const sessionRes = await axios.post(sessionUrl, {}, {
+            params: {
+                file_length: fileSize,
+                file_type: fileType,
+                access_token: whatsappPhone.accessToken
+            }
+        });
+
+        const sessionId = sessionRes.data.id;
+        if (!sessionId) {
+            throw new Error('Meta did not return a session ID');
+        }
+
+        // 3. Upload file bytes to the session
+        console.log(`☁️ [UPLOAD_MEDIA] Uploading file data to Meta session ${sessionId}...`);
+        const fileData = fs.readFileSync(file.path);
+        
+        const uploadRes = await axios.post(`https://graph.facebook.com/${WHATSAPP_API_VERSION}/${sessionId}`, fileData, {
+            headers: {
+                'Authorization': `OAuth ${whatsappPhone.accessToken}`,
+                'file_offset': '0',
+                'Content-Type': 'application/octet-stream'
+            }
+        });
+
+        const headerHandle = uploadRes.data.h;
+        if (!headerHandle) {
+            throw new Error('Meta did not return a file handle (h)');
+        }
+
+        console.log(`✅ [UPLOAD_MEDIA] Successfully got header_handle from Meta: ${headerHandle}`);
+
+        // 4. Return the local URL and the Meta handle
+        const mediaUrl = `/uploads/templates/${file.filename}`;
+        
+        res.status(200).json({
+            mediaUrl,
+            headerHandle
+        });
+
+    } catch (error) {
+        console.error('❌ [UPLOAD_MEDIA] Error:', error.response?.data || error.message);
+        res.status(500).json({ 
+            error: 'Dosya Meta sunucularına yüklenirken hata oluştu',
+            details: error.response?.data?.error?.message || error.message 
+        });
     }
 };
 
