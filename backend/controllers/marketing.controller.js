@@ -45,10 +45,12 @@ export const getTemplateAnalytics = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Parse template name from content "[Şablon: templateName]\n..."
+        // Parse template name from content
+        // Format 1: "[Şablon: templateName]\n..."         (manual send)
+        // Format 2: "[Otomatik Şablon: templateName]\n..." (automation send)
         const templateMap = {};
         for (const msg of messages) {
-            const match = msg.content?.match(/\[Şablon:\s*(.+?)\]/);
+            const match = msg.content?.match(/\[(?:Otomatik\s+)?[Şş]ablon:\s*(.+?)\]/i);
             const tplName = match ? match[1].trim() : 'Bilinmeyen';
 
             if (!templateMap[tplName]) {
