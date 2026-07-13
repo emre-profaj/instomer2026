@@ -833,6 +833,213 @@ function AnalyticsTab({ wsId }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// CALL ANALYTICS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+const CALL_STATUS_META = {
+    ended:      { label: 'Tamamlandı', bg: '#f0fdf4', text: '#16a34a', icon: '✅' },
+    registered: { label: 'Başlatıldı', bg: '#eff6ff', text: '#2563eb', icon: '📞' },
+    ongoing:    { label: 'Devam Ediyor', bg: '#fefce8', text: '#ca8a04', icon: '🔄' },
+    error:      { label: 'Hata',        bg: '#fef2f2', text: '#dc2626', icon: '❌' },
+    voicemail:  { label: 'Sesli Mesaj', bg: '#f3f4f6', text: '#6b7280', icon: '📬' },
+};
+
+const SENTIMENT_META = {
+    positive: { label: 'Olumlu',  color: '#16a34a', icon: '😊' },
+    negative: { label: 'Olumsuz', color: '#dc2626', icon: '😞' },
+    neutral:  { label: 'Nötr',    color: '#ca8a04', icon: '😐' },
+};
+
+function fmtDur(sec) {
+    if (!sec) return '—';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m > 0 ? `${m}d ${s}s` : `${s}s`;
+}
+
+function CallAnalyticsTab({ wsId }) {
+    const [days, setDays] = useState(30);
+    const [stats, setStats] = useState(null);
+    const [calls, setCalls] = useState([]);
+    const [total, setTotal] = useState(0);
+    const [page, setPage] = useState(1);
+    const [loading, setLoading] = useState(true);
+    const [inputSearch, setInputSearch] = useState('');
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+
+    const limit = 50;
+
+    const fetchAll = useCallback(async (p = 1) => {
+        if (!wsId) return;
+        setLoading(true);
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(now.getDate() - days);
+
+        try {
+            const params = new URLSearchParams({
+                startDate: start.toISOString(),
+                endDate: now.toISOString(),
+                limit,
+                offset: (p - 1) * limit,
+            });
+            if (search) { params.set('search', search); }
+            if (statusFilter) { params.set('status', statusFilter); }
+
+            const [statsRes, callsRes] = await Promise.all([
+                api.get(`/retell/${wsId}/analytics?startDate=${start.toISOString()}&endDate=${now.toISOString()}`),
+                api.get(`/retell/${wsId}/calls?${params}`)
+            ]);
+            setStats(statsRes.data);
+            setCalls(callsRes.data.calls || []);
+            setTotal(callsRes.data.total || 0);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId, days, search, statusFilter]);
+
+    useEffect(() => { fetchAll(1); setPage(1); }, [fetchAll]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    const commitSearch = () => setSearch(inputSearch);
+    const clearSearch  = () => { setInputSearch(''); setSearch(''); };
+
+    const s = stats || {};
+    const avgMin = s.avgDuration ? (s.avgDuration / 60).toFixed(1) : '0';
+
+    return (
+        <div className="mkt-analytics-wrap">
+            {/* Stats */}
+            <div className="mkt-stats-row" style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
+                <StatBig icon="📞" label="Toplam Arama"    value={s.totalCalls}                                   color="#2563eb" />
+                <StatBig icon="✅" label="Tamamlandı"      value={s.statusBreakdown?.ended || 0}                  color="#16a34a" />
+                <StatBig icon="⏱"  label="Ort. Süre"       value={`${avgMin}d`}                                   color="#ca8a04" sub={`Toplam: ${fmtDur(s.totalDuration)}`} />
+                <StatBig icon="😊" label="Olumlu Duygu"    value={`%${s.successRate || 0}`}                       color="#7c3aed" />
+                <StatBig icon="💰" label="Toplam Maliyet"  value={`$${(s.totalCost || 0).toFixed(2)}`}            color="#dc2626" />
+            </div>
+
+            {/* Filter bar */}
+            <div className="mkt-analytics-bar">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="mkt-day-selector">
+                        {DAY_OPTIONS.map(d => (
+                            <button key={d} className={`mkt-day-btn ${days === d ? 'active' : ''}`} onClick={() => setDays(d)}>
+                                Son {d} gün
+                            </button>
+                        ))}
+                    </div>
+                    <div className="mkt-search-group">
+                        <input
+                            className="mkt-search-input"
+                            type="text"
+                            placeholder="🔍 Numara ara..."
+                            value={inputSearch}
+                            onChange={e => setInputSearch(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && commitSearch()}
+                        />
+                        {inputSearch && <button className="mkt-search-clear" onClick={clearSearch}>×</button>}
+                        <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
+                    </div>
+                    <select className="mkt-filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                        <option value="">Tüm Durumlar</option>
+                        {Object.entries(CALL_STATUS_META).map(([k, v]) => (
+                            <option key={k} value={k}>{v.icon} {v.label}</option>
+                        ))}
+                    </select>
+                </div>
+                <button className="mkt-refresh-btn" onClick={() => fetchAll(page)} disabled={loading}>
+                    {loading ? '⏳' : '🔄'} Yenile
+                </button>
+            </div>
+
+            {/* Table */}
+            {loading ? (
+                <div className="mkt-loading"><div className="mkt-loading-spinner" />Yükleniyor...</div>
+            ) : calls.length === 0 ? (
+                <div className="mkt-empty">
+                    <div className="mkt-empty-icon">📭</div>
+                    <p>Son {days} günde arama kaydı bulunamadı.</p>
+                    <small>Toplu Gönderim sekmesinden Retell araması başlattığınızda burada görünecek.</small>
+                </div>
+            ) : (
+                <>
+                    <div className="mkt-bulk-table-wrap">
+                        <table className="mkt-table">
+                            <thead>
+                                <tr>
+                                    <th>Kişi / Numara</th>
+                                    <th>Yön</th>
+                                    <th>Durum</th>
+                                    <th>Duygu</th>
+                                    <th>Süre</th>
+                                    <th>Maliyet</th>
+                                    <th>Tarih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {calls.map(c => {
+                                    const st = CALL_STATUS_META[c.status] || { label: c.status, bg: '#f3f4f6', text: '#6b7280', icon: '?' };
+                                    const sm = c.sentiment ? SENTIMENT_META[c.sentiment.toLowerCase()] : null;
+                                    return (
+                                        <tr key={c.id}>
+                                            <td>
+                                                <div className="mkt-contact-cell">
+                                                    <div className="mkt-contact-avatar" style={{ background: '#f0fdf4', color: '#16a34a' }}>📞</div>
+                                                    <div>
+                                                        <div className="mkt-contact-name">{c.contactName || c.toNumber || '—'}</div>
+                                                        <div className="mkt-contact-email">{c.toNumber}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span style={{ fontSize: 12 }}>
+                                                    {c.direction === 'outbound' ? '⬆️ Giden' : '⬇️ Gelen'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span className="mkt-status-badge" style={{ background: st.bg, color: st.text }}>
+                                                    {st.icon} {st.label}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {sm ? (
+                                                    <span style={{ fontSize: 13, color: sm.color, fontWeight: 600 }}>
+                                                        {sm.icon} {sm.label}
+                                                    </span>
+                                                ) : <span style={{ color: '#9ca3af' }}>—</span>}
+                                            </td>
+                                            <td className="mkt-date-cell">{fmtDur(c.duration)}</td>
+                                            <td style={{ fontSize: 13, color: '#374151' }}>
+                                                {c.cost ? `$${(c.cost / 100).toFixed(3)}` : '—'}
+                                            </td>
+                                            <td className="mkt-date-cell">
+                                                <div>{new Date(c.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</div>
+                                                <div className="mkt-time">{new Date(c.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: '#fafafa', flexShrink: 0 }}>
+                        <span style={{ fontSize: 12, color: '#9ca3af' }}>{total.toLocaleString('tr-TR')} arama</span>
+                        {totalPages > 1 && (
+                            <div className="mkt-pagination" style={{ border: 'none', padding: 0 }}>
+                                <button className="mkt-page-btn" disabled={page === 1} onClick={() => { setPage(p => p - 1); fetchAll(page - 1); }}>‹ Önceki</button>
+                                <span className="mkt-page-info">{page} / {totalPages}</span>
+                                <button className="mkt-page-btn" disabled={page === totalPages} onClick={() => { setPage(p => p + 1); fetchAll(page + 1); }}>Sonraki ›</button>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Marketing() {
@@ -848,7 +1055,7 @@ export default function Marketing() {
                     <span className="mkt-header-icon">📣</span>
                     <div>
                         <h1 className="mkt-header-title">Pazarlama</h1>
-                        <p className="mkt-header-sub">Toplu WhatsApp şablon gönderimi ve analiz</p>
+                        <p className="mkt-header-sub">Toplu gönderim, Retell arama ve analiz</p>
                     </div>
                 </div>
             </div>
@@ -859,7 +1066,10 @@ export default function Marketing() {
                     📤 Toplu Gönderim
                 </button>
                 <button className={`mkt-tab ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>
-                    📊 Analiz
+                    💬 WhatsApp Şablon Analiz
+                </button>
+                <button className={`mkt-tab ${activeTab === 'calls' ? 'active' : ''}`} onClick={() => setActiveTab('calls')}>
+                    📞 Arama Analizi
                 </button>
             </div>
 
@@ -867,6 +1077,7 @@ export default function Marketing() {
             <div className="mkt-tab-content">
                 {activeTab === 'bulk'      && <BulkSendTab wsId={wsId} />}
                 {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
+                {activeTab === 'calls'     && <CallAnalyticsTab wsId={wsId} />}
             </div>
         </div>
     );
