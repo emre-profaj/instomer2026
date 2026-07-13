@@ -258,13 +258,14 @@ export const getMarketingContacts = async (req, res) => {
 // POST /marketing/:workspaceId/bulk-send
 // Send a WhatsApp template to multiple contacts (queued with delay)
 // Body: { contactIds: [...], templateId: "xxx", variables: [] }
+//    OR { selectAll: true, filters: { search, status, source }, templateId, variables }
 // ─────────────────────────────────────────────────────────────────────────────
 export const bulkSendTemplate = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { contactIds, templateId, variables = [] } = req.body;
+        const { contactIds, selectAll, filters = {}, templateId, variables = [] } = req.body;
 
-        if (!contactIds?.length) return res.status(400).json({ error: 'Kişi seçilmedi' });
+        if (!selectAll && !contactIds?.length) return res.status(400).json({ error: 'Kişi seçilmedi' });
         if (!templateId) return res.status(400).json({ error: 'Şablon seçilmedi' });
 
         // Fetch template
@@ -285,15 +286,30 @@ export const bulkSendTemplate = async (req, res) => {
         }
         if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
 
+        // Build contact query
+        let contactWhere = { workspaceId, isDeleted: false, isBlocked: false, phone: { not: null } };
+
+        if (selectAll) {
+            // Filter-based: fetch all matching contacts (no pagination)
+            const { search = '', status = '', source = '' } = filters;
+            if (search) {
+                contactWhere.OR = [
+                    { name:     { contains: search, mode: 'insensitive' } },
+                    { fullName: { contains: search, mode: 'insensitive' } },
+                    { phone:    { contains: search } },
+                    { email:    { contains: search, mode: 'insensitive' } },
+                ];
+            }
+            if (status) contactWhere.status = status;
+            if (source) contactWhere.source = source;
+        } else {
+            // ID-based: specific selected contacts
+            contactWhere.id = { in: contactIds };
+        }
+
         // Fetch contacts
         const contacts = await prisma.contact.findMany({
-            where: {
-                id: { in: contactIds },
-                workspaceId,
-                isDeleted: false,
-                isBlocked: false,
-                phone: { not: null }
-            },
+            where: contactWhere,
             select: { id: true, name: true, fullName: true, phone: true }
         });
 

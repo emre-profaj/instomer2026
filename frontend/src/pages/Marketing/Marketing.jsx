@@ -71,6 +71,7 @@ function BulkSendTab({ wsId }) {
     const [sourceFilter, setSourceFilter] = useState('');
 
     const [selected, setSelected] = useState(new Set());
+    const [selectAllPages, setSelectAllPages] = useState(false); // true = ALL contacts in filter
     const [templates, setTemplates] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [sending, setSending] = useState(false);
@@ -99,7 +100,7 @@ function BulkSendTab({ wsId }) {
         setLoading(false);
     }, [wsId, search, statusFilter, sourceFilter]);
 
-    useEffect(() => { fetchContacts(1); setPage(1); setSelected(new Set()); }, [fetchContacts]);
+    useEffect(() => { fetchContacts(1); setPage(1); setSelected(new Set()); setSelectAllPages(false); }, [fetchContacts]);
 
     const fetchTemplates = async () => {
         try {
@@ -114,6 +115,7 @@ function BulkSendTab({ wsId }) {
     };
 
     const toggleSelect = (id) => {
+        setSelectAllPages(false);
         setSelected(prev => {
             const s = new Set(prev);
             s.has(id) ? s.delete(id) : s.add(id);
@@ -122,12 +124,16 @@ function BulkSendTab({ wsId }) {
     };
 
     const toggleAll = () => {
+        setSelectAllPages(false);
         if (selected.size === contacts.length) {
             setSelected(new Set());
         } else {
             setSelected(new Set(contacts.map(c => c.id)));
         }
     };
+
+    const handleSelectAllPages = () => setSelectAllPages(true);
+    const handleClearAllPages  = () => { setSelectAllPages(false); setSelected(new Set()); };
 
     const openModal = async () => {
         await fetchTemplates();
@@ -139,20 +145,27 @@ function BulkSendTab({ wsId }) {
         if (!templateId) return alert('Lütfen bir şablon seçin');
         setSending(true);
         try {
-            const res = await api.post(`/marketing/${wsId}/bulk-send`, {
-                contactIds: [...selected],
-                templateId
-            });
+            const body = { templateId };
+            if (selectAllPages) {
+                // Pass filters, backend fetches all matching contacts
+                body.selectAll = true;
+                body.filters = { search, status: statusFilter, source: sourceFilter };
+            } else {
+                body.contactIds = [...selected];
+            }
+            const res = await api.post(`/marketing/${wsId}/bulk-send`, body);
             setSentMsg(res.data.message);
             setSelected(new Set());
+            setSelectAllPages(false);
         } catch (e) {
             alert('Gönderim hatası: ' + (e.response?.data?.error || e.message));
         }
         setSending(false);
     };
 
-    const allSelected = contacts.length > 0 && selected.size === contacts.length;
-    const someSelected = selected.size > 0 && selected.size < contacts.length;
+    const allSelected   = contacts.length > 0 && selected.size === contacts.length;
+    const someSelected  = selected.size > 0 && selected.size < contacts.length;
+    const selectedCount = selectAllPages ? total : selected.size;
 
     return (
         <div className="mkt-bulk-wrap">
@@ -178,16 +191,32 @@ function BulkSendTab({ wsId }) {
                 </div>
 
                 <div className="mkt-bulk-actions">
-                    {selected.size > 0 && (
+                    {selectedCount > 0 && (
                         <button className="mkt-btn-send-bulk" onClick={openModal}>
-                            📤 {selected.size} Kişiye Şablon Gönder
+                            📤 {selectedCount.toLocaleString('tr-TR')} Kişiye Şablon Gönder
                         </button>
                     )}
-                    {selected.size === 0 && (
+                    {selectedCount === 0 && (
                         <span className="mkt-hint">Kişi seçmek için checkbox'a tıklayın</span>
                     )}
                 </div>
             </div>
+
+            {/* Select-all-pages banner */}
+            {allSelected && !selectAllPages && totalPages > 1 && (
+                <div className="mkt-select-all-banner">
+                    Bu sayfadaki <strong>{contacts.length}</strong> kişi seçili.
+                    <button className="mkt-banner-btn" onClick={handleSelectAllPages}>
+                        Filtrelere uyan tüm <strong>{total.toLocaleString('tr-TR')}</strong> kişiyi seç
+                    </button>
+                </div>
+            )}
+            {selectAllPages && (
+                <div className="mkt-select-all-banner active">
+                    ✅ Filtrelere uyan tüm <strong>{total.toLocaleString('tr-TR')}</strong> kişi seçili.
+                    <button className="mkt-banner-btn" onClick={handleClearAllPages}>Seçimi kaldır</button>
+                </div>
+            )}
 
             {/* Table */}
             <div className="mkt-bulk-table-wrap">
@@ -281,7 +310,7 @@ function BulkSendTab({ wsId }) {
             {/* Bulk Send Modal */}
             {showModal && (
                 <BulkSendModal
-                    count={selected.size}
+                    count={selectedCount}
                     templates={templates}
                     sending={sending}
                     sentMsg={sentMsg}
