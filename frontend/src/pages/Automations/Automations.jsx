@@ -790,7 +790,7 @@ const Automations = () => {
                                                     formData.append('file', file);
 
                                                     try {
-                                                        const res = await api.post(`/api/automations/${currentWorkspace.id}/templates/upload-media`, formData, {
+                                                        const res = await api.post(`/automations/${currentWorkspace.id}/templates/upload-media`, formData, {
                                                             headers: { 'Content-Type': 'multipart/form-data' }
                                                         });
                                                         setTemplateForm({
