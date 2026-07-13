@@ -357,7 +357,8 @@ export const uploadTemplateMedia = async (req, res) => {
         console.log(`✅ [UPLOAD_MEDIA] Successfully got header_handle from Meta: ${headerHandle}`);
 
         // 4. Return the local URL and the Meta handle
-        const mediaUrl = `/uploads/templates/${file.filename}`;
+        // Using /api/uploads to ensure Nginx proxies the request to the Node.js backend
+        const mediaUrl = `/api/uploads/templates/${file.filename}`;
         
         res.status(200).json({
             mediaUrl,
