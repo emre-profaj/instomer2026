@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, PhoneCall,
-    Users, MessageSquare, Sparkles, BarChart3, ChevronDown
+    Users, MessageSquare, Sparkles, BarChart3, ChevronDown, X, ExternalLink
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -32,6 +32,9 @@ const RequestReport = () => {
         sessionStorage.setItem('reportEndDate', endDate);
     }, [dateFilter, startDate, endDate]);
     const [showAllTopics, setShowAllTopics] = useState(false);
+    const [selectedTopic, setSelectedTopic] = useState(null);
+    const [topicContacts, setTopicContacts] = useState([]);
+    const [topicContactsLoading, setTopicContactsLoading] = useState(false);
 
     const getDateRange = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
@@ -53,6 +56,22 @@ const RequestReport = () => {
     };
 
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
+
+    const fetchTopicContacts = async (topicName) => {
+        if (!currentWorkspace?.id) return;
+        setSelectedTopic(topicName);
+        setTopicContactsLoading(true);
+        try {
+            const dateParams = getDateRange();
+            const res = await contactAPI.getTopicContacts(currentWorkspace.id, { topic: topicName, ...dateParams });
+            setTopicContacts(res.data?.contacts || []);
+        } catch (err) {
+            console.error('Topic contacts error:', err);
+            setTopicContacts([]);
+        } finally {
+            setTopicContactsLoading(false);
+        }
+    };
 
     const reqAnalysis = analytics?.requestAnalysis || {};
     const topics = reqAnalysis.topics || [];
@@ -108,7 +127,7 @@ const RequestReport = () => {
         );
     }
 
-    return (
+    const mainContent = (
         <div className="ceo-report">
             <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
 
@@ -269,7 +288,7 @@ const RequestReport = () => {
                                     const callRate = (topic.withPhone || 0) > 0 ? (((topic.called || 0) / topic.withPhone) * 100).toFixed(0) : '-';
                                     const interestRate = (topic.count || 0) > 0 ? (((topic.interested || 0) / topic.count) * 100).toFixed(0) : '-';
                                     return (
-                                        <tr key={idx}>
+                                        <tr key={idx} style={{ cursor: 'pointer' }} onClick={() => fetchTopicContacts(topic.topic || topic.name)} title="Kişi listesini görmek için tıklayın">
                                             <td><span style={{ fontWeight: 800, color: idx < 3 ? '#6366f1' : '#94a3b8', fontSize: '0.82rem' }}>{idx + 1}</span></td>
                                             <td>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -341,6 +360,99 @@ const RequestReport = () => {
                 </div>
             )}
         </div>
+    );
+
+    // Contact list modal
+    const statusLabels = {
+        NEW: 'Yeni', OPPORTUNITY: 'Fırsat', HOT_OPPORTUNITY: 'Sıcak Fırsat',
+        INFORMED: 'Bilgi Verildi', MEETING_PLANNED: 'Görüşme Planlandı',
+        PROPOSAL: 'Teklif', CONVERTED: 'Satış', UNREACHABLE: 'Ulaşılamadı', LOST: 'Kayıp'
+    };
+    const statusColors = {
+        NEW: '#6366f1', OPPORTUNITY: '#f59e0b', HOT_OPPORTUNITY: '#ef4444',
+        INFORMED: '#0ea5e9', MEETING_PLANNED: '#8b5cf6',
+        PROPOSAL: '#f97316', CONVERTED: '#10b981', UNREACHABLE: '#94a3b8', LOST: '#ef4444'
+    };
+
+    return (
+        <>
+            {mainContent}
+
+            {/* Topic Contact List Modal */}
+            {selectedTopic && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+                     onClick={() => setSelectedTopic(null)}>
+                    <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 900, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+                         onClick={e => e.stopPropagation()}>
+                        {/* Modal Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>{selectedTopic}</h3>
+                                <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                                    {topicContactsLoading ? 'Yükleniyor...' : `${topicContacts.length} kişi`}
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedTopic(null)} style={{ border: 'none', background: '#f1f5f9', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
+                                <X size={18} color="#64748b" />
+                            </button>
+                        </div>
+                        {/* Modal Body */}
+                        <div style={{ overflowY: 'auto', flex: 1 }}>
+                            {topicContactsLoading ? (
+                                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+                                    <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
+                                    <p>Kişiler yükleniyor...</p>
+                                </div>
+                            ) : topicContacts.length === 0 ? (
+                                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+                                    <Users size={28} style={{ marginBottom: 8 }} />
+                                    <p>Bu konuda kişi bulunamadı</p>
+                                </div>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                    <thead>
+                                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>#</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Kanal</th>
+                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {topicContacts.map((c, idx) => (
+                                            <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '8px 14px', color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</td>
+                                                <td style={{ padding: '8px 14px', fontWeight: 700, color: '#1e293b' }}>{c.name}</td>
+                                                <td style={{ padding: '8px 14px', color: '#475569' }}>{c.phone || '—'}</td>
+                                                <td style={{ padding: '8px 14px' }}>
+                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>
+                                                        {statusLabels[c.status] || c.status}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '8px 14px' }}>
+                                                    {c.stageName ? (
+                                                        <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>
+                                                            {c.stageName}
+                                                        </span>
+                                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                                                </td>
+                                                <td style={{ padding: '8px 14px', fontWeight: 600, color: c.assigneeName ? '#1e293b' : '#d1d5db' }}>{c.assigneeName || '—'}</td>
+                                                <td style={{ padding: '8px 14px', fontWeight: 600, color: '#64748b', fontSize: '0.75rem' }}>{c.channel || '—'}</td>
+                                                <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: '0.75rem' }}>{c.conversationCreatedAt ? new Date(c.conversationCreatedAt).toLocaleDateString('tr-TR') : '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+        </>
     );
 };
 

@@ -3466,6 +3466,60 @@ export const getAgentPerformance = async (req, res) => {
                 .filter(tm => tm.userId === userId)
                 .map(tm => tm.team);
 
+            // ── Topic Breakdown per Agent ──
+            const agentTopicConvs = await prisma.conversation.findMany({
+                where: { workspaceId, assignedToId: userId, aiTopic: { not: null }, ...dateFilter },
+                select: {
+                    aiTopic: true,
+                    contactId: true,
+                    contact: { select: { funnelStageId: true, status: true } }
+                }
+            });
+
+            const topicBreakdown = {};
+            const seenTopicContacts = {};
+            for (const c of agentTopicConvs) {
+                const t = c.aiTopic.trim();
+                if (!topicBreakdown[t]) {
+                    topicBreakdown[t] = { count: 0, converted: 0, opportunity: 0, stages: {} };
+                    seenTopicContacts[t] = new Set();
+                }
+                if (seenTopicContacts[t].has(c.contactId)) continue;
+                seenTopicContacts[t].add(c.contactId);
+                topicBreakdown[t].count++;
+                const status = c.contact?.status;
+                if (status === 'CONVERTED') topicBreakdown[t].converted++;
+                if (['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL'].includes(status)) topicBreakdown[t].opportunity++;
+            }
+
+            // Match WON deals to topics via contact's aiTopic
+            const agentWonDealContacts = await prisma.deal.findMany({
+                where: { workspaceId, assignedToId: userId, status: 'WON', ...dateFilter },
+                select: {
+                    amount: true,
+                    contact: {
+                        select: {
+                            conversations: {
+                                where: { workspaceId, aiTopic: { not: null } },
+                                select: { aiTopic: true },
+                                take: 1,
+                                orderBy: { createdAt: 'desc' }
+                            }
+                        }
+                    }
+                }
+            });
+
+            for (const deal of agentWonDealContacts) {
+                const aiTopic = deal.contact?.conversations?.[0]?.aiTopic?.trim();
+                if (aiTopic && topicBreakdown[aiTopic]) {
+                    if (!topicBreakdown[aiTopic].wonAmount) topicBreakdown[aiTopic].wonAmount = 0;
+                    if (!topicBreakdown[aiTopic].wonCount) topicBreakdown[aiTopic].wonCount = 0;
+                    topicBreakdown[aiTopic].wonAmount += (deal.amount || 0);
+                    topicBreakdown[aiTopic].wonCount++;
+                }
+            }
+
             agentMetrics.push({
                 userId: member.user.id,
                 name: member.user.name,
@@ -3493,6 +3547,7 @@ export const getAgentPerformance = async (req, res) => {
                 dealTotalAmount,
                 dealWonAmount,
                 salesByProduct,
+                topicBreakdown,
                 // Randevu
                 appointmentCount,
                 teams: myTeams
@@ -4302,5 +4357,93 @@ Yazında şunlara değin:
     } catch (error) {
         console.error('❌ [AiAnalyticsSummary] Error:', error);
         res.status(500).json({ error: error.message || 'Yorum oluşturulurken bir hata oluştu' });
+    }
+};
+
+export const getTopicContacts = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { topic, startDate, endDate } = req.query;
+
+        if (!topic) return res.status(400).json({ error: 'topic parametresi gerekli' });
+
+        let dateFilter = {};
+        if (startDate || endDate) {
+            dateFilter.createdAt = {};
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+        }
+
+        const conversations = await prisma.conversation.findMany({
+            where: {
+                workspaceId,
+                aiTopic: topic,
+                ...dateFilter
+            },
+            select: {
+                id: true,
+                aiTopic: true,
+                createdAt: true,
+                channel: true,
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        email: true,
+                        status: true,
+                        funnelStageId: true,
+                        company: true,
+                        source: true,
+                        createdAt: true
+                    }
+                },
+                assignedTo: {
+                    select: { id: true, name: true }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Get all funnels for stage name lookup
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: { stages: { select: { id: true, name: true, color: true } } }
+        });
+        const stageLookup = {};
+        for (const f of allFunnels) {
+            for (const s of f.stages) {
+                stageLookup[s.id] = { name: s.name, color: s.color };
+            }
+        }
+
+        // Deduplicate by contactId (keep first/latest conversation)
+        const seenContacts = new Set();
+        const contacts = [];
+        for (const conv of conversations) {
+            if (!conv.contact || seenContacts.has(conv.contact.id)) continue;
+            seenContacts.add(conv.contact.id);
+            const stageInfo = conv.contact.funnelStageId ? stageLookup[conv.contact.funnelStageId] : null;
+            contacts.push({
+                id: conv.contact.id,
+                name: conv.contact.name || 'İsimsiz',
+                phone: conv.contact.phone || '',
+                email: conv.contact.email || '',
+                status: conv.contact.status || 'NEW',
+                stageName: stageInfo?.name || null,
+                stageColor: stageInfo?.color || null,
+                company: conv.contact.company || '',
+                source: conv.contact.source || '',
+                channel: conv.channel || '',
+                assigneeName: conv.assignedTo?.name || null,
+                contactCreatedAt: conv.contact.createdAt,
+                conversationCreatedAt: conv.createdAt
+            });
+        }
+
+        res.json({ topic, totalCount: contacts.length, contacts });
+    } catch (error) {
+        console.error('Topic contacts error:', error);
+        res.status(500).json({ error: error.message });
     }
 };

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Users, UserCheck, RefreshCw, Filter, ArrowLeft,
     PhoneCall, Handshake, Calendar, MessageSquare, ListChecks,
-    ShoppingCart, DollarSign, Bot, ChevronDown
+    ShoppingCart, DollarSign, Bot, ChevronDown, ChevronRight, ClipboardList
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -27,6 +27,7 @@ const TeamReport = () => {
     }, [dateFilter, startDate, endDate]);
     const [sortBy, setSortBy] = useState('totalConversations');
     const [viewMode, setViewMode] = useState('team-grouped');
+    const [expandedAgent, setExpandedAgent] = useState(null);
 
     const fetchData = async () => {
         if (!currentWorkspace?.id) return;
@@ -176,14 +177,23 @@ const TeamReport = () => {
                     </tr>
                 </thead>
                 <tbody>
-                    {membersList.map((member, idx) => (
-                        <tr key={member.id || member.userId} className={showMedals ? getRowClass(idx) : ''}>
+                    {membersList.map((member, idx) => {
+                        const isExpanded = expandedAgent === (member.userId || member.id);
+                        const topicEntries = Object.entries(member.topicBreakdown || {}).sort((a, b) => b[1].count - a[1].count);
+                        return (
+                            <React.Fragment key={member.id || member.userId}>
+                            <tr className={showMedals ? getRowClass(idx) : ''}
+                                style={{ cursor: topicEntries.length > 0 ? 'pointer' : 'default' }}
+                                onClick={() => topicEntries.length > 0 && setExpandedAgent(isExpanded ? null : (member.userId || member.id))}
+                            >
                             <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    {showMedals ? (
+                                    {topicEntries.length > 0 ? (
+                                        <ChevronRight size={14} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                                    ) : showMedals ? (
                                         <div className={`medal-badge ${getMedalClass(idx)}`}>{idx + 1}</div>
                                     ) : (
-                                        <div style={{ width: 20, textAlign: 'center', fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</div>
+                                        <div style={{ width: 14, textAlign: 'center', fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</div>
                                     )}
                                     {member.isBot ? (
                                         <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, #8b5cf6, #6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 4px rgba(99, 102, 241, 0.2)' }}>
@@ -223,7 +233,53 @@ const TeamReport = () => {
                             </td>
                             <td><span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.82rem' }}>{member.avgResponseTime || member.avgResponseTimeMinutes || 0} dk</span></td>
                         </tr>
-                    ))}
+                        {/* Expanded Topic Breakdown */}
+                        {isExpanded && topicEntries.length > 0 && (
+                            <tr>
+                                <td colSpan={11} style={{ padding: 0, background: '#f8fafc' }}>
+                                    <div style={{ padding: '16px 20px 16px 56px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                            <ClipboardList size={14} style={{ color: '#6366f1' }} />
+                                            <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>{member.name} — Konu Dağılımı</span>
+                                            <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600 }}>{topicEntries.length} konu</span>
+                                        </div>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                            <thead>
+                                                <tr style={{ background: '#e2e8f0' }}>
+                                                    <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
+                                                    <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Talep</th>
+                                                    <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>İlgili</th>
+                                                    <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Satış</th>
+                                                    <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>Ciro</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {topicEntries.slice(0, 20).map(([topic, data]) => (
+                                                    <tr key={topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                        <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic}</td>
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#6366f1' }}>{data.count}</td>
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: data.opportunity > 0 ? '#f59e0b' : '#d1d5db' }}>{data.opportunity || 0}</td>
+                                                        <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: data.converted > 0 ? '#10b981' : '#d1d5db' }}>{(data.wonCount || data.converted || 0)}</td>
+                                                        <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: data.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{data.wonAmount ? data.wonAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }) : '—'}</td>
+                                                    </tr>
+                                                ))}
+                                                {/* Totals row */}
+                                                <tr style={{ background: '#e2e8f0', fontWeight: 800 }}>
+                                                    <td style={{ padding: '6px 10px', color: '#475569' }}>Toplam</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6366f1' }}>{topicEntries.reduce((s, [, d]) => s + d.count, 0)}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#f59e0b' }}>{topicEntries.reduce((s, [, d]) => s + (d.opportunity || 0), 0)}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#10b981' }}>{topicEntries.reduce((s, [, d]) => s + (d.wonCount || d.converted || 0), 0)}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', color: '#10b981' }}>{topicEntries.reduce((s, [, d]) => s + (d.wonAmount || 0), 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
+                        </React.Fragment>
+                        );
+                    })}
                     {isTeamTotal && teamTotalsObj && (
                         <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0', fontWeight: 'bold' }}>
                             <td>
