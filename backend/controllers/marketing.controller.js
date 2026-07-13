@@ -117,6 +117,53 @@ export const getTemplateAnalytics = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /marketing/:workspaceId/template-analytics
+// Clear template message history (all or specific template name)
+// Query: ?templateName=xxx  → clears only that template
+// No query                  → clears ALL template messages
+// ─────────────────────────────────────────────────────────────────────────────
+export const clearTemplateHistory = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { templateName } = req.query;
+
+        // Build content filter based on template name
+        let contentFilter = {};
+        if (templateName) {
+            // Match both [Şablon: name] and [Otomatik Şablon: name]
+            contentFilter = {
+                OR: [
+                    { content: { contains: `[Şablon: ${templateName}]` } },
+                    { content: { contains: `[Otomatik Şablon: ${templateName}]` } }
+                ]
+            };
+        }
+
+        const deleted = await prisma.message.deleteMany({
+            where: {
+                messageType: 'TEMPLATE',
+                isFromContact: false,
+                conversation: { workspaceId },
+                ...contentFilter
+            }
+        });
+
+        console.log(`🗑️ [clearTemplateHistory] Deleted ${deleted.count} messages. workspace: ${workspaceId}, template: ${templateName || 'ALL'}`);
+
+        res.json({
+            success: true,
+            deleted: deleted.count,
+            message: templateName
+                ? `"${templateName}" şablonuna ait ${deleted.count} kayıt silindi`
+                : `Tüm şablon geçmişi silindi (${deleted.count} kayıt)`
+        });
+    } catch (error) {
+        console.error('❌ [clearTemplateHistory]', error);
+        res.status(500).json({ error: 'Geçmiş silinemedi' });
+    }
+};
+
 const WHATSAPP_API_VERSION = 'v22.0';
 
 // Helper: convert relative URL to absolute

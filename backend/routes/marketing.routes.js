@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import {
     getTemplateAnalytics,
+    clearTemplateHistory,
     getCampaigns,
     getCampaignDetail,
     createCampaign,
@@ -16,6 +17,7 @@ router.use(authenticateJWT);
 
 // Template analytics (main feature)
 router.get('/:workspaceId/template-analytics', requireWorkspaceAccess, getTemplateAnalytics);
+router.delete('/:workspaceId/template-analytics', requireWorkspaceAccess, clearTemplateHistory);
 
 // Campaign routes (secondary)
 router.get('/:workspaceId/campaigns', requireWorkspaceAccess, getCampaigns);

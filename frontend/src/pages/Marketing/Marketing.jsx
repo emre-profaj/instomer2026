@@ -53,6 +53,7 @@ export default function Marketing() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [selectedTemplate, setSelectedTemplate] = useState(null);
+    const [clearing, setClearing] = useState(false);
 
     // Detail table filters
     const [statusFilter, setStatusFilter] = useState('');
@@ -75,6 +76,36 @@ export default function Marketing() {
     }, [wsId, days]);
 
     useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
+
+    const handleClearTemplate = async (templateName) => {
+        const confirmed = window.confirm(`"${templateName}" şablonuna ait tüm gönderim geçmişi silinecek.\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`);
+        if (!confirmed) return;
+        setClearing(true);
+        try {
+            const res = await api.delete(`/marketing/${wsId}/template-analytics?templateName=${encodeURIComponent(templateName)}`);
+            alert(res.data.message);
+            setSelectedTemplate(null);
+            fetchAnalytics();
+        } catch (e) {
+            alert('Silme işlemi başarısız: ' + (e.response?.data?.error || e.message));
+        }
+        setClearing(false);
+    };
+
+    const handleClearAll = async () => {
+        const confirmed = window.confirm(`TÜM şablon gönderim geçmişi silinecek.\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?`);
+        if (!confirmed) return;
+        setClearing(true);
+        try {
+            const res = await api.delete(`/marketing/${wsId}/template-analytics`);
+            alert(res.data.message);
+            setSelectedTemplate(null);
+            fetchAnalytics();
+        } catch (e) {
+            alert('Silme işlemi başarısız: ' + (e.response?.data?.error || e.message));
+        }
+        setClearing(false);
+    };
 
     const overall = data?.overall || {};
     const templates = data?.templates || [];
@@ -137,6 +168,11 @@ export default function Marketing() {
                     <button className="mkt-refresh-btn" onClick={fetchAnalytics} disabled={loading}>
                         {loading ? '⏳' : '🔄'} Yenile
                     </button>
+                    {(data?.overall?.totalSent > 0) && (
+                        <button className="mkt-clear-all-btn" onClick={handleClearAll} disabled={clearing}>
+                            🗑️ Tüm Geçmişi Temizle
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -204,7 +240,17 @@ export default function Marketing() {
                                 <div className="mkt-detail-header">
                                     <div className="mkt-detail-title-row">
                                         <span className="mkt-detail-tpl-name">📄 {sel.templateName}</span>
-                                        <button className="mkt-close-btn" onClick={() => setSelectedTemplate(null)}>✕</button>
+                                        <div style={{ display: 'flex', gap: 6 }}>
+                                            <button
+                                                className="mkt-clear-tpl-btn"
+                                                onClick={() => handleClearTemplate(sel.templateName)}
+                                                disabled={clearing}
+                                                title="Bu şablonun gönderim geçmişini sil"
+                                            >
+                                                🗑️ Geçmişi Temizle
+                                            </button>
+                                            <button className="mkt-close-btn" onClick={() => setSelectedTemplate(null)}>✕</button>
+                                        </div>
                                     </div>
 
                                     {/* Rate summary */}

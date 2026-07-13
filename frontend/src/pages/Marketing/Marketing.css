@@ -49,6 +49,22 @@
 .mkt-refresh-btn:hover:not(:disabled) { background: #e5e7eb; }
 .mkt-refresh-btn:disabled { opacity: .5; cursor: not-allowed; }
 
+.mkt-clear-all-btn {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+    padding: 6px 13px; font-size: 12px; font-weight: 500; color: #dc2626;
+    cursor: pointer; transition: all .15s; font-family: inherit;
+}
+.mkt-clear-all-btn:hover:not(:disabled) { background: #fee2e2; }
+.mkt-clear-all-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.mkt-clear-tpl-btn {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;
+    padding: 5px 10px; font-size: 12px; font-weight: 500; color: #dc2626;
+    cursor: pointer; transition: all .15s; font-family: inherit;
+}
+.mkt-clear-tpl-btn:hover:not(:disabled) { background: #fee2e2; }
+.mkt-clear-tpl-btn:disabled { opacity: .5; cursor: not-allowed; }
+
 /* ── Stats row ───────────────────────────────── */
 .mkt-stats-row {
     display: grid; grid-template-columns: repeat(4, 1fr);
