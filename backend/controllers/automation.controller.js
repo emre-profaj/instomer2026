@@ -1130,8 +1130,74 @@ export const sendTemplateDynamic = async (req, res) => {
 
         console.log('✅ [sendTemplateDynamic] Message sent:', response.data);
 
-        // 6. LOG TO DATABASE (Optional: Create contact/conversation if needed)
+        // 6. LOG TO DATABASE - Find or create contact/conversation and save message
         const whatsappMessageId = response.data.messages?.[0]?.id;
+
+        try {
+            // Try to find contact by phone
+            const cleanPhone = recipientPhone;
+            let contact = await prisma.contact.findFirst({
+                where: {
+                    workspaceId,
+                    OR: [
+                        { phone: cleanPhone },
+                        { phone: '+' + cleanPhone },
+                        { phone: '0' + cleanPhone.slice(2) }
+                    ]
+                }
+            });
+
+            // If no contact exists, create one
+            if (!contact) {
+                contact = await prisma.contact.create({
+                    data: {
+                        workspaceId,
+                        name: customerName || recipientPhone,
+                        phone: recipientPhone,
+                        source: 'WHATSAPP'
+                    }
+                });
+            }
+
+            // Find or create conversation
+            let conversation = await prisma.conversation.findFirst({
+                where: { contactId: contact.id, workspaceId, channel: 'WHATSAPP' }
+            });
+
+            if (!conversation) {
+                conversation = await prisma.conversation.create({
+                    data: {
+                        contactId: contact.id,
+                        workspaceId,
+                        whatsappPhoneNumberId: whatsappPhone.id,
+                        channel: 'WHATSAPP',
+                        status: 'OPEN'
+                    }
+                });
+            }
+
+            // Save message with whatsappMessageId for status tracking
+            await prisma.message.create({
+                data: {
+                    conversationId: conversation.id,
+                    content: `[Şablon: ${template.name}]\n${template.bodyText}`,
+                    messageType: 'TEMPLATE',
+                    isFromContact: false,
+                    whatsappMessageId,
+                    status: 'SENT'
+                }
+            });
+
+            await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: { lastMessageAt: new Date() }
+            });
+
+            console.log(`✅ [sendTemplateDynamic] Message logged to DB for contact: ${contact.id}`);
+        } catch (dbErr) {
+            // DB logging failure shouldn't affect the API response
+            console.error('⚠️ [sendTemplateDynamic] DB logging failed:', dbErr.message);
+        }
 
         res.json({
             success: true,
