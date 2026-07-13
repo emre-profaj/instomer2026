@@ -223,16 +223,12 @@ function BulkSendTab({ wsId }) {
                             )}
                             <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
                         </div>
-                        <select className="mkt-filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setSelectAllPages(false); }}>
-                            <option value="">Tüm Durumlar</option>
-                            {filterStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
-                        </select>
                         <select className="mkt-filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); setSelectAllPages(false); }}>
                             <option value="">Tüm Kaynaklar</option>
                             {filterSources.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                         <span className="mkt-total-badge">
-                            {search || statusFilter || sourceFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
+                            {search || sourceFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
                         </span>
                     </div>
 
