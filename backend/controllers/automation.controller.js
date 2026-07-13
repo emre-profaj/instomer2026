@@ -253,10 +253,12 @@ export const createTemplate = async (req, res) => {
             name = sanitizedName; // Update name to sanitized version for DB
         } catch (metaErr) {
             console.error('❌ [CREATE_TEMPLATE] Meta API Error:', JSON.stringify(metaErr.response?.data || metaErr.message, null, 2));
-            const errorObj = metaErr.response?.data?.error;
+            const responseData = metaErr.response?.data;
             let errDetail = 'Meta API şablon oluşturmayı reddetti.';
-            if (errorObj) {
-                errDetail = errorObj.error_user_msg || errorObj.message || JSON.stringify(errorObj);
+            if (responseData) {
+                errDetail = JSON.stringify(responseData);
+            } else {
+                errDetail = metaErr.message;
             }
             return res.status(400).json({ error: `Meta API Hatası: ${errDetail}` });
         }
