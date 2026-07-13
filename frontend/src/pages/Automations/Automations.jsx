@@ -814,6 +814,9 @@ const Automations = () => {
                                                     }
                                                 }}
                                             />
+                                            <small className="form-text text-muted" style={{ display: 'block', marginTop: '5px', fontSize: '12px', color: '#6c757d' }}>
+                                                Maksimum boyut: {templateForm.headerType === 'IMAGE' ? '5 MB' : templateForm.headerType === 'VIDEO' ? '16 MB' : '100 MB'}
+                                            </small>
                                             {isUploadingMedia && <span className="upload-status loading">⏳ Yükleniyor...</span>}
                                             {!isUploadingMedia && templateForm.headerMediaUrl && (
                                                 <div className="upload-status success">
