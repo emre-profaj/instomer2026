@@ -167,8 +167,9 @@ export const getTemplates = async (req, res) => {
 export const createTemplate = async (req, res) => {
     try {
         const { workspaceId } = req.params;
+        let { name } = req.body;
         const {
-            name, language, category, status,
+            language, category, status,
             headerType, headerContent, headerHandle, headerMediaUrl, bodyText, footerText,
             buttons, exampleValues, whatsappPhoneNumberId
         } = req.body;
