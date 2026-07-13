@@ -13,7 +13,7 @@ export const getTemplateAnalytics = async (req, res) => {
         const since = new Date();
         since.setDate(since.getDate() - parseInt(days));
 
-        // Get all TEMPLATE messages for this workspace via conversation join
+        // Get all TEMPLATE messages with contact/conversation info
         const messages = await prisma.message.findMany({
             where: {
                 messageType: 'TEMPLATE',
@@ -26,7 +26,21 @@ export const getTemplateAnalytics = async (req, res) => {
                 content: true,
                 status: true,
                 createdAt: true,
-                whatsappMessageId: true
+                whatsappMessageId: true,
+                conversation: {
+                    select: {
+                        id: true,
+                        contact: {
+                            select: {
+                                id: true,
+                                name: true,
+                                phone: true,
+                                email: true,
+                                tags: true
+                            }
+                        }
+                    }
+                }
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -41,70 +55,60 @@ export const getTemplateAnalytics = async (req, res) => {
                 templateMap[tplName] = {
                     templateName: tplName,
                     total: 0,
-                    sent: 0,
                     delivered: 0,
                     read: 0,
                     failed: 0,
+                    sent: 0,
                     lastSentAt: null,
-                    recentMessages: []
+                    recipients: []
                 };
             }
 
             const t = templateMap[tplName];
             t.total++;
-            if (msg.status === 'SENT') t.sent++;
-            else if (msg.status === 'DELIVERED') t.delivered++;
+            if (msg.status === 'DELIVERED') t.delivered++;
             else if (msg.status === 'READ') t.read++;
             else if (msg.status === 'FAILED') t.failed++;
-            // Count sent+delivered+read as "reached"
-            if (['SENT', 'DELIVERED', 'READ'].includes(msg.status)) t.sent = (t.sent || 0);
+            else t.sent++; // SENT = reached WhatsApp but not yet delivered
 
             if (!t.lastSentAt || msg.createdAt > t.lastSentAt) {
                 t.lastSentAt = msg.createdAt;
             }
 
-            if (t.recentMessages.length < 5) {
-                t.recentMessages.push({
-                    id: msg.id,
-                    status: msg.status,
-                    createdAt: msg.createdAt
-                });
-            }
+            const contact = msg.conversation?.contact;
+            t.recipients.push({
+                messageId: msg.id,
+                whatsappMessageId: msg.whatsappMessageId,
+                conversationId: msg.conversation?.id,
+                status: msg.status,
+                sentAt: msg.createdAt,
+                contactId: contact?.id || null,
+                name: contact?.name || '—',
+                phone: contact?.phone || '—',
+                email: contact?.email || null,
+                tags: contact?.tags || []
+            });
         }
 
-        // Recalculate sent count properly
+        // Compute rates for each template
         for (const t of Object.values(templateMap)) {
-            // sent = total - failed (all non-failed reached WhatsApp)
-            t.sent = t.total - t.failed;
-            t.readRate = t.total > 0 ? Math.round((t.read / t.total) * 100) : 0;
+            t.readRate     = t.total > 0 ? Math.round((t.read / t.total) * 100) : 0;
             t.deliveryRate = t.total > 0 ? Math.round(((t.delivered + t.read) / t.total) * 100) : 0;
-            t.failRate = t.total > 0 ? Math.round((t.failed / t.total) * 100) : 0;
+            t.failRate     = t.total > 0 ? Math.round((t.failed / t.total) * 100) : 0;
         }
 
         const templates = Object.values(templateMap).sort((a, b) => b.total - a.total);
 
         // Overall stats
         const overall = {
-            totalSent: messages.length,
-            totalDelivered: messages.filter(m => ['DELIVERED', 'READ'].includes(m.status)).length,
-            totalRead: messages.filter(m => m.status === 'READ').length,
-            totalFailed: messages.filter(m => m.status === 'FAILED').length,
+            totalSent:       messages.length,
+            totalDelivered:  messages.filter(m => ['DELIVERED', 'READ'].includes(m.status)).length,
+            totalRead:       messages.filter(m => m.status === 'READ').length,
+            totalFailed:     messages.filter(m => m.status === 'FAILED').length,
             uniqueTemplates: templates.length,
         };
 
-        // Daily breakdown for last 7 days
-        const dailyMap = {};
-        const last7 = new Date();
-        last7.setDate(last7.getDate() - 7);
-        for (const msg of messages.filter(m => m.createdAt >= last7)) {
-            const day = msg.createdAt.toISOString().split('T')[0];
-            if (!dailyMap[day]) dailyMap[day] = { date: day, total: 0, read: 0 };
-            dailyMap[day].total++;
-            if (msg.status === 'READ') dailyMap[day].read++;
-        }
-        const daily = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
-
-        res.json({ templates, overall, daily, days: parseInt(days) });
+        res.json({ templates, overall, days: parseInt(days) });
     } catch (error) {
         console.error('❌ [getTemplateAnalytics]', error);
         res.status(500).json({ error: 'Analiz verileri yüklenemedi' });
