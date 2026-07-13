@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -348,6 +348,18 @@ const Sidebar = () => {
                                     </Link>
                                 );
                             })}
+
+                            {/* Pazarlama — sadece SUPER_ADMIN */}
+                            {user?.role === 'SUPER_ADMIN' && (
+                                <Link
+                                    to="/marketing"
+                                    className={`sidebar-nav-item ${location.pathname === '/marketing' ? 'active' : ''}`}
+                                    title="Pazarlama"
+                                >
+                                    <Megaphone size={20} className="nav-icon" />
+                                    {!isCollapsed && <span>Pazarlama</span>}
+                                </Link>
+                            )}
 
                             {/* Gayrimenkul — sadece workspace'te aktifse göster */}
                             {currentWorkspace?.realEstateEnabled && (workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (

@@ -139,6 +139,7 @@ model Workspace {
   retellActions        RetellAction[]
   cases                Case[]
   products             Product[]
+  marketingCampaigns   MarketingCampaign[]
 
   // Retell AI Voice
   retellApiKey          String?
@@ -859,6 +860,7 @@ model WhatsappTemplate {
 
   workspace           Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   whatsappPhoneNumber WhatsappPhoneNumber? @relation(fields: [whatsappPhoneNumberId], references: [id], onDelete: SetNull)
+  marketingCampaigns  MarketingCampaign[]
 
   @@unique([workspaceId, templateId])
   @@index([workspaceId])
@@ -1671,4 +1673,49 @@ model Product {
   @@index([workspaceId])
   @@index([workspaceId, groupName])
   @@map("products")
+}
+
+model MarketingCampaign {
+  id             String                    @id @default(uuid())
+  workspaceId    String
+  name           String
+  description    String?
+  templateId     String
+  status         String                    @default("DRAFT") // DRAFT, SCHEDULED, RUNNING, COMPLETED, FAILED
+  scheduledAt    DateTime?
+  sentAt         DateTime?
+  totalCount     Int                       @default(0)
+  sentCount      Int                       @default(0)
+  deliveredCount Int                       @default(0)
+  readCount      Int                       @default(0)
+  failedCount    Int                       @default(0)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  workspace      Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template       WhatsappTemplate          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  recipients     MarketingRecipient[]
+
+  @@index([workspaceId])
+  @@map("marketing_campaigns")
+}
+
+model MarketingRecipient {
+  id          String            @id @default(uuid())
+  campaignId  String
+  contactId   String?
+  phone       String
+  name        String?
+  messageId   String?           @unique
+  status      String            @default("PENDING") // PENDING, SENT, DELIVERED, READ, FAILED
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+  failReason  String?
+  sentAt      DateTime?
+  createdAt   DateTime          @default(now())
+  campaign    MarketingCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([messageId])
+  @@map("marketing_recipients")
 }

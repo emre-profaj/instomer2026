@@ -807,6 +807,14 @@ export const webhookHandler = async (req, res) => {
                         } else {
                             console.log(`⚠️ [WA STATUS] No message found with ID: ${messageId}`);
                         }
+
+                        // Always try to update campaign recipient (if this was a campaign message)
+                        try {
+                            const { updateCampaignRecipientStatus } = await import('./marketing.controller.js');
+                            await updateCampaignRecipientStatus(messageId, rawStatus);
+                        } catch (campaignErr) {
+                            // Non-critical
+                        }
                     }
                 }
                 return res.sendStatus(200);
