@@ -2207,6 +2207,14 @@ export const getContactAnalytics = async (req, res) => {
             orderBy: { order: 'asc' }
         });
 
+        // Build stage lookup for topic analysis
+        const stageLookup = {};
+        for (const f of allFunnels) {
+            for (const s of f.stages) {
+                stageLookup[s.id] = { name: s.name, color: s.color, funnelName: f.name };
+            }
+        }
+
         // Tarih filtresi: Seçilen aralığa göre dinamik recentCount
         const recentDateFilter = {};
         if (startDate) recentDateFilter.gte = parseDateStartTR(startDate);
@@ -2777,7 +2785,7 @@ export const getContactAnalytics = async (req, res) => {
                 const topic = conv.aiTopic?.trim();
                 if (!topic) continue;
                 if (!topicMap[topic]) {
-                    topicMap[topic] = { topic, count: 0, withPhone: 0, called: 0, relevant: 0, contactIds: new Set() };
+                    topicMap[topic] = { topic, count: 0, withPhone: 0, called: 0, relevant: 0, contactIds: new Set(), stageDist: {} };
                     seenContactsByTopic[topic] = new Set();
                 }
                 // Aynı kişi birden fazla konuşma açmış olabilir, unique say
@@ -2799,6 +2807,16 @@ export const getContactAnalytics = async (req, res) => {
                 if (relevantStatuses.includes(conv.contact?.status)) {
                     t.relevant++;
                 }
+                // Track stage distribution
+                const stageId = conv.contact?.funnelStageId;
+                if (stageId && stageLookup[stageId]) {
+                    const sName = stageLookup[stageId].name;
+                    if (!t.stageDist[sName]) t.stageDist[sName] = { count: 0, color: stageLookup[stageId].color };
+                    t.stageDist[sName].count++;
+                } else {
+                    if (!t.stageDist['Atanmamış']) t.stageDist['Atanmamış'] = { count: 0, color: '#94a3b8' };
+                    t.stageDist['Atanmamış'].count++;
+                }
             }
 
             const rawTopics = Object.keys(topicMap);
@@ -2813,7 +2831,7 @@ export const getContactAnalytics = async (req, res) => {
                 for (const [rawTopic, rawData] of Object.entries(topicMap)) {
                     const category = aiMapping[rawTopic] || rawTopic; // fallback to raw if not mapped
                     if (!categoryMap[category]) {
-                        categoryMap[category] = { topic: category, count: 0, withPhone: 0, called: 0, relevant: 0, mergedTopics: [], contactIds: new Set() };
+                        categoryMap[category] = { topic: category, count: 0, withPhone: 0, called: 0, relevant: 0, mergedTopics: [], contactIds: new Set(), stageDist: {} };
                     }
                     const cat = categoryMap[category];
                     cat.count += rawData.count;
@@ -2822,15 +2840,20 @@ export const getContactAnalytics = async (req, res) => {
                     cat.relevant += rawData.relevant;
                     cat.mergedTopics.push(rawTopic);
                     rawData.contactIds.forEach(id => cat.contactIds.add(id));
+                    // Merge stage distribution
+                    for (const [sName, sData] of Object.entries(rawData.stageDist || {})) {
+                        if (!cat.stageDist[sName]) cat.stageDist[sName] = { count: 0, color: sData.color };
+                        cat.stageDist[sName].count += sData.count;
+                    }
                 }
                 topicsArray = Object.values(categoryMap)
-                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, mergedTopics: t.mergedTopics }))
+                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, mergedTopics: t.mergedTopics, stageDist: t.stageDist }))
                     .sort((a, b) => b.count - a.count);
                 console.log(`🤖 [TopicAI] ${rawTopics.length} raw topics → ${topicsArray.length} categories`);
             } else {
                 // AI kullanılamadı — ham topicler olduğu gibi
                 topicsArray = Object.values(topicMap)
-                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant }))
+                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, stageDist: t.stageDist }))
                     .sort((a, b) => b.count - a.count);
             }
 
@@ -2869,7 +2892,17 @@ export const getContactAnalytics = async (req, res) => {
                 calledCount: topicsArray.reduce((s, t) => s + t.called, 0),
                 relevantCount: topicsArray.reduce((s, t) => s + t.relevant, 0),
                 aiClassified: !!(aiMapping && Object.keys(aiMapping).length > 0),
-                recentRequests
+                recentRequests,
+                stageDistribution: (() => {
+                    const overallStageDist = {};
+                    for (const t of topicsArray) {
+                        for (const [sName, sData] of Object.entries(t.stageDist || {})) {
+                            if (!overallStageDist[sName]) overallStageDist[sName] = { count: 0, color: sData.color };
+                            overallStageDist[sName].count += sData.count;
+                        }
+                    }
+                    return overallStageDist;
+                })()
             };
         } catch (e) {
             console.error('Request analysis error (non-fatal):', e.message);

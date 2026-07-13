@@ -69,9 +69,18 @@ const RequestReport = () => {
             existing.withPhone = (existing.withPhone || 0) + (t.withPhone || 0);
             existing.called = (existing.called || 0) + (t.called || 0);
             existing.interested = (existing.interested || 0) + (t.interested || 0);
+            existing.relevant = (existing.relevant || 0) + (t.relevant || 0);
+            // Merge stageDist
+            if (t.stageDist) {
+                if (!existing.stageDist) existing.stageDist = {};
+                for (const [sName, sData] of Object.entries(t.stageDist)) {
+                    if (!existing.stageDist[sName]) existing.stageDist[sName] = { count: 0, color: sData.color };
+                    existing.stageDist[sName].count += sData.count;
+                }
+            }
         } else {
             seen.set(key, mergedTopics.length);
-            mergedTopics.push({ ...t });
+            mergedTopics.push({ ...t, stageDist: t.stageDist ? { ...t.stageDist } : {} });
         }
     }
     const sortedTopics = [...mergedTopics].sort((a, b) => (b.count || 0) - (a.count || 0));
@@ -80,9 +89,13 @@ const RequestReport = () => {
     const totalTopicCount = sortedTopics.reduce((s, t) => s + (t.count || 0), 0) || 1;
 
     const totalRequests = reqAnalysis.totalRequests || analytics?.totalContacts || 0;
-    const totalWithPhone = reqAnalysis.totalWithPhone || 0;
-    const totalCalled = reqAnalysis.totalCalled || 0;
-    const totalInterested = reqAnalysis.totalInterested || 0;
+    const totalWithPhone = reqAnalysis.withPhoneCount || reqAnalysis.totalWithPhone || 0;
+    const totalCalled = reqAnalysis.calledCount || reqAnalysis.totalCalled || 0;
+    const totalInterested = reqAnalysis.relevantCount || reqAnalysis.totalInterested || 0;
+
+    // Overall stage distribution from backend or computed
+    const overallStageDist = reqAnalysis.stageDistribution || {};
+    const stageDistEntries = Object.entries(overallStageDist).sort((a, b) => b[1].count - a[1].count);
 
     if (loading && !analytics) {
         return (
@@ -154,6 +167,44 @@ const RequestReport = () => {
                 </div>
             </div>
 
+            {/* Stage Distribution Overview */}
+            {stageDistEntries.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 20 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#f0fdf4', color: '#10b981' }}><BarChart3 size={18} /></div>
+                        <h2>Talep Son Durum Dağılımı</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>
+                            Kişilerin mevcut aşaması
+                        </span>
+                    </div>
+                    <div className="ceo-section-body">
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+                            {stageDistEntries.map(([sName, sData]) => (
+                                <div key={sName} style={{ 
+                                    display: 'flex', alignItems: 'center', gap: 8, 
+                                    padding: '8px 14px', borderRadius: 10, 
+                                    background: `${sData.color || '#64748b'}12`, 
+                                    border: `1px solid ${sData.color || '#64748b'}30` 
+                                }}>
+                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: sData.color || '#64748b' }} />
+                                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{sName}</span>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: sData.color || '#64748b' }}>{sData.count}</span>
+                                </div>
+                            ))}
+                        </div>
+                        {/* Horizontal stacked bar */}
+                        <div style={{ display: 'flex', height: 14, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9' }}>
+                            {stageDistEntries.map(([sName, sData]) => {
+                                const pct = (sData.count / totalRequests) * 100;
+                                return pct > 0 ? (
+                                    <div key={sName} style={{ width: `${pct}%`, background: sData.color || '#64748b', transition: 'width 0.6s ease' }} title={`${sName}: ${sData.count} (${pct.toFixed(1)}%)`} />
+                                ) : null;
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Top Topics Bar Chart */}
             {sortedTopics.length > 0 && (
                 <div className="ceo-section" style={{ marginBottom: 20 }}>
@@ -205,6 +256,7 @@ const RequestReport = () => {
                                     <th>#</th>
                                     <th>Konu</th>
                                     <th>Toplam</th>
+                                    <th>Aşama Dağılımı</th>
                                     <th>Numaralı</th>
                                     <th>Arandı</th>
                                     <th>İlgili</th>
@@ -226,6 +278,23 @@ const RequestReport = () => {
                                                 </div>
                                             </td>
                                             <td><span style={{ fontWeight: 800, color: '#6366f1' }}>{topic.count}</span></td>
+                                            <td>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                                                    {Object.entries(topic.stageDist || {}).sort((a, b) => b[1].count - a[1].count).slice(0, 4).map(([sName, sData]) => (
+                                                        <span key={sName} style={{ 
+                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                            padding: '2px 6px', borderRadius: 6, 
+                                                            background: `${sData.color || '#64748b'}18`, 
+                                                            fontSize: '0.68rem', fontWeight: 600, color: sData.color || '#64748b',
+                                                            whiteSpace: 'nowrap'
+                                                        }}>
+                                                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: sData.color || '#64748b' }} />
+                                                            {sName.length > 10 ? sName.slice(0, 10) + '..' : sName} {sData.count}
+                                                        </span>
+                                                    ))}
+                                                    {Object.keys(topic.stageDist || {}).length === 0 && <span style={{ color: '#d1d5db', fontSize: '0.68rem' }}>—</span>}
+                                                </div>
+                                            </td>
                                             <td><span style={{ fontWeight: 700, color: (topic.withPhone || 0) > 0 ? '#10b981' : '#d1d5db' }}>{topic.withPhone || 0}</span></td>
                                             <td><span style={{ fontWeight: 700, color: (topic.called || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.called || 0}</span></td>
                                             <td><span style={{ fontWeight: 700, color: (topic.interested || 0) > 0 ? '#f59e0b' : '#d1d5db' }}>{topic.interested || 0}</span></td>
