@@ -230,7 +230,8 @@ const Automations = () => {
             headerHandle: '',
             headerMediaUrl: '',
             bodyText: '',
-            footerText: ''
+            footerText: '',
+            buttons: []
         });
     };
 
