@@ -223,7 +223,10 @@ export const createTemplate = async (req, res) => {
 
         // Buttons Component
         if (buttons) {
-            components.push({ type: 'BUTTONS', buttons: typeof buttons === 'string' ? JSON.parse(buttons) : buttons });
+            const parsedButtons = typeof buttons === 'string' ? JSON.parse(buttons) : buttons;
+            if (Array.isArray(parsedButtons) && parsedButtons.length > 0) {
+                components.push({ type: 'BUTTONS', buttons: parsedButtons });
+            }
         }
 
         // 3. Call Meta API to create the template
