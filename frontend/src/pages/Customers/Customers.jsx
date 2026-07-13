@@ -733,7 +733,7 @@ const Customers = () => {
         }
     };
 
-    // Export to CSV
+    // Export to XLSX
     const handleExportCSV = async () => {
         if (!exportStartDate || !exportEndDate) {
             alert('Lütfen başlangıç ve bitiş tarihlerini seçin');
@@ -823,21 +823,21 @@ const Customers = () => {
                 ];
             });
 
-            const csvContent = [
-                headers.join(','),
-                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-            ].join('\n');
-
-            // Download CSV
-            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', `kişiler_${exportStartDate}_${exportEndDate}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // Build XLSX
+            const wsData = [headers, ...rows];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [
+                { wch: 25 }, // İsim
+                { wch: 18 }, // Telefon
+                { wch: 28 }, // E-posta
+                { wch: 18 }, // Tarih
+                { wch: 15 }, // Durum
+                { wch: 20 }, // Atanan
+                { wch: 40 }, // Son Not
+            ];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Kişiler');
+            XLSX.writeFile(wb, `kişiler_${exportStartDate}_${exportEndDate}.xlsx`);
 
             setShowExportModal(false);
             setExportStartDate('');
