@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI } from '../../services/api';
+import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI } from '../../services/api';
 import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
@@ -32,6 +32,7 @@ const Funnels = () => {
     const [teams, setTeams] = useState([]);
     const [members, setMembers] = useState([]);
     const [bots, setBots] = useState([]);
+    const [templates, setTemplates] = useState([]);
 
     // Stage counts
     const [stageCounts, setStageCounts] = useState({});
@@ -69,14 +70,16 @@ const Funnels = () => {
 
     const loadTeamsAndMembers = async () => {
         try {
-            const [teamsRes, membersRes, botsRes] = await Promise.all([
+            const [teamsRes, membersRes, botsRes, tplRes] = await Promise.all([
                 teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
                 workspaceAPI.getMembers(currentWorkspace.id).catch(() => ({ data: { members: [] } })),
-                aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } }))
+                aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
+                automationAPI.getTemplates(currentWorkspace.id).catch(() => ({ data: { templates: [] } }))
             ]);
             setTeams(teamsRes.data?.teams || []);
             setMembers(membersRes.data?.members?.map(m => m.user) || membersRes.data || []);
             setBots(botsRes.data?.bots || []);
+            setTemplates(tplRes.data?.templates || tplRes.data || []);
         } catch (err) { console.error(err); }
     };
 
@@ -701,37 +704,76 @@ const Funnels = () => {
                                 {(() => {
                                     const config = stagePanel.entryActions ? (typeof stagePanel.entryActions === 'string' ? JSON.parse(stagePanel.entryActions) : stagePanel.entryActions) : { actions: [] };
                                     const actions = config.actions || [];
+                                    const updateEntryAction = (idx, changes) => {
+                                        const newActions = [...actions];
+                                        newActions[idx] = { ...newActions[idx], ...changes };
+                                        setStagePanel(p => ({ ...p, entryActions: JSON.stringify({ actions: newActions }) }));
+                                    };
                                     return (
                                         <>
                                             {actions.map((a, i) => (
-                                                <div key={i} className="automation-item">
-                                                    <select
-                                                        value={a.type}
-                                                        onChange={e => {
-                                                            const newActions = [...actions];
-                                                            newActions[i] = { ...a, type: e.target.value };
+                                                <div key={i} className="automation-item channel-action">
+                                                    <div className="action-row">
+                                                        <select
+                                                            value={a.type}
+                                                            onChange={e => updateEntryAction(i, { type: e.target.value })}
+                                                        >
+                                                            <optgroup label="⚙️ Genel">
+                                                                <option value="CREATE_TASK">📋 Görev Oluştur</option>
+                                                                <option value="ADD_TAG">🏷️ Etiket Ekle</option>
+                                                                <option value="NOTIFY_TEAM">🔔 Takıma Bildir</option>
+                                                                <option value="MOVE_STAGE">↗️ Aşama Değiştir</option>
+                                                            </optgroup>
+                                                            <optgroup label="📱 WhatsApp">
+                                                                <option value="WA_SEND_TEMPLATE">📱 Şablon Gönder</option>
+                                                                <option value="WA_SEND_MESSAGE">💬 Mesaj Gönder</option>
+                                                            </optgroup>
+                                                            <optgroup label="📸 Instagram">
+                                                                <option value="IG_SEND_MESSAGE">📸 Mesaj Gönder</option>
+                                                            </optgroup>
+                                                            <optgroup label="📞 Arama">
+                                                                <option value="RETELL_CALL">📞 AI Arama Yap</option>
+                                                            </optgroup>
+                                                            <optgroup label="📧 E-posta">
+                                                                <option value="SEND_EMAIL">📧 E-posta Gönder</option>
+                                                            </optgroup>
+                                                            <optgroup label="🔄 Otomatik">
+                                                                <option value="AUTO_CHANNEL_MESSAGE">🔄 Yazıştığı Kanaldan Gönder</option>
+                                                            </optgroup>
+                                                        </select>
+                                                        <button className="btn-icon" onClick={() => {
+                                                            const newActions = actions.filter((_, idx) => idx !== i);
                                                             setStagePanel(p => ({ ...p, entryActions: JSON.stringify({ actions: newActions }) }));
-                                                        }}
-                                                    >
-                                                        <option value="CREATE_TASK">📋 Görev Oluştur</option>
-                                                        <option value="ADD_TAG">🏷️ Etiket Ekle</option>
-                                                        <option value="NOTIFY_TEAM">🔔 Takıma Bildir</option>
-                                                        <option value="SEND_MESSAGE">💬 Mesaj Gönder</option>
-                                                    </select>
-                                                    <input
-                                                        placeholder={a.type === 'ADD_TAG' ? 'Etiket adı' : a.type === 'CREATE_TASK' ? 'Görev başlığı' : 'İçerik'}
-                                                        value={a.title || a.tagName || a.message || ''}
-                                                        onChange={e => {
-                                                            const newActions = [...actions];
-                                                            const key = a.type === 'ADD_TAG' ? 'tagName' : a.type === 'SEND_MESSAGE' ? 'message' : 'title';
-                                                            newActions[i] = { ...a, [key]: e.target.value };
-                                                            setStagePanel(p => ({ ...p, entryActions: JSON.stringify({ actions: newActions }) }));
-                                                        }}
-                                                    />
-                                                    <button className="btn-icon" onClick={() => {
-                                                        const newActions = actions.filter((_, idx) => idx !== i);
-                                                        setStagePanel(p => ({ ...p, entryActions: JSON.stringify({ actions: newActions }) }));
-                                                    }}><X size={12} /></button>
+                                                        }}><X size={12} /></button>
+                                                    </div>
+                                                    {/* Dynamic inputs based on type */}
+                                                    {a.type === 'WA_SEND_TEMPLATE' && (
+                                                        <select className="action-param" value={a.templateId || ''} onChange={e => updateEntryAction(i, { templateId: e.target.value })}>
+                                                            <option value="">Şablon Seç...</option>
+                                                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {a.type === 'RETELL_CALL' && (
+                                                        <select className="action-param" value={a.botId || ''} onChange={e => updateEntryAction(i, { botId: e.target.value })}>
+                                                            <option value="">Asistan Seç...</option>
+                                                            {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {a.type === 'SEND_EMAIL' && (
+                                                        <>
+                                                            <input className="action-param" placeholder="E-posta konusu" value={a.subject || ''} onChange={e => updateEntryAction(i, { subject: e.target.value })} />
+                                                            <textarea className="action-param" placeholder="E-posta içeriği" rows={2} value={a.content || ''} onChange={e => updateEntryAction(i, { content: e.target.value })} />
+                                                        </>
+                                                    )}
+                                                    {['WA_SEND_MESSAGE', 'IG_SEND_MESSAGE', 'AUTO_CHANNEL_MESSAGE'].includes(a.type) && (
+                                                        <textarea className="action-param" placeholder="Mesaj içeriği" rows={2} value={a.message || ''} onChange={e => updateEntryAction(i, { message: e.target.value })} />
+                                                    )}
+                                                    {['CREATE_TASK', 'NOTIFY_TEAM'].includes(a.type) && (
+                                                        <input className="action-param" placeholder={a.type === 'CREATE_TASK' ? 'Görev başlığı' : 'Bildirim içeriği'} value={a.title || ''} onChange={e => updateEntryAction(i, { title: e.target.value })} />
+                                                    )}
+                                                    {a.type === 'ADD_TAG' && (
+                                                        <input className="action-param" placeholder="Etiket adı" value={a.tagName || ''} onChange={e => updateEntryAction(i, { tagName: e.target.value })} />
+                                                    )}
                                                 </div>
                                             ))}
                                             <button className="btn-add-sm" onClick={() => {
@@ -750,57 +792,86 @@ const Funnels = () => {
                                 {(() => {
                                     const config = stagePanel.timedActions ? (typeof stagePanel.timedActions === 'string' ? JSON.parse(stagePanel.timedActions) : stagePanel.timedActions) : { actions: [] };
                                     const actions = config.actions || [];
+                                    const updateTimedAction = (idx, changes) => {
+                                        const newActions = [...actions];
+                                        newActions[idx] = { ...newActions[idx], ...changes };
+                                        setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
+                                    };
                                     return (
                                         <>
                                             {actions.map((a, i) => (
-                                                <div key={i} className="automation-item timed">
+                                                <div key={i} className="automation-item timed channel-action">
                                                     <div className="timed-row">
                                                         <input
                                                             type="number" min="0" placeholder="Gün" style={{ width: 60 }}
                                                             value={a.delayDays || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...actions];
-                                                                newActions[i] = { ...a, delayDays: parseInt(e.target.value) || 0 };
-                                                                setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
-                                                            }}
+                                                            onChange={e => updateTimedAction(i, { delayDays: parseInt(e.target.value) || 0 })}
                                                         />
                                                         <span>gün</span>
                                                         <input
                                                             type="number" min="0" max="23" placeholder="Saat" style={{ width: 60 }}
                                                             value={a.delayHours || ''}
-                                                            onChange={e => {
-                                                                const newActions = [...actions];
-                                                                newActions[i] = { ...a, delayHours: parseInt(e.target.value) || 0 };
-                                                                setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
-                                                            }}
+                                                            onChange={e => updateTimedAction(i, { delayHours: parseInt(e.target.value) || 0 })}
                                                         />
                                                         <span>saat sonra</span>
                                                     </div>
-                                                    <select
-                                                        value={a.type}
-                                                        onChange={e => {
-                                                            const newActions = [...actions];
-                                                            newActions[i] = { ...a, type: e.target.value };
+                                                    <div className="action-row">
+                                                        <select
+                                                            value={a.type}
+                                                            onChange={e => updateTimedAction(i, { type: e.target.value })}
+                                                        >
+                                                            <optgroup label="⚙️ Genel">
+                                                                <option value="CREATE_TASK">📋 Hatırlatma Görevi</option>
+                                                                <option value="NOTIFY_TEAM">🔔 Takıma Bildir</option>
+                                                                <option value="MOVE_STAGE">↗️ Aşama Değiştir</option>
+                                                            </optgroup>
+                                                            <optgroup label="📱 WhatsApp">
+                                                                <option value="WA_SEND_TEMPLATE">📱 Şablon Gönder</option>
+                                                                <option value="WA_SEND_MESSAGE">💬 Mesaj Gönder</option>
+                                                            </optgroup>
+                                                            <optgroup label="📸 Instagram">
+                                                                <option value="IG_SEND_MESSAGE">📸 Mesaj Gönder</option>
+                                                            </optgroup>
+                                                            <optgroup label="📞 Arama">
+                                                                <option value="RETELL_CALL">📞 AI Arama Yap</option>
+                                                            </optgroup>
+                                                            <optgroup label="📧 E-posta">
+                                                                <option value="SEND_EMAIL">📧 E-posta Gönder</option>
+                                                            </optgroup>
+                                                            <optgroup label="🔄 Otomatik">
+                                                                <option value="AUTO_CHANNEL_MESSAGE">🔄 Yazıştığı Kanaldan Gönder</option>
+                                                            </optgroup>
+                                                        </select>
+                                                        <button className="btn-icon" onClick={() => {
+                                                            const newActions = actions.filter((_, idx) => idx !== i);
                                                             setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
-                                                        }}
-                                                    >
-                                                        <option value="CREATE_TASK">📋 Hatırlatma Görevi</option>
-                                                        <option value="NOTIFY_TEAM">🔔 Takıma Bildir</option>
-                                                        <option value="MOVE_STAGE">↗️ Aşama Değiştir</option>
-                                                    </select>
-                                                    <input
-                                                        placeholder="Başlık / İçerik"
-                                                        value={a.title || ''}
-                                                        onChange={e => {
-                                                            const newActions = [...actions];
-                                                            newActions[i] = { ...a, title: e.target.value };
-                                                            setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
-                                                        }}
-                                                    />
-                                                    <button className="btn-icon" onClick={() => {
-                                                        const newActions = actions.filter((_, idx) => idx !== i);
-                                                        setStagePanel(p => ({ ...p, timedActions: JSON.stringify({ actions: newActions }) }));
-                                                    }}><X size={12} /></button>
+                                                        }}><X size={12} /></button>
+                                                    </div>
+                                                    {/* Dynamic inputs based on type */}
+                                                    {a.type === 'WA_SEND_TEMPLATE' && (
+                                                        <select className="action-param" value={a.templateId || ''} onChange={e => updateTimedAction(i, { templateId: e.target.value })}>
+                                                            <option value="">Şablon Seç...</option>
+                                                            {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {a.type === 'RETELL_CALL' && (
+                                                        <select className="action-param" value={a.botId || ''} onChange={e => updateTimedAction(i, { botId: e.target.value })}>
+                                                            <option value="">Asistan Seç...</option>
+                                                            {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {a.type === 'SEND_EMAIL' && (
+                                                        <>
+                                                            <input className="action-param" placeholder="E-posta konusu" value={a.subject || ''} onChange={e => updateTimedAction(i, { subject: e.target.value })} />
+                                                            <textarea className="action-param" placeholder="E-posta içeriği" rows={2} value={a.content || ''} onChange={e => updateTimedAction(i, { content: e.target.value })} />
+                                                        </>
+                                                    )}
+                                                    {['WA_SEND_MESSAGE', 'IG_SEND_MESSAGE', 'AUTO_CHANNEL_MESSAGE'].includes(a.type) && (
+                                                        <textarea className="action-param" placeholder="Mesaj içeriği" rows={2} value={a.message || ''} onChange={e => updateTimedAction(i, { message: e.target.value })} />
+                                                    )}
+                                                    {['CREATE_TASK', 'NOTIFY_TEAM'].includes(a.type) && (
+                                                        <input className="action-param" placeholder={a.type === 'CREATE_TASK' ? 'Görev başlığı' : 'Bildirim içeriği'} value={a.title || ''} onChange={e => updateTimedAction(i, { title: e.target.value })} />
+                                                    )}
                                                 </div>
                                             ))}
                                             <button className="btn-add-sm" onClick={() => {

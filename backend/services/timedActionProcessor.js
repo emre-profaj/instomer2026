@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { executeSingleAction } from './stageAutomation.service.js';
 
 /**
  * Timed Action Processor
@@ -117,6 +118,19 @@ export async function processTimedActions() {
                         break;
                     }
                     
+                    case 'WA_SEND_TEMPLATE':
+                    case 'WA_SEND_MESSAGE':
+                    case 'IG_SEND_MESSAGE':
+                    case 'RETELL_CALL':
+                    case 'SEND_EMAIL':
+                    case 'AUTO_CHANNEL_MESSAGE': {
+                        // Delegate channel-based actions to stageAutomation
+                        const actionConfig = config.actionConfig || {};
+                        actionConfig.type = config.actionType || config.actionConfig?.type;
+                        await executeSingleAction(actionConfig, contactId, workspaceId);
+                        break;
+                    }
+
                     default:
                         console.log(`[TimedActionProcessor] Unknown action type: ${config.actionType}`);
                 }

@@ -768,6 +768,63 @@
     gap: 8px;
 }
 
+/* Channel action layout */
+.automation-item.channel-action {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.action-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.action-row select {
+    flex: 1;
+}
+
+.action-param {
+    width: 100%;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    font-size: 12px;
+    background: white;
+    font-family: inherit;
+    transition: border-color 0.15s;
+}
+
+.action-param:focus {
+    border-color: #3b82f6;
+    outline: none;
+}
+
+textarea.action-param {
+    resize: vertical;
+    min-height: 40px;
+}
+
+select.action-param {
+    appearance: auto;
+}
+
+/* Optgroup styling */
+.automation-item select optgroup {
+    font-weight: 600;
+    font-size: 11px;
+    color: #64748b;
+    padding-top: 4px;
+}
+
+.automation-item select option {
+    font-weight: 400;
+    font-size: 12px;
+    color: #1e293b;
+    padding: 4px 8px;
+}
+
 .timed-row {
     display: flex;
     align-items: center;

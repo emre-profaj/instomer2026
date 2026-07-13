@@ -18,6 +18,12 @@ export const ACTION_TYPES = {
     ADD_TAG: 'ADD_TAG',                     // Add tag to contact
     ASSIGN_TEAM: 'ASSIGN_TEAM',             // Assign to team
     ASSIGN_USER: 'ASSIGN_USER',             // Assign to user
+    WA_SEND_TEMPLATE: 'WA_SEND_TEMPLATE',   // Send WhatsApp template message
+    WA_SEND_MESSAGE: 'WA_SEND_MESSAGE',     // Send WhatsApp free-form message
+    IG_SEND_MESSAGE: 'IG_SEND_MESSAGE',     // Send Instagram DM
+    RETELL_CALL: 'RETELL_CALL',             // Trigger Retell AI call
+    SEND_EMAIL: 'SEND_EMAIL',               // Send email
+    AUTO_CHANNEL_MESSAGE: 'AUTO_CHANNEL_MESSAGE', // Send message via last conversation channel
 };
 
 // Required field modes
@@ -189,7 +195,7 @@ async function cancelTimedActions(stageId, contactId, workspaceId) {
 /**
  * Execute a single action
  */
-async function executeSingleAction(action, contactId, workspaceId) {
+export async function executeSingleAction(action, contactId, workspaceId) {
     switch (action.type) {
         case ACTION_TYPES.CREATE_TASK: {
             await prisma.contactActivity.create({
@@ -262,6 +268,142 @@ async function executeSingleAction(action, contactId, workspaceId) {
                     status: 'PENDING'
                 }
             });
+            break;
+        }
+
+        case 'WA_SEND_TEMPLATE': {
+            // Import sendTemplateToContact pattern from automation.controller.js
+            // That function is NOT exported, so replicate the logic:
+            const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+            if (contact?.phone && action.templateId) {
+                const template = await prisma.messageTemplate.findUnique({ where: { id: action.templateId } });
+                if (template) {
+                    // Get workspace WhatsApp config
+                    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { whatsappPhoneId: true, whatsappToken: true } });
+                    if (workspace?.whatsappPhoneId && workspace?.whatsappToken) {
+                        const axios = (await import('axios')).default;
+                        const payload = {
+                            messaging_product: 'whatsapp',
+                            to: contact.phone.replace(/\D/g, ''),
+                            type: 'template',
+                            template: {
+                                name: template.name,
+                                language: { code: template.language || 'tr' }
+                            }
+                        };
+                        await axios.post(
+                            `https://graph.facebook.com/v21.0/${workspace.whatsappPhoneId}/messages`,
+                            payload,
+                            { headers: { Authorization: `Bearer ${workspace.whatsappToken}` } }
+                        );
+                        console.log(`[StageAutomation] WA template '${template.name}' sent to ${contact.phone}`);
+                    }
+                }
+            }
+            break;
+        }
+
+        case 'WA_SEND_MESSAGE': {
+            const contactWa = await prisma.contact.findUnique({ where: { id: contactId } });
+            if (contactWa?.phone && action.message) {
+                const workspaceWa = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { whatsappPhoneId: true, whatsappToken: true } });
+                if (workspaceWa?.whatsappPhoneId && workspaceWa?.whatsappToken) {
+                    const axios = (await import('axios')).default;
+                    await axios.post(
+                        `https://graph.facebook.com/v21.0/${workspaceWa.whatsappPhoneId}/messages`,
+                        {
+                            messaging_product: 'whatsapp',
+                            to: contactWa.phone.replace(/\D/g, ''),
+                            type: 'text',
+                            text: { body: action.message }
+                        },
+                        { headers: { Authorization: `Bearer ${workspaceWa.whatsappToken}` } }
+                    );
+                    console.log(`[StageAutomation] WA message sent to ${contactWa.phone}`);
+                }
+            }
+            break;
+        }
+
+        case 'IG_SEND_MESSAGE': {
+            const contactIg = await prisma.contact.findUnique({ where: { id: contactId } });
+            if (contactIg?.instagramId && action.message) {
+                const page = await prisma.facebookPage.findFirst({
+                    where: { workspaceId, instagramBusinessId: { not: null } }
+                });
+                if (page) {
+                    const axios = (await import('axios')).default;
+                    await axios.post(
+                        `https://graph.facebook.com/v21.0/${page.pageId}/messages`,
+                        {
+                            recipient: { id: contactIg.instagramId },
+                            message: { text: action.message }
+                        },
+                        { headers: { Authorization: `Bearer ${page.pageAccessToken}` } }
+                    );
+                    console.log(`[StageAutomation] IG message sent to ${contactIg.instagramId}`);
+                }
+            }
+            break;
+        }
+
+        case 'RETELL_CALL': {
+            const contactRetell = await prisma.contact.findUnique({ where: { id: contactId } });
+            if (contactRetell?.phone) {
+                try {
+                    const { triggerAutoCall } = await import('../controllers/retell.controller.js');
+                    await triggerAutoCall(workspaceId, contactRetell.phone, contactId, contactRetell.firstName || contactRetell.name || 'Müşteri', 'STAGE_AUTOMATION');
+                    console.log(`[StageAutomation] Retell call triggered for ${contactRetell.phone}`);
+                } catch (err) {
+                    console.error('[StageAutomation] Retell call failed:', err.message);
+                }
+            }
+            break;
+        }
+
+        case 'SEND_EMAIL': {
+            const contactEmail = await prisma.contact.findUnique({ where: { id: contactId } });
+            if (contactEmail?.email && action.subject) {
+                try {
+                    const { sendEmail } = await import('./emailSender.service.js');
+                    await sendEmail({ to: contactEmail.email, subject: action.subject, html: action.content || '' });
+                    console.log(`[StageAutomation] Email sent to ${contactEmail.email}`);
+                } catch (err) {
+                    console.error('[StageAutomation] Email send failed:', err.message);
+                }
+            }
+            break;
+        }
+
+        case 'AUTO_CHANNEL_MESSAGE': {
+            if (!action.message) break;
+            const conv = await prisma.conversation.findFirst({
+                where: { contactId, workspaceId },
+                orderBy: { lastMessageAt: 'desc' },
+                include: { contact: true }
+            });
+            if (!conv) break;
+
+            try {
+                if (conv.channel === 'WHATSAPP' && conv.contact?.phone) {
+                    const workspaceAuto = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { whatsappPhoneId: true, whatsappToken: true } });
+                    if (workspaceAuto?.whatsappPhoneId) {
+                        const axios = (await import('axios')).default;
+                        await axios.post(`https://graph.facebook.com/v21.0/${workspaceAuto.whatsappPhoneId}/messages`, {
+                            messaging_product: 'whatsapp', to: conv.contact.phone.replace(/\D/g, ''), type: 'text', text: { body: action.message }
+                        }, { headers: { Authorization: `Bearer ${workspaceAuto.whatsappToken}` } });
+                    }
+                } else if (conv.channel === 'INSTAGRAM') {
+                    const { sendInstagramMessage } = await import('../controllers/facebook.controller.js');
+                    await sendInstagramMessage(conv.id, action.message);
+                } else if (conv.channel === 'FACEBOOK') {
+                    const { sendFacebookMessage } = await import('../controllers/facebook.controller.js');
+                    await sendFacebookMessage(conv.id, action.message);
+                }
+                console.log(`[StageAutomation] AUTO_CHANNEL message sent via ${conv.channel}`);
+            } catch (err) {
+                console.error(`[StageAutomation] AUTO_CHANNEL failed:`, err.message);
+            }
             break;
         }
 
