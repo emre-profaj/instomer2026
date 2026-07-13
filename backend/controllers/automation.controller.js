@@ -7,7 +7,7 @@ import multer from 'multer';
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = './public/uploads/templates';
+        const uploadDir = './uploads/templates';
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
