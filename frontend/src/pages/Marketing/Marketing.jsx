@@ -543,9 +543,12 @@ function AnalyticsTab({ wsId }) {
     const [inputSearch, setInputSearch] = useState('');
     const [sortCol, setSortCol] = useState('sentAt');
     const [sortDir, setSortDir] = useState('desc');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo]     = useState('');
 
     const commitSearch = () => setSearch(inputSearch);
     const clearSearch  = () => { setInputSearch(''); setSearch(''); };
+    const clearDateFilter = () => { setDateFrom(''); setDateTo(''); };
 
     const fetchAnalytics = useCallback(async () => {
         if (!wsId) return;
@@ -594,6 +597,18 @@ function AnalyticsTab({ wsId }) {
     const filteredRecipients = (sel?.recipients || [])
         .filter(r => {
             if (statusFilter && r.status !== statusFilter) return false;
+            if (dateFrom) {
+                const sent = new Date(r.sentAt);
+                const from = new Date(dateFrom);
+                from.setHours(0, 0, 0, 0);
+                if (sent < from) return false;
+            }
+            if (dateTo) {
+                const sent = new Date(r.sentAt);
+                const to = new Date(dateTo);
+                to.setHours(23, 59, 59, 999);
+                if (sent > to) return false;
+            }
             if (search) {
                 const q = search.toLowerCase();
                 return (r.name?.toLowerCase().includes(q) || r.phone?.includes(q) || r.email?.toLowerCase().includes(q));
@@ -721,6 +736,26 @@ function AnalyticsTab({ wsId }) {
                                         )}
                                         <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
                                     </div>
+                                    {/* Date range filter */}
+                                    <div className="mkt-date-range">
+                                        <label className="mkt-date-label">📅 Başlangıç</label>
+                                        <input
+                                            type="date"
+                                            className="mkt-date-input"
+                                            value={dateFrom}
+                                            onChange={e => setDateFrom(e.target.value)}
+                                        />
+                                        <label className="mkt-date-label">—</label>
+                                        <input
+                                            type="date"
+                                            className="mkt-date-input"
+                                            value={dateTo}
+                                            onChange={e => setDateTo(e.target.value)}
+                                        />
+                                        {(dateFrom || dateTo) && (
+                                            <button className="mkt-search-clear" onClick={clearDateFilter} title="Tarihi temizle">×</button>
+                                        )}
+                                    </div>
                                     <div className="mkt-filter-tabs">
                                         {STATUS_FILTER_OPTS.map(opt => (
                                             <button key={opt.value} className={`mkt-filter-tab ${statusFilter === opt.value ? 'active' : ''}`} onClick={() => setStatusFilter(opt.value)}>
@@ -732,13 +767,18 @@ function AnalyticsTab({ wsId }) {
                                 </div>
 
                                 <div className="mkt-table-wrap">
-                                    {/* Search result header when filtering */}
-                                    {(search || statusFilter) && (
+                                    {/* Search/filter result header */}
+                                    {(search || statusFilter || dateFrom || dateTo) && (
                                         <div className="mkt-search-result-header">
                                             {search && <span>🔍 <strong>{search}</strong> için arama sonucu</span>}
                                             {statusFilter && <span className="mkt-search-result-badge">{STATUS_META[statusFilter]?.icon} {STATUS_META[statusFilter]?.label}</span>}
+                                            {(dateFrom || dateTo) && (
+                                                <span className="mkt-search-result-badge" style={{ background: '#eff6ff', color: '#2563eb' }}>
+                                                    📅 {dateFrom || '...'} — {dateTo || '...'}
+                                                </span>
+                                            )}
                                             <span className="mkt-search-result-count">{filteredRecipients.length} sonuç</span>
-                                            <button className="mkt-search-result-clear" onClick={() => { clearSearch(); setStatusFilter(''); }}>× Filtreyi kaldır</button>
+                                            <button className="mkt-search-result-clear" onClick={() => { clearSearch(); setStatusFilter(''); clearDateFilter(); }}>× Filtreyi kaldır</button>
                                         </div>
                                     )}
                                     <table className="mkt-table">
