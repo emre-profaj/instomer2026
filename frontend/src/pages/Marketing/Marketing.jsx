@@ -180,45 +180,45 @@ function BulkSendTab({ wsId }) {
         <div className="mkt-bulk-wrap">
             {/* Toolbar */}
             <div className="mkt-bulk-toolbar">
-                <div className="mkt-bulk-filters">
-                    <div className="mkt-search-group">
-                        <input
-                            className="mkt-search-input"
-                            type="text"
-                            placeholder="🔍 İsim, telefon veya e-posta..."
-                            value={inputSearch}
-                            onChange={e => handleSearchChange(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && commitSearch()}
-                        />
-                        {inputSearch && (
-                            <button className="mkt-search-clear" onClick={clearSearch} title="Temizle">×</button>
-                        )}
-                        <button className="mkt-search-btn" onClick={commitSearch}>
-                            🔍 Ara
-                        </button>
+                <div className="mkt-bulk-toolbar-row">
+                    <div className="mkt-bulk-filters">
+                        <div className="mkt-search-group">
+                            <input
+                                className="mkt-search-input"
+                                type="text"
+                                placeholder="🔍 İsim, telefon veya e-posta..."
+                                value={inputSearch}
+                                onChange={e => handleSearchChange(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && commitSearch()}
+                            />
+                            {inputSearch && (
+                                <button className="mkt-search-clear" onClick={clearSearch} title="Temizle">×</button>
+                            )}
+                            <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
+                        </div>
+                        <select className="mkt-filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setSelectAllPages(false); }}>
+                            <option value="">Tüm Durumlar</option>
+                            {filterStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
+                        </select>
+                        <select className="mkt-filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); setSelectAllPages(false); }}>
+                            <option value="">Tüm Kaynaklar</option>
+                            {filterSources.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <span className="mkt-total-badge">
+                            {search || statusFilter || sourceFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
+                        </span>
                     </div>
-                    <select className="mkt-filter-select" value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setSelectAllPages(false); }}>
-                        <option value="">Tüm Durumlar</option>
-                        {filterStatuses.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
-                    </select>
-                    <select className="mkt-filter-select" value={sourceFilter} onChange={e => { setSourceFilter(e.target.value); setSelectAllPages(false); }}>
-                        <option value="">Tüm Kaynaklar</option>
-                        {filterSources.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <span className="mkt-total-badge">
-                        {search || statusFilter || sourceFilter ? `${total.toLocaleString('tr-TR')} sonuç` : `${total.toLocaleString('tr-TR')} kişi`}
-                    </span>
-                </div>
 
-                <div className="mkt-bulk-actions">
-                    {selectedCount > 0 && (
-                        <button className="mkt-btn-send-bulk" onClick={openModal}>
-                            📤 {selectedCount.toLocaleString('tr-TR')} Kişiye Şablon Gönder
-                        </button>
-                    )}
-                    {selectedCount === 0 && (
-                        <span className="mkt-hint">Kişi seçmek için checkbox'a tıklayın</span>
-                    )}
+                    <div className="mkt-bulk-actions">
+                        {selectedCount > 0 && (
+                            <button className="mkt-btn-send-bulk" onClick={openModal}>
+                                📤 {selectedCount.toLocaleString('tr-TR')} Kişiye Şablon Gönder
+                            </button>
+                        )}
+                        {selectedCount === 0 && (
+                            <span className="mkt-hint">Kişi seçmek için checkbox'a tıklayın</span>
+                        )}
+                    </div>
                 </div>
             </div>
 
