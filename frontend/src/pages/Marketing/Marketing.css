@@ -141,6 +141,23 @@
 }
 .mkt-btn-send-bulk:hover { background: #dc2626; }
 
+.mkt-btn-call-bulk {
+    background: #059669; color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .15s; font-family: inherit;
+    white-space: nowrap;
+}
+.mkt-btn-call-bulk:hover { background: #047857; }
+
+.mkt-btn-call {
+    background: #059669; color: #fff; border: none; border-radius: 8px;
+    padding: 9px 18px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all .15s; font-family: inherit;
+}
+.mkt-btn-call:hover:not(:disabled) { background: #047857; }
+.mkt-btn-call:disabled { opacity: .5; cursor: not-allowed; }
+
+
 .mkt-hint { font-size: 12px; color: #9ca3af; }
 
 /* Select-all-pages banner */

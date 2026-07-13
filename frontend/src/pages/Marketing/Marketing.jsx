@@ -72,9 +72,12 @@ function BulkSendTab({ wsId }) {
     const [sourceFilter, setSourceFilter] = useState('');
 
     const [selected, setSelected] = useState(new Set());
-    const [selectAllPages, setSelectAllPages] = useState(false); // true = ALL contacts in filter
+    const [selectAllPages, setSelectAllPages] = useState(false);
     const [templates, setTemplates] = useState([]);
     const [showModal, setShowModal] = useState(false);
+    const [showCallModal, setShowCallModal] = useState(false);
+    const [calling, setCalling] = useState(false);
+    const [callResult, setCallResult] = useState(null);
     const [sending, setSending] = useState(false);
     const [sentMsg, setSentMsg] = useState('');
 
@@ -172,6 +175,42 @@ function BulkSendTab({ wsId }) {
         setSending(false);
     };
 
+    const handleBulkCall = async (agentId) => {
+        if (!agentId) return alert('Lütfen bir agent seçin');
+        const contactList = selectAllPages
+            ? null  // will be fetched by confirming first
+            : contacts.filter(c => selected.has(c.id));
+
+        if (!selectAllPages && !contactList?.length) return alert('Kişi seçilmedi');
+
+        setCalling(true);
+        setCallResult(null);
+        let sent = 0, failed = 0;
+
+        const callContacts = contactList || contacts; // selectAll = current page at least
+        for (const c of callContacts) {
+            try {
+                await api.post(`/retell/${wsId}/call`, {
+                    toNumber: c.phone,
+                    contactId: c.id,
+                    contactName: c.name,
+                    agentId
+                });
+                sent++;
+            } catch (e) {
+                failed++;
+                console.error('Call failed for', c.phone, e.response?.data?.error);
+            }
+            // Small delay between calls
+            await new Promise(r => setTimeout(r, 800));
+        }
+
+        setCallResult({ sent, failed, total: callContacts.length });
+        setCalling(false);
+        setSelected(new Set());
+        setSelectAllPages(false);
+    };
+
     const allSelected   = contacts.length > 0 && selected.size === contacts.length;
     const someSelected  = selected.size > 0 && selected.size < contacts.length;
     const selectedCount = selectAllPages ? total : selected.size;
@@ -211,9 +250,14 @@ function BulkSendTab({ wsId }) {
 
                     <div className="mkt-bulk-actions">
                         {selectedCount > 0 && (
-                            <button className="mkt-btn-send-bulk" onClick={openModal}>
-                                📤 {selectedCount.toLocaleString('tr-TR')} Kişiye Şablon Gönder
-                            </button>
+                            <>
+                                <button className="mkt-btn-call-bulk" onClick={() => { setShowCallModal(true); setCallResult(null); }}>
+                                    📞 {selectedCount.toLocaleString('tr-TR')} Kişiyi Ara
+                                </button>
+                                <button className="mkt-btn-send-bulk" onClick={openModal}>
+                                    📤 {selectedCount.toLocaleString('tr-TR')} Kişiye Şablon Gönder
+                                </button>
+                            </>
                         )}
                         {selectedCount === 0 && (
                             <span className="mkt-hint">Kişi seçmek için checkbox'a tıklayın</span>
@@ -338,6 +382,106 @@ function BulkSendTab({ wsId }) {
                     onClose={() => setShowModal(false)}
                 />
             )}
+
+            {/* Bulk Call Modal */}
+            {showCallModal && (
+                <BulkCallModal
+                    count={selectedCount}
+                    wsId={wsId}
+                    calling={calling}
+                    callResult={callResult}
+                    onCall={handleBulkCall}
+                    onClose={() => { setShowCallModal(false); setCallResult(null); }}
+                />
+            )}
+        </div>
+    );
+}
+
+function BulkCallModal({ count, wsId, calling, callResult, onCall, onClose }) {
+    const [agents, setAgents] = useState([]);
+    const [agentId, setAgentId] = useState('');
+    const [loadingAgents, setLoadingAgents] = useState(true);
+
+    useEffect(() => {
+        api.get(`/retell/${wsId}/agents`).then(res => {
+            const list = res.data?.agents || res.data || [];
+            setAgents(Array.isArray(list) ? list : []);
+            if (list.length === 1) setAgentId(list[0].agent_id || list[0].id);
+        }).catch(() => setAgents([])).finally(() => setLoadingAgents(false));
+    }, [wsId]);
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div className="mkt-modal" onClick={e => e.stopPropagation()}>
+                <div className="mkt-modal-header">
+                    <div className="mkt-modal-title">📞 Toplu Retell Araması</div>
+                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                </div>
+
+                {callResult ? (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-success-box">
+                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>
+                                {callResult.failed === 0 ? '✅' : '⚠️'}
+                            </div>
+                            <div style={{ fontWeight: 600, color: '#1f2937', marginBottom: 8 }}>
+                                Arama tamamlandı
+                            </div>
+                            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: 14 }}>
+                                <span style={{ color: '#16a34a' }}>✅ Başarılı: <strong>{callResult.sent}</strong></span>
+                                {callResult.failed > 0 && <span style={{ color: '#dc2626' }}>❌ Başarısız: <strong>{callResult.failed}</strong></span>}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                                Aramalar Retell AI tarafından yönetilecek.
+                            </div>
+                        </div>
+                        <button className="mkt-btn-primary" onClick={onClose} style={{ marginTop: 16, width: '100%' }}>Tamam</button>
+                    </div>
+                ) : (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-modal-info">
+                            <span>📋 Aranacak kişi:</span>
+                            <strong>{count} kişi</strong>
+                        </div>
+
+                        <div className="mkt-form-group">
+                            <label>Retell Agent</label>
+                            {loadingAgents ? (
+                                <div style={{ fontSize: 13, color: '#9ca3af' }}>Agentlar yükleniyor...</div>
+                            ) : agents.length === 0 ? (
+                                <div style={{ fontSize: 13, color: '#dc2626' }}>
+                                    ⚠️ Agent bulunamadı. Ayarlar &gt; AI Arama bölümünden agent ekleyin.
+                                </div>
+                            ) : (
+                                <select className="mkt-form-select" value={agentId} onChange={e => setAgentId(e.target.value)}>
+                                    <option value="">— Agent seçin —</option>
+                                    {agents.map(a => (
+                                        <option key={a.agent_id || a.id} value={a.agent_id || a.id}>
+                                            {a.agent_name || a.name || a.agent_id || a.id}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
+                        <div className="mkt-modal-warning">
+                            ⚠️ Aramalar sırayla başlatılır, aralarına 0.8 sn gecikme eklenir. {count} kişi için tahmini süre: ~{Math.ceil(count * 0.8 / 60)} dakika.
+                        </div>
+
+                        <div className="mkt-modal-actions">
+                            <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
+                            <button
+                                className="mkt-btn-call"
+                                onClick={() => onCall(agentId)}
+                                disabled={!agentId || calling || agents.length === 0}
+                            >
+                                {calling ? `⏳ Aranıyor... ` : `📞 ${count} Kişiyi Ara`}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
