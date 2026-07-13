@@ -320,7 +320,8 @@ const Funnels = () => {
 
     // ── Helpers ──
     const getParentOptions = () => {
-        return funnels.filter(f => f.funnelType !== 'MAIN' && !f.parentId);
+        const editingId = funnelPanel?.id;
+        return funnels.filter(f => f.id !== editingId);
     };
 
     const getEntryRulesCount = (stage) => {

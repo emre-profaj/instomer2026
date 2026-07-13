@@ -56,20 +56,25 @@ const FunnelPipeline = ({
                 className={`funnel-card${funnel.funnelType === 'MAIN' ? ' main-funnel' : ''}${depth > 0 ? ' sub-funnel' : ''}${dropHighlight ? ' drop-highlight' : ''}`}
                 style={{ marginLeft: depth * INDENT }}
                 onDragOver={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const dragType = e.dataTransfer.types.includes('funnelid');
-                    if (dragType) setDropHighlight(true);
+                    // Only highlight if it's a FUNNEL drag (not a stage drag)
+                    if (e.dataTransfer.types.includes('application/x-funnel-drag')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDropHighlight(true);
+                    }
                 }}
                 onDragLeave={e => { e.stopPropagation(); setDropHighlight(false); }}
                 onDrop={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDropHighlight(false);
-                    const draggedFunnelId = e.dataTransfer.getData('funnelId');
+                    // Only handle FUNNEL drops here
+                    const draggedFunnelId = e.dataTransfer.getData('application/x-funnel-drag');
                     if (draggedFunnelId && draggedFunnelId !== funnel.id) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDropHighlight(false);
                         onFunnelDrop?.(draggedFunnelId, funnel.id);
+                        return;
                     }
+                    setDropHighlight(false);
                 }}
             >
                 <div
@@ -77,7 +82,8 @@ const FunnelPipeline = ({
                     draggable={funnel.funnelType !== 'MAIN'}
                     onDragStart={e => {
                         if (funnel.funnelType === 'MAIN') { e.preventDefault(); return; }
-                        e.dataTransfer.setData('funnelId', funnel.id);
+                        // Use a custom MIME type to distinguish funnel drags from stage drags
+                        e.dataTransfer.setData('application/x-funnel-drag', funnel.id);
                         e.dataTransfer.effectAllowed = 'move';
                         e.currentTarget.closest('.funnel-card').classList.add('dragging-funnel');
                     }}
@@ -121,25 +127,28 @@ const FunnelPipeline = ({
                                         draggable
                                         onDragStart={e => {
                                             e.stopPropagation();
-                                            e.dataTransfer.setData('stageId', stage.id);
-                                            e.dataTransfer.setData('stageFunnelId', funnel.id);
+                                            // Use custom MIME type for stage drags
+                                            e.dataTransfer.setData('application/x-stage-drag', stage.id);
+                                            e.dataTransfer.setData('text/x-stage-funnel', funnel.id);
                                             e.dataTransfer.effectAllowed = 'move';
                                             e.currentTarget.classList.add('dragging');
                                         }}
                                         onDragEnd={e => e.currentTarget.classList.remove('dragging')}
                                         onDragOver={e => {
-                                            if (e.dataTransfer.types.includes('stagefunnelid')) {
+                                            if (e.dataTransfer.types.includes('application/x-stage-drag')) {
                                                 e.preventDefault();
+                                                e.stopPropagation();
                                                 e.currentTarget.classList.add('drag-over');
                                             }
                                         }}
                                         onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
                                         onDrop={e => {
+                                            const draggedStageId = e.dataTransfer.getData('application/x-stage-drag');
+                                            if (!draggedStageId) return; // Not a stage drag
                                             e.preventDefault();
                                             e.stopPropagation();
                                             e.currentTarget.classList.remove('drag-over');
-                                            const draggedStageId = e.dataTransfer.getData('stageId');
-                                            const draggedFunnelId = e.dataTransfer.getData('stageFunnelId');
+                                            const draggedFunnelId = e.dataTransfer.getData('text/x-stage-funnel');
                                             if (draggedFunnelId === funnel.id && draggedStageId !== stage.id) {
                                                 onStageReorder?.(funnel.id, draggedStageId, stage.order);
                                             }
