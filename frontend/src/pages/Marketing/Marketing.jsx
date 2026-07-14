@@ -1643,7 +1643,9 @@ function BulkSendGroupModal({ wsId, group, members, onClose }) {
     const [result, setResult]       = useState(null);
 
     useEffect(() => {
-        api.get(`/marketing/${wsId}/templates`).then(r => setTemplates(r.data.templates || [])).catch(() => {});
+        api.get(`/automations/${wsId}/templates`)
+            .then(r => setTemplates((r.data.templates || []).filter(t => t.status === 'APPROVED')))
+            .catch(() => {});
     }, [wsId]);
 
     const selectedTpl = templates.find(t => t.id === templateId);
