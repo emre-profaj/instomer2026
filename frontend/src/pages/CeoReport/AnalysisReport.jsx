@@ -26,6 +26,8 @@ const AnalysisReport = () => {
     const [contactSearch, setContactSearch] = useState('');
     const [kpiFilter, setKpiFilter] = useState(null);
     const [salesSearch, setSalesSearch] = useState('');
+    const [viewMode, setViewMode] = useState('byAgent'); // 'byAgent' | 'byTopic'
+    const [expandedTopics, setExpandedTopics] = useState(new Set()); // for drill-down
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -75,6 +77,40 @@ const AnalysisReport = () => {
         if (!agentGroups[row.agentId]) agentGroups[row.agentId] = [];
         agentGroups[row.agentId].push(row);
     }
+
+    // Group pivot data by topic (for byTopic view)
+    const topicGroups = {};
+    for (const row of pivotData) {
+        if (!topicGroups[row.topic]) topicGroups[row.topic] = { topic: row.topic, totalCount: 0, wonCount: 0, wonAmount: 0, agents: [], stages: {} };
+        const tg = topicGroups[row.topic];
+        tg.totalCount += row.count;
+        tg.wonCount += (row.wonCount || 0);
+        tg.wonAmount += (row.wonAmount || 0);
+        tg.agents.push({ agentId: row.agentId, agentName: row.agentName, count: row.count, wonCount: row.wonCount || 0, wonAmount: row.wonAmount || 0 });
+        for (const [sName, sData] of Object.entries(row.stages || {})) {
+            if (!tg.stages[sName]) tg.stages[sName] = { count: 0, color: sData.color };
+            tg.stages[sName].count += sData.count;
+        }
+    }
+    const topicSummaries = Object.values(topicGroups).sort((a, b) => b.totalCount - a.totalCount);
+
+    // Toggle topic expansion for drill-down
+    const toggleTopicExpand = (key) => {
+        setExpandedTopics(prev => {
+            const next = new Set(prev);
+            next.has(key) ? next.delete(key) : next.add(key);
+            return next;
+        });
+    };
+
+    // Get contacts for a specific agent+topic or just topic
+    const getContactsForFilter = (agentId, topic) => {
+        return contacts.filter(c => {
+            if (agentId && c.assigneeId !== agentId && !(agentId === '__unassigned' && !c.assigneeId)) return false;
+            if (topic && c.topic !== topic) return false;
+            return true;
+        });
+    };
 
     // Filter contacts by KPI + search
     const relevantStatusList = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
@@ -199,124 +235,192 @@ const AnalysisReport = () => {
                 <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #059669, #05966988)' }} /><div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}><BarChart3 size={20} /></div><div className="kpi-label">Ciro</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{(summary.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</div></div>
             </div>
 
-            {/* Agent × Topic Pivot Table */}
+            {/* Temsilci / Konu Pivot Table */}
             <div className="ceo-section" style={{ marginBottom: 20 }}>
-                <div className="ceo-section-header">
+                <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><BarChart3 size={18} /></div>
-                        <h2>Temsilci × Konu Dağılımı</h2>
+                        <h2>{viewMode === 'byAgent' ? 'Temsilciye Göre' : 'Konuya Göre'}</h2>
                         <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: 10 }}>
-                            {agentSummaries.length} temsilci · {new Set(pivotData.map(p => p.topic)).size} konu
+                            {viewMode === 'byAgent' ? `${agentSummaries.length} temsilci` : `${topicSummaries.length} konu`}
                         </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 8, padding: 2 }}>
+                        <button onClick={() => { setViewMode('byAgent'); setExpandedAgents(new Set()); setExpandedTopics(new Set()); }}
+                            style={{ border: 'none', padding: '6px 14px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                background: viewMode === 'byAgent' ? '#fff' : 'transparent', color: viewMode === 'byAgent' ? '#6366f1' : '#64748b',
+                                boxShadow: viewMode === 'byAgent' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+                            Temsilciye Göre
+                        </button>
+                        <button onClick={() => { setViewMode('byTopic'); setExpandedAgents(new Set()); setExpandedTopics(new Set()); }}
+                            style={{ border: 'none', padding: '6px 14px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+                                background: viewMode === 'byTopic' ? '#fff' : 'transparent', color: viewMode === 'byTopic' ? '#8b5cf6' : '#64748b',
+                                boxShadow: viewMode === 'byTopic' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+                            Konuya Göre
+                        </button>
                     </div>
                 </div>
                 <div className="ceo-section-body" style={{ padding: 0 }}>
-                    {agentSummaries.length === 0 ? (
-                        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-                            <BarChart3 size={28} style={{ marginBottom: 8 }} />
-                            <p>Seçilen filtrelere uygun veri bulunamadı</p>
-                        </div>
-                    ) : (
-                        <div>
-                            {agentSummaries.map((agent) => {
-                                const isExpanded = expandedAgents.has(agent.agentId);
-                                const agentTopics = agentGroups[agent.agentId] || [];
-                                const stageEntries = Object.entries(agent.stages || {}).sort((a, b) => b[1].count - a[1].count);
-                                return (
-                                    <div key={agent.agentId} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                        {/* Agent Header Row */}
-                                        <div
-                                            onClick={() => toggleAgent(agent.agentId)}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px',
-                                                cursor: 'pointer', background: isExpanded ? '#f8fafc' : '#fff',
-                                                transition: 'background 0.15s'
-                                            }}
-                                        >
-                                            <ChevronRight size={16} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
-                                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.8rem', color: '#6366f1', flexShrink: 0 }}>
-                                                {agent.agentName?.charAt(0) || '?'}
-                                            </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{agent.agentName}</div>
-                                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>{agent.topicCount} konu</div>
-                                            </div>
-                                            <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#6366f1', minWidth: 50, textAlign: 'right' }}>
-                                                {agent.totalCount}
-                                            </div>
-                                            {(agent.wonCount > 0 || agent.wonAmount > 0) && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 80 }}>
-                                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981' }}>{agent.wonCount || 0} satış</span>
-                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669' }}>{(agent.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span>
+                    {/* ═══ BY AGENT VIEW ═══ */}
+                    {viewMode === 'byAgent' && (
+                        agentSummaries.length === 0 ? (
+                            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}><BarChart3 size={28} style={{ marginBottom: 8 }} /><p>Veri bulunamadı</p></div>
+                        ) : (
+                            <div>
+                                {agentSummaries.map((agent) => {
+                                    const isExpanded = expandedAgents.has(agent.agentId);
+                                    const agentTopics = agentGroups[agent.agentId] || [];
+                                    const agentContacts = contacts.filter(c => c.assigneeId === agent.agentId || (agent.agentId === '__unassigned' && !c.assigneeId));
+                                    const withPhone = agentContacts.filter(c => c.phone && c.phone.trim()).length;
+                                    return (
+                                        <div key={agent.agentId} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                            <div onClick={() => toggleAgent(agent.agentId)}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', cursor: 'pointer', background: isExpanded ? '#f8fafc' : '#fff', transition: 'background 0.15s' }}>
+                                                <ChevronRight size={16} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                                                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.8rem', color: '#6366f1', flexShrink: 0 }}>
+                                                    {agent.agentName?.charAt(0) || '?'}
                                                 </div>
-                                            )}
-                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 360 }}>
-                                                {stageEntries.slice(0, 5).map(([sName, sData]) => (
-                                                    <span key={sName} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8', whiteSpace: 'nowrap' }}>
-                                                        {sName}: {sData.count}
-                                                    </span>
-                                                ))}
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{agent.agentName}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>{agent.topicCount} konu · {withPhone} numaralı</div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                    <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#6366f1' }}>{agent.totalCount}</span>
+                                                    {(agent.wonCount > 0) && (
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
+                                                            {agent.wonCount} satış · {(agent.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        {/* Expanded Topics */}
-                                        {isExpanded && (
-                                            <div style={{ padding: '0 20px 16px 60px' }}>
-                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                                                    <thead>
-                                                        <tr style={{ background: '#e2e8f0' }}>
-                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
-                                                            <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Talep</th>
-                                                            <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Satış</th>
-                                                            <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>Ciro</th>
-                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama Dağılımı</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {agentTopics.map((row) => {
-                                                            const rowStages = Object.entries(row.stages || {}).sort((a, b) => b[1].count - a[1].count);
-                                                            return (
-                                                                <tr key={row.topic} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                                    <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.topic}</td>
-                                                                    <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: '#6366f1' }}>{row.count}</td>
-                                                                    <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: row.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{row.wonCount || 0}</td>
-                                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: row.wonAmount > 0 ? '#059669' : '#d1d5db' }}>{row.wonAmount ? row.wonAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }) : '—'}</td>
-                                                                    <td style={{ padding: '8px 10px' }}>
-                                                                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                                                            {rowStages.map(([sName, sData]) => (
-                                                                                <span key={sName} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8' }}>
-                                                                                    {sName}: {sData.count}
-                                                                                </span>
-                                                                            ))}
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                        {/* Agent Total */}
-                                                        <tr style={{ background: '#f1f5f9', fontWeight: 800 }}>
-                                                            <td style={{ padding: '6px 10px', color: '#475569' }}>Toplam</td>
-                                                            <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6366f1' }}>{agent.totalCount}</td>
-                                                            <td style={{ padding: '6px 10px', textAlign: 'center', color: '#10b981' }}>{agent.wonCount || 0}</td>
-                                                            <td style={{ padding: '6px 10px', textAlign: 'right', color: '#059669' }}>{(agent.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</td>
-                                                            <td style={{ padding: '6px 10px' }}>
-                                                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                                                    {stageEntries.map(([sName, sData]) => (
-                                                                        <span key={sName} style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8' }}>
+                                            {isExpanded && (
+                                                <div style={{ padding: '0 20px 16px 60px' }}>
+                                                    {agentTopics.map((row) => {
+                                                        const topicKey = `${agent.agentId}|||${row.topic}`;
+                                                        const isTopicOpen = expandedTopics.has(topicKey);
+                                                        const topicContacts = getContactsForFilter(agent.agentId, row.topic);
+                                                        const rowStages = Object.entries(row.stages || {}).sort((a, b) => b[1].count - a[1].count);
+                                                        return (
+                                                            <div key={row.topic} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                                <div onClick={() => toggleTopicExpand(topicKey)}
+                                                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', cursor: 'pointer', background: isTopicOpen ? '#faf5ff' : 'transparent', borderRadius: 6, transition: 'background 0.15s' }}>
+                                                                    <ChevronRight size={14} style={{ color: '#94a3b8', transform: isTopicOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                                                                    <span style={{ fontWeight: 700, color: '#1e293b', flex: 1, fontSize: '0.85rem' }}>{row.topic}</span>
+                                                                    <span style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.85rem' }}>{row.count}</span>
+                                                                    {row.wonCount > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '1px 6px', borderRadius: 5 }}>{row.wonCount} satış</span>}
+                                                                    {rowStages.slice(0, 3).map(([sName, sData]) => (
+                                                                        <span key={sName} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8' }}>
                                                                             {sName}: {sData.count}
                                                                         </span>
                                                                     ))}
                                                                 </div>
-                                                            </td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
+                                                                {isTopicOpen && topicContacts.length > 0 && (
+                                                                    <div style={{ padding: '4px 0 12px 28px' }}>
+                                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                                                                            <thead><tr style={{ background: '#f1f5f9' }}>
+                                                                                <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
+                                                                                <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
+                                                                                <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
+                                                                                <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
+                                                                                <th style={{ padding: '5px 8px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
+                                                                            </tr></thead>
+                                                                            <tbody>
+                                                                                {topicContacts.map((c, ci) => (
+                                                                                    <tr key={c.id || ci} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                                                        <td style={{ padding: '5px 8px', fontWeight: 600, color: '#1e293b' }}>{c.name}</td>
+                                                                                        <td style={{ padding: '5px 8px', color: '#475569' }}>{c.phone || '—'}</td>
+                                                                                        <td style={{ padding: '5px 8px' }}><span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>{statusLabels[c.status] || c.status}</span></td>
+                                                                                        <td style={{ padding: '5px 8px' }}>{c.stageName ? <span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>{c.stageName}</span> : '—'}</td>
+                                                                                        <td style={{ padding: '5px 8px' }}>{c.dealTotal > 0 ? <span style={{ fontWeight: 800, color: '#059669', fontSize: '0.72rem' }}>✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : '—'}</td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )
+                    )}
+
+                    {/* ═══ BY TOPIC VIEW ═══ */}
+                    {viewMode === 'byTopic' && (
+                        topicSummaries.length === 0 ? (
+                            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}><BarChart3 size={28} style={{ marginBottom: 8 }} /><p>Veri bulunamadı</p></div>
+                        ) : (
+                            <div>
+                                {topicSummaries.map((tg) => {
+                                    const isExpanded = expandedTopics.has(tg.topic);
+                                    const topicContacts = contacts.filter(c => c.topic === tg.topic);
+                                    const tStages = Object.entries(tg.stages || {}).sort((a, b) => b[1].count - a[1].count);
+                                    return (
+                                        <div key={tg.topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                            <div onClick={() => toggleTopicExpand(tg.topic)}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', cursor: 'pointer', background: isExpanded ? '#faf5ff' : '#fff', transition: 'background 0.15s' }}>
+                                                <ChevronRight size={16} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                                                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.7rem', color: '#8b5cf6', flexShrink: 0 }}>
+                                                    {tg.topic?.charAt(0) || '?'}
+                                                </div>
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>{tg.topic}</div>
+                                                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>{tg.agents.length} temsilci</div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                    <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#8b5cf6' }}>{tg.totalCount}</span>
+                                                    {tg.wonCount > 0 && (
+                                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
+                                                            {tg.wonCount} satış · {(tg.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                                        </span>
+                                                    )}
+                                                    {tStages.slice(0, 4).map(([sName, sData]) => (
+                                                        <span key={sName} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8', whiteSpace: 'nowrap' }}>
+                                                            {sName}: {sData.count}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                            {isExpanded && topicContacts.length > 0 && (
+                                                <div style={{ padding: '0 20px 16px 60px' }}>
+                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                                        <thead><tr style={{ background: '#f5f3ff' }}>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>#</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
+                                                        </tr></thead>
+                                                        <tbody>
+                                                            {topicContacts.map((c, ci) => (
+                                                                <tr key={c.id || ci} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                                    <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.75rem' }}>{ci + 1}</td>
+                                                                    <td style={{ padding: '5px 10px', fontWeight: 700, color: '#1e293b' }}>{c.name}</td>
+                                                                    <td style={{ padding: '5px 10px', color: '#475569' }}>{c.phone || '—'}</td>
+                                                                    <td style={{ padding: '5px 10px' }}><span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>{statusLabels[c.status] || c.status}</span></td>
+                                                                    <td style={{ padding: '5px 10px' }}>{c.stageName ? <span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>{c.stageName}</span> : '—'}</td>
+                                                                    <td style={{ padding: '5px 10px' }}>{c.dealTotal > 0 ? <span style={{ fontWeight: 800, color: '#059669', fontSize: '0.72rem' }}>✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : '—'}</td>
+                                                                    <td style={{ padding: '5px 10px', fontWeight: 600, color: c.assigneeName ? '#1e293b' : '#d1d5db', fontSize: '0.78rem' }}>{c.assigneeName || '—'}</td>
+                                                                    <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.73rem' }}>{c.conversationDate ? new Date(c.conversationDate).toLocaleDateString('tr-TR') : '—'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )
                     )}
                 </div>
             </div>
