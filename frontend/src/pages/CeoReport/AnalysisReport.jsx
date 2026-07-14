@@ -103,9 +103,9 @@ const AnalysisReport = () => {
         });
     };
 
-    // Get contacts for a specific agent+topic or just topic
+    // Get contacts for a specific agent+topic or just topic (respects KPI filter)
     const getContactsForFilter = (agentId, topic) => {
-        return contacts.filter(c => {
+        return kpiFiltered.filter(c => {
             if (agentId && c.assigneeId !== agentId && !(agentId === '__unassigned' && !c.assigneeId)) return false;
             if (topic && c.topic !== topic) return false;
             return true;
@@ -270,8 +270,11 @@ const AnalysisReport = () => {
                                 {agentSummaries.map((agent) => {
                                     const isExpanded = expandedAgents.has(agent.agentId);
                                     const agentTopics = agentGroups[agent.agentId] || [];
-                                    const agentContacts = contacts.filter(c => c.assigneeId === agent.agentId || (agent.agentId === '__unassigned' && !c.assigneeId));
+                                    const agentContacts = kpiFiltered.filter(c => c.assigneeId === agent.agentId || (agent.agentId === '__unassigned' && !c.assigneeId));
                                     const withPhone = agentContacts.filter(c => c.phone && c.phone.trim()).length;
+                                    const agentDeals = agentContacts.filter(c => c.dealTotal > 0);
+                                    const agentDealAmount = agentDeals.reduce((sum, c) => sum + (c.dealWonAmount || 0), 0);
+                                    if (kpiFilter && agentContacts.length === 0) return null;
                                     return (
                                         <div key={agent.agentId} style={{ borderBottom: '1px solid #e2e8f0' }}>
                                             <div onClick={() => toggleAgent(agent.agentId)}
@@ -285,10 +288,10 @@ const AnalysisReport = () => {
                                                     <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>{agent.topicCount} konu · {withPhone} numaralı</div>
                                                 </div>
                                                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                                    <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#6366f1' }}>{agent.totalCount}</span>
-                                                    {(agent.wonCount > 0) && (
+                                                    <span style={{ fontWeight: 800, fontSize: '1.1rem', color: '#6366f1' }}>{agentContacts.length}</span>
+                                                    {agentDeals.length > 0 && (
                                                         <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
-                                                            {agent.wonCount} satış · {(agent.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                                            {agentDeals.length} satış · {agentDealAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
                                                         </span>
                                                     )}
                                                 </div>
@@ -299,20 +302,19 @@ const AnalysisReport = () => {
                                                         const topicKey = `${agent.agentId}|||${row.topic}`;
                                                         const isTopicOpen = expandedTopics.has(topicKey);
                                                         const topicContacts = getContactsForFilter(agent.agentId, row.topic);
-                                                        const rowStages = Object.entries(row.stages || {}).sort((a, b) => b[1].count - a[1].count);
+                                                        const tcWithPhone = topicContacts.filter(c => c.phone && c.phone.trim()).length;
+                                                        const tcDeals = topicContacts.filter(c => c.dealTotal > 0);
+                                                        const tcDealAmount = tcDeals.reduce((sum, c) => sum + (c.dealWonAmount || 0), 0);
+                                                        if (kpiFilter && topicContacts.length === 0) return null;
                                                         return (
                                                             <div key={row.topic} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                                 <div onClick={() => toggleTopicExpand(topicKey)}
                                                                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', cursor: 'pointer', background: isTopicOpen ? '#faf5ff' : 'transparent', borderRadius: 6, transition: 'background 0.15s' }}>
                                                                     <ChevronRight size={14} style={{ color: '#94a3b8', transform: isTopicOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
                                                                     <span style={{ fontWeight: 700, color: '#1e293b', flex: 1, fontSize: '0.85rem' }}>{row.topic}</span>
-                                                                    <span style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.85rem' }}>{row.count}</span>
-                                                                    {row.wonCount > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '1px 6px', borderRadius: 5 }}>{row.wonCount} satış</span>}
-                                                                    {rowStages.slice(0, 3).map(([sName, sData]) => (
-                                                                        <span key={sName} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 5, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8' }}>
-                                                                            {sName}: {sData.count}
-                                                                        </span>
-                                                                    ))}
+                                                                    <span style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.85rem' }}>{topicContacts.length}</span>
+                                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '1px 6px', borderRadius: 5 }}>{tcWithPhone} tel</span>
+                                                                    {tcDeals.length > 0 && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981', background: '#ecfdf5', padding: '1px 6px', borderRadius: 5 }}>{tcDeals.length} satış · {tcDealAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span>}
                                                                 </div>
                                                                 {isTopicOpen && topicContacts.length > 0 && (
                                                                     <div style={{ padding: '4px 0 12px 28px' }}>
@@ -358,7 +360,7 @@ const AnalysisReport = () => {
                             <div>
                                 {topicSummaries.map((tg) => {
                                     const isExpanded = expandedTopics.has(tg.topic);
-                                    const topicContacts = contacts.filter(c => c.topic === tg.topic);
+                                    const topicContacts = kpiFiltered.filter(c => c.topic === tg.topic);
                                     const tStages = Object.entries(tg.stages || {}).sort((a, b) => b[1].count - a[1].count);
                                     return (
                                         <div key={tg.topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
