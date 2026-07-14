@@ -1091,79 +1091,74 @@ const GROUP_COLORS = [
     '#2563eb','#16a34a','#dc2626','#ca8a04','#7c3aed',
     '#0891b2','#db2777','#ea580c','#65a30d','#475569'
 ];
-const GROUP_ICONS  = ['👥','💪','⭐','🎯','🔥','🏋️','🎁','💼','🏆','📋','🌟','💡','🚀','❤️','🌿'];
 
 function GroupFormModal({ initial, onSave, onClose }) {
-    const [name, setName]        = useState(initial?.name || '');
-    const [desc, setDesc]        = useState(initial?.description || '');
-    const [icon, setIcon]        = useState(initial?.icon || '👥');
-    const [color, setColor]      = useState(initial?.color || '#2563eb');
-    const [saving, setSaving]    = useState(false);
+    const [name, setName]     = useState(initial?.name || '');
+    const [desc, setDesc]     = useState(initial?.description || '');
+    const [color, setColor]   = useState(initial?.color || '#2563eb');
+    const [saving, setSaving] = useState(false);
 
     const handleSave = async () => {
         if (!name.trim()) return alert('Grup adı zorunlu');
         setSaving(true);
-        await onSave({ name: name.trim(), description: desc.trim(), icon, color });
+        await onSave({ name: name.trim(), description: desc.trim(), icon: '👥', color });
         setSaving(false);
     };
 
     return (
         <div className="mkt-modal-overlay" onClick={onClose}>
-            <div className="mkt-modal grp-form-modal" onClick={e => e.stopPropagation()}>
-                <div className="mkt-modal-header">
-                    <div className="mkt-modal-title">{initial ? '✏️ Grubu Düzenle' : '➕ Yeni Grup'}</div>
-                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+            <div className="grp-form-modal" onClick={e => e.stopPropagation()}>
+                <div className="grp-modal-header">
+                    <h2 className="grp-modal-title">{initial ? 'Grubu Düzenle' : 'Yeni Grup Oluştur'}</h2>
+                    <button className="grp-modal-close" onClick={onClose}>✕</button>
                 </div>
-                <div className="mkt-modal-body">
-                    {/* Icon picker */}
-                    <div className="mkt-form-group">
-                        <label>İkon</label>
-                        <div className="grp-icon-grid">
-                            {GROUP_ICONS.map(ic => (
-                                <button key={ic} className={`grp-icon-btn ${icon === ic ? 'active' : ''}`}
-                                    onClick={() => setIcon(ic)} style={icon === ic ? { borderColor: color, background: color + '18' } : {}}>
-                                    {ic}
-                                </button>
-                            ))}
-                        </div>
+                <div className="grp-modal-body">
+                    <div className="grp-field">
+                        <label className="grp-label">Grup Adı</label>
+                        <input
+                            className="grp-input"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            placeholder="örn. Fitness Üyeleri"
+                            maxLength={60}
+                            autoFocus
+                            onKeyDown={e => e.key === 'Enter' && handleSave()}
+                        />
                     </div>
-                    {/* Color picker */}
-                    <div className="mkt-form-group">
-                        <label>Renk</label>
+                    <div className="grp-field">
+                        <label className="grp-label">Açıklama <span className="grp-label-opt">(isteğe bağlı)</span></label>
+                        <input
+                            className="grp-input"
+                            value={desc}
+                            onChange={e => setDesc(e.target.value)}
+                            placeholder="Bu grup hakkında kısa bir açıklama"
+                            maxLength={120}
+                        />
+                    </div>
+                    <div className="grp-field">
+                        <label className="grp-label">Renk</label>
                         <div className="grp-color-row">
                             {GROUP_COLORS.map(c => (
-                                <button key={c} className={`grp-color-btn ${color === c ? 'active' : ''}`}
-                                    style={{ background: c, boxShadow: color === c ? `0 0 0 3px ${c}55` : 'none' }}
-                                    onClick={() => setColor(c)} />
+                                <button
+                                    key={c}
+                                    className={`grp-color-dot ${color === c ? 'active' : ''}`}
+                                    style={{ background: c }}
+                                    onClick={() => setColor(c)}
+                                />
                             ))}
                         </div>
                     </div>
-                    {/* Name */}
-                    <div className="mkt-form-group">
-                        <label>Grup Adı *</label>
-                        <input className="mkt-form-input" value={name} onChange={e => setName(e.target.value)}
-                            placeholder="örn. Fitness Üyeleri" maxLength={60} />
-                    </div>
-                    {/* Description */}
-                    <div className="mkt-form-group">
-                        <label>Açıklama <span style={{color:'#9ca3af'}}>(isteğe bağlı)</span></label>
-                        <input className="mkt-form-input" value={desc} onChange={e => setDesc(e.target.value)}
-                            placeholder="Bu grup hakkında kısa açıklama" maxLength={120} />
-                    </div>
-                    {/* Preview */}
-                    <div className="grp-preview-card" style={{ borderColor: color, background: color + '0d' }}>
-                        <span className="grp-preview-icon" style={{ background: color + '22' }}>{icon}</span>
-                        <div>
-                            <div className="grp-preview-name" style={{ color }}>{name || 'Grup Adı'}</div>
-                            <div className="grp-preview-desc">{desc || 'Açıklama'}</div>
-                        </div>
-                    </div>
-                    <div className="mkt-modal-actions">
-                        <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
-                        <button className="mkt-btn-primary" onClick={handleSave} disabled={saving || !name.trim()}>
-                            {saving ? '⏳ Kaydediliyor...' : '💾 Kaydet'}
-                        </button>
-                    </div>
+                </div>
+                <div className="grp-modal-footer">
+                    <button className="grp-btn-cancel" onClick={onClose}>İptal</button>
+                    <button
+                        className="grp-btn-save"
+                        style={{ background: color }}
+                        onClick={handleSave}
+                        disabled={saving || !name.trim()}
+                    >
+                        {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                    </button>
                 </div>
             </div>
         </div>

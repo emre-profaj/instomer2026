@@ -690,3 +690,88 @@
     transition: all .15s;
 }
 .grp-remove-btn:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
+
+/* ── Group Form Modal (clean redesign) ─────────── */
+.grp-form-modal {
+    background: #fff;
+    border-radius: 14px;
+    width: 420px;
+    max-width: 95vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,.18);
+    overflow: hidden;
+    animation: fadeInScale .18s ease;
+}
+.grp-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #f3f4f6;
+}
+.grp-modal-title {
+    font-size: 16px; font-weight: 700; color: #111827; margin: 0;
+}
+.grp-modal-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: none; background: #f3f4f6; color: #6b7280;
+    cursor: pointer; font-size: 13px; display: flex;
+    align-items: center; justify-content: center;
+    transition: background .15s;
+}
+.grp-modal-close:hover { background: #e5e7eb; color: #374151; }
+
+.grp-modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+.grp-field { display: flex; flex-direction: column; gap: 6px; }
+.grp-label { font-size: 13px; font-weight: 600; color: #374151; }
+.grp-label-opt { font-weight: 400; color: #9ca3af; font-size: 12px; }
+
+.grp-input {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid #e5e7eb; border-radius: 8px;
+    font-size: 14px; color: #111827; background: #fff;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+    font-family: inherit; box-sizing: border-box;
+}
+.grp-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #eff6ff; }
+.grp-input::placeholder { color: #d1d5db; }
+
+.grp-color-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.grp-color-dot {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2.5px solid transparent; cursor: pointer;
+    transition: transform .15s, box-shadow .15s; outline: none;
+}
+.grp-color-dot:hover { transform: scale(1.15); }
+.grp-color-dot.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2.5px currentColor;
+    outline: 2.5px solid var(--dot-bg, #2563eb);
+    transform: scale(1.1);
+}
+
+.grp-modal-footer {
+    padding: 14px 24px;
+    border-top: 1px solid #f3f4f6;
+    display: flex; justify-content: flex-end; gap: 8px;
+}
+.grp-btn-cancel {
+    padding: 9px 18px; border-radius: 8px;
+    border: 1.5px solid #e5e7eb; background: #fff;
+    color: #374151; font-size: 14px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    transition: background .15s;
+}
+.grp-btn-cancel:hover { background: #f9fafb; }
+.grp-btn-save {
+    padding: 9px 22px; border-radius: 8px;
+    border: none; color: #fff;
+    font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: opacity .15s, transform .1s;
+}
+.grp-btn-save:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+.grp-btn-save:disabled { opacity: .45; cursor: not-allowed; }
+
+@keyframes fadeInScale {
+    from { opacity: 0; transform: scale(.96); }
+    to   { opacity: 1; transform: scale(1); }
+}
