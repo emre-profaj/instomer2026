@@ -425,7 +425,7 @@ const AnalysisReport = () => {
                 </div>
             </div>
 
-            {/* Satış Listesi */}
+            {/* Satış Listesi - Konuya Göre Gruplu */}
             <div className="ceo-section" style={{ marginBottom: 20 }}>
                 <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -441,64 +441,81 @@ const AnalysisReport = () => {
                             style={{ paddingLeft: 32, padding: '6px 10px 6px 32px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', width: 200 }} />
                     </div>
                 </div>
-                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                <div className="ceo-section-body" style={{ padding: 0 }}>
                     {salesList.length === 0 ? (
                         <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
                             <ShoppingCart size={28} style={{ marginBottom: 8 }} />
                             <p>Seçilen filtrelere uygun satış bulunamadı</p>
                         </div>
-                    ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                            <thead>
-                                <tr style={{ background: '#f0fdf4', borderBottom: '2px solid #bbf7d0' }}>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>#</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Müşteri</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Telefon</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Konu</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Tutar</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Aşama</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Temsilci</th>
-                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Tarih</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {salesList
-                                    .filter(s => !salesSearch || 
-                                        (s.contactName || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
-                                        (s.phone || '').includes(salesSearch) ||
-                                        (s.topic || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
-                                        (s.agentName || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
-                                        (s.title || '').toLowerCase().includes(salesSearch.toLowerCase())
-                                    )
-                                    .map((s, idx) => (
-                                    <tr key={s.dealId || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                        <td style={{ padding: '8px 14px', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{idx + 1}</td>
-                                        <td style={{ padding: '8px 14px', fontWeight: 700, color: '#1e293b' }}>{s.contactName}</td>
-                                        <td style={{ padding: '8px 14px', color: '#475569' }}>{s.phone || '—'}</td>
-                                        <td style={{ padding: '8px 14px' }}>
-                                            {s.topic ? (
-                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#f5f3ff', color: '#7c3aed' }}>{s.topic}</span>
-                                            ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                        </td>
-                                        <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>
-                                            {s.amount > 0 ? s.amount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }) : '—'}
-                                        </td>
-                                        <td style={{ padding: '8px 14px' }}>
-                                            {s.stageName ? (
-                                                <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${s.stageColor || '#64748b'}15`, color: s.stageColor || '#64748b' }}>{s.stageName}</span>
-                                            ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                        </td>
-                                        <td style={{ padding: '8px 14px', fontWeight: 600, color: '#1e293b', fontSize: '0.8rem' }}>{s.agentName}</td>
-                                        <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: '0.75rem' }}>{s.createdAt ? new Date(s.createdAt).toLocaleDateString('tr-TR') : '—'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
+                    ) : (() => {
+                        const filtered = salesList.filter(s => !salesSearch ||
+                            (s.contactName || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
+                            (s.phone || '').includes(salesSearch) ||
+                            (s.topic || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
+                            (s.agentName || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
+                            (s.title || '').toLowerCase().includes(salesSearch.toLowerCase())
+                        );
+                        const grouped = {};
+                        for (const s of filtered) {
+                            const t = s.topic || 'Belirtilmemiş';
+                            if (!grouped[t]) grouped[t] = { items: [], totalAmount: 0 };
+                            grouped[t].items.push(s);
+                            grouped[t].totalAmount += (s.amount || 0);
+                        }
+                        const sortedTopics = Object.entries(grouped).sort((a, b) => b[1].items.length - a[1].items.length);
+                        return (
+                            <div>
+                                {sortedTopics.map(([topic, group]) => {
+                                    const key = `sales_${topic}`;
+                                    const isOpen = expandedTopics.has(key);
+                                    return (
+                                        <div key={topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                            <div onClick={() => toggleTopicExpand(key)}
+                                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', cursor: 'pointer', background: isOpen ? '#f0fdf4' : '#fff', transition: 'background 0.15s' }}>
+                                                <ChevronRight size={16} style={{ color: '#059669', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                                                <span style={{ fontWeight: 800, color: '#1e293b', flex: 1, fontSize: '0.88rem' }}>{topic}</span>
+                                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#059669', background: '#ecfdf5', padding: '2px 10px', borderRadius: 6 }}>
+                                                    {group.items.length} satış · {group.totalAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                                </span>
+                                            </div>
+                                            {isOpen && (
+                                                <div style={{ padding: '0 20px 12px 46px', overflowX: 'auto' }}>
+                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                                        <thead><tr style={{ background: '#f0fdf4' }}>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>#</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Müşteri</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Telefon</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Tutar</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Aşama</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Temsilci</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Tarih</th>
+                                                        </tr></thead>
+                                                        <tbody>
+                                                            {group.items.map((s, idx) => (
+                                                                <tr key={s.dealId || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                                    <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.75rem' }}>{idx + 1}</td>
+                                                                    <td style={{ padding: '5px 10px', fontWeight: 700, color: '#1e293b' }}>{s.contactName}</td>
+                                                                    <td style={{ padding: '5px 10px', color: '#475569' }}>{s.phone || '—'}</td>
+                                                                    <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>{s.amount > 0 ? s.amount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }) : '—'}</td>
+                                                                    <td style={{ padding: '5px 10px' }}>{s.stageName ? <span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${s.stageColor || '#64748b'}15`, color: s.stageColor || '#64748b' }}>{s.stageName}</span> : '—'}</td>
+                                                                    <td style={{ padding: '5px 10px', fontWeight: 600, color: '#1e293b', fontSize: '0.78rem' }}>{s.agentName}</td>
+                                                                    <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.75rem' }}>{s.createdAt ? new Date(s.createdAt).toLocaleDateString('tr-TR') : '—'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 
-            {/* Contact List */}
+            {/* Kişi Listesi - Konuya Göre Gruplu */}
             <div className="ceo-section">
                 <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -511,13 +528,8 @@ const AnalysisReport = () => {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <div style={{ position: 'relative' }}>
                             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                            <input
-                                type="text"
-                                placeholder="Ara..."
-                                value={contactSearch}
-                                onChange={e => setContactSearch(e.target.value)}
-                                style={{ paddingLeft: 32, padding: '6px 10px 6px 32px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', width: 200 }}
-                            />
+                            <input type="text" placeholder="Ara..." value={contactSearch} onChange={e => setContactSearch(e.target.value)}
+                                style={{ paddingLeft: 32, padding: '6px 10px 6px 32px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', width: 200 }} />
                         </div>
                         <button onClick={() => setShowContacts(!showContacts)}
                             style={{ border: 'none', background: '#f1f5f9', padding: '6px 10px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 700, color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -526,66 +538,73 @@ const AnalysisReport = () => {
                     </div>
                 </div>
                 {showContacts && (
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                    <div className="ceo-section-body" style={{ padding: 0 }}>
                         {filteredContacts.length === 0 ? (
                             <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
                                 <Users size={28} style={{ marginBottom: 8 }} />
                                 <p>Filtrelere uygun kişi bulunamadı</p>
                             </div>
-                        ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                                <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>#</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Kanal</th>
-                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredContacts.map((c, idx) => (
-                                        <tr key={c.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '8px 14px', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{idx + 1}</td>
-                                            <td style={{ padding: '8px 14px', fontWeight: 700, color: '#1e293b' }}>{c.name}</td>
-                                            <td style={{ padding: '8px 14px', color: '#475569' }}>{c.phone || '—'}</td>
-                                            <td style={{ padding: '8px 14px' }}>
-                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#f5f3ff', color: '#7c3aed', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
-                                                    {c.topic || '—'}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '8px 14px' }}>
-                                                <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>
-                                                    {statusLabels[c.status] || c.status}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: '8px 14px' }}>
-                                                {c.stageName ? (
-                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>
-                                                        {c.stageName}
-                                                    </span>
-                                                ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                            </td>
-                                            <td style={{ padding: '8px 14px' }}>
-                                                {c.dealTotal > 0 ? (
-                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 800, background: '#ecfdf5', color: '#059669' }}>
-                                                        ✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
-                                                    </span>
-                                                ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                            </td>
-                                            <td style={{ padding: '8px 14px', fontWeight: 600, color: c.assigneeName ? '#1e293b' : '#d1d5db', fontSize: '0.8rem' }}>{c.assigneeName || '—'}</td>
-                                            <td style={{ padding: '8px 14px', fontWeight: 600, color: '#64748b', fontSize: '0.75rem' }}>{c.channel || '—'}</td>
-                                            <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: '0.75rem' }}>{c.conversationDate ? new Date(c.conversationDate).toLocaleDateString('tr-TR') : '—'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
+                        ) : (() => {
+                            const grouped = {};
+                            for (const c of filteredContacts) {
+                                const t = c.topic || 'Belirtilmemiş';
+                                if (!grouped[t]) grouped[t] = { items: [], withPhone: 0, withDeal: 0, dealAmount: 0 };
+                                grouped[t].items.push(c);
+                                if (c.phone && c.phone.trim()) grouped[t].withPhone++;
+                                if (c.dealTotal > 0) { grouped[t].withDeal++; grouped[t].dealAmount += (c.dealWonAmount || 0); }
+                            }
+                            const sortedTopics = Object.entries(grouped).sort((a, b) => b[1].items.length - a[1].items.length);
+                            return (
+                                <div>
+                                    {sortedTopics.map(([topic, group]) => {
+                                        const key = `contacts_${topic}`;
+                                        const isOpen = expandedTopics.has(key);
+                                        return (
+                                            <div key={topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                <div onClick={() => toggleTopicExpand(key)}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', cursor: 'pointer', background: isOpen ? '#f0fdf4' : '#fff', transition: 'background 0.15s' }}>
+                                                    <ChevronRight size={16} style={{ color: '#10b981', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
+                                                    <span style={{ fontWeight: 800, color: '#1e293b', flex: 1, fontSize: '0.88rem' }}>{topic}</span>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6366f1', background: '#eef2ff', padding: '2px 8px', borderRadius: 6 }}>{group.items.length} kişi</span>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: 6 }}>{group.withPhone} numaralı</span>
+                                                    {group.withDeal > 0 && <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>{group.withDeal} satış · {group.dealAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span>}
+                                                </div>
+                                                {isOpen && (
+                                                    <div style={{ padding: '0 20px 12px 46px', overflowX: 'auto' }}>
+                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                                            <thead><tr style={{ background: '#f8fafc' }}>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>#</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
+                                                                <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
+                                                            </tr></thead>
+                                                            <tbody>
+                                                                {group.items.map((c, ci) => (
+                                                                    <tr key={c.id || ci} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                                                        <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.75rem' }}>{ci + 1}</td>
+                                                                        <td style={{ padding: '5px 10px', fontWeight: 700, color: '#1e293b' }}>{c.name}</td>
+                                                                        <td style={{ padding: '5px 10px', color: '#475569' }}>{c.phone || '—'}</td>
+                                                                        <td style={{ padding: '5px 10px' }}><span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>{statusLabels[c.status] || c.status}</span></td>
+                                                                        <td style={{ padding: '5px 10px' }}>{c.stageName ? <span style={{ padding: '1px 6px', borderRadius: 5, fontSize: '0.7rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>{c.stageName}</span> : '—'}</td>
+                                                                        <td style={{ padding: '5px 10px' }}>{c.dealTotal > 0 ? <span style={{ fontWeight: 800, color: '#059669', fontSize: '0.72rem' }}>✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : '—'}</td>
+                                                                        <td style={{ padding: '5px 10px', fontWeight: 600, color: c.assigneeName ? '#1e293b' : '#d1d5db', fontSize: '0.78rem' }}>{c.assigneeName || '—'}</td>
+                                                                        <td style={{ padding: '5px 10px', color: '#94a3b8', fontSize: '0.73rem' }}>{c.conversationDate ? new Date(c.conversationDate).toLocaleDateString('tr-TR') : '—'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
                     </div>
                 )}
             </div>
