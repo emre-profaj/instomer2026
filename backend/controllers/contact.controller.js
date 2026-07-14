@@ -4602,7 +4602,7 @@ export const getAnalysisReport = async (req, res) => {
                 title: true,
                 status: true,
                 createdAt: true,
-                closedAt: true,
+                wonAt: true,
                 assignedToId: true,
                 assignedTo: { select: { name: true } },
                 contact: {
@@ -4662,7 +4662,7 @@ export const getAnalysisReport = async (req, res) => {
                 agentName: deal.assignedTo?.name || 'Atanmamış',
                 agentId: dealAgentId,
                 createdAt: deal.createdAt,
-                closedAt: deal.closedAt
+                closedAt: deal.wonAt
             });
         }
 
