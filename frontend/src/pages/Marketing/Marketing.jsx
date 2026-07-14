@@ -1285,7 +1285,7 @@ function ContactPickerModal({ wsId, groupId, onAdded, onClose }) {
     );
 }
 
-function GroupDetailDrawer({ wsId, group, onClose, onEdit, onDelete, onBulkSend, onBulkCall }) {
+function GroupDetailDrawer({ wsId, group, onClose, onEdit, onDelete, onBulkSend, onBulkCall, onCountChange }) {
     const [members, setMembers]     = useState([]);
     const [total, setTotal]         = useState(0);
     const [page, setPage]           = useState(1);
@@ -1317,7 +1317,7 @@ function GroupDetailDrawer({ wsId, group, onClose, onEdit, onDelete, onBulkSend,
         try {
             await api.delete(`/contact-groups/${wsId}/groups/${group.id}/members/${contactId}`);
             setMembers(prev => prev.filter(m => m.id !== contactId));
-            setTotal(prev => prev - 1);
+            setTotal(prev => { const n = prev - 1; onCountChange?.(group.id, n); return n; });
         } catch (e) { alert('Üye çıkarılamadı'); }
         setRemoving(prev => { const n = new Set(prev); n.delete(contactId); return n; });
     };
@@ -1327,7 +1327,7 @@ function GroupDetailDrawer({ wsId, group, onClose, onEdit, onDelete, onBulkSend,
         try {
             await api.delete(`/contact-groups/${wsId}/groups/${group.id}/members`, { data: { contactIds: [...selectedMembers] } });
             setMembers(prev => prev.filter(m => !selectedMembers.has(m.id)));
-            setTotal(prev => prev - selectedMembers.size);
+            setTotal(prev => { const n = prev - selectedMembers.size; onCountChange?.(group.id, n); return n; });
             setSelectedMembers(new Set());
         } catch (e) { alert('Çıkarma başarısız'); }
     };
@@ -1472,7 +1472,7 @@ function GroupDetailDrawer({ wsId, group, onClose, onEdit, onDelete, onBulkSend,
 
             {showPicker && (
                 <ContactPickerModal wsId={wsId} groupId={group.id}
-                    onAdded={(count) => { setShowPicker(false); fetchMembers(1); setTotal(t => t + count); }}
+                    onAdded={(count) => { setShowPicker(false); fetchMembers(1); setTotal(t => { const n = t + count; onCountChange?.(group.id, n); return n; }); }}
                     onClose={() => setShowPicker(false)} />
             )}
         </>
@@ -1539,6 +1539,15 @@ function GroupsTab({ wsId }) {
         } catch (e) { alert('Üyeler yüklenemedi'); }
     };
 
+    // Update group card count in real-time without re-fetching
+    const handleCountChange = (groupId, newTotal) => {
+        setGroups(prev => prev.map(g =>
+            g.id === groupId
+                ? { ...g, _count: { ...g._count, members: newTotal } }
+                : g
+        ));
+    };
+
     return (
         <div className="mkt-analytics-wrap">
             {/* Top bar */}
@@ -1600,6 +1609,7 @@ function GroupsTab({ wsId }) {
                     onDelete={() => handleDelete(activeGroup)}
                     onBulkSend={(g) => openBulkAction(g, 'send')}
                     onBulkCall={(g) => openBulkAction(g, 'call')}
+                    onCountChange={handleCountChange}
                 />
             )}
 
