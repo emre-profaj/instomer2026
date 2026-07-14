@@ -80,7 +80,7 @@ const AnalysisReport = () => {
     if (kpiFilter === 'withPhone') kpiFiltered = contacts.filter(c => c.phone && c.phone.trim());
     else if (kpiFilter === 'noPhone') kpiFiltered = contacts.filter(c => !c.phone || !c.phone.trim());
     else if (kpiFilter === 'interested') kpiFiltered = contacts.filter(c => relevantStatusList.includes(c.status));
-    else if (kpiFilter === 'won') kpiFiltered = contacts.filter(c => c.dealWonCount > 0);
+    else if (kpiFilter === 'won') kpiFiltered = contacts.filter(c => c.dealTotal > 0);
 
     const filteredContacts = contactSearch
         ? kpiFiltered.filter(c =>
@@ -393,13 +393,9 @@ const AnalysisReport = () => {
                                                 ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                             </td>
                                             <td style={{ padding: '8px 14px' }}>
-                                                {c.dealWonCount > 0 ? (
+                                                {c.dealTotal > 0 ? (
                                                     <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 800, background: '#ecfdf5', color: '#059669' }}>
-                                                        ✓ {c.dealWonAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
-                                                    </span>
-                                                ) : c.dealTotal > 0 ? (
-                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>
-                                                        Sipariş ({c.dealTotal})
+                                                        ✓ {(c.dealWonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
                                                     </span>
                                                 ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                             </td>

@@ -4591,8 +4591,8 @@ export const getAnalysisReport = async (req, res) => {
                 return b.count - a.count;
             });
 
-        // ── Deal / Sales data ──
-        const dealWhere = { workspaceId, status: 'WON', ...dateFilter };
+        // ── Deal / Sales data (tüm deal'lar = satış) ──
+        const dealWhere = { workspaceId, ...dateFilter };
         if (agentId) dealWhere.assignedToId = agentId;
         const wonDeals = await prisma.deal.findMany({
             where: dealWhere,
@@ -4659,7 +4659,7 @@ export const getAnalysisReport = async (req, res) => {
                 contactId: true, assignedToId: true, createdAt: true
             }
         });
-        const contactDealMap = {}; // contactId -> { wonAmount, wonCount, totalDeals, latestDealStatus, latestDealTitle }
+        const contactDealMap = {};
         for (const deal of allDeals) {
             if (!deal.contactId) continue;
             if (!contactDealMap[deal.contactId]) {
@@ -4667,10 +4667,8 @@ export const getAnalysisReport = async (req, res) => {
             }
             const cd = contactDealMap[deal.contactId];
             cd.totalDeals++;
-            if (deal.status === 'WON') {
-                cd.wonCount++;
-                cd.wonAmount += (deal.amount || 0);
-            }
+            cd.wonCount++;
+            cd.wonAmount += (deal.amount || 0);
             cd.latestDealStatus = deal.status;
             cd.latestDealTitle = deal.title;
         }
