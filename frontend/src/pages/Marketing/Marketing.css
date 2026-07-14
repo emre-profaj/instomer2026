@@ -552,144 +552,7 @@
    GROUPS TAB
 ══════════════════════════════════════════════════ */
 
-/* Grid */
-.grp-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
-    padding: 20px;
-}
 
-/* Card */
-.grp-card {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-top: 4px solid #2563eb;
-    border-radius: 12px;
-    padding: 20px 16px 14px;
-    cursor: pointer;
-    transition: box-shadow .18s, transform .18s;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.grp-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,.1); transform: translateY(-2px); }
-
-.grp-card-icon-wrap {
-    width: 48px; height: 48px; border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem; margin-bottom: 4px;
-}
-.grp-card-icon { line-height: 1; }
-.grp-card-name { font-size: 15px; font-weight: 700; color: #111827; }
-.grp-card-desc { font-size: 12px; color: #6b7280; line-height: 1.4; }
-.grp-card-count { font-size: 13px; font-weight: 600; margin-top: 4px; }
-.grp-card-actions {
-    display: flex; gap: 4px; margin-top: 8px;
-    padding-top: 10px; border-top: 1px solid #f3f4f6;
-}
-.grp-card-btn {
-    flex: 1; padding: 5px; border: 1px solid #e5e7eb; border-radius: 7px;
-    background: #f9fafb; cursor: pointer; font-size: 14px;
-    transition: background .15s, border-color .15s;
-}
-.grp-card-btn:hover { background: #eff6ff; border-color: #bfdbfe; }
-.grp-card-btn.danger:hover { background: #fef2f2; border-color: #fecaca; }
-
-/* Group Form Modal */
-.grp-form-modal { max-width: 460px; }
-
-.grp-icon-grid {
-    display: flex; flex-wrap: wrap; gap: 6px;
-}
-.grp-icon-btn {
-    width: 38px; height: 38px; border-radius: 8px;
-    border: 2px solid transparent; background: #f3f4f6;
-    cursor: pointer; font-size: 18px; display: flex;
-    align-items: center; justify-content: center;
-    transition: all .15s;
-}
-.grp-icon-btn:hover { background: #eff6ff; border-color: #bfdbfe; }
-.grp-icon-btn.active { border-color: #2563eb; }
-
-.grp-color-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.grp-color-btn {
-    width: 28px; height: 28px; border-radius: 50%;
-    border: 2px solid transparent; cursor: pointer;
-    transition: transform .15s, box-shadow .15s;
-}
-.grp-color-btn:hover { transform: scale(1.15); }
-.grp-color-btn.active { border-color: #fff; outline: 2px solid currentColor; }
-
-.grp-preview-card {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 16px; border: 2px solid #2563eb;
-    border-radius: 10px; margin-top: 4px;
-}
-.grp-preview-icon {
-    width: 44px; height: 44px; border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.5rem; flex-shrink: 0;
-}
-.grp-preview-name { font-size: 15px; font-weight: 700; }
-.grp-preview-desc { font-size: 12px; color: #6b7280; margin-top: 2px; }
-
-/* Contact Picker Modal */
-.grp-picker-modal { max-width: 640px; height: 80vh; display: flex; flex-direction: column; }
-.grp-picker-search {
-    padding: 12px 16px; border-bottom: 1px solid #f3f4f6;
-    display: flex; align-items: center; gap: 12px; flex-shrink: 0;
-}
-.grp-picker-list { flex: 1; overflow-y: auto; }
-
-/* Detail Drawer */
-.grp-drawer-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.35);
-    z-index: 999;
-}
-.grp-drawer {
-    position: fixed; right: 0; top: 0; bottom: 0;
-    width: min(680px, 95vw);
-    background: #fff; z-index: 1000;
-    box-shadow: -4px 0 32px rgba(0,0,0,.15);
-    display: flex; flex-direction: column;
-    animation: slideInRight .2s ease;
-}
-@keyframes slideInRight {
-    from { transform: translateX(100%); }
-    to   { transform: translateX(0); }
-}
-.grp-drawer-header {
-    padding: 18px 20px 14px;
-    border-bottom: 2px solid #f3f4f6;
-    display: flex; align-items: flex-start;
-    justify-content: space-between; gap: 12px; flex-shrink: 0;
-}
-.grp-drawer-title-row { display: flex; align-items: flex-start; gap: 12px; }
-.grp-drawer-icon {
-    width: 48px; height: 48px; border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.6rem; flex-shrink: 0;
-}
-.grp-drawer-name { font-size: 18px; font-weight: 700; }
-.grp-drawer-desc { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.grp-drawer-count { font-size: 13px; color: #6b7280; margin-top: 4px; }
-.grp-drawer-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.grp-drawer-toolbar {
-    padding: 10px 16px; border-bottom: 1px solid #f3f4f6;
-    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
-}
-.grp-drawer-list { flex: 1; overflow-y: auto; }
-
-/* Remove button in member row */
-.grp-remove-btn {
-    width: 24px; height: 24px; border-radius: 50%;
-    border: 1px solid #e5e7eb; background: #fff;
-    color: #9ca3af; font-size: 14px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all .15s;
-}
-.grp-remove-btn:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }
 
 /* ── Group Form Modal (clean redesign) ─────────── */
 .grp-form-modal {
@@ -870,3 +733,79 @@
     transition: background .15s;
 }
 .grp-remove-selected-btn:hover { background: #fee2e2; }
+
+
+/* ══════════════════════════════════════════════════
+   GROUPS – Professional Card Redesign
+══════════════════════════════════════════════════ */
+
+.grp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 20px;
+}
+
+.grp-card {
+    background: #fff;
+    border-radius: 14px;
+    border: 1px solid #e5e7eb;
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow .2s, transform .18s;
+    display: flex;
+    flex-direction: column;
+}
+.grp-card:hover {
+    box-shadow: 0 8px 28px rgba(0,0,0,.10);
+    transform: translateY(-3px);
+}
+.grp-card-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 18px 16px;
+    border-bottom: 1px solid #f3f4f6;
+}
+.grp-card-avatar {
+    width: 46px; height: 46px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 800; color: #fff;
+    flex-shrink: 0; letter-spacing: -0.5px;
+}
+.grp-card-meta { min-width: 0; flex: 1; }
+.grp-card-name {
+    font-size: 15px; font-weight: 700; color: #111827;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.grp-card-desc {
+    font-size: 12px; color: #9ca3af; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.grp-card-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 10px 10px 16px; background: #fafafa;
+}
+.grp-card-count-badge {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+}
+.grp-card-actions { display: flex; gap: 2px; }
+.grp-card-action-btn {
+    width: 30px; height: 30px; border-radius: 8px;
+    border: none; background: transparent; color: #9ca3af;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+}
+.grp-card-action-btn:hover { background: #f3f4f6; color: #374151; }
+.grp-card-action-btn.danger:hover { background: #fef2f2; color: #dc2626; }
+
+.grp-remove-btn {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 1px solid #e5e7eb; background: #fff;
+    color: #9ca3af; font-size: 14px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+}
+.grp-remove-btn:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; color: #dc2626; }

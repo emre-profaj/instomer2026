@@ -1569,21 +1569,35 @@ function GroupsTab({ wsId }) {
             ) : (
                 <div className="grp-grid">
                     {groups.map(g => (
-                        <div key={g.id} className="grp-card" style={{ borderTopColor: g.color }}
-                            onClick={() => setActiveGroup(g)}>
-                            <div className="grp-card-icon-wrap" style={{ background: g.color + '15' }}>
-                                <span className="grp-card-icon">{g.icon}</span>
+                        <div key={g.id} className="grp-card" onClick={() => setActiveGroup(g)}>
+                            <div className="grp-card-header" style={{ background: `linear-gradient(135deg, ${g.color}20 0%, ${g.color}06 100%)` }}>
+                                <div className="grp-card-avatar" style={{ background: g.color, boxShadow: `0 4px 12px ${g.color}55` }}>
+                                    {g.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="grp-card-meta">
+                                    <div className="grp-card-name">{g.name}</div>
+                                    {g.description && <div className="grp-card-desc">{g.description}</div>}
+                                </div>
                             </div>
-                            <div className="grp-card-name">{g.name}</div>
-                            {g.description && <div className="grp-card-desc">{g.description}</div>}
-                            <div className="grp-card-count" style={{ color: g.color }}>
-                                {(g._count?.members || 0).toLocaleString('tr-TR')} kişi
-                            </div>
-                            <div className="grp-card-actions" onClick={e => e.stopPropagation()}>
-                                <button className="grp-card-btn" title="Şablon Gönder" onClick={() => openBulkAction(g, 'send')}>📤</button>
-                                <button className="grp-card-btn" title="Toplu Ara" onClick={() => openBulkAction(g, 'call')}>📞</button>
-                                <button className="grp-card-btn" title="Düzenle" onClick={() => { setEditGroup(g); setShowForm(true); }}>✏️</button>
-                                <button className="grp-card-btn danger" title="Sil" onClick={() => handleDelete(g)}>🗑️</button>
+                            <div className="grp-card-footer">
+                                <div className="grp-card-count-badge" style={{ color: g.color, background: g.color + '12' }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                    {(g._count?.members || 0).toLocaleString('tr-TR')} kişi
+                                </div>
+                                <div className="grp-card-actions" onClick={e => e.stopPropagation()}>
+                                    <button className="grp-card-action-btn" title="Şablon Gönder" onClick={() => openBulkAction(g, 'send')}>
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                    </button>
+                                    <button className="grp-card-action-btn" title="Toplu Ara" onClick={() => openBulkAction(g, 'call')}>
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 13a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 17z"/></svg>
+                                    </button>
+                                    <button className="grp-card-action-btn" title="Düzenle" onClick={() => { setEditGroup(g); setShowForm(true); }}>
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    </button>
+                                    <button className="grp-card-action-btn danger" title="Sil" onClick={() => handleDelete(g)}>
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))}
