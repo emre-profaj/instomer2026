@@ -54,7 +54,8 @@ const Sidebar = () => {
         { path: '/call-analytics', icon: Phone, label: 'Arama Analizi' },
         { path: '/meeting-analytics', icon: Users, label: 'Görüşme Analizi' },
         { path: '/appointment-analytics', icon: Calendar, label: 'Randevu Analizi' },
-        { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' }
+        { path: '/ai-call-analytics', icon: Phone, label: 'AI Call Raporlama' },
+        { path: '/general-report/analysis', icon: BarChart3, label: 'Analiz' }
     ];
 
     const settingsSubItems = [

@@ -431,6 +431,7 @@ export const contactAPI = {
     getAnalytics: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/analytics`, { params }),
     getAgentPerformance: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/agent-performance`, { params }),
     getTopicContacts: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/topic-contacts`, { params }),
+    getAnalysis: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/analysis`, { params }),
     block: (workspaceId, id, reason) => api.post(`/contacts/${workspaceId}/${id}/block`, { reason }),
     unblock: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/unblock`),
     archive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/archive`),

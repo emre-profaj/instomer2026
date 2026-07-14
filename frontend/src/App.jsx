@@ -31,6 +31,7 @@ import ActivityReport from './pages/CeoReport/ActivityReport';
 import AICallReport from './pages/CeoReport/AICallReport';
 import SalesReport from './pages/CeoReport/SalesReport';
 import RequestReport from './pages/CeoReport/RequestReport';
+import AnalysisReport from './pages/CeoReport/AnalysisReport';
 import Calendar from './pages/Calendar/Calendar';
 import Activities from './pages/Activities/Activities';
 import Calendar2 from './pages/Calendar2/Calendar2';
@@ -113,6 +114,7 @@ function App() {
               <Route path="general-report/ai-calls" element={<AICallReport />} />
               <Route path="general-report/sales" element={<SalesReport />} />
               <Route path="general-report/requests" element={<RequestReport />} />
+              <Route path="general-report/analysis" element={<AnalysisReport />} />
               <Route path="call-analytics" element={<AramaAnalizi />} />
               <Route path="meeting-analytics" element={<MeetingAnalytics />} />
               <Route path="appointment-analytics" element={<AppointmentAnalytics />} />

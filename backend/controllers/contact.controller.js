@@ -4447,3 +4447,208 @@ export const getTopicContacts = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+export const getAnalysisReport = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate, agentId, topic, stageId } = req.query;
+
+        // Date filter
+        let dateFilter = {};
+        if (startDate || endDate) {
+            dateFilter.createdAt = {};
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+        }
+
+        // Get all funnels for stage lookup
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: { stages: { select: { id: true, name: true, color: true }, orderBy: { order: 'asc' } } }
+        });
+        const stageLookup = {};
+        const allStageNames = new Set();
+        for (const f of allFunnels) {
+            for (const s of f.stages) {
+                stageLookup[s.id] = { name: s.name, color: s.color };
+                allStageNames.add(s.name);
+            }
+        }
+
+        // Get workspace members
+        const members = await prisma.workspaceMember.findMany({
+            where: { workspaceId },
+            include: { user: { select: { id: true, name: true } } }
+        });
+        const agentLookup = {};
+        for (const m of members) {
+            agentLookup[m.user.id] = m.user.name;
+        }
+
+        // Build conversation query
+        const convWhere = {
+            workspaceId,
+            aiTopic: { not: null },
+            ...dateFilter
+        };
+        if (agentId) convWhere.assignedToId = agentId;
+        if (topic) convWhere.aiTopic = topic;
+
+        // Fetch conversations
+        const conversations = await prisma.conversation.findMany({
+            where: convWhere,
+            select: {
+                id: true,
+                aiTopic: true,
+                assignedToId: true,
+                channel: true,
+                createdAt: true,
+                contactId: true,
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        email: true,
+                        status: true,
+                        funnelStageId: true,
+                        company: true,
+                        source: true,
+                        createdAt: true
+                    }
+                },
+                assignedTo: { select: { id: true, name: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Apply stageId filter if provided
+        let filteredConvs = conversations;
+        if (stageId) {
+            filteredConvs = conversations.filter(c => c.contact?.funnelStageId === stageId);
+        }
+
+        // Build pivot: agent × topic × stage
+        const pivotMap = {}; // key: agentId|topic
+        const topicSet = new Set();
+        const agentSet = new Set();
+        const seenContacts = new Map(); // contactId -> conv (for dedup in contact list)
+
+        for (const conv of filteredConvs) {
+            const aId = conv.assignedToId || '__unassigned';
+            const aName = conv.assignedTo?.name || 'Atanmamış';
+            const t = (conv.aiTopic || '').trim();
+            if (!t) continue;
+
+            topicSet.add(t);
+            agentSet.add(aId);
+
+            const key = `${aId}|||${t}`;
+            if (!pivotMap[key]) {
+                pivotMap[key] = {
+                    agentId: aId,
+                    agentName: aName,
+                    topic: t,
+                    count: 0,
+                    stages: {},
+                    contactIds: new Set()
+                };
+            }
+
+            const p = pivotMap[key];
+            // Dedup by contactId
+            if (p.contactIds.has(conv.contactId)) continue;
+            p.contactIds.add(conv.contactId);
+            p.count++;
+
+            // Stage tracking
+            const sId = conv.contact?.funnelStageId;
+            const sInfo = sId ? stageLookup[sId] : null;
+            const sName = sInfo ? sInfo.name : 'Atanmamış';
+            const sColor = sInfo ? sInfo.color : '#94a3b8';
+            if (!p.stages[sName]) p.stages[sName] = { count: 0, color: sColor };
+            p.stages[sName].count++;
+
+            // Contact list dedup
+            if (!seenContacts.has(conv.contactId)) {
+                seenContacts.set(conv.contactId, conv);
+            }
+        }
+
+        // Build pivot array sorted by agent then count desc
+        const pivotData = Object.values(pivotMap)
+            .map(p => ({
+                agentId: p.agentId,
+                agentName: p.agentName,
+                topic: p.topic,
+                count: p.count,
+                stages: p.stages
+            }))
+            .sort((a, b) => {
+                if (a.agentName !== b.agentName) return a.agentName.localeCompare(b.agentName, 'tr');
+                return b.count - a.count;
+            });
+
+        // Agent summaries
+        const agentSummaries = {};
+        for (const p of pivotData) {
+            if (!agentSummaries[p.agentId]) {
+                agentSummaries[p.agentId] = { agentId: p.agentId, agentName: p.agentName, totalCount: 0, topicCount: 0, stages: {} };
+            }
+            const as = agentSummaries[p.agentId];
+            as.totalCount += p.count;
+            as.topicCount++;
+            for (const [sName, sData] of Object.entries(p.stages)) {
+                if (!as.stages[sName]) as.stages[sName] = { count: 0, color: sData.color };
+                as.stages[sName].count += sData.count;
+            }
+        }
+
+        // Contact list (limited to 200 for performance)
+        const contacts = [];
+        for (const [cId, conv] of seenContacts) {
+            if (contacts.length >= 200) break;
+            const sInfo = conv.contact?.funnelStageId ? stageLookup[conv.contact.funnelStageId] : null;
+            contacts.push({
+                id: conv.contact?.id || cId,
+                name: conv.contact?.name || 'İsimsiz',
+                phone: conv.contact?.phone || '',
+                email: conv.contact?.email || '',
+                status: conv.contact?.status || 'NEW',
+                stageName: sInfo?.name || null,
+                stageColor: sInfo?.color || null,
+                company: conv.contact?.company || '',
+                source: conv.contact?.source || '',
+                topic: conv.aiTopic,
+                channel: conv.channel || '',
+                assigneeName: conv.assignedTo?.name || null,
+                assigneeId: conv.assignedToId,
+                createdAt: conv.contact?.createdAt,
+                conversationDate: conv.createdAt
+            });
+        }
+
+        // Summary KPIs
+        const totalCount = contacts.length;
+        const withPhone = contacts.filter(c => c.phone && c.phone.trim()).length;
+        const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
+        const interested = contacts.filter(c => relevantStatuses.includes(c.status)).length;
+        const converted = contacts.filter(c => c.status === 'CONVERTED').length;
+
+        // Available filter options
+        const availableAgents = Object.values(agentSummaries).map(a => ({ id: a.agentId, name: a.agentName })).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+        const availableTopics = [...topicSet].sort((a, b) => a.localeCompare(b, 'tr'));
+        const availableStages = allFunnels.flatMap(f => f.stages.map(s => ({ id: s.id, name: s.name, color: s.color })));
+
+        res.json({
+            summary: { totalCount, withPhone, interested, converted },
+            pivotData,
+            agentSummaries: Object.values(agentSummaries).sort((a, b) => b.totalCount - a.totalCount),
+            contacts,
+            filters: { agents: availableAgents, topics: availableTopics, stages: availableStages }
+        });
+    } catch (error) {
+        console.error('Analysis report error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
