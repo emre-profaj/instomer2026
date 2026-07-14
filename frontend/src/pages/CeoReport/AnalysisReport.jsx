@@ -24,6 +24,7 @@ const AnalysisReport = () => {
     const [expandedAgents, setExpandedAgents] = useState(new Set());
     const [showContacts, setShowContacts] = useState(true);
     const [contactSearch, setContactSearch] = useState('');
+    const [kpiFilter, setKpiFilter] = useState(null); // null | 'withPhone' | 'noPhone' | 'interested' | 'won'
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -73,15 +74,22 @@ const AnalysisReport = () => {
         agentGroups[row.agentId].push(row);
     }
 
-    // Filter contacts by search
+    // Filter contacts by KPI + search
+    const relevantStatusList = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
+    let kpiFiltered = contacts;
+    if (kpiFilter === 'withPhone') kpiFiltered = contacts.filter(c => c.phone && c.phone.trim());
+    else if (kpiFilter === 'noPhone') kpiFiltered = contacts.filter(c => !c.phone || !c.phone.trim());
+    else if (kpiFilter === 'interested') kpiFiltered = contacts.filter(c => relevantStatusList.includes(c.status));
+    else if (kpiFilter === 'won') kpiFiltered = contacts.filter(c => c.dealWonCount > 0);
+
     const filteredContacts = contactSearch
-        ? contacts.filter(c =>
+        ? kpiFiltered.filter(c =>
             (c.name || '').toLowerCase().includes(contactSearch.toLowerCase()) ||
             (c.phone || '').includes(contactSearch) ||
             (c.topic || '').toLowerCase().includes(contactSearch.toLowerCase()) ||
             (c.assigneeName || '').toLowerCase().includes(contactSearch.toLowerCase())
         )
-        : contacts;
+        : kpiFiltered;
 
     const statusLabels = {
         NEW: 'Yeni', OPPORTUNITY: 'Fırsat', HOT_OPPORTUNITY: 'Sıcak Fırsat',
@@ -172,12 +180,20 @@ const AnalysisReport = () => {
                 )}
             </div>
 
-            {/* KPI Summary */}
+            {/* KPI Summary - Clickable */}
+            {kpiFilter && (
+                <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6366f1' }}>
+                        Filtre: {kpiFilter === 'withPhone' ? 'Numaralı' : kpiFilter === 'noPhone' ? 'Numarasız' : kpiFilter === 'interested' ? 'İlgili / Potansiyel' : 'Satış Yapılan'} ({filteredContacts.length} kişi)
+                    </span>
+                    <button onClick={() => setKpiFilter(null)} style={{ border: 'none', background: '#fef2f2', color: '#dc2626', fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, cursor: 'pointer' }}>✕ Kaldır</button>
+                </div>
+            )}
             <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} /><div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div><div className="kpi-label">Toplam Kişi</div><div className="kpi-value">{summary.totalCount || 0}</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #0ea5e9, #0ea5e988)' }} /><div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Phone size={20} /></div><div className="kpi-label">Numaralı</div><div className="kpi-value">{summary.withPhone || 0}</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} /><div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><Sparkles size={20} /></div><div className="kpi-label">İlgili / Potansiyel</div><div className="kpi-value">{summary.interested || 0}</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><BarChart3 size={20} /></div><div className="kpi-label">Satış</div><div className="kpi-value">{summary.wonCount || 0}</div></div>
+                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(null)} style={{ cursor: 'pointer', outline: !kpiFilter ? '2px solid #6366f1' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} /><div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div><div className="kpi-label">Toplam Kişi</div><div className="kpi-value">{summary.totalCount || 0}</div></div>
+                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(kpiFilter === 'withPhone' ? null : 'withPhone')} style={{ cursor: 'pointer', outline: kpiFilter === 'withPhone' ? '2px solid #0ea5e9' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #0ea5e9, #0ea5e988)' }} /><div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Phone size={20} /></div><div className="kpi-label">Numaralı</div><div className="kpi-value">{summary.withPhone || 0}</div></div>
+                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(kpiFilter === 'interested' ? null : 'interested')} style={{ cursor: 'pointer', outline: kpiFilter === 'interested' ? '2px solid #f59e0b' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} /><div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><Sparkles size={20} /></div><div className="kpi-label">İlgili / Potansiyel</div><div className="kpi-value">{summary.interested || 0}</div></div>
+                <div className="ceo-detail-kpi-card" onClick={() => setKpiFilter(kpiFilter === 'won' ? null : 'won')} style={{ cursor: 'pointer', outline: kpiFilter === 'won' ? '2px solid #10b981' : 'none', outlineOffset: -2 }}><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><BarChart3 size={20} /></div><div className="kpi-label">Satış</div><div className="kpi-value">{summary.wonCount || 0}</div></div>
                 <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #059669, #05966988)' }} /><div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}><BarChart3 size={20} /></div><div className="kpi-label">Ciro</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{(summary.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</div></div>
             </div>
 
@@ -347,6 +363,7 @@ const AnalysisReport = () => {
                                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
                                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
                                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
+                                        <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Satış</th>
                                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
                                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Kanal</th>
                                         <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
@@ -372,6 +389,17 @@ const AnalysisReport = () => {
                                                 {c.stageName ? (
                                                     <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>
                                                         {c.stageName}
+                                                    </span>
+                                                ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                                            </td>
+                                            <td style={{ padding: '8px 14px' }}>
+                                                {c.dealWonCount > 0 ? (
+                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 800, background: '#ecfdf5', color: '#059669' }}>
+                                                        ✓ {c.dealWonAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                                    </span>
+                                                ) : c.dealTotal > 0 ? (
+                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: '#fef3c7', color: '#d97706' }}>
+                                                        Sipariş ({c.dealTotal})
                                                     </span>
                                                 ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                             </td>

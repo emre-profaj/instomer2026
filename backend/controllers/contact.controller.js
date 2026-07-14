@@ -4651,6 +4651,30 @@ export const getAnalysisReport = async (req, res) => {
             }
         }
 
+        // ── Build contact deal map (all deals, not just WON) ──
+        const allDeals = await prisma.deal.findMany({
+            where: { workspaceId, ...dateFilter },
+            select: {
+                id: true, amount: true, status: true, title: true,
+                contactId: true, assignedToId: true, createdAt: true
+            }
+        });
+        const contactDealMap = {}; // contactId -> { wonAmount, wonCount, totalDeals, latestDealStatus, latestDealTitle }
+        for (const deal of allDeals) {
+            if (!deal.contactId) continue;
+            if (!contactDealMap[deal.contactId]) {
+                contactDealMap[deal.contactId] = { wonAmount: 0, wonCount: 0, totalDeals: 0, latestDealStatus: null, latestDealTitle: null };
+            }
+            const cd = contactDealMap[deal.contactId];
+            cd.totalDeals++;
+            if (deal.status === 'WON') {
+                cd.wonCount++;
+                cd.wonAmount += (deal.amount || 0);
+            }
+            cd.latestDealStatus = deal.status;
+            cd.latestDealTitle = deal.title;
+        }
+
         // Contact list (limited to 500 for performance)
         const contacts = [];
         let allWithPhone = 0, allInterested = 0, allConverted = 0;
@@ -4662,9 +4686,11 @@ export const getAnalysisReport = async (req, res) => {
             if (phone && phone.trim()) allWithPhone++;
             if (relevantStatuses.includes(status)) allInterested++;
             if (status === 'CONVERTED') allConverted++;
+            const contactId = conv.contact?.id || cId;
+            const dealInfo = contactDealMap[contactId] || null;
             if (contacts.length < 500) {
                 contacts.push({
-                    id: conv.contact?.id || cId,
+                    id: contactId,
                     name: conv.contact?.name || 'İsimsiz',
                     phone: phone,
                     email: conv.contact?.email || '',
@@ -4678,13 +4704,19 @@ export const getAnalysisReport = async (req, res) => {
                     assigneeName: conv.assignedTo?.name || null,
                     assigneeId: conv.assignedToId,
                     createdAt: conv.contact?.createdAt,
-                    conversationDate: conv.createdAt
+                    conversationDate: conv.createdAt,
+                    dealWonAmount: dealInfo?.wonAmount || 0,
+                    dealWonCount: dealInfo?.wonCount || 0,
+                    dealTotal: dealInfo?.totalDeals || 0,
+                    dealStatus: dealInfo?.latestDealStatus || null,
+                    dealTitle: dealInfo?.latestDealTitle || null
                 });
             }
         }
 
         // Summary KPIs
         const totalCount = seenContacts.size;
+        const contactsWithDeal = contacts.filter(c => c.dealWonCount > 0).length;
 
         // Available filter options
         const availableAgents = Object.values(agentSummaries).map(a => ({ id: a.agentId, name: a.agentName })).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
@@ -4692,7 +4724,7 @@ export const getAnalysisReport = async (req, res) => {
         const availableStages = allFunnels.flatMap(f => f.stages.map(s => ({ id: s.id, name: s.name, color: s.color })));
 
         res.json({
-            summary: { totalCount, withPhone: allWithPhone, interested: allInterested, converted: allConverted, wonCount: totalWonCount, wonAmount: totalWonAmount },
+            summary: { totalCount, withPhone: allWithPhone, interested: allInterested, converted: allConverted, wonCount: totalWonCount, wonAmount: totalWonAmount, contactsWithDeal },
             pivotData,
             agentSummaries: Object.values(agentSummaries).sort((a, b) => b.totalCount - a.totalCount),
             contacts,
