@@ -4599,6 +4599,10 @@ export const getAnalysisReport = async (req, res) => {
             select: {
                 id: true,
                 amount: true,
+                title: true,
+                status: true,
+                createdAt: true,
+                closedAt: true,
                 assignedToId: true,
                 assignedTo: { select: { name: true } },
                 contact: {
@@ -4606,6 +4610,9 @@ export const getAnalysisReport = async (req, res) => {
                         id: true,
                         name: true,
                         phone: true,
+                        email: true,
+                        status: true,
+                        funnelStageId: true,
                         conversations: {
                             where: { workspaceId, aiTopic: { not: null } },
                             select: { aiTopic: true },
@@ -4614,24 +4621,49 @@ export const getAnalysisReport = async (req, res) => {
                         }
                     }
                 }
-            }
+            },
+            orderBy: { createdAt: 'desc' }
         });
 
-        // Match deals to pivot rows
+        // Match deals to pivot rows + build sales list
         let totalWonCount = 0, totalWonAmount = 0;
+        const salesList = [];
         for (const deal of wonDeals) {
             const dealAgentId = deal.assignedToId || '__unassigned';
-            const dealTopic = deal.contact?.conversations?.[0]?.aiTopic?.trim();
+            const dealTopic = deal.contact?.conversations?.[0]?.aiTopic?.trim() || null;
+            
+            // Apply topic filter to sales list too
+            if (topic && dealTopic !== topic) continue;
+            
             totalWonCount++;
             totalWonAmount += (deal.amount || 0);
             if (dealTopic) {
-                const key = `${dealAgentId}|||${dealTopic}`;
                 const pivotRow = pivotData.find(p => p.agentId === dealAgentId && p.topic === dealTopic);
                 if (pivotRow) {
                     pivotRow.wonCount++;
                     pivotRow.wonAmount += (deal.amount || 0);
                 }
             }
+            
+            // Build sales list entry
+            const sInfo = deal.contact?.funnelStageId ? stageLookup[deal.contact.funnelStageId] : null;
+            salesList.push({
+                dealId: deal.id,
+                title: deal.title || '',
+                amount: deal.amount || 0,
+                dealStatus: deal.status,
+                contactId: deal.contact?.id,
+                contactName: deal.contact?.name || 'İsimsiz',
+                phone: deal.contact?.phone || '',
+                email: deal.contact?.email || '',
+                topic: dealTopic,
+                stageName: sInfo?.name || null,
+                stageColor: sInfo?.color || null,
+                agentName: deal.assignedTo?.name || 'Atanmamış',
+                agentId: dealAgentId,
+                createdAt: deal.createdAt,
+                closedAt: deal.closedAt
+            });
         }
 
         // Agent summaries
@@ -4726,6 +4758,7 @@ export const getAnalysisReport = async (req, res) => {
             pivotData,
             agentSummaries: Object.values(agentSummaries).sort((a, b) => b.totalCount - a.totalCount),
             contacts,
+            salesList,
             filters: { agents: availableAgents, topics: availableTopics, stages: availableStages }
         });
     } catch (error) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     BarChart3, RefreshCw, Filter, ArrowLeft, Users, Phone,
-    Sparkles, ChevronDown, ChevronRight, Search, X, Download
+    Sparkles, ChevronDown, ChevronRight, Search, X, Download, ShoppingCart
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -24,7 +24,8 @@ const AnalysisReport = () => {
     const [expandedAgents, setExpandedAgents] = useState(new Set());
     const [showContacts, setShowContacts] = useState(true);
     const [contactSearch, setContactSearch] = useState('');
-    const [kpiFilter, setKpiFilter] = useState(null); // null | 'withPhone' | 'noPhone' | 'interested' | 'won'
+    const [kpiFilter, setKpiFilter] = useState(null);
+    const [salesSearch, setSalesSearch] = useState('');
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -56,6 +57,7 @@ const AnalysisReport = () => {
     const pivotData = data?.pivotData || [];
     const agentSummaries = data?.agentSummaries || [];
     const contacts = data?.contacts || [];
+    const salesList = data?.salesList || [];
     const filters = data?.filters || { agents: [], topics: [], stages: [] };
 
     // Toggle agent expansion
@@ -315,6 +317,79 @@ const AnalysisReport = () => {
                                 );
                             })}
                         </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Satış Listesi */}
+            <div className="ceo-section" style={{ marginBottom: 20 }}>
+                <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div className="ceo-section-icon" style={{ background: '#ecfdf5', color: '#059669' }}><ShoppingCart size={18} /></div>
+                        <h2>Satış Listesi</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', background: '#f1f5f9', padding: '2px 8px', borderRadius: 10 }}>
+                            {salesList.length} satış · {(summary.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                        </span>
+                    </div>
+                    <div style={{ position: 'relative' }}>
+                        <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                        <input type="text" placeholder="Satış ara..." value={salesSearch} onChange={e => setSalesSearch(e.target.value)}
+                            style={{ paddingLeft: 32, padding: '6px 10px 6px 32px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: '0.82rem', width: 200 }} />
+                    </div>
+                </div>
+                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                    {salesList.length === 0 ? (
+                        <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+                            <ShoppingCart size={28} style={{ marginBottom: 8 }} />
+                            <p>Seçilen filtrelere uygun satış bulunamadı</p>
+                        </div>
+                    ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ background: '#f0fdf4', borderBottom: '2px solid #bbf7d0' }}>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>#</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Müşteri</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Telefon</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Konu</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#166534' }}>Tutar</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Aşama</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Temsilci</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#166534' }}>Tarih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {salesList
+                                    .filter(s => !salesSearch || 
+                                        (s.contactName || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
+                                        (s.phone || '').includes(salesSearch) ||
+                                        (s.topic || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
+                                        (s.agentName || '').toLowerCase().includes(salesSearch.toLowerCase()) ||
+                                        (s.title || '').toLowerCase().includes(salesSearch.toLowerCase())
+                                    )
+                                    .map((s, idx) => (
+                                    <tr key={s.dealId || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                        <td style={{ padding: '8px 14px', color: '#94a3b8', fontWeight: 600, fontSize: '0.75rem' }}>{idx + 1}</td>
+                                        <td style={{ padding: '8px 14px', fontWeight: 700, color: '#1e293b' }}>{s.contactName}</td>
+                                        <td style={{ padding: '8px 14px', color: '#475569' }}>{s.phone || '—'}</td>
+                                        <td style={{ padding: '8px 14px' }}>
+                                            {s.topic ? (
+                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#f5f3ff', color: '#7c3aed' }}>{s.topic}</span>
+                                            ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                                        </td>
+                                        <td style={{ padding: '8px 14px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>
+                                            {s.amount > 0 ? s.amount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }) : '—'}
+                                        </td>
+                                        <td style={{ padding: '8px 14px' }}>
+                                            {s.stageName ? (
+                                                <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${s.stageColor || '#64748b'}15`, color: s.stageColor || '#64748b' }}>{s.stageName}</span>
+                                            ) : <span style={{ color: '#d1d5db' }}>—</span>}
+                                        </td>
+                                        <td style={{ padding: '8px 14px', fontWeight: 600, color: '#1e293b', fontSize: '0.8rem' }}>{s.agentName}</td>
+                                        <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: '0.75rem' }}>{s.createdAt ? new Date(s.createdAt).toLocaleDateString('tr-TR') : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     )}
                 </div>
             </div>
