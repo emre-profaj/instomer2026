@@ -1595,7 +1595,7 @@ function GroupsTab({ wsId }) {
                 <GroupDetailDrawer
                     wsId={wsId}
                     group={activeGroup}
-                    onClose={() => setActiveGroup(null)}
+                    onClose={() => { setActiveGroup(null); fetchGroups(); }}
                     onEdit={() => { setEditGroup(activeGroup); setShowForm(true); }}
                     onDelete={() => handleDelete(activeGroup)}
                     onBulkSend={(g) => openBulkAction(g, 'send')}
