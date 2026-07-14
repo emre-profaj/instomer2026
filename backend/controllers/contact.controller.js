@@ -4488,11 +4488,11 @@ export const getAnalysisReport = async (req, res) => {
         // Build conversation query
         const convWhere = {
             workspaceId,
-            aiTopic: { not: null },
             ...dateFilter
         };
         if (agentId) convWhere.assignedToId = agentId;
         if (topic) convWhere.aiTopic = topic;
+        else convWhere.aiTopic = { not: null };
 
         // Fetch conversations
         const conversations = await prisma.conversation.findMany({
@@ -4582,12 +4582,57 @@ export const getAnalysisReport = async (req, res) => {
                 agentName: p.agentName,
                 topic: p.topic,
                 count: p.count,
-                stages: p.stages
+                stages: p.stages,
+                wonCount: 0,
+                wonAmount: 0
             }))
             .sort((a, b) => {
                 if (a.agentName !== b.agentName) return a.agentName.localeCompare(b.agentName, 'tr');
                 return b.count - a.count;
             });
+
+        // ── Deal / Sales data ──
+        const dealWhere = { workspaceId, status: 'WON', ...dateFilter };
+        if (agentId) dealWhere.assignedToId = agentId;
+        const wonDeals = await prisma.deal.findMany({
+            where: dealWhere,
+            select: {
+                id: true,
+                amount: true,
+                assignedToId: true,
+                assignedTo: { select: { name: true } },
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        conversations: {
+                            where: { workspaceId, aiTopic: { not: null } },
+                            select: { aiTopic: true },
+                            take: 1,
+                            orderBy: { createdAt: 'desc' }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Match deals to pivot rows
+        let totalWonCount = 0, totalWonAmount = 0;
+        for (const deal of wonDeals) {
+            const dealAgentId = deal.assignedToId || '__unassigned';
+            const dealTopic = deal.contact?.conversations?.[0]?.aiTopic?.trim();
+            totalWonCount++;
+            totalWonAmount += (deal.amount || 0);
+            if (dealTopic) {
+                const key = `${dealAgentId}|||${dealTopic}`;
+                const pivotRow = pivotData.find(p => p.agentId === dealAgentId && p.topic === dealTopic);
+                if (pivotRow) {
+                    pivotRow.wonCount++;
+                    pivotRow.wonAmount += (deal.amount || 0);
+                }
+            }
+        }
 
         // Agent summaries
         const agentSummaries = {};
@@ -4598,42 +4643,48 @@ export const getAnalysisReport = async (req, res) => {
             const as = agentSummaries[p.agentId];
             as.totalCount += p.count;
             as.topicCount++;
+            as.wonCount = (as.wonCount || 0) + (p.wonCount || 0);
+            as.wonAmount = (as.wonAmount || 0) + (p.wonAmount || 0);
             for (const [sName, sData] of Object.entries(p.stages)) {
                 if (!as.stages[sName]) as.stages[sName] = { count: 0, color: sData.color };
                 as.stages[sName].count += sData.count;
             }
         }
 
-        // Contact list (limited to 200 for performance)
+        // Contact list (limited to 500 for performance)
         const contacts = [];
+        let allWithPhone = 0, allInterested = 0, allConverted = 0;
+        const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
         for (const [cId, conv] of seenContacts) {
-            if (contacts.length >= 200) break;
             const sInfo = conv.contact?.funnelStageId ? stageLookup[conv.contact.funnelStageId] : null;
-            contacts.push({
-                id: conv.contact?.id || cId,
-                name: conv.contact?.name || 'İsimsiz',
-                phone: conv.contact?.phone || '',
-                email: conv.contact?.email || '',
-                status: conv.contact?.status || 'NEW',
-                stageName: sInfo?.name || null,
-                stageColor: sInfo?.color || null,
-                company: conv.contact?.company || '',
-                source: conv.contact?.source || '',
-                topic: conv.aiTopic,
-                channel: conv.channel || '',
-                assigneeName: conv.assignedTo?.name || null,
-                assigneeId: conv.assignedToId,
-                createdAt: conv.contact?.createdAt,
-                conversationDate: conv.createdAt
-            });
+            const phone = conv.contact?.phone || '';
+            const status = conv.contact?.status || 'NEW';
+            if (phone && phone.trim()) allWithPhone++;
+            if (relevantStatuses.includes(status)) allInterested++;
+            if (status === 'CONVERTED') allConverted++;
+            if (contacts.length < 500) {
+                contacts.push({
+                    id: conv.contact?.id || cId,
+                    name: conv.contact?.name || 'İsimsiz',
+                    phone: phone,
+                    email: conv.contact?.email || '',
+                    status: status,
+                    stageName: sInfo?.name || null,
+                    stageColor: sInfo?.color || null,
+                    company: conv.contact?.company || '',
+                    source: conv.contact?.source || '',
+                    topic: conv.aiTopic,
+                    channel: conv.channel || '',
+                    assigneeName: conv.assignedTo?.name || null,
+                    assigneeId: conv.assignedToId,
+                    createdAt: conv.contact?.createdAt,
+                    conversationDate: conv.createdAt
+                });
+            }
         }
 
         // Summary KPIs
-        const totalCount = contacts.length;
-        const withPhone = contacts.filter(c => c.phone && c.phone.trim()).length;
-        const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
-        const interested = contacts.filter(c => relevantStatuses.includes(c.status)).length;
-        const converted = contacts.filter(c => c.status === 'CONVERTED').length;
+        const totalCount = seenContacts.size;
 
         // Available filter options
         const availableAgents = Object.values(agentSummaries).map(a => ({ id: a.agentId, name: a.agentName })).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
@@ -4641,7 +4692,7 @@ export const getAnalysisReport = async (req, res) => {
         const availableStages = allFunnels.flatMap(f => f.stages.map(s => ({ id: s.id, name: s.name, color: s.color })));
 
         res.json({
-            summary: { totalCount, withPhone, interested, converted },
+            summary: { totalCount, withPhone: allWithPhone, interested: allInterested, converted: allConverted, wonCount: totalWonCount, wonAmount: totalWonAmount },
             pivotData,
             agentSummaries: Object.values(agentSummaries).sort((a, b) => b.totalCount - a.totalCount),
             contacts,

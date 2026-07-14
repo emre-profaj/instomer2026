@@ -173,11 +173,12 @@ const AnalysisReport = () => {
             </div>
 
             {/* KPI Summary */}
-            <div className="ceo-detail-kpi-grid">
+            <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
                 <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} /><div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div><div className="kpi-label">Toplam Kişi</div><div className="kpi-value">{summary.totalCount || 0}</div></div>
                 <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #0ea5e9, #0ea5e988)' }} /><div className="kpi-icon-wrap" style={{ background: '#e0f2fe', color: '#0ea5e9' }}><Phone size={20} /></div><div className="kpi-label">Numaralı</div><div className="kpi-value">{summary.withPhone || 0}</div></div>
                 <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} /><div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><Sparkles size={20} /></div><div className="kpi-label">İlgili / Potansiyel</div><div className="kpi-value">{summary.interested || 0}</div></div>
-                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><BarChart3 size={20} /></div><div className="kpi-label">Satış</div><div className="kpi-value">{summary.converted || 0}</div></div>
+                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} /><div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><BarChart3 size={20} /></div><div className="kpi-label">Satış</div><div className="kpi-value">{summary.wonCount || 0}</div></div>
+                <div className="ceo-detail-kpi-card"><div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #059669, #05966988)' }} /><div className="kpi-icon-wrap" style={{ background: '#d1fae5', color: '#059669' }}><BarChart3 size={20} /></div><div className="kpi-label">Ciro</div><div className="kpi-value" style={{ fontSize: '1rem' }}>{(summary.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</div></div>
             </div>
 
             {/* Agent × Topic Pivot Table */}
@@ -225,7 +226,13 @@ const AnalysisReport = () => {
                                             <div style={{ fontWeight: 800, fontSize: '1.1rem', color: '#6366f1', minWidth: 50, textAlign: 'right' }}>
                                                 {agent.totalCount}
                                             </div>
-                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 400 }}>
+                                            {(agent.wonCount > 0 || agent.wonAmount > 0) && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 80 }}>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#10b981' }}>{agent.wonCount || 0} satış</span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669' }}>{(agent.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span>
+                                                </div>
+                                            )}
+                                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 360 }}>
                                                 {stageEntries.slice(0, 5).map(([sName, sData]) => (
                                                     <span key={sName} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: 6, background: `${sData.color || '#94a3b8'}15`, color: sData.color || '#94a3b8', whiteSpace: 'nowrap' }}>
                                                         {sName}: {sData.count}
@@ -242,6 +249,8 @@ const AnalysisReport = () => {
                                                         <tr style={{ background: '#e2e8f0' }}>
                                                             <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
                                                             <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Talep</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Satış</th>
+                                                            <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>Ciro</th>
                                                             <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama Dağılımı</th>
                                                         </tr>
                                                     </thead>
@@ -252,6 +261,8 @@ const AnalysisReport = () => {
                                                                 <tr key={row.topic} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                                                     <td style={{ padding: '8px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.topic}</td>
                                                                     <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: '#6366f1' }}>{row.count}</td>
+                                                                    <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: row.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{row.wonCount || 0}</td>
+                                                                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: row.wonAmount > 0 ? '#059669' : '#d1d5db' }}>{row.wonAmount ? row.wonAmount.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }) : '—'}</td>
                                                                     <td style={{ padding: '8px 10px' }}>
                                                                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                                                             {rowStages.map(([sName, sData]) => (
@@ -268,6 +279,8 @@ const AnalysisReport = () => {
                                                         <tr style={{ background: '#f1f5f9', fontWeight: 800 }}>
                                                             <td style={{ padding: '6px 10px', color: '#475569' }}>Toplam</td>
                                                             <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6366f1' }}>{agent.totalCount}</td>
+                                                            <td style={{ padding: '6px 10px', textAlign: 'center', color: '#10b981' }}>{agent.wonCount || 0}</td>
+                                                            <td style={{ padding: '6px 10px', textAlign: 'right', color: '#059669' }}>{(agent.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</td>
                                                             <td style={{ padding: '6px 10px' }}>
                                                                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                                                                     {stageEntries.map(([sName, sData]) => (
