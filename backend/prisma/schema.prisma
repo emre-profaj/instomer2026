@@ -1741,3 +1741,31 @@ model MarketingRecipient {
   @@index([messageId])
   @@map("marketing_recipients")
 }
+
+model ContactGroup {
+  id          String               @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  icon        String               @default("👥")
+  color       String               @default("#2563eb")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  members     ContactGroupMember[]
+
+  @@index([workspaceId])
+  @@map("contact_groups")
+}
+
+model ContactGroupMember {
+  id        String       @id @default(uuid())
+  groupId   String
+  contactId String
+  addedAt   DateTime     @default(now())
+  group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, contactId])
+  @@index([groupId])
+  @@index([contactId])
+  @@map("contact_group_members")
+}

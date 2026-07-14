@@ -1085,6 +1085,663 @@ function CallAnalyticsTab({ wsId }) {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GROUPS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+const GROUP_COLORS = [
+    '#2563eb','#16a34a','#dc2626','#ca8a04','#7c3aed',
+    '#0891b2','#db2777','#ea580c','#65a30d','#475569'
+];
+const GROUP_ICONS  = ['👥','💪','⭐','🎯','🔥','🏋️','🎁','💼','🏆','📋','🌟','💡','🚀','❤️','🌿'];
+
+function GroupFormModal({ initial, onSave, onClose }) {
+    const [name, setName]        = useState(initial?.name || '');
+    const [desc, setDesc]        = useState(initial?.description || '');
+    const [icon, setIcon]        = useState(initial?.icon || '👥');
+    const [color, setColor]      = useState(initial?.color || '#2563eb');
+    const [saving, setSaving]    = useState(false);
+
+    const handleSave = async () => {
+        if (!name.trim()) return alert('Grup adı zorunlu');
+        setSaving(true);
+        await onSave({ name: name.trim(), description: desc.trim(), icon, color });
+        setSaving(false);
+    };
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div className="mkt-modal grp-form-modal" onClick={e => e.stopPropagation()}>
+                <div className="mkt-modal-header">
+                    <div className="mkt-modal-title">{initial ? '✏️ Grubu Düzenle' : '➕ Yeni Grup'}</div>
+                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                </div>
+                <div className="mkt-modal-body">
+                    {/* Icon picker */}
+                    <div className="mkt-form-group">
+                        <label>İkon</label>
+                        <div className="grp-icon-grid">
+                            {GROUP_ICONS.map(ic => (
+                                <button key={ic} className={`grp-icon-btn ${icon === ic ? 'active' : ''}`}
+                                    onClick={() => setIcon(ic)} style={icon === ic ? { borderColor: color, background: color + '18' } : {}}>
+                                    {ic}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {/* Color picker */}
+                    <div className="mkt-form-group">
+                        <label>Renk</label>
+                        <div className="grp-color-row">
+                            {GROUP_COLORS.map(c => (
+                                <button key={c} className={`grp-color-btn ${color === c ? 'active' : ''}`}
+                                    style={{ background: c, boxShadow: color === c ? `0 0 0 3px ${c}55` : 'none' }}
+                                    onClick={() => setColor(c)} />
+                            ))}
+                        </div>
+                    </div>
+                    {/* Name */}
+                    <div className="mkt-form-group">
+                        <label>Grup Adı *</label>
+                        <input className="mkt-form-input" value={name} onChange={e => setName(e.target.value)}
+                            placeholder="örn. Fitness Üyeleri" maxLength={60} />
+                    </div>
+                    {/* Description */}
+                    <div className="mkt-form-group">
+                        <label>Açıklama <span style={{color:'#9ca3af'}}>(isteğe bağlı)</span></label>
+                        <input className="mkt-form-input" value={desc} onChange={e => setDesc(e.target.value)}
+                            placeholder="Bu grup hakkında kısa açıklama" maxLength={120} />
+                    </div>
+                    {/* Preview */}
+                    <div className="grp-preview-card" style={{ borderColor: color, background: color + '0d' }}>
+                        <span className="grp-preview-icon" style={{ background: color + '22' }}>{icon}</span>
+                        <div>
+                            <div className="grp-preview-name" style={{ color }}>{name || 'Grup Adı'}</div>
+                            <div className="grp-preview-desc">{desc || 'Açıklama'}</div>
+                        </div>
+                    </div>
+                    <div className="mkt-modal-actions">
+                        <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
+                        <button className="mkt-btn-primary" onClick={handleSave} disabled={saving || !name.trim()}>
+                            {saving ? '⏳ Kaydediliyor...' : '💾 Kaydet'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ContactPickerModal({ wsId, groupId, onAdded, onClose }) {
+    const [contacts, setContacts]   = useState([]);
+    const [total, setTotal]         = useState(0);
+    const [inputSearch, setInput]   = useState('');
+    const [search, setSearch]       = useState('');
+    const [page, setPage]           = useState(1);
+    const [loading, setLoading]     = useState(false);
+    const [selected, setSelected]   = useState(new Set());
+    const [adding, setAdding]       = useState(false);
+    const limit = 50;
+
+    const fetchContacts = useCallback(async (p = 1, q = search) => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({ page: p, limit, ...(q ? { search: q } : {}) });
+            const res = await api.get(`/contact-groups/${wsId}/groups/${groupId}/available-contacts?${params}`);
+            setContacts(res.data.contacts || []);
+            setTotal(res.data.total || 0);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId, groupId, search]);
+
+    useEffect(() => { fetchContacts(1); }, [fetchContacts]);
+
+    const commitSearch = () => { setSearch(inputSearch); setPage(1); };
+    const toggleSelect = id => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const toggleAll    = () => setSelected(prev => prev.size === contacts.length ? new Set() : new Set(contacts.map(c => c.id)));
+
+    const handleAdd = async () => {
+        if (!selected.size) return;
+        setAdding(true);
+        try {
+            await api.post(`/contact-groups/${wsId}/groups/${groupId}/members`, { contactIds: [...selected] });
+            onAdded(selected.size);
+        } catch (e) { alert('Eklenemedi: ' + (e.response?.data?.error || e.message)); }
+        setAdding(false);
+    };
+
+    const totalPages = Math.ceil(total / limit);
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div className="mkt-modal grp-picker-modal" onClick={e => e.stopPropagation()}>
+                <div className="mkt-modal-header">
+                    <div className="mkt-modal-title">👤 Kişi Ekle</div>
+                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                </div>
+                <div className="grp-picker-search">
+                    <div className="mkt-search-group">
+                        <input className="mkt-search-input" type="text" placeholder="🔍 İsim veya numara..."
+                            value={inputSearch} onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && commitSearch()} />
+                        {inputSearch && <button className="mkt-search-clear" onClick={() => { setInput(''); setSearch(''); }}>×</button>}
+                        <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
+                    </div>
+                    <span style={{ fontSize: 13, color: '#6b7280' }}>{total.toLocaleString('tr-TR')} kişi mevcut</span>
+                </div>
+                <div className="grp-picker-list">
+                    {loading ? (
+                        <div className="mkt-loading"><div className="mkt-loading-spinner" />Yükleniyor...</div>
+                    ) : contacts.length === 0 ? (
+                        <div className="mkt-empty" style={{ padding: 32 }}>
+                            <div className="mkt-empty-icon">📭</div>
+                            <p>Eklenebilecek kişi bulunamadı.</p>
+                        </div>
+                    ) : (
+                        <table className="mkt-table">
+                            <thead><tr>
+                                <th style={{ width: 36 }}>
+                                    <input type="checkbox" className="mkt-checkbox"
+                                        checked={selected.size === contacts.length && contacts.length > 0}
+                                        onChange={toggleAll} />
+                                </th>
+                                <th>Ad Soyad</th>
+                                <th>Telefon</th>
+                                <th>Kaynak</th>
+                            </tr></thead>
+                            <tbody>
+                                {contacts.map(c => (
+                                    <tr key={c.id} className={selected.has(c.id) ? 'row-selected' : ''} onClick={() => toggleSelect(c.id)} style={{ cursor: 'pointer' }}>
+                                        <td onClick={e => e.stopPropagation()}>
+                                            <input type="checkbox" className="mkt-checkbox"
+                                                checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} />
+                                        </td>
+                                        <td>
+                                            <div className="mkt-contact-cell">
+                                                <div className="mkt-contact-avatar">{c.name ? c.name.charAt(0).toUpperCase() : '?'}</div>
+                                                <span className="mkt-contact-name">{c.name || '—'}</span>
+                                            </div>
+                                        </td>
+                                        <td><span className="mkt-phone">{c.phone || '—'}</span></td>
+                                        <td style={{ fontSize: 12, color: '#6b7280' }}>{c.source || '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="mkt-pagination" style={{ border: 'none', borderTop: '1px solid #f3f4f6' }}>
+                        <button className="mkt-page-btn" disabled={page === 1} onClick={() => { setPage(p => p-1); fetchContacts(page-1); }}>‹</button>
+                        <span className="mkt-page-info">{page} / {totalPages}</span>
+                        <button className="mkt-page-btn" disabled={page === totalPages} onClick={() => { setPage(p => p+1); fetchContacts(page+1); }}>›</button>
+                    </div>
+                )}
+                <div className="mkt-modal-actions" style={{ borderTop: '1px solid #f3f4f6', padding: '12px 20px' }}>
+                    <span style={{ fontSize: 13, color: '#6b7280' }}>{selected.size} kişi seçildi</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
+                        <button className="mkt-btn-primary" onClick={handleAdd} disabled={!selected.size || adding}>
+                            {adding ? '⏳ Ekleniyor...' : `✅ ${selected.size} Kişi Ekle`}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function GroupDetailDrawer({ wsId, group, onClose, onEdit, onDelete, onBulkSend, onBulkCall }) {
+    const [members, setMembers]     = useState([]);
+    const [total, setTotal]         = useState(0);
+    const [page, setPage]           = useState(1);
+    const [loading, setLoading]     = useState(true);
+    const [search, setSearch]       = useState('');
+    const [inputSearch, setInput]   = useState('');
+    const [showPicker, setShowPicker] = useState(false);
+    const [removing, setRemoving]   = useState(new Set());
+    const [selectedMembers, setSelectedMembers] = useState(new Set());
+    const limit = 50;
+
+    const fetchMembers = useCallback(async (p = 1, q = search) => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({ page: p, limit, ...(q ? { search: q } : {}) });
+            const res = await api.get(`/contact-groups/${wsId}/groups/${group.id}/members?${params}`);
+            setMembers(res.data.members || []);
+            setTotal(res.data.total || 0);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId, group.id, search]);
+
+    useEffect(() => { fetchMembers(1); }, [fetchMembers]);
+
+    const commitSearch = () => { setSearch(inputSearch); setPage(1); };
+
+    const handleRemove = async (contactId) => {
+        setRemoving(prev => new Set([...prev, contactId]));
+        try {
+            await api.delete(`/contact-groups/${wsId}/groups/${group.id}/members/${contactId}`);
+            setMembers(prev => prev.filter(m => m.id !== contactId));
+            setTotal(prev => prev - 1);
+        } catch (e) { alert('Üye çıkarılamadı'); }
+        setRemoving(prev => { const n = new Set(prev); n.delete(contactId); return n; });
+    };
+
+    const handleRemoveSelected = async () => {
+        if (!selectedMembers.size || !window.confirm(`${selectedMembers.size} kişi gruptan çıkarılacak. Onaylıyor musunuz?`)) return;
+        try {
+            await api.delete(`/contact-groups/${wsId}/groups/${group.id}/members`, { data: { contactIds: [...selectedMembers] } });
+            setMembers(prev => prev.filter(m => !selectedMembers.has(m.id)));
+            setTotal(prev => prev - selectedMembers.size);
+            setSelectedMembers(new Set());
+        } catch (e) { alert('Çıkarma başarısız'); }
+    };
+
+    const toggleMember = id => setSelectedMembers(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const toggleAll    = () => setSelectedMembers(prev => prev.size === members.length ? new Set() : new Set(members.map(m => m.id)));
+
+    const totalPages = Math.ceil(total / limit);
+
+    return (
+        <>
+            <div className="grp-drawer-overlay" onClick={onClose} />
+            <div className="grp-drawer">
+                {/* Header */}
+                <div className="grp-drawer-header" style={{ borderBottomColor: group.color + '33' }}>
+                    <div className="grp-drawer-title-row">
+                        <div className="grp-drawer-icon" style={{ background: group.color + '20', color: group.color }}>{group.icon}</div>
+                        <div>
+                            <div className="grp-drawer-name" style={{ color: group.color }}>{group.name}</div>
+                            {group.description && <div className="grp-drawer-desc">{group.description}</div>}
+                            <div className="grp-drawer-count">{total.toLocaleString('tr-TR')} kişi</div>
+                        </div>
+                    </div>
+                    <div className="grp-drawer-actions">
+                        <button className="mkt-btn-call-bulk" onClick={() => onBulkCall(group)} title="Toplu Ara">📞 Toplu Ara</button>
+                        <button className="mkt-btn-send-bulk" onClick={() => onBulkSend(group)} title="Toplu Gönder">📤 Şablon Gönder</button>
+                        <button className="mkt-action-btn primary" onClick={onEdit}>✏️</button>
+                        <button className="mkt-action-btn" style={{ color: '#dc2626' }} onClick={onDelete}>🗑️</button>
+                        <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                    </div>
+                </div>
+
+                {/* Toolbar */}
+                <div className="grp-drawer-toolbar">
+                    <div className="mkt-search-group">
+                        <input className="mkt-search-input" type="text" placeholder="🔍 İsim veya numara..."
+                            value={inputSearch} onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && commitSearch()} />
+                        {inputSearch && <button className="mkt-search-clear" onClick={() => { setInput(''); setSearch(''); }}>×</button>}
+                        <button className="mkt-search-btn" onClick={commitSearch}>🔍 Ara</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        {selectedMembers.size > 0 && (
+                            <button className="mkt-btn-secondary" style={{ color: '#dc2626', borderColor: '#dc2626' }} onClick={handleRemoveSelected}>
+                                🗑️ {selectedMembers.size} Kişiyi Çıkar
+                            </button>
+                        )}
+                        <button className="mkt-btn-primary" onClick={() => setShowPicker(true)}>+ Kişi Ekle</button>
+                    </div>
+                </div>
+
+                {/* Member list */}
+                <div className="grp-drawer-list">
+                    {loading ? (
+                        <div className="mkt-loading"><div className="mkt-loading-spinner" />Yükleniyor...</div>
+                    ) : members.length === 0 ? (
+                        <div className="mkt-empty">
+                            <div className="mkt-empty-icon">👥</div>
+                            <p>Bu grupta henüz kişi yok.</p>
+                            <button className="mkt-btn-primary" onClick={() => setShowPicker(true)}>+ Kişi Ekle</button>
+                        </div>
+                    ) : (
+                        <table className="mkt-table">
+                            <thead><tr>
+                                <th style={{ width: 36 }}>
+                                    <input type="checkbox" className="mkt-checkbox"
+                                        checked={selectedMembers.size === members.length && members.length > 0}
+                                        onChange={toggleAll} />
+                                </th>
+                                <th>Ad Soyad</th>
+                                <th>Telefon</th>
+                                <th>Kaynak</th>
+                                <th></th>
+                            </tr></thead>
+                            <tbody>
+                                {members.map(m => (
+                                    <tr key={m.id} className={selectedMembers.has(m.id) ? 'row-selected' : ''} onClick={() => toggleMember(m.id)} style={{ cursor: 'pointer' }}>
+                                        <td onClick={e => e.stopPropagation()}>
+                                            <input type="checkbox" className="mkt-checkbox"
+                                                checked={selectedMembers.has(m.id)} onChange={() => toggleMember(m.id)} />
+                                        </td>
+                                        <td>
+                                            <div className="mkt-contact-cell">
+                                                <div className="mkt-contact-avatar" style={{ background: group.color + '18', color: group.color }}>
+                                                    {m.name ? m.name.charAt(0).toUpperCase() : '?'}
+                                                </div>
+                                                <span className="mkt-contact-name">{m.name || '—'}</span>
+                                            </div>
+                                        </td>
+                                        <td><span className="mkt-phone">{m.phone || '—'}</span></td>
+                                        <td style={{ fontSize: 12, color: '#6b7280' }}>{m.source || '—'}</td>
+                                        <td>
+                                            <button className="grp-remove-btn" disabled={removing.has(m.id)}
+                                                onClick={e => { e.stopPropagation(); handleRemove(m.id); }}
+                                                title="Gruptan Çıkar">
+                                                {removing.has(m.id) ? '⏳' : '×'}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+                {totalPages > 1 && (
+                    <div className="mkt-pagination" style={{ flexShrink: 0 }}>
+                        <button className="mkt-page-btn" disabled={page === 1} onClick={() => { setPage(p => p-1); fetchMembers(page-1); }}>‹ Önceki</button>
+                        <span className="mkt-page-info">{page} / {totalPages}</span>
+                        <button className="mkt-page-btn" disabled={page === totalPages} onClick={() => { setPage(p => p+1); fetchMembers(page+1); }}>Sonraki ›</button>
+                    </div>
+                )}
+            </div>
+
+            {showPicker && (
+                <ContactPickerModal wsId={wsId} groupId={group.id}
+                    onAdded={(count) => { setShowPicker(false); fetchMembers(1); setTotal(t => t + count); }}
+                    onClose={() => setShowPicker(false)} />
+            )}
+        </>
+    );
+}
+
+function GroupsTab({ wsId }) {
+    const [groups, setGroups]           = useState([]);
+    const [loading, setLoading]         = useState(true);
+    const [showForm, setShowForm]       = useState(false);
+    const [editGroup, setEditGroup]     = useState(null);
+    const [activeGroup, setActiveGroup] = useState(null); // for drawer
+    // for passing to bulk modals
+    const [bulkSendGroup, setBulkSendGroup] = useState(null);
+    const [bulkCallGroup, setBulkCallGroup] = useState(null);
+    const [groupMembers, setGroupMembers]   = useState([]); // members for bulk actions
+
+    const fetchGroups = useCallback(async () => {
+        if (!wsId) return;
+        setLoading(true);
+        try {
+            const res = await api.get(`/contact-groups/${wsId}/groups`);
+            setGroups(res.data.groups || []);
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    }, [wsId]);
+
+    useEffect(() => { fetchGroups(); }, [fetchGroups]);
+
+    const handleCreate = async (data) => {
+        try {
+            const res = await api.post(`/contact-groups/${wsId}/groups`, data);
+            setGroups(prev => [res.data, ...prev]);
+            setShowForm(false);
+        } catch (e) { alert('Grup oluşturulamadı: ' + (e.response?.data?.error || e.message)); }
+    };
+
+    const handleUpdate = async (data) => {
+        try {
+            const res = await api.put(`/contact-groups/${wsId}/groups/${editGroup.id}`, data);
+            setGroups(prev => prev.map(g => g.id === editGroup.id ? { ...g, ...res.data } : g));
+            if (activeGroup?.id === editGroup.id) setActiveGroup(prev => ({ ...prev, ...res.data }));
+            setEditGroup(null);
+        } catch (e) { alert('Güncellenemedi: ' + (e.response?.data?.error || e.message)); }
+    };
+
+    const handleDelete = async (group) => {
+        if (!window.confirm(`"${group.name}" grubu silinecek. Kişiler etkilenmez. Onaylıyor musunuz?`)) return;
+        try {
+            await api.delete(`/contact-groups/${wsId}/groups/${group.id}`);
+            setGroups(prev => prev.filter(g => g.id !== group.id));
+            if (activeGroup?.id === group.id) setActiveGroup(null);
+        } catch (e) { alert('Silinemedi'); }
+    };
+
+    // Fetch group members for bulk actions
+    const openBulkAction = async (group, type) => {
+        try {
+            const res = await api.get(`/contact-groups/${wsId}/groups/${group.id}/members?limit=10000`);
+            const members = res.data.members || [];
+            if (members.length === 0) return alert('Bu grupta henüz kişi yok.');
+            setGroupMembers(members);
+            type === 'send' ? setBulkSendGroup(group) : setBulkCallGroup(group);
+        } catch (e) { alert('Üyeler yüklenemedi'); }
+    };
+
+    return (
+        <div className="mkt-analytics-wrap">
+            {/* Top bar */}
+            <div className="mkt-analytics-bar">
+                <span style={{ fontSize: 13, color: '#6b7280' }}>
+                    {groups.length} grup · Gruba tıklayarak kişi ekleyebilirsiniz
+                </span>
+                <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ Yeni Grup</button>
+            </div>
+
+            {loading ? (
+                <div className="mkt-loading"><div className="mkt-loading-spinner" />Yükleniyor...</div>
+            ) : groups.length === 0 ? (
+                <div className="mkt-empty">
+                    <div className="mkt-empty-icon">👥</div>
+                    <p>Henüz grup oluşturulmadı.</p>
+                    <button className="mkt-btn-primary" onClick={() => setShowForm(true)}>+ İlk Grubu Oluştur</button>
+                </div>
+            ) : (
+                <div className="grp-grid">
+                    {groups.map(g => (
+                        <div key={g.id} className="grp-card" style={{ borderTopColor: g.color }}
+                            onClick={() => setActiveGroup(g)}>
+                            <div className="grp-card-icon-wrap" style={{ background: g.color + '15' }}>
+                                <span className="grp-card-icon">{g.icon}</span>
+                            </div>
+                            <div className="grp-card-name">{g.name}</div>
+                            {g.description && <div className="grp-card-desc">{g.description}</div>}
+                            <div className="grp-card-count" style={{ color: g.color }}>
+                                {(g._count?.members || 0).toLocaleString('tr-TR')} kişi
+                            </div>
+                            <div className="grp-card-actions" onClick={e => e.stopPropagation()}>
+                                <button className="grp-card-btn" title="Şablon Gönder" onClick={() => openBulkAction(g, 'send')}>📤</button>
+                                <button className="grp-card-btn" title="Toplu Ara" onClick={() => openBulkAction(g, 'call')}>📞</button>
+                                <button className="grp-card-btn" title="Düzenle" onClick={() => { setEditGroup(g); setShowForm(true); }}>✏️</button>
+                                <button className="grp-card-btn danger" title="Sil" onClick={() => handleDelete(g)}>🗑️</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Create/Edit modal */}
+            {showForm && (
+                <GroupFormModal
+                    initial={editGroup}
+                    onSave={editGroup ? handleUpdate : handleCreate}
+                    onClose={() => { setShowForm(false); setEditGroup(null); }}
+                />
+            )}
+
+            {/* Drawer */}
+            {activeGroup && (
+                <GroupDetailDrawer
+                    wsId={wsId}
+                    group={activeGroup}
+                    onClose={() => setActiveGroup(null)}
+                    onEdit={() => { setEditGroup(activeGroup); setShowForm(true); }}
+                    onDelete={() => handleDelete(activeGroup)}
+                    onBulkSend={(g) => openBulkAction(g, 'send')}
+                    onBulkCall={(g) => openBulkAction(g, 'call')}
+                />
+            )}
+
+            {/* Bulk Send Modal (reuse existing BulkSendModal) */}
+            {bulkSendGroup && (
+                <BulkSendGroupModal
+                    wsId={wsId}
+                    group={bulkSendGroup}
+                    members={groupMembers}
+                    onClose={() => { setBulkSendGroup(null); setGroupMembers([]); }}
+                />
+            )}
+
+            {/* Bulk Call Modal (reuse existing BulkCallModal) */}
+            {bulkCallGroup && (
+                <BulkCallGroupModal
+                    wsId={wsId}
+                    group={bulkCallGroup}
+                    members={groupMembers}
+                    onClose={() => { setBulkCallGroup(null); setGroupMembers([]); }}
+                />
+            )}
+        </div>
+    );
+}
+
+function BulkSendGroupModal({ wsId, group, members, onClose }) {
+    const [templates, setTemplates] = useState([]);
+    const [templateId, setTemplateId] = useState('');
+    const [sending, setSending]     = useState(false);
+    const [result, setResult]       = useState(null);
+
+    useEffect(() => {
+        api.get(`/marketing/${wsId}/templates`).then(r => setTemplates(r.data.templates || [])).catch(() => {});
+    }, [wsId]);
+
+    const selectedTpl = templates.find(t => t.id === templateId);
+
+    const handleSend = async () => {
+        if (!templateId) return alert('Şablon seçin');
+        setSending(true);
+        try {
+            const res = await api.post(`/marketing/${wsId}/bulk-send`, {
+                templateId,
+                contactIds: members.map(m => m.id)
+            });
+            setResult(res.data);
+        } catch (e) { alert('Gönderilemedi: ' + (e.response?.data?.error || e.message)); }
+        setSending(false);
+    };
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div className="mkt-modal" onClick={e => e.stopPropagation()}>
+                <div className="mkt-modal-header">
+                    <div className="mkt-modal-title">📤 Toplu Şablon — {group.icon} {group.name}</div>
+                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                </div>
+                {result ? (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-success-box">
+                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>✅</div>
+                            <div style={{ fontWeight: 600, color: '#16a34a' }}>Gönderim başlatıldı!</div>
+                            <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>Analiz sekmesinden takip edin.</div>
+                        </div>
+                        <button className="mkt-btn-primary" onClick={onClose} style={{ marginTop: 16, width: '100%' }}>Tamam</button>
+                    </div>
+                ) : (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-modal-info"><span>👥 Kişi sayısı:</span><strong>{members.length}</strong></div>
+                        <div className="mkt-form-group">
+                            <label>Şablon</label>
+                            <select className="mkt-form-select" value={templateId} onChange={e => setTemplateId(e.target.value)}>
+                                <option value="">— Şablon seçin —</option>
+                                {templates.map(t => <option key={t.id} value={t.id}>{t.name} ({t.language})</option>)}
+                            </select>
+                        </div>
+                        {selectedTpl && (
+                            <div className="mkt-tpl-preview">
+                                <div className="mkt-tpl-preview-label">Önizleme</div>
+                                <div className="mkt-tpl-preview-body">{selectedTpl.bodyText}</div>
+                            </div>
+                        )}
+                        <div className="mkt-modal-actions">
+                            <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
+                            <button className="mkt-btn-primary" onClick={handleSend} disabled={!templateId || sending}>
+                                {sending ? '⏳ Gönderiliyor...' : `📤 ${members.length} Kişiye Gönder`}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function BulkCallGroupModal({ wsId, group, members, onClose }) {
+    const [agents, setAgents]       = useState([]);
+    const [agentId, setAgentId]     = useState('');
+    const [calling, setCalling]     = useState(false);
+    const [result, setResult]       = useState(null);
+
+    useEffect(() => {
+        api.get(`/retell/${wsId}/agents`).then(r => {
+            const list = r.data?.agents || r.data || [];
+            setAgents(Array.isArray(list) ? list : []);
+            if (list.length === 1) setAgentId(list[0].agent_id || list[0].id);
+        }).catch(() => {});
+    }, [wsId]);
+
+    const handleCall = async () => {
+        if (!agentId) return alert('Agent seçin');
+        setCalling(true);
+        try {
+            const selectedAgent = agents.find(a => (a.agent_id || a.id) === agentId);
+            const agentName = selectedAgent ? (selectedAgent.agent_name || selectedAgent.name || agentId) : agentId;
+            const res = await api.post(`/retell/${wsId}/call/bulk`, {
+                agentId, agentName,
+                contactIds: members.map(m => m.id)
+            });
+            setResult(res.data);
+        } catch (e) { alert('Arama başlatılamadı: ' + (e.response?.data?.error || e.message)); }
+        setCalling(false);
+    };
+
+    return (
+        <div className="mkt-modal-overlay" onClick={onClose}>
+            <div className="mkt-modal" onClick={e => e.stopPropagation()}>
+                <div className="mkt-modal-header">
+                    <div className="mkt-modal-title">📞 Toplu Arama — {group.icon} {group.name}</div>
+                    <button className="mkt-close-btn" onClick={onClose}>✕</button>
+                </div>
+                {result ? (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-success-box">
+                            <div style={{ fontSize: '2rem', marginBottom: 8 }}>📞</div>
+                            <div style={{ fontWeight: 600, color: '#059669' }}>Arama başlatıldı!</div>
+                            <div style={{ fontSize: 14, color: '#374151', marginTop: 4 }}><strong>{result.queued}</strong> kişi kuyruğa alındı.</div>
+                        </div>
+                        <button className="mkt-btn-primary" onClick={onClose} style={{ marginTop: 16, width: '100%' }}>Tamam</button>
+                    </div>
+                ) : (
+                    <div className="mkt-modal-body">
+                        <div className="mkt-modal-info"><span>👥 Kişi sayısı:</span><strong>{members.length}</strong></div>
+                        <div className="mkt-form-group">
+                            <label>Retell Agent</label>
+                            <select className="mkt-form-select" value={agentId} onChange={e => setAgentId(e.target.value)}>
+                                <option value="">— Agent seçin —</option>
+                                {agents.map(a => <option key={a.agent_id || a.id} value={a.agent_id || a.id}>{a.agent_name || a.name || a.agent_id}</option>)}
+                            </select>
+                        </div>
+                        <div className="mkt-modal-warning">⚠️ Aramalar arka planda başlatılır. Arama Analizi sekmesinden takip edin.</div>
+                        <div className="mkt-modal-actions">
+                            <button className="mkt-btn-secondary" onClick={onClose}>İptal</button>
+                            <button className="mkt-btn-call" onClick={handleCall} disabled={!agentId || calling}>
+                                {calling ? '⏳ Başlatılıyor...' : `📞 ${members.length} Kişiyi Ara`}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PAGE
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Marketing() {
@@ -1100,7 +1757,7 @@ export default function Marketing() {
                     <span className="mkt-header-icon">📣</span>
                     <div>
                         <h1 className="mkt-header-title">Pazarlama</h1>
-                        <p className="mkt-header-sub">Toplu gönderim, Retell arama ve analiz</p>
+                        <p className="mkt-header-sub">Toplu gönderim, Retell arama, gruplandırma ve analiz</p>
                     </div>
                 </div>
             </div>
@@ -1109,6 +1766,9 @@ export default function Marketing() {
             <div className="mkt-tabs">
                 <button className={`mkt-tab ${activeTab === 'bulk' ? 'active' : ''}`} onClick={() => setActiveTab('bulk')}>
                     📤 Toplu Gönderim
+                </button>
+                <button className={`mkt-tab ${activeTab === 'groups' ? 'active' : ''}`} onClick={() => setActiveTab('groups')}>
+                    👥 Gruplar
                 </button>
                 <button className={`mkt-tab ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>
                     💬 WhatsApp Şablon Analiz
@@ -1121,6 +1781,7 @@ export default function Marketing() {
             {/* Tab content */}
             <div className="mkt-tab-content">
                 {activeTab === 'bulk'      && <BulkSendTab wsId={wsId} />}
+                {activeTab === 'groups'    && <GroupsTab wsId={wsId} />}
                 {activeTab === 'analytics' && <AnalyticsTab wsId={wsId} />}
                 {activeTab === 'calls'     && <CallAnalyticsTab wsId={wsId} />}
             </div>
