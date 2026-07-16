@@ -449,3 +449,39 @@ export const exportLeads = async (req, res) => {
         res.status(500).json({ error: 'Failed to export leads' });
     }
 };
+
+// Form adına göre gruplandırılmış lead sayısı (Genel Rapor için)
+export const getLeadsByForm = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate } = req.query;
+
+        const where = { workspaceId };
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate)   where.createdAt.lte = new Date(endDate);
+        }
+
+        const byForm = await prisma.facebookLead.groupBy({
+            by: ['formName', 'campaignName'],
+            where,
+            _count: { _all: true },
+            orderBy: { _count: { formName: 'desc' } }
+        });
+
+        const total = byForm.reduce((sum, r) => sum + r._count._all, 0);
+
+        res.json({
+            total,
+            byForm: byForm.map(r => ({
+                formName:     r.formName || 'Bilinmeyen Form',
+                campaignName: r.campaignName || null,
+                count:        r._count._all
+            }))
+        });
+    } catch (error) {
+        console.error('getLeadsByForm error:', error);
+        res.status(500).json({ error: 'Form bazlı lead istatistiği alınamadı.' });
+    }
+};

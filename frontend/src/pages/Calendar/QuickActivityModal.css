@@ -1,0 +1,212 @@
+/* ─── QuickActivityModal ────────────────────────────────────────────── */
+.qam-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2000;
+    backdrop-filter: blur(3px);
+}
+
+.qam-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2001;
+    width: 440px;
+    max-width: 95vw;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: qamSlideIn 0.22s ease;
+}
+
+@keyframes qamSlideIn {
+    from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+    to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Header */
+.qam-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.qam-header-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.qam-header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.qam-action-label {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.qam-contact-name {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.qam-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.qam-close:hover { background: #f1f5f9; color: #475569; }
+
+/* Body */
+.qam-body {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.qam-field-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+
+.qam-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.qam-input {
+    padding: 9px 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #0f172a;
+    background: #f8fafc;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+}
+.qam-input:focus { border-color: #6366f1; background: #fff; }
+
+.qam-textarea {
+    padding: 10px 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #0f172a;
+    background: #f8fafc;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
+    transition: border-color 0.2s;
+    width: 100%;
+    box-sizing: border-box;
+}
+.qam-textarea:focus { border-color: #6366f1; background: #fff; }
+
+/* Choice buttons */
+.qam-choice-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.qam-choice {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex: 1;
+    justify-content: center;
+}
+.qam-choice:hover { border-color: #6366f1; color: #6366f1; background: #f0f4ff; }
+.qam-choice.selected.success { border-color: #10b981; color: #10b981; background: #ecfdf5; }
+.qam-choice.selected.failed  { border-color: #ef4444; color: #ef4444; background: #fff1f2; }
+.qam-choice.sentiment.selected { border-color: #6366f1; background: #f0f4ff; color: #6366f1; }
+
+/* Error */
+.qam-error {
+    font-size: 13px;
+    color: #ef4444;
+    padding: 8px 12px;
+    background: #fff1f2;
+    border-radius: 8px;
+    border: 1px solid #fecaca;
+}
+
+/* Footer */
+.qam-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid #f1f5f9;
+}
+
+.qam-btn-cancel {
+    padding: 9px 18px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.qam-btn-cancel:hover { background: #f8fafc; }
+
+.qam-btn-save {
+    padding: 9px 22px;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.15s;
+}
+.qam-btn-save:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+.qam-btn-save:disabled { opacity: 0.6; cursor: not-allowed; }

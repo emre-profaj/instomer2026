@@ -7,7 +7,8 @@ import {
     getLeadForms,
     deleteLead,
     getLeadStats,
-    exportLeads
+    exportLeads,
+    getLeadsByForm
 } from '../controllers/leads.controller.js';
 
 const router = express.Router();
@@ -23,6 +24,9 @@ router.get('/:workspaceId/stats', requireWorkspaceAccess, getLeadStats);
 
 // Export leads for CSV download
 router.get('/:workspaceId/export', requireWorkspaceAccess, exportLeads);
+
+// Form bazlı lead istatistiği (Genel Rapor)
+router.get('/:workspaceId/by-form', requireWorkspaceAccess, getLeadsByForm);
 
 // Sync leads from Facebook
 router.post('/:workspaceId/sync', requireWorkspaceAccess, syncLeads);

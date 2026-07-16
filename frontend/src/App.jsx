@@ -9,6 +9,7 @@ import AdminRegister from './pages/Auth/AdminRegister';
 import Inbox from './pages/Inbox/Inbox';
 import Conversations from './pages/Conversations/Conversations';
 import Settings from './pages/Settings/Settings';
+import WorkspaceSettings from './pages/Settings/WorkspaceSettings';
 import Assistants from './pages/Assistants/Assistants';
 import Comments from './pages/Comments/Comments';
 import Channels from './pages/Channels/Channels';
@@ -33,8 +34,7 @@ import SalesReport from './pages/CeoReport/SalesReport';
 import RequestReport from './pages/CeoReport/RequestReport';
 import AnalysisReport from './pages/CeoReport/AnalysisReport';
 import Calendar from './pages/Calendar/Calendar';
-import Activities from './pages/Activities/Activities';
-import Calendar2 from './pages/Calendar2/Calendar2';
+
 
 import Automations from './pages/Automations/Automations';
 import Functions from './pages/Automations/Functions';
@@ -105,6 +105,7 @@ function App() {
               <Route path="teams" element={<Users />} />
               <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="workspace-settings" element={<WorkspaceSettings />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="general-report" element={<CeoReport />} />
               <Route path="general-report/general" element={<GeneralReport />} />
@@ -121,11 +122,7 @@ function App() {
               <Route path="ai-call-analytics" element={<AICallAnalytics />} />
               <Route path="calendar" element={<Navigate to="/activities/calendar" replace />} />
               <Route path="activities/calendar" element={<Calendar />} />
-              <Route path="activities/takvim2" element={<Calendar2 />} />
-              <Route path="activities/calls" element={<Activities />} />
-              <Route path="activities/meetings" element={<Activities />} />
-              <Route path="activities/tasks" element={<Activities />} />
-              <Route path="activities/appointments" element={<Activities />} />
+
               <Route path="automations" element={<Automations />} />
               <Route path="functions" element={<Functions />} />
               <Route path="web-forms" element={<WebForms />} />

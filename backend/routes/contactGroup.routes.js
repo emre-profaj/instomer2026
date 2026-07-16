@@ -3,7 +3,7 @@ import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.midd
 import {
     getGroups, createGroup, updateGroup, deleteGroup,
     getGroupMembers, addMembers, removeMember, removeMembers,
-    getAvailableContacts
+    getAvailableContacts, getContactGroups
 } from '../controllers/contactGroup.controller.js';
 
 const router = express.Router();
@@ -24,5 +24,8 @@ router.delete('/:workspaceId/groups/:groupId/members/:contactId', requireWorkspa
 
 // Available contacts picker (not in group)
 router.get('/:workspaceId/groups/:groupId/available-contacts',    requireWorkspaceAccess, getAvailableContacts);
+
+// Bir kişinin dahil olduğu gruplar
+router.get('/:workspaceId/contacts/:contactId/groups', requireWorkspaceAccess, getContactGroups);
 
 export default router;

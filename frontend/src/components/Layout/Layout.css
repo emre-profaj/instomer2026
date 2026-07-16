@@ -37,6 +37,13 @@
     min-height: 100% !important;
 }
 
+/* Calendar: takvim sayfası tam alanı kaplar, scroll engellenir */
+.content>.calendar-page {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+}
+
 /* ── MOBİL LAYOUT ── */
 @media (max-width: 768px) {
     .main-content {

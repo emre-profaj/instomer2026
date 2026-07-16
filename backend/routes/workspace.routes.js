@@ -23,7 +23,11 @@ import {
     deleteSubWorkspace,
     checkIsParentWorkspace,
     // AI Usage
-    getWorkspaceAiUsageStats
+    getWorkspaceAiUsageStats,
+    toggleWorkspaceAppointmentModule,
+    updateAppointmentSchedule,
+    toggleRealEstateModuleWS,
+    toggleSalesModuleWS
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -140,5 +144,17 @@ router.delete('/:workspaceId/sub-workspaces/:subWorkspaceId', requireWorkspaceAc
 
 // Get AI usage stats for workspace
 router.get('/:workspaceId/ai-usage', requireWorkspaceAccess, getWorkspaceAiUsageStats);
+
+// Workspace rezervasyon modülü toggle (workspace admin/owner)
+router.patch('/:workspaceId/appointment-module', requireWorkspaceAccess, toggleWorkspaceAppointmentModule);
+
+// Rezervasyon çalışma günleri/saatleri
+router.patch('/:workspaceId/appointment-schedule', requireWorkspaceAccess, updateAppointmentSchedule);
+
+// Gayrimenkul modülü (workspace tarafından)
+router.patch('/:workspaceId/realestate-module', requireWorkspaceAccess, toggleRealEstateModuleWS);
+
+// Satış modülü (workspace tarafından)
+router.patch('/:workspaceId/sales-module', requireWorkspaceAccess, toggleSalesModuleWS);
 
 export default router;

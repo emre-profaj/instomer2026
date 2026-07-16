@@ -802,3 +802,95 @@ export const getWorkspaceAiUsageStats = async (req, res) => {
         res.status(500).json({ error: 'Failed to get AI usage stats' });
     }
 };
+
+// Workspace kendi rezervasyon modülünü aç/kapat
+export const toggleWorkspaceAppointmentModule = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { enabled } = req.body;
+
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled alanı boolean olmalıdır.' });
+        }
+
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { appointmentEnabled: enabled },
+            select: { id: true, name: true, appointmentEnabled: true, appointmentSchedule: true }
+        });
+
+        res.json({
+            success: true,
+            message: enabled
+                ? `"${workspace.name}" için Rezervasyon Modülü aktif edildi.`
+                : `"${workspace.name}" için Rezervasyon Modülü devre dışı bırakıldı.`,
+            workspace
+        });
+    } catch (error) {
+        console.error('toggleWorkspaceAppointmentModule error:', error);
+        res.status(500).json({ error: 'Modül durumu güncellenemedi.' });
+    }
+};
+
+// Rezervasyon çalışma günleri/saatleri güncelle
+export const updateAppointmentSchedule = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { schedule } = req.body; // [{ day: 0-6, enabled: bool, start: "09:00", end: "18:00" }]
+
+        if (!Array.isArray(schedule)) {
+            return res.status(400).json({ error: 'schedule bir dizi olmalıdır.' });
+        }
+
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { appointmentSchedule: schedule },
+             select: { id: true, name: true, appointmentSchedule: true }
+        });
+
+        res.json({ success: true, workspace });
+    } catch (error) {
+        console.error('updateAppointmentSchedule error:', error);
+        res.status(500).json({ error: 'Çalışma takvimi güncellenemedi.' });
+    }
+};
+
+// Gayrimenkul modülü aç/kapat (workspace tarafından)
+export const toggleRealEstateModuleWS = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled boolean olmalıdır.' });
+
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { realEstateEnabled: enabled },
+            select: { id: true, name: true, realEstateEnabled: true }
+        });
+
+        res.json({ success: true, workspace });
+    } catch (error) {
+        console.error('toggleRealEstateModuleWS error:', error);
+        res.status(500).json({ error: 'Gayrimenkul modülü güncellenemedi.' });
+    }
+};
+
+// Satış modülü aç/kapat (workspace tarafından)
+export const toggleSalesModuleWS = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled boolean olmalıdır.' });
+
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: { salesEnabled: enabled },
+            select: { id: true, name: true, salesEnabled: true }
+        });
+
+        res.json({ success: true, workspace });
+    } catch (error) {
+        console.error('toggleSalesModuleWS error:', error);
+        res.status(500).json({ error: 'Satış modülü güncellenemedi.' });
+    }
+};

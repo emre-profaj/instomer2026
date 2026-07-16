@@ -33,7 +33,8 @@ import {
     createFlowTemplate,
     updateFlowTemplate,
     deleteFlowTemplate,
-    importFlowTemplate
+    importFlowTemplate,
+    toggleAppointmentModule
 } from '../controllers/admin.controller.js';
 import { authenticateJWT, requireRole } from '../middleware/auth.middleware.js';
 
@@ -79,6 +80,7 @@ router.post('/workspaces/:workspaceId/ai-reset', resetWorkspaceAiCounter);
 
 // Modül Erişim Kontrolleri
 router.patch('/workspaces/:workspaceId/modules/realestate', toggleRealEstateModule);
+router.patch('/workspaces/:workspaceId/modules/appointment', toggleAppointmentModule);
 
 // System Email Management
 router.get('/email/check', checkSystemEmail);

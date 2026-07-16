@@ -179,6 +179,85 @@
     flex-direction: column-reverse;
 }
 
+/* Profil kartı — sidebar footer içinde */
+.sidebar-profile-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: default;
+    position: relative;
+}
+.sidebar-profile-card.collapsed {
+    justify-content: center;
+    padding: 10px 0;
+}
+
+/* Yuvarlak avatar */
+.profile-card-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+.profile-avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+.profile-avatar-initial {
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+/* İsim ve rol */
+.profile-card-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+.profile-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.profile-card-role {
+    font-size: 11px;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+/* Açma/kapama butonu */
+.drawer-toggle-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    color: #64748b;
+    transition: background 0.15s, border-color 0.15s;
+}
+.drawer-toggle-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
 /* Logout Button */
 .logout-button {
     width: 100%;

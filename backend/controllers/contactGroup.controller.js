@@ -202,3 +202,19 @@ export const getAvailableContacts = async (req, res) => {
         res.status(500).json({ error: 'Kişiler yüklenemedi' });
     }
 };
+
+// ── Kişinin dahil olduğu grupları getir ─────────────────
+export const getContactGroups = async (req, res) => {
+    const { workspaceId, contactId } = req.params;
+    try {
+        const memberships = await prisma.contactGroupMember.findMany({
+            where: { contactId, group: { workspaceId } },
+            include: { group: { select: { id: true, name: true, color: true } } }
+        });
+        const groups = memberships.map(m => m.group);
+        res.json({ groups });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Kişi grupları yüklenemedi' });
+    }
+};

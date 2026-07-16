@@ -132,7 +132,8 @@ export const adminAPI = {
     importFlowTemplate: (id, workspaceId) => api.post(`/admin/flow-templates/${id}/import`, { workspaceId }),
 
     // Module toggles
-    toggleRealEstateModule: (workspaceId, enabled) => api.patch(`/admin/workspaces/${workspaceId}/modules/realestate`, { enabled })
+    toggleRealEstateModule: (workspaceId, enabled) => api.patch(`/admin/workspaces/${workspaceId}/modules/realestate`, { enabled }),
+    toggleAppointmentModule: (workspaceId, enabled) => api.patch(`/admin/workspaces/${workspaceId}/modules/appointment`, { enabled })
 };
 
 export default api;

@@ -177,7 +177,7 @@ const Sidebar = () => {
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
         setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
-        setIsSettingsOpen(['/channels', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
+        setIsSettingsOpen(['/settings', '/channels', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
     }, [location.pathname]);
 
 
@@ -294,49 +294,20 @@ const Sidebar = () => {
                                 // Kişiler — alt menüsüz, direkt link
 
 
-                                // Aktiviteler — expandable sub-menu
+                                // Takvim — direkt link, Aktiviteler grubu olmadan
                                 const isActivities = item.path === '/activities/calendar';
                                 if (isActivities) {
-                                    const isActivitiesActive = location.pathname.startsWith('/activities') || location.pathname === '/calendar';
+                                    const isCalActive = location.pathname.startsWith('/activities/calendar');
                                     return (
-                                        <div key={item.path}>
-                                            <div
-                                                className={`sidebar-nav-item ${isActivitiesActive && !isActivitiesOpen ? 'active' : ''}`}
-                                                style={{ cursor: 'pointer' }}
-                                                onClick={() => {
-                                                    if (isCollapsed) { navigate('/activities/calendar'); return; }
-                                                    setIsActivitiesOpen(v => !v);
-                                                    if (!isActivitiesActive) navigate('/activities/calendar');
-                                                }}
-                                                title={item.label}
-                                            >
-                                                <item.icon size={20} className="nav-icon" />
-                                                {!isCollapsed && <span>{item.label}</span>}
-                                                {!isCollapsed && <ChevronDown size={14} style={{ marginLeft: 'auto', transition: '0.2s', transform: isActivitiesOpen ? 'rotate(180deg)' : 'none', color: '#9ca3af' }} />}
-                                            </div>
-                                            {isActivitiesOpen && !isCollapsed && (
-                                                <div style={{ paddingLeft: '12px', marginBottom: '2px' }}>
-                                                    {[
-                                                        { label: 'Takvim', path: '/activities/calendar', icon: Calendar },
-                                                        ...(user?.role === 'SUPER_ADMIN' ? [{ label: 'Takvim 2', path: '/activities/takvim2', icon: Calendar }] : []),
-                                                        { label: 'Aramalar', path: '/activities/calls', icon: Phone },
-                                                        { label: 'Randevular', path: '/activities/appointments', icon: CalendarClock },
-                                                        { label: 'Görüşmeler', path: '/activities/meetings', icon: Handshake },
-                                                        { label: 'Görevler', path: '/activities/tasks', icon: ListTodo },
-                                                    ].map(sub => (
-                                                        <Link
-                                                            key={sub.path}
-                                                            to={sub.path}
-                                                            className={`sidebar-nav-item submenu-item ${location.pathname === sub.path ? 'active' : ''}`}
-                                                            style={{ fontSize: '0.82rem', paddingTop: '5px', paddingBottom: '5px' }}
-                                                        >
-                                                            <sub.icon size={14} className="nav-icon" style={{ flexShrink: 0 }} />
-                                                            <span>{sub.label}</span>
-                                                        </Link>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <Link
+                                            key={item.path}
+                                            to="/activities/calendar"
+                                            className={`sidebar-nav-item ${isCalActive ? 'active' : ''}`}
+                                            title="Takvim"
+                                        >
+                                            <item.icon size={20} className="nav-icon" />
+                                            {!isCollapsed && <span>Takvim</span>}
+                                        </Link>
                                     );
                                 }
 
@@ -454,7 +425,7 @@ const Sidebar = () => {
                                         title={t('settings.title')}
                                     >
                                         <Settings size={20} className="nav-icon" />
-                                        {!isCollapsed && <span>{t('settings.title')}</span>}
+                                        {!isCollapsed && <span>Genel</span>}
                                         {!isCollapsed && <ChevronDown size={16} className={`category-arrow ${isSettingsOpen ? 'open' : ''}`} />}
                                     </button>
                                     {isSettingsOpen && !isCollapsed && (
@@ -485,133 +456,7 @@ const Sidebar = () => {
                 </div>
 
                 <div className="sidebar-footer">
-                    {/* Profile Card */}
-                    <div className={`sidebar-profile-card ${isCollapsed ? 'collapsed' : ''}`} style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
-                        <div className="profile-card-avatar">
-                            {user?.avatar ? (
-                                <img src={user.avatar} alt="" className="profile-avatar-img" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }} />
-                            ) : null}
-                            <span className="profile-avatar-initial" style={user?.avatar ? { display: 'none' } : {}}>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
-                        </div>
-                        {!isCollapsed && (
-                            <>
-                                <div className="profile-card-info">
-                                    <span className="profile-card-name">{user?.name || 'Kullanıcı'}</span>
-                                    <span className="profile-card-role">{user?.role === 'SUPER_ADMIN' ? 'Admin' : 'Kullanıcı'}</span>
-                                </div>
-                                <button
-                                    className={`drawer-toggle-btn ${isDrawerOpen ? 'open' : ''}`}
-                                    onClick={() => setIsDrawerOpen(v => !v)}
-                                    title={isDrawerOpen ? 'Menüyü kapat' : 'Hızlı erişim'}
-                                >
-                                    <ChevronDown size={16} style={{ transform: isDrawerOpen ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.3s ease' }} />
-                                </button>
-                            </>
-                        )}
-
-                        {/* Drawer — premium popup, opens upward */}
-                        {isDrawerOpen && !isCollapsed && (
-                            <div className="profile-menu-popup" style={{ minWidth: 260, left: 4, right: 4 }}>
-                                {/* Profile header */}
-                                <div className="profile-menu-header" style={{ padding: '16px', gap: 12 }}>
-                                    <div className="profile-menu-avatar" style={{ width: 42, height: 42 }}>
-                                        {user?.avatar ? (
-                                            <img src={user.avatar} alt="" onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }} />
-                                        ) : null}
-                                        <span style={user?.avatar ? { display: 'none' } : {}}>{(user?.name || 'U').charAt(0).toUpperCase()}</span>
-                                    </div>
-                                    <div className="profile-menu-info">
-                                        <strong style={{ fontSize: '0.9rem' }}>{user?.name}</strong>
-                                        <small style={{ fontSize: '0.75rem' }}>{user?.email}</small>
-                                    </div>
-                                </div>
-
-                                {/* Hızlı Erişim section */}
-                                <div style={{ padding: '4px 12px 0' }}>
-                                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Hızlı Erişim</div>
-                                </div>
-                                <div style={{ padding: '0 10px 8px' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
-                                        {[
-                                            { icon: PhoneCall, label: 'Aramalar', path: '/activities/calls?view=mine', check: '/activities/calls', count: quickCounts.calls },
-                                            { icon: Handshake, label: 'Görüşmeler', path: '/activities/meetings?view=mine', check: '/activities/meetings', count: quickCounts.meetings },
-                                            { icon: ListTodo, label: 'Görevler', path: '/activities/tasks?view=mine', check: '/activities/tasks', count: quickCounts.tasks },
-                                            { icon: FileSignature, label: 'Teklifler', path: '/quotes?view=mine', check: '/quotes' },
-                                            { icon: ShoppingCart, label: 'Satışlar', path: '/orders?view=mine', check: '/orders' },
-                                            { icon: UserCheck, label: 'Müşteriler', path: '/customers?tab=mine', check: '/customers' },
-                                        ].map((item, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => { setIsDrawerOpen(false); navigate(item.path); }}
-                                                style={{
-                                                    position: 'relative',
-                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                                    gap: 3, padding: '10px 4px 7px', border: 'none', borderRadius: 8, cursor: 'pointer',
-                                                    background: location.pathname === item.check ? '#eef2ff' : 'transparent',
-                                                    color: location.pathname === item.check ? '#4f46e5' : '#64748b',
-                                                    fontSize: '0.65rem', fontWeight: 600, whiteSpace: 'nowrap',
-                                                    transition: 'all 0.15s'
-                                                }}
-                                                onMouseEnter={e => { if (location.pathname !== item.check) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}}
-                                                onMouseLeave={e => { if (location.pathname !== item.check) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}}
-                                            >
-                                                <item.icon size={18} />
-                                                <span>{item.label}</span>
-                                                {item.count > 0 && (
-                                                    <span style={{
-                                                        position: 'absolute', top: 2, right: 4, minWidth: 16, height: 16, borderRadius: 8,
-                                                        background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff',
-                                                        fontSize: '0.55rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        padding: '0 3px', boxShadow: '0 1px 3px rgba(239,68,68,0.3)'
-                                                    }}>{item.count > 99 ? '99+' : item.count}</span>
-                                                )}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Navigation grid */}
-                                <div style={{ padding: '0 10px 8px' }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
-                                        {[
-                                            { icon: Calendar, label: 'Takvim', action: () => { setIsDrawerOpen(false); navigate('/activities/calendar'); }, check: '/activities/calendar' },
-                                            { icon: Settings, label: 'Profil', action: () => { setIsDrawerOpen(false); navigate('/settings'); }, check: '/settings' },
-                                            { icon: Database, label: 'Şifre', action: () => { setIsDrawerOpen(false); alert('Şifre değiştirme sayfasına yönlendirilecek'); }, check: null },
-                                        ].map((item, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={item.action}
-                                                style={{
-                                                    position: 'relative',
-                                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                                    gap: 3, padding: '10px 4px 7px', border: 'none', borderRadius: 8, cursor: 'pointer',
-                                                    background: item.check && location.pathname.startsWith(item.check) ? '#eef2ff' : 'transparent',
-                                                    color: item.check && location.pathname.startsWith(item.check) ? '#4f46e5' : '#64748b',
-                                                    fontSize: '0.65rem', fontWeight: 600, whiteSpace: 'nowrap',
-                                                    transition: 'all 0.15s'
-                                                }}
-                                                onMouseEnter={e => { if (!item.check || !location.pathname.startsWith(item.check)) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}}
-                                                onMouseLeave={e => { if (!item.check || !location.pathname.startsWith(item.check)) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }}}
-                                            >
-                                                <item.icon size={18} />
-                                                <span>{item.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="profile-menu-divider" />
-                                <div style={{ padding: '4px 0' }}>
-                                    <button className="profile-menu-item danger" onClick={() => { setIsDrawerOpen(false); handleLogout(); }}>
-                                        <LogOut size={16} />
-                                        <span>Çıkış Yap</span>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Notifications — always above profile card */}
+                    {/* Notifications */}
                     <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 4, borderTop: 'none' }}>
                         <NotificationPanel isCollapsed={isCollapsed} />
                     </div>

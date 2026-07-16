@@ -123,7 +123,7 @@ const ReminderList = ({ workspaceId, contactName, contactPhone }) => {
     );
 };
 
-const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null, onOpenConversationPopup = null, onConversationStatusChange = null, funnelOptions = [] }) => {
+const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAssign, isOwner, externalProfile = null, readOnly = false, onClose, onConversationOpen, teams = [], onAssignTeam, onAssignUser, onTakeOver, conversationData = null, currentUserId = null, onActivitySaved = null, onOpenConversationPopup = null, onConversationStatusChange = null, funnelOptions = [], initialAction = null }) => {
     const { currentWorkspace, onlineUsers, user } = useAuth();
     const navigate = useNavigate();
     const [profile, setProfile] = useState(null);
@@ -182,9 +182,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [showExtraFields, setShowExtraFields] = useState(false);
     const [caseStatusDropdownOpen, setCaseStatusDropdownOpen] = useState(false);
 
+    // Grup state'leri
+    const [allGroups, setAllGroups] = useState([]);
+    const [contactGroups, setContactGroups] = useState([]); // Bu kişinin dahil olduğu grup ID'leri
+    const [groupSaving, setGroupSaving] = useState(false);
 
     // Reminder states
-    const [showReminderModal, setShowReminderModal] = useState(false);
+    const [showReminderModal, setShowReminderModal] = useState(initialAction === 'REMINDER');
     const [reminderSaving, setReminderSaving] = useState(false);
 
     // Call popup states
@@ -205,7 +209,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [plannedTimeline, setPlannedTimeline] = useState([]);
     const [pastTimeline, setPastTimeline] = useState([]);
     const [timelineLoading, setTimelineLoading] = useState(false);
-    const [showActivityModal, setShowActivityModal] = useState(false);
+    const [showActivityModal, setShowActivityModal] = useState(!!initialAction && initialAction !== 'REMINDER');
     // Local atama state — API cevabı beklemeden dropdown anında güncellenir
     const [localTeamId, setLocalTeamId] = useState(() => {
         const t = conversationData?.teamIds;
@@ -224,7 +228,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [editActivityText, setEditActivityText] = useState('');
     const [editingActivityId, setEditingActivityId] = useState(null); // For modal edit mode
     const [activityForm, setActivityForm] = useState({
-        type: 'NOTE',
+        type: (initialAction && initialAction !== 'REMINDER') ? initialAction : 'NOTE',
         title: '',
         description: '',
         dueDate: '',
@@ -332,6 +336,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             fetchProfileByContactId();
         }
     }, [isOpen, contactId, conversationId, externalProfile]);
+
+    // Grupları yükle
+    useEffect(() => {
+        if (!isOpen || !currentWorkspace?.id) return;
+        import('../../services/api').then(({ default: api }) => {
+            api.get(`/contact-groups/${currentWorkspace.id}/groups`)
+                .then(res => setAllGroups(res.data.groups || []))
+                .catch(() => {});
+        });
+    }, [isOpen, currentWorkspace?.id]);
+
+    // Kişinin gruplarını yükle
+    useEffect(() => {
+        if (!isOpen || !profile?.id || !currentWorkspace?.id) return;
+        import('../../services/api').then(({ default: api }) => {
+            api.get(`/contact-groups/${currentWorkspace.id}/contacts/${profile.id}/groups`)
+                .then(res => setContactGroups((res.data.groups || []).map(g => g.id)))
+                .catch(() => {});
+        });
+    }, [isOpen, profile?.id, currentWorkspace?.id]);
 
     // conversationData prop değişince local atama state'ini sync et
     useEffect(() => {
@@ -1754,6 +1778,100 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </button>
                                                 )}
                                             </div>
+
+                                            {/* Grup Seçimi */}
+                                            {allGroups.length > 0 && (
+                                                <div style={{ padding: '6px 0 8px', borderBottom: '1px solid #f3f4f6' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                                        <Users size={12} color="#9ca3af" />
+                                                        <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>Gruplar</span>
+                                                    </div>
+
+                                                    {/* Seçili gruplar — tag olarak */}
+                                                    {contactGroups.length > 0 && (
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                                                            {contactGroups.map(gid => {
+                                                                const g = allGroups.find(x => x.id === gid);
+                                                                if (!g) return null;
+                                                                return (
+                                                                    <span key={gid} style={{
+                                                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                                        background: (g.color || '#6366f1') + '18',
+                                                                        color: g.color || '#6366f1',
+                                                                        border: `1px solid ${(g.color || '#6366f1')}40`,
+                                                                        borderRadius: 20, padding: '2px 8px 2px 10px',
+                                                                        fontSize: 11, fontWeight: 500,
+                                                                    }}>
+                                                                        {g.name}
+                                                                        <button
+                                                                            disabled={groupSaving}
+                                                                            onClick={async () => {
+                                                                                setGroupSaving(true);
+                                                                                try {
+                                                                                    const { default: api } = await import('../../services/api');
+                                                                                    await api.delete(`/contact-groups/${currentWorkspace.id}/groups/${gid}/members/${profile.id}`);
+                                                                                    setContactGroups(prev => prev.filter(id => id !== gid));
+                                                                                } catch (err) {
+                                                                                    console.error(err);
+                                                                                } finally {
+                                                                                    setGroupSaving(false);
+                                                                                }
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'none', border: 'none', cursor: 'pointer',
+                                                                                color: 'inherit', opacity: 0.7, padding: 0,
+                                                                                display: 'flex', alignItems: 'center', lineHeight: 1,
+                                                                                fontSize: 13, fontWeight: 700,
+                                                                            }}
+                                                                        >×</button>
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Grup ekle dropdown */}
+                                                    <select
+                                                        value=""
+                                                        disabled={groupSaving}
+                                                        onChange={async (e) => {
+                                                            const gid = e.target.value;
+                                                            if (!gid || contactGroups.includes(gid)) return;
+                                                            setGroupSaving(true);
+                                                            try {
+                                                                const { default: api } = await import('../../services/api');
+                                                                await api.post(`/contact-groups/${currentWorkspace.id}/groups/${gid}/members`, { contactIds: [profile.id] });
+                                                                setContactGroups(prev => [...prev, gid]);
+                                                            } catch (err) {
+                                                                console.error(err);
+                                                            } finally {
+                                                                setGroupSaving(false);
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            width: '100%',
+                                                            border: '1.5px solid #e5e7eb',
+                                                            borderRadius: 8,
+                                                            fontSize: 12,
+                                                            color: contactGroups.length === allGroups.length ? '#d1d5db' : '#374151',
+                                                            background: groupSaving ? '#f9fafb' : '#fff',
+                                                            outline: 'none',
+                                                            padding: '6px 8px',
+                                                            cursor: groupSaving ? 'not-allowed' : 'pointer',
+                                                            fontFamily: 'inherit',
+                                                            appearance: 'auto',
+                                                        }}
+                                                    >
+                                                        <option value="">+ Gruba ekle...</option>
+                                                        {allGroups
+                                                            .filter(g => !contactGroups.includes(g.id))
+                                                            .map(g => (
+                                                                <option key={g.id} value={g.id}>{g.name}</option>
+                                                            ))
+                                                        }
+                                                    </select>
+                                                </div>
+                                            )}
 
                                             {/* Location / Language Row */}
                                             <div className="unified-location-row">

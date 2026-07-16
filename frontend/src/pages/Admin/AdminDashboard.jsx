@@ -97,6 +97,7 @@ const AdminDashboard = () => {
 
     // Modül Toggle States
     const [togglingRealEstate, setTogglingRealEstate] = useState(false);
+    const [togglingAppointment, setTogglingAppointment] = useState(false);
 
 
     useEffect(() => {
@@ -374,6 +375,21 @@ const AdminDashboard = () => {
         }
     };
 
+    // Randevu Modülü toggle
+    const handleToggleAppointment = async (currentEnabled) => {
+        if (togglingAppointment) return;
+        const newValue = !currentEnabled;
+        setTogglingAppointment(true);
+        try {
+            await adminAPI.toggleAppointmentModule(workspaceId, newValue);
+            setSelectedWorkspace(prev => ({ ...prev, appointmentEnabled: newValue }));
+        } catch (error) {
+            alert('Randevu modülü güncellenemedi: ' + (error.response?.data?.error || error.message));
+        } finally {
+            setTogglingAppointment(false);
+        }
+    };
+
     // Workspace'i firmaya taşı
     const handleMoveWorkspaceToCompany = async () => {
         if (!selectedWorkspaceToMove || !targetCompanyId) return;
@@ -592,7 +608,53 @@ const AdminDashboard = () => {
                                     : <><ToggleLeft size={20} /> Pasif</>}
                             </button>
                         </div>
-                        {/* İleride buraya diğer modüller eklenebilir */}
+                        {/* Randevu Modülü */}
+                        <div style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '16px', borderRadius: 12,
+                            background: selectedWorkspace.appointmentEnabled !== false ? '#f0fdf4' : '#f9fafb',
+                            border: `1.5px solid ${selectedWorkspace.appointmentEnabled !== false ? '#86efac' : '#e5e7eb'}`,
+                            transition: 'all 0.2s ease'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div style={{
+                                    width: 40, height: 40, borderRadius: 10,
+                                    background: selectedWorkspace.appointmentEnabled !== false ? '#22c55e' : '#e5e7eb',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    transition: 'background 0.2s'
+                                }}>
+                                    <span style={{ fontSize: 18 }}>🏥</span>
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827' }}>
+                                        Randevu Modülü
+                                    </div>
+                                    <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: 2 }}>
+                                        {selectedWorkspace.appointmentEnabled !== false
+                                            ? 'Aktif — Bot randevu verebilir'
+                                            : 'Pasif — Bot randevu akışı devre dışı'}
+                                    </div>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => handleToggleAppointment(selectedWorkspace.appointmentEnabled !== false)}
+                                disabled={togglingAppointment}
+                                style={{
+                                    background: 'none', border: 'none', cursor: togglingAppointment ? 'not-allowed' : 'pointer',
+                                    opacity: togglingAppointment ? 0.5 : 1,
+                                    display: 'flex', alignItems: 'center', gap: 8,
+                                    padding: '8px 16px', borderRadius: 8,
+                                    backgroundColor: selectedWorkspace.appointmentEnabled !== false ? '#dcfce7' : '#f3f4f6',
+                                    color: selectedWorkspace.appointmentEnabled !== false ? '#15803d' : '#6b7280',
+                                    fontSize: '0.875rem', fontWeight: 600,
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                {selectedWorkspace.appointmentEnabled !== false
+                                    ? <><ToggleRight size={20} /> Aktif</>
+                                    : <><ToggleLeft size={20} /> Pasif</>}
+                            </button>
+                        </div>
                     </div>
                 </div>
 

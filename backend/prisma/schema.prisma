@@ -161,6 +161,14 @@ model Workspace {
   // Gayrimenkul
   realEstateEnabled Boolean @default(false)
 
+  // Satış Modülü (Teklifler, Siparişler, Faturalar, Ürünler)
+  salesEnabled Boolean @default(false)
+
+  // Randevu Modülü (false = workspace'de randevu botu devre dışı)
+  appointmentEnabled   Boolean @default(true)
+  // Randevu saatleri: [{ day: 0-6, enabled: bool, start: "09:00", end: "18:00" }]
+  appointmentSchedule  Json?
+
   // Varsayılan Dil (agent'ta boşsa buradan alınır)
   defaultLanguage String @default("tr-TR") // tr-TR, en-US, en-GB, de-DE, fr-FR, ar-SA, multi
 

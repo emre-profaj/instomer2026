@@ -694,17 +694,18 @@
 
 /* Profile Popup Menu */
 .profile-menu-popup {
-    position: absolute;
-    bottom: calc(100% + 8px);
+    position: fixed;
+    bottom: 0;
     left: 8px;
-    right: 8px;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    width: 222px;
+    background: #ffffff;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
     border: 1px solid #e5e7eb;
-    z-index: 200;
+    border-bottom: none;
+    z-index: 9999;
     overflow: hidden;
-    animation: profilePopupIn 0.15s ease;
+    animation: profilePopupIn 0.18s ease;
 }
 
 @keyframes profilePopupIn {
@@ -1121,6 +1122,9 @@
     .activities-list-panel {
         width: 100%;
         min-width: 100%;
+        bottom: 0;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }
     .activities-detail-panel {
         display: none;

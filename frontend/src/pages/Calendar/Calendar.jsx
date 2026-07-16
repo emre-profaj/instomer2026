@@ -6,11 +6,12 @@ import {
     Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X,
     Clock, User, Phone, Mail, FileText, Check, AlertCircle, Trash2,
     Layers, Edit2, Building2, List, Grid3X3, Search,
-    CalendarClock, Handshake, ListTodo, PhoneCall
+    CalendarClock, Handshake, ListTodo, PhoneCall, Bell
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import '../../components/ContactSidebar/ContactSidebar.css';
 import { contactAPI, conversationAPI } from '../../services/api';
+import QuickActivityModal from './QuickActivityModal';
 import './Calendar.css';
 
 const APPOINTMENT_STATUSES = [
@@ -35,7 +36,7 @@ const RESOURCE_COLORS = [
 
 const Calendar = () => {
     const { t } = useTranslation();
-    const { currentWorkspace } = useAuth();
+    const { currentWorkspace, user } = useAuth();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'day'
     const [appointments, setAppointments] = useState([]);
@@ -44,7 +45,17 @@ const Calendar = () => {
     const [layoutMode, setLayoutMode] = useState('grid'); // 'grid' | 'list'
     const [agents, setAgents] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [selectedAgent, setSelectedAgent] = useState('');
+
+    // localStorage anahtar yardımcısı — her workspace/user için ayrı
+    const lsKey = (k) => `cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_${k}`;
+
+    const [selectedAgents, setSelectedAgents] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_agents`);
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        } catch { return new Set(); }
+    });
+    const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
     const [cancellingCallId, setCancellingCallId] = useState(null);
 
     // Scheduled call edit modal
@@ -54,7 +65,9 @@ const Calendar = () => {
 
     // Resource states
     const [resources, setResources] = useState([]);
-    const [selectedResource, setSelectedResource] = useState('');
+    const [selectedResource, setSelectedResource] = useState(() => {
+        try { return localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_resource`) || ''; } catch { return ''; }
+    });
     const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
     const [editingResource, setEditingResource] = useState(null);
     const [resourceForm, setResourceForm] = useState({
@@ -89,9 +102,50 @@ const Calendar = () => {
     // Toggle for completed appointments
     const [showCompleted, setShowCompleted] = useState(true);
 
+    // Sidebar pagination
+    const [sidebarPage, setSidebarPage] = useState(1);
+    const SIDEBAR_PAGE_SIZE = 8;
+
     // Activity type filter (multi-select)
-    const [activeFilters, setActiveFilters] = useState(new Set(['calls', 'appointments', 'meetings', 'tasks']));
-    const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'pending', 'completed', 'overdue'
+    const [activeFilters, setActiveFilters] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_activity`);
+            return saved ? new Set(JSON.parse(saved)) : new Set(['calls', 'appointments', 'meetings', 'tasks']);
+        } catch { return new Set(['calls', 'appointments', 'meetings', 'tasks']); }
+    });
+    const [statusFilter, setStatusFilter] = useState(() => {
+        try { return localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_status`) || 'all'; } catch { return 'all'; }
+    });
+
+    // localStorage'a filtre kaydet
+    useEffect(() => {
+        try { localStorage.setItem(lsKey('agents'), JSON.stringify([...selectedAgents])); } catch {}
+    }, [selectedAgents]);
+    useEffect(() => {
+        try { localStorage.setItem(lsKey('resource'), selectedResource); } catch {}
+    }, [selectedResource]);
+    useEffect(() => {
+        try { localStorage.setItem(lsKey('activity'), JSON.stringify([...activeFilters])); } catch {}
+    }, [activeFilters]);
+    useEffect(() => {
+        try { localStorage.setItem(lsKey('status'), statusFilter); } catch {}
+    }, [statusFilter]);
+
+    // Tüm filtreleri sıfırla
+    const clearAllFilters = () => {
+        setSelectedAgents(new Set());
+        setSelectedResource('');
+        setActiveFilters(new Set(['calls', 'appointments', 'meetings', 'tasks']));
+        setStatusFilter('all');
+        try {
+            localStorage.removeItem(lsKey('agents'));
+            localStorage.removeItem(lsKey('resource'));
+            localStorage.removeItem(lsKey('activity'));
+            localStorage.removeItem(lsKey('status'));
+        } catch {}
+    };
+
+    const hasActiveFilters = selectedAgents.size > 0 || selectedResource !== '' || statusFilter !== 'all';
 
     const toggleActivityFilter = (key) => {
         setActiveFilters(prev => {
@@ -134,6 +188,16 @@ const Calendar = () => {
     const [selectedContactId, setSelectedContactId] = useState(null);
     const [listSearchTerm, setListSearchTerm] = useState('');
 
+    // Quick-action kişi seçme modal state
+    const [quickActionType, setQuickActionType] = useState(null); // { label, type, subtype }
+    const [contactPickerOpen, setContactPickerOpen] = useState(false);
+    const [contactSearch, setContactSearch] = useState('');
+    const [contactResults, setContactResults] = useState([]);
+    const [contactLoading, setContactLoading] = useState(false);
+    // Seçilen kişi + action — QuickActivityModal açmak için
+    const [quickActionContact, setQuickActionContact] = useState(null); // { id, name, phone, email }
+    const [quickActionInitialAction, setQuickActionInitialAction] = useState(null);
+
     useEffect(() => {
         if (currentWorkspace?.id) {
             loadAppointments();
@@ -142,7 +206,7 @@ const Calendar = () => {
             loadScheduledCalls();
             loadResources();
         }
-    }, [currentWorkspace, currentDate, selectedAgent, selectedResource]);
+    }, [currentWorkspace, currentDate, selectedAgents, selectedResource]);
 
     const loadResources = async () => {
         try {
@@ -165,8 +229,8 @@ const Calendar = () => {
                 endDate: endOfMonth.toISOString()
             };
 
-            if (selectedAgent) {
-                params.assignedToId = selectedAgent;
+            if (selectedAgents.size > 0) {
+                params.assignedToId = [...selectedAgents].join(',');
             }
 
             if (selectedResource) {
@@ -326,15 +390,88 @@ const Calendar = () => {
     };
 
     const handlePrevMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+        if (viewMode === 'week') {
+            const d = new Date(currentDate);
+            d.setDate(d.getDate() - 7);
+            setCurrentDate(d);
+        } else if (viewMode === 'day') {
+            const d = new Date(currentDate);
+            d.setDate(d.getDate() - 1);
+            setCurrentDate(d);
+        } else {
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+        }
     };
 
     const handleNextMonth = () => {
-        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+        if (viewMode === 'week') {
+            const d = new Date(currentDate);
+            d.setDate(d.getDate() + 7);
+            setCurrentDate(d);
+        } else if (viewMode === 'day') {
+            const d = new Date(currentDate);
+            d.setDate(d.getDate() + 1);
+            setCurrentDate(d);
+        } else {
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+        }
     };
 
     const handleToday = () => {
         setCurrentDate(new Date());
+    };
+
+    // Returns the 7 days of the week containing currentDate (Sunday-based)
+    const getWeekDays = () => {
+        const date = new Date(currentDate);
+        // ISO week: start from Monday (1). Sunday(0) treated as 7.
+        const day = date.getDay() === 0 ? 7 : date.getDay();
+        const start = new Date(date);
+        start.setDate(date.getDate() - (day - 1));
+        return Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            return d;
+        });
+    };
+
+    // Hours to show in week/day view
+    const HOURS = Array.from({ length: 12 }, (_, i) => i + 9); // 09:00 - 20:00
+
+    // Get appointments for a specific hour slot in a specific day
+    const getEventsForSlot = (date, hour) => {
+        const dateStr = date.toDateString();
+        const apts = appointments.filter(apt => {
+            const start = new Date(apt.startTime);
+            if (start.toDateString() !== dateStr) return false;
+            if (start.getHours() !== hour) return false;
+            if (!activeFilters.has('appointments')) return false;
+            return true;
+        });
+        const calls = (!selectedResource && activeFilters.has('calls'))
+            ? scheduledCalls.filter(sc => {
+                const start = new Date(sc.scheduledAt);
+                return start.toDateString() === dateStr && start.getHours() === hour;
+            })
+            : [];
+        return { apts, calls };
+    };
+
+    // Format header label based on viewMode
+    const getHeaderLabel = () => {
+        if (viewMode === 'month') {
+            return `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+        } else if (viewMode === 'week') {
+            const days = getWeekDays();
+            const first = days[0];
+            const last = days[6];
+            if (first.getMonth() === last.getMonth()) {
+                return `${first.getDate()} - ${last.getDate()} ${monthNames[first.getMonth()]} ${first.getFullYear()}`;
+            }
+            return `${first.getDate()} ${monthNames[first.getMonth()]} - ${last.getDate()} ${monthNames[last.getMonth()]} ${last.getFullYear()}`;
+        } else {
+            return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
     };
 
     const getDaysInMonth = () => {
@@ -343,13 +480,15 @@ const Calendar = () => {
         const firstDay = new Date(year, month, 1);
         const lastDay = new Date(year, month + 1, 0);
         const daysInMonth = lastDay.getDate();
-        const startDayOfWeek = firstDay.getDay();
+        // ISO week: Monday=0 offset. Sunday(0) → offset 6, Monday(1) → 0, …
+        const rawDay = firstDay.getDay();
+        const startOffset = rawDay === 0 ? 6 : rawDay - 1;
 
         const days = [];
 
         // Previous month days
         const prevMonth = new Date(year, month, 0);
-        for (let i = startDayOfWeek - 1; i >= 0; i--) {
+        for (let i = startOffset - 1; i >= 0; i--) {
             days.push({
                 date: new Date(year, month - 1, prevMonth.getDate() - i),
                 isCurrentMonth: false
@@ -406,8 +545,8 @@ const Calendar = () => {
     };
 
 
-    const openCreateModal = (date = null) => {
-        const now = date || new Date();
+    const openCreateModal = (date = null, contact = null) => {
+        const now = (date instanceof Date ? date : null) || new Date();
         const startTime = new Date(now);
         startTime.setHours(10, 0, 0, 0);
         const endTime = new Date(startTime);
@@ -420,15 +559,63 @@ const Calendar = () => {
             endTime: formatDateTimeLocal(endTime),
             assignedToId: agents[0]?.id || '',
             resourceId: selectedResource || '',
-            contactName: '',
-            contactPhone: '',
-            contactEmail: '',
+            contactName: contact?.name || '',
+            contactPhone: contact?.phone || contact?.phoneNumber || '',
+            contactEmail: contact?.email || '',
             notes: '',
             status: 'SCHEDULED'
         });
         setSelectedAppointment(null);
         setConflict(null);
         setIsModalOpen(true);
+    };
+
+    // Hızlı eylem butonuna tıklanınca — kişi seçme modal'ını aç
+    const openQuickAction = (actionType) => {
+        setQuickActionType(actionType);
+        setContactSearch('');
+        setContactResults([]);
+        setContactPickerOpen(true);
+    };
+
+    // Kişi arama
+    const searchContacts = async (query) => {
+        if (!currentWorkspace?.id) return;
+        setContactLoading(true);
+        try {
+            const res = await contactAPI.getAll(currentWorkspace.id, { search: query, limit: 20 });
+            const list = res.data?.contacts || res.data || [];
+            setContactResults(Array.isArray(list) ? list : []);
+        } catch (e) {
+            setContactResults([]);
+        } finally {
+            setContactLoading(false);
+        }
+    };
+
+    // Kişi seçilince — QuickActivityModal aç
+    const handlePickContact = (contact) => {
+        const actionMap = {
+            'calls':        'NOTE',
+            'calls_plan':   'CALL',
+            'appointments': 'MEETING',
+            'tasks':        'REMINDER',
+        };
+        let actionKey = quickActionType?.type || 'calls';
+        if (quickActionType?.subtype === 'planned') actionKey = 'calls_plan';
+        const initialAction = actionMap[actionKey] || 'NOTE';
+
+        setContactPickerOpen(false);
+        setQuickActionType(null);
+        setQuickActionInitialAction(initialAction);
+        setQuickActionContact(contact); // tüm contact nesnesini sakla
+    };
+
+    // Kişisiz devam et
+    const handlePickNoContact = () => {
+        setContactPickerOpen(false);
+        setQuickActionType(null);
+        openCreateModal();
     };
 
     const openEditModal = (appointment) => {
@@ -595,7 +782,13 @@ const Calendar = () => {
         'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
     ];
 
-    const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+    // Monday-first week order
+    const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    // Map getDay() (0=Sun…6=Sat) → Monday-first index for dayNames
+    const getDayName = (date) => {
+        const d = date.getDay();
+        return dayNames[d === 0 ? 6 : d - 1];
+    };
 
     const getResourceName = (resourceId) => {
         const r = resources.find(r => r.id === resourceId);
@@ -606,70 +799,152 @@ const Calendar = () => {
         <div className={`calendar-page ${layoutMode === 'list' ? 'calendar-page-list-mode' : ''}`}>
             {/* Full-width Header */}
             <div className="calendar-header">
-                <div className="calendar-header-left">
+
+                {/* SATIR 1: Başlık (sol) + Hızlı eylem butonları (sağ) */}
+                <div className="cal-header-row cal-title-row" style={{ justifyContent: 'space-between' }}>
                     <div className="calendar-title">
                         <CalendarIcon size={24} />
                         <h1>Aktiviteler</h1>
                     </div>
-                    <select
-                        className="agent-filter"
-                        value={selectedAgent}
-                        onChange={(e) => setSelectedAgent(e.target.value)}
-                    >
-                        <option value="">{t('common.all')} Agents</option>
-                        {agents.map(agent => (
-                            <option key={agent.id} value={agent.id}>{agent.name}</option>
-                        ))}
-                    </select>
 
-                    {resources.length > 0 && (
+                    {/* Hızlı eylem butonları */}
+                    <div className="cal-quick-actions">
+                        {[
+                            { label: 'Arama Notu',        icon: PhoneCall,     type: 'calls',        subtype: 'note'     },
+                            { label: 'Arama Planla',      icon: PhoneCall,     type: 'calls',        subtype: 'planned'  },
+                            { label: 'Görüşme Planla',    icon: CalendarClock, type: 'appointments', subtype: 'meeting'  },
+                            { label: 'Görev Hatırlatıcı', icon: Bell,          type: 'tasks',        subtype: 'reminder' },
+                        ].map((btn) => (
+                            <button
+                                key={btn.label}
+                                className="cal-quick-btn"
+                                onClick={() => openQuickAction(btn)}
+                                title={btn.label}
+                            >
+                                <btn.icon size={20} />
+                                <span>{btn.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* SATIR 2: Agent+Kaynak seçimleri | Aktivite tip filtreleri | Status filtreleri */}
+                <div className="cal-header-row cal-filters-main-row">
+                    {/* Sol: Agent + Kaynak */}
+                    <div className="cal-selects-group">
+                        {/* Agent Multi-Select Dropdown */}
+                        <div className="agent-multi-select" style={{ position: 'relative' }}>
+                            <button
+                                className="agent-filter"
+                                onClick={() => setAgentDropdownOpen(o => !o)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', minWidth: 140 }}
+                            >
+                                <span style={{ flex: 1, textAlign: 'left', fontSize: 13, color: '#374151' }}>
+                                    {selectedAgents.size === 0
+                                        ? 'Tümü Agents'
+                                        : selectedAgents.size === 1
+                                            ? agents.find(a => selectedAgents.has(String(a.id)))?.name || 'Agent'
+                                            : `${selectedAgents.size} Agent seçili`}
+                                </span>
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, opacity: 0.5 }}>
+                                    <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                            </button>
+                            {agentDropdownOpen && (
+                                <>
+                                    <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setAgentDropdownOpen(false)} />
+                                    <div className="agent-multi-dropdown">
+                                        <div
+                                            className={`agent-multi-item ${selectedAgents.size === 0 ? 'selected' : ''}`}
+                                            onClick={() => { setSelectedAgents(new Set()); setAgentDropdownOpen(false); }}
+                                        >
+                                            <span className="agent-multi-check">{selectedAgents.size === 0 ? '✓' : ''}</span>
+                                            Tümü Agents
+                                        </div>
+                                        <div className="agent-multi-divider" />
+                                        {agents.map(agent => {
+                                            const isChecked = selectedAgents.has(String(agent.id));
+                                            return (
+                                                <div
+                                                    key={agent.id}
+                                                    className={`agent-multi-item ${isChecked ? 'selected' : ''}`}
+                                                    onClick={() => {
+                                                        setSelectedAgents(prev => {
+                                                            const next = new Set(prev);
+                                                            if (next.has(String(agent.id))) next.delete(String(agent.id));
+                                                            else next.add(String(agent.id));
+                                                            return next;
+                                                        });
+                                                    }}
+                                                >
+                                                    <span className="agent-multi-check">{isChecked ? '✓' : ''}</span>
+                                                    {agent.name}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Kaynak seçimi */}
                         <select
                             className="resource-filter"
                             value={selectedResource}
                             onChange={(e) => setSelectedResource(e.target.value)}
                         >
-                            <option value="">{t('common.all')}</option>
+                            <option value="">{t('common.all')} Kaynaklar</option>
                             {resources.map(resource => (
                                 <option key={resource.id} value={resource.id}>
                                     {RESOURCE_TYPES.find(t => t.value === resource.type)?.icon} {resource.name}
                                 </option>
                             ))}
                         </select>
-                    )}
-                </div>
 
-                <div className="activity-filters-wrapper">
-                    <div className="activity-type-filters">
-                        {[
-                            { key: 'all', label: 'Tümü', icon: Layers },
-                            { key: 'calls', label: 'Aramalar', icon: PhoneCall },
-                            { key: 'appointments', label: 'Randevular', icon: CalendarClock },
-                            { key: 'meetings', label: 'Görüşmeler', icon: Handshake },
-                            { key: 'tasks', label: 'Görevler', icon: ListTodo },
-                        ].map(f => (
-                            <label
-                                key={f.key}
-                                className={`activity-filter-checkbox ${isFilterActive(f.key) ? 'active' : ''}`}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={isFilterActive(f.key)}
-                                    onChange={() => toggleActivityFilter(f.key)}
-                                />
-                                <f.icon size={14} />
-                                <span>{f.label}</span>
-                                {f.key !== 'all' && <span className="filter-count">{activityCounts[f.key] || 0}</span>}
-                            </label>
-                        ))}
+                        {/* Filtreleri Kaldır */}
+                        {hasActiveFilters && (
+                            <button className="clear-filters-btn" onClick={clearAllFilters} title="Tüm filtreleri sıfırla">
+                                <X size={13} />
+                                Filtreleri Kaldır
+                            </button>
+                        )}
                     </div>
 
-                    {activeFilters.size > 0 && !isFilterActive('all') && (
+                    {/* Orta+Sağ: Aktivite tip filtreleri + Status filtreleri yan yana */}
+                    <div className="cal-activity-filters-group">
+                        {/* Aktivite tip filtreleri */}
+                        <div className="activity-type-filters">
+                            {[
+                                { key: 'all',          label: 'Tümü',       icon: Layers,        colorClass: 'cal-all' },
+                                { key: 'calls',        label: 'Aramalar',   icon: PhoneCall,     colorClass: 'cal-calls' },
+                                { key: 'appointments', label: 'Randevular', icon: CalendarClock, colorClass: 'cal-apts' },
+                                { key: 'meetings',     label: 'Görüşmeler', icon: Handshake,     colorClass: 'cal-meetings' },
+                                { key: 'tasks',        label: 'Görevler',   icon: ListTodo,      colorClass: 'cal-tasks' },
+                            ].map(f => (
+                                <div
+                                    key={f.key}
+                                    className={`quick-stat-card ${
+                                        f.key === 'all'
+                                            ? isFilterActive('all') ? 'quick-stat-active' : ''
+                                            : isFilterActive(f.key) && !isFilterActive('all') ? 'quick-stat-active' : ''
+                                    }`}
+                                    onClick={() => toggleActivityFilter(f.key)}
+                                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                                >
+                                    <div className={`quick-stat-icon ${f.colorClass}`}><f.icon size={13} /></div>
+                                    {f.key !== 'all' && <span className="quick-stat-value">{activityCounts[f.key] || 0}</span>}
+                                    <span className="quick-stat-label">{f.label}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Status filtreleri */}
                         <div className="status-sub-filters">
                             {[
-                                { key: 'all', label: 'Tümü', color: '#64748b' },
-                                { key: 'pending', label: 'Bekleyen', color: '#f59e0b' },
+                                { key: 'all',       label: 'Tümü',       color: '#64748b' },
+                                { key: 'pending',   label: 'Bekleyen',   color: '#f59e0b' },
                                 { key: 'completed', label: 'Tamamlanan', color: '#10b981' },
-                                { key: 'overdue', label: 'Geciken', color: '#ef4444' },
+                                { key: 'overdue',   label: 'Geciken',    color: '#ef4444' },
                             ].map(s => (
                                 <button
                                     key={s.key}
@@ -682,32 +957,30 @@ const Calendar = () => {
                                 </button>
                             ))}
                         </div>
-                    )}
-                </div>
-
-                <div className="calendar-header-center">
-                    <div className="nav-buttons">
-                        <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
-                        <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
-                        <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
                     </div>
-                    <span className="current-month">
-                        {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-                    </span>
                 </div>
 
-                <div className="calendar-header-right">
+                {/* SATIR 3: View switcher (solda/takvim hizası) + Tarih nav (sağda) */}
+                <div className="cal-header-row cal-actions-row">
+                    {/* View switcher */}
                     <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
-                        <button
-                            onClick={() => setLayoutMode('grid')}
-                            style={{
-                                padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                background: layoutMode === 'grid' ? 'white' : 'transparent',
-                                color: layoutMode === 'grid' ? '#3b82f6' : '#64748b',
-                                boxShadow: layoutMode === 'grid' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                cursor: 'pointer', transition: 'all 0.2s'
-                            }}
-                        >Takvim</button>
+                        {[
+                            { key: 'month', label: 'Takvim' },
+                            { key: 'week',  label: 'Haftalık' },
+                            { key: 'day',   label: 'Günlük' },
+                        ].map(v => (
+                            <button
+                                key={v.key}
+                                onClick={() => { setViewMode(v.key); setLayoutMode('grid'); }}
+                                style={{
+                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                    background: layoutMode === 'grid' && viewMode === v.key ? 'white' : 'transparent',
+                                    color: layoutMode === 'grid' && viewMode === v.key ? '#3b82f6' : '#64748b',
+                                    boxShadow: layoutMode === 'grid' && viewMode === v.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >{v.label}</button>
+                        ))}
                         <button
                             onClick={() => setLayoutMode('list')}
                             style={{
@@ -720,12 +993,19 @@ const Calendar = () => {
                         >Liste</button>
                     </div>
 
-                    <button className="add-appointment-btn" onClick={() => openCreateModal()}>
-                        <Plus size={18} />
-                        {t('calendar.newAppointment')}
-                    </button>
+
+                    {/* Tarih navigasyonu */}
+                    <div className="calendar-header-nav">
+                        <div className="nav-buttons">
+                            <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
+                            <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
+                            <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
+                        </div>
+                        <span className="current-month">{getHeaderLabel()}</span>
+                    </div>
                 </div>
-            </div>
+
+            </div>{/* /calendar-header */}
 
             {/* Content: Sidebar + Calendar */}
             <div className="calendar-content">
@@ -747,87 +1027,108 @@ const Calendar = () => {
                         </label>
                     </div>
                     <div className="upcoming-list">
-                        {filteredUpcomingAppointments.length === 0 && (selectedResource || scheduledCalls.length === 0) ? (
-                            <div className="upcoming-empty">
-                                <CalendarIcon size={32} />
-                                <p>No upcoming appointments</p>
-                            </div>
-                        ) : (
-                            <>
-                            {filteredUpcomingAppointments.map(apt => (
-                                <div
-                                    key={apt.id}
-                                    className={`upcoming-item ${apt.isCompleted ? 'completed' : ''}`}
-                                    onClick={() => openEditModal(apt)}
-                                >
-                                    <div className="upcoming-date-badge">
-                                        <span className="upcoming-day">{formatUpcomingDate(apt.startTime)}</span>
-                                        <span className="upcoming-time">{formatTime(apt.startTime)}</span>
-                                    </div>
-                                    <div className="upcoming-info">
-                                        <h4>{apt.title}</h4>
-                                        {apt.isCompleted && (
-                                            <span className="upcoming-status completed">
-                                                <Check size={12} />
-                                                {apt.isPast && apt.status !== 'COMPLETED' ? 'Geçmiş' : 'Completed'}
-                                            </span>
-                                        )}
-                                        {apt.contactName && (
-                                            <span className="upcoming-contact">
-                                                <User size={12} />
-                                                {apt.contactName}
-                                            </span>
-                                        )}
-                                        {apt.assignedTo && (
-                                            <span className="upcoming-agent">
-                                                👤 Temsilci: {apt.assignedTo.name}
-                                            </span>
-                                        )}
-                                        {apt.createdBy && (
-                                            <span className="upcoming-creator">
-                                                📋 Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}
-                                            </span>
-                                        )}
-                                        {apt.doctorName && (
-                                            <span className="upcoming-doctor">
-                                                🩺 Dr. {apt.doctorName}
-                                            </span>
-                                        )}
-                                        {apt.resourceId && (
-                                            <span className="upcoming-resource">
-                                                <Building2 size={12} />
-                                                {getResourceName(apt.resourceId)}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div
-                                        className="upcoming-color-bar"
-                                        style={{ backgroundColor: apt.color || '#3b82f6' }}
-                                    />
+                        {(() => {
+                            const allItems = [
+                                ...filteredUpcomingAppointments.map(apt => ({ type: 'apt', data: apt })),
+                                ...(!selectedResource && activeFilters.has('calls') ? scheduledCalls.map(sc => ({ type: 'call', data: sc })) : []),
+                            ];
+                            const totalPages = Math.max(1, Math.ceil(allItems.length / SIDEBAR_PAGE_SIZE));
+                            const safePage = Math.min(sidebarPage, totalPages);
+                            const pageItems = allItems.slice((safePage - 1) * SIDEBAR_PAGE_SIZE, safePage * SIDEBAR_PAGE_SIZE);
+
+                            if (allItems.length === 0) return (
+                                <div className="upcoming-empty">
+                                    <CalendarIcon size={32} />
+                                    <p>No upcoming appointments</p>
                                 </div>
-                            ))}
-                            {!selectedResource && activeFilters.has('calls') && scheduledCalls.slice(0, 8).map(sc => (
-                                <div
-                                    key={sc.id}
-                                    className="upcoming-item"
-                                    onClick={() => openScheduledCallModal(sc)}
-                                    title="Düzenle / İptal et"
-                                >
-                                    <div className="upcoming-date-badge">
-                                        <span className="upcoming-day">{new Date(sc.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
-                                        <span className="upcoming-time">{formatTime(sc.scheduledAt)}</span>
-                                    </div>
-                                    <div className="upcoming-info" style={{ minWidth: 0 }}>
-                                        <h4 style={{ color: '#ea580c' }}>📞 Oto. Arama</h4>
-                                        <span style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block' }}>
-                                            {sc.contactName || sc.toNumber}
-                                        </span>
-                                    </div>
-                                    <div className="upcoming-color-bar" style={{ backgroundColor: '#f97316' }} />
-                                </div>
-                            ))}
-                            </>
-                        )}
+                            );
+
+                            return (
+                                <>
+                                    {pageItems.map(item => {
+                                        if (item.type === 'apt') {
+                                            const apt = item.data;
+                                            return (
+                                                <div
+                                                    key={apt.id}
+                                                    className={`upcoming-item ${apt.isCompleted ? 'completed' : ''}`}
+                                                    onClick={() => openEditModal(apt)}
+                                                >
+                                                    <div className="upcoming-date-badge">
+                                                        <span className="upcoming-day">{formatUpcomingDate(apt.startTime)}</span>
+                                                        <span className="upcoming-time">{formatTime(apt.startTime)}</span>
+                                                    </div>
+                                                    <div className="upcoming-info">
+                                                        <h4>{apt.title}</h4>
+                                                        {apt.isCompleted && (
+                                                            <span className="upcoming-status completed">
+                                                                <Check size={12} />
+                                                                {apt.isPast && apt.status !== 'COMPLETED' ? 'Geçmiş' : 'Completed'}
+                                                            </span>
+                                                        )}
+                                                        {apt.contactName && (
+                                                            <span className="upcoming-contact"><User size={12} />{apt.contactName}</span>
+                                                        )}
+                                                        {apt.assignedTo && (
+                                                            <span className="upcoming-agent">👤 Temsilci: {apt.assignedTo.name}</span>
+                                                        )}
+                                                        {apt.createdBy && (
+                                                            <span className="upcoming-creator">📋 Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span>
+                                                        )}
+                                                        {apt.doctorName && (
+                                                            <span className="upcoming-doctor">🩺 Dr. {apt.doctorName}</span>
+                                                        )}
+                                                        {apt.resourceId && (
+                                                            <span className="upcoming-resource"><Building2 size={12} />{getResourceName(apt.resourceId)}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="upcoming-color-bar" style={{ backgroundColor: apt.color || '#3b82f6' }} />
+                                                </div>
+                                            );
+                                        } else {
+                                            const sc = item.data;
+                                            return (
+                                                <div
+                                                    key={sc.id}
+                                                    className="upcoming-item"
+                                                    onClick={() => openScheduledCallModal(sc)}
+                                                    title="Düzenle / İptal et"
+                                                >
+                                                    <div className="upcoming-date-badge">
+                                                        <span className="upcoming-day">{new Date(sc.scheduledAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+                                                        <span className="upcoming-time">{formatTime(sc.scheduledAt)}</span>
+                                                    </div>
+                                                    <div className="upcoming-info" style={{ minWidth: 0 }}>
+                                                        <h4 style={{ color: '#ea580c' }}>📞 Oto. Arama</h4>
+                                                        <span style={{ fontSize: '12px', color: '#6b7280', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', display: 'block' }}>
+                                                            {sc.contactName || sc.toNumber}
+                                                        </span>
+                                                    </div>
+                                                    <div className="upcoming-color-bar" style={{ backgroundColor: '#f97316' }} />
+                                                </div>
+                                            );
+                                        }
+                                    })}
+
+                                    {/* Pagination */}
+                                    {totalPages > 1 && (
+                                        <div className="sidebar-pagination">
+                                            <button
+                                                className="sidebar-page-btn"
+                                                onClick={() => setSidebarPage(p => Math.max(1, p - 1))}
+                                                disabled={safePage === 1}
+                                            >‹</button>
+                                            <span className="sidebar-page-info">{safePage} / {totalPages}</span>
+                                            <button
+                                                className="sidebar-page-btn"
+                                                onClick={() => setSidebarPage(p => Math.min(totalPages, p + 1))}
+                                                disabled={safePage === totalPages}
+                                            >›</button>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
                     </div>
 
                 </div>
@@ -835,7 +1136,93 @@ const Calendar = () => {
                 {/* Main Calendar */}
                 <div className="calendar-main">
 
-                {layoutMode === 'grid' ? (
+                {layoutMode === 'grid' && viewMode === 'week' ? (
+                /* ═══════ WEEKLY VIEW ═══════ */
+                <div className="calendar-week-view">
+                    <div className="week-time-col week-header-row">
+                        <div className="week-time-label" />
+                        {getWeekDays().map((d, i) => (
+                            <div key={i} className={`week-day-header ${isToday(d) ? 'today' : ''}`}>
+                                <span className="week-day-name">{getDayName(d)}</span>
+                                <span className={`week-day-number ${isToday(d) ? 'today-badge' : ''}`}>{d.getDate()}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="week-scroll-body">
+                        {HOURS.map(hour => (
+                            <div key={hour} className="week-hour-row">
+                                <div className="week-time-label">{String(hour).padStart(2,'0')}:00</div>
+                                {getWeekDays().map((d, di) => {
+                                    const { apts, calls } = getEventsForSlot(d, hour);
+                                    return (
+                                        <div
+                                            key={di}
+                                            className={`week-hour-cell ${isToday(d) ? 'today-col' : ''}`}
+                                            onClick={() => { const dt = new Date(d); dt.setHours(hour,0,0,0); openCreateModal(dt); }}
+                                        >
+                                            {apts.map(apt => (
+                                                <div key={apt.id} className="week-event"
+                                                    style={{ backgroundColor: apt.color || '#3b82f6' }}
+                                                    onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
+                                                    <span className="week-event-time">{formatTime(apt.startTime)}</span>
+                                                    <span className="week-event-title">{apt.title}</span>
+                                                </div>
+                                            ))}
+                                            {calls.map(sc => (
+                                                <div key={sc.id} className="week-event"
+                                                    style={{ backgroundColor: '#f97316' }}
+                                                    onClick={e => { e.stopPropagation(); openScheduledCallModal(sc); }}>
+                                                    <span className="week-event-time">📞 {formatTime(sc.scheduledAt)}</span>
+                                                    <span className="week-event-title">{sc.contactName || sc.toNumber}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                ) : layoutMode === 'grid' && viewMode === 'day' ? (
+                /* ═══════ DAILY VIEW ═══════ */
+                <div className="calendar-day-view">
+                    <div className="day-view-header">
+                        <span className={`day-view-title ${isToday(currentDate) ? 'today' : ''}`}>
+                            {currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                        </span>
+                    </div>
+                    <div className="day-scroll-body">
+                        {HOURS.map(hour => {
+                            const { apts, calls } = getEventsForSlot(currentDate, hour);
+                            return (
+                                <div key={hour} className="day-hour-row">
+                                    <div className="day-time-label">{String(hour).padStart(2,'0')}:00</div>
+                                    <div className="day-hour-cell"
+                                        onClick={() => { const dt = new Date(currentDate); dt.setHours(hour,0,0,0); openCreateModal(dt); }}>
+                                        {apts.map(apt => (
+                                            <div key={apt.id} className="day-event"
+                                                style={{ backgroundColor: apt.color || '#3b82f6' }}
+                                                onClick={e => { e.stopPropagation(); openEditModal(apt); }}>
+                                                <span className="day-event-time">{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
+                                                <span className="day-event-title">{apt.title}</span>
+                                                {apt.contactName && <span className="day-event-contact">👤 {apt.contactName}</span>}
+                                            </div>
+                                        ))}
+                                        {calls.map(sc => (
+                                            <div key={sc.id} className="day-event"
+                                                style={{ backgroundColor: '#f97316' }}
+                                                onClick={e => { e.stopPropagation(); openScheduledCallModal(sc); }}>
+                                                <span className="day-event-time">📞 {formatTime(sc.scheduledAt)}</span>
+                                                <span className="day-event-title">{sc.contactName || sc.toNumber}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+                ) : layoutMode === 'grid' ? (
                 <div className="calendar-grid">
                     <div className="calendar-weekdays">
                         {dayNames.map(day => (
@@ -1555,6 +1942,91 @@ const Calendar = () => {
                     isOwner={true}
                     currentUserId={null}
                 />
+            )}
+
+            {/* ContactSidebar — hızlı eylem butonlarından açılır, initialAction ile */}
+            {/* QuickActivityModal — hızlı eylem butonlarından açılır, tam sayfa değil popup */}
+            {quickActionContact && quickActionInitialAction && (
+                <QuickActivityModal
+                    actionType={quickActionInitialAction}
+                    contact={quickActionContact}
+                    agents={agents}
+                    onClose={() => { setQuickActionContact(null); setQuickActionInitialAction(null); }}
+                    onSaved={() => { loadAppointments(); loadScheduledCalls(); }}
+                />
+            )}
+
+            {/* Kişi Seçme Modal — hızlı eylem butonlarından açılır */}
+            {contactPickerOpen && (
+                <>
+                    {/* Backdrop */}
+                    <div className="contact-picker-backdrop" onClick={() => setContactPickerOpen(false)} />
+                    <div className="contact-picker-modal">
+                        <div className="contact-picker-header">
+                            <div className="contact-picker-title">
+                                {quickActionType?.label && (
+                                    <span className="contact-picker-action-label">{quickActionType.label}</span>
+                                )}
+                                <h3>Kişi Seç</h3>
+                            </div>
+                            <button className="contact-picker-close" onClick={() => setContactPickerOpen(false)}>
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Arama */}
+                        <div className="contact-picker-search">
+                            <Search size={16} />
+                            <input
+                                autoFocus
+                                type="text"
+                                placeholder="Ad, telefon veya e-posta ile ara..."
+                                value={contactSearch}
+                                onChange={(e) => {
+                                    setContactSearch(e.target.value);
+                                    if (e.target.value.length >= 1) {
+                                        searchContacts(e.target.value);
+                                    } else {
+                                        setContactResults([]);
+                                    }
+                                }}
+                            />
+                            {contactLoading && <div className="contact-picker-spinner" />}
+                        </div>
+
+                        {/* Sonuçlar */}
+                        <div className="contact-picker-results">
+                            {contactResults.length === 0 && contactSearch.length > 0 && !contactLoading && (
+                                <div className="contact-picker-empty">Kişi bulunamadı</div>
+                            )}
+                            {contactResults.length === 0 && contactSearch.length === 0 && (
+                                <div className="contact-picker-hint">Aramak için yazmaya başlayın</div>
+                            )}
+                            {contactResults.map(c => (
+                                <button
+                                    key={c.id}
+                                    className="contact-picker-item"
+                                    onClick={() => handlePickContact(c)}
+                                >
+                                    <div className="contact-picker-avatar">
+                                        {(c.name || c.phone || '?')[0].toUpperCase()}
+                                    </div>
+                                    <div className="contact-picker-info">
+                                        <span className="contact-picker-name">{c.name || '—'}</span>
+                                        <span className="contact-picker-sub">{c.phone || c.email || ''}</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Kişisiz devam */}
+                        <div className="contact-picker-footer">
+                            <button className="contact-picker-skip" onClick={handlePickNoContact}>
+                                Kişi seçmeden devam et
+                            </button>
+                        </div>
+                    </div>
+                </>
             )}
         </div>
     );

@@ -1568,14 +1568,24 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             where: { workspaceId, authType: 'OAUTH_PASSWORD', isActive: true }
         });
 
+        // 🔒 Workspace bazlı randevu modülü kontrolü (appointmentEnabled: false ise hiç devreye girme)
+        const wsAppointmentCheck = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { appointmentEnabled: true }
+        });
+        const appointmentAllowed = wsAppointmentCheck?.appointmentEnabled !== false;
+
         let isProbelBot = false; // Probel-specific logic only for workspaces with health API
-        if (activeBot.botType === 'APPOINTMENT' || hasHealthApi) {
+        if (appointmentAllowed && (activeBot.botType === 'APPOINTMENT' || hasHealthApi)) {
             isAppointmentBot = true;
             if (hasHealthApi) isProbelBot = true; // Only Probel-connected workspaces get special treatment
             const { getAppointmentToolDeclarations } = await import('../services/appointmentBot.service.js');
             activeBot._appointmentTools = getAppointmentToolDeclarations();
             console.log(`🏥 [AI] Appointment bot capability detected: ${activeBot.name}, ${activeBot._appointmentTools.length} built-in tools loaded${isProbelBot ? ' (Probel)' : ''}`);
+        } else if (!appointmentAllowed) {
+            console.log(`🔒 [AI] Appointment module disabled for workspace ${workspaceId} — skipping appointment bot`);
         }
+
 
         // 🔄 BOT ROUTING CHECK - Silent background analysis (never blocks normal AI)
         if (activeBot.routingEnabled && type === 'CHATS' && conversationId && conversation) {
@@ -2047,7 +2057,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 }
             ];
 
-            const allDeclarations = [...functionDeclarations, ...builtInTools];
+            // Filter out tools that will be provided by appointment bot to avoid duplicates
+            const appointmentBotToolNames = isAppointmentBot && activeBot._appointmentTools
+                ? activeBot._appointmentTools.map(t => t.name)
+                : [];
+            const filteredBuiltIn = builtInTools.filter(t => !appointmentBotToolNames.includes(t.name));
+            const allDeclarations = [...functionDeclarations, ...filteredBuiltIn];
             geminiTools.push({ functionDeclarations: allDeclarations });
         } else {
             const builtInTools = [
@@ -2181,7 +2196,12 @@ ${systemPrompt}${appointmentContextPrompt}`;
                     }
                 }
             ];
-            geminiTools.push({ functionDeclarations: builtInTools });
+            // Filter out tools that will be provided by appointment bot to avoid duplicates
+            const appointmentBotToolNames = isAppointmentBot && activeBot._appointmentTools
+                ? activeBot._appointmentTools.map(t => t.name)
+                : [];
+            const filteredBuiltIn = builtInTools.filter(t => !appointmentBotToolNames.includes(t.name));
+            geminiTools.push({ functionDeclarations: filteredBuiltIn });
         }
 
         // 🏥 Append appointment bot tools if applicable

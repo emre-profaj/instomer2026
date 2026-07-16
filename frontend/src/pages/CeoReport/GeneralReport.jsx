@@ -4,10 +4,11 @@ import {
     Users, MessageSquare, Phone, PhoneOff, PhoneCall, Calendar,
     TrendingUp, DollarSign, RefreshCw, Filter, ArrowLeft,
     ArrowUpRight, ArrowDownRight, BarChart3, Bot, UserCheck,
-    Handshake, ShoppingCart, Sparkles
+    Handshake, ShoppingCart, Sparkles, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
+import api from '../../services/api';
 import './CeoReport.css';
 import './CeoDetailReport.css';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
@@ -19,12 +20,15 @@ const formatNumber = (n) => {
     return n.toLocaleString('tr-TR');
 };
 
+const IKON_WS = '58840688-d7f4-4cbe-a618-f3a2a94ae3ae';
+
 const GeneralReport = () => {
     const { currentWorkspace } = useAuth();
     const navigate = useNavigate();
     const [analytics, setAnalytics] = useState(null);
     const [contactStats, setContactStats] = useState(null);
     const [peakHours, setPeakHours] = useState(null);
+    const [leadsByForm, setLeadsByForm] = useState(null);
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
@@ -57,6 +61,13 @@ const GeneralReport = () => {
                 const peakRes = await contactAPI.getPeakHours(currentWorkspace.id, dateParams);
                 setPeakHours(peakRes.data);
             } catch (e) { /* endpoint not yet deployed */ }
+            // İkon workspace: form bazlı lead tablosu
+            if (currentWorkspace.id === IKON_WS) {
+                try {
+                    const formRes = await api.get(`/leads/${currentWorkspace.id}/by-form`, { params: dateParams });
+                    setLeadsByForm(formRes.data);
+                } catch (e) { /* ignore */ }
+            }
         } catch (err) {
             console.error('General report fetch error:', err);
         } finally {
@@ -301,6 +312,118 @@ const GeneralReport = () => {
                                 <div className="bh-label" style={{ color: '#b45309' }}>Devir Oranı</div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── İkon Projeler Facebook Lead Tablosu (sadece bu workspace) ── */}
+            {currentWorkspace?.id === IKON_WS && leadsByForm && (
+                <div style={{ margin: '24px 0' }}>
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        marginBottom: 16
+                    }}>
+                        <div style={{
+                            width: 36, height: 36, borderRadius: 10,
+                            background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: '#fff', flexShrink: 0
+                        }}>
+                            <FileText size={18} />
+                        </div>
+                        <div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                                Facebook Lead Formu Bazlı Dağılım
+                            </div>
+                            <div style={{ fontSize: 12, color: '#6b7280' }}>
+                                Toplam {leadsByForm.total?.toLocaleString('tr-TR')} lead — form adına göre gruplandırılmış
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{
+                        background: '#fff',
+                        border: '1.5px solid #e5e7eb',
+                        borderRadius: 14,
+                        overflow: 'hidden',
+                        boxShadow: '0 1px 4px rgba(0,0,0,.05)'
+                    }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e5e7eb' }}>
+                                    <th style={{ padding: '11px 18px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.4px' }}>#</th>
+                                    <th style={{ padding: '11px 18px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Form Adı</th>
+                                    <th style={{ padding: '11px 18px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Kampanya</th>
+                                    <th style={{ padding: '11px 18px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Lead Sayısı</th>
+                                    <th style={{ padding: '11px 18px', textAlign: 'right', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Pay</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {leadsByForm.byForm.map((row, i) => {
+                                    const pct = leadsByForm.total > 0
+                                        ? ((row.count / leadsByForm.total) * 100).toFixed(1)
+                                        : 0;
+                                    const colors = ['#6366f1','#8b5cf6','#f97316','#22c55e','#3b82f6','#ec4899'];
+                                    const color = colors[i % colors.length];
+                                    return (
+                                        <tr key={i} style={{
+                                            borderBottom: i < leadsByForm.byForm.length - 1 ? '1px solid #f3f4f6' : 'none',
+                                            transition: 'background .1s'
+                                        }}
+                                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <td style={{ padding: '13px 18px', fontSize: 13, color: '#9ca3af', fontWeight: 600 }}>{i + 1}</td>
+                                            <td style={{ padding: '13px 18px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <div style={{
+                                                        width: 8, height: 8, borderRadius: '50%',
+                                                        background: color, flexShrink: 0
+                                                    }} />
+                                                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{row.formName}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '13px 18px', fontSize: 13, color: '#6b7280' }}>
+                                                {row.campaignName || <span style={{ color: '#d1d5db' }}>—</span>}
+                                            </td>
+                                            <td style={{ padding: '13px 18px', textAlign: 'right' }}>
+                                                <span style={{
+                                                    display: 'inline-block',
+                                                    background: color + '18',
+                                                    color: color,
+                                                    borderRadius: 7,
+                                                    padding: '3px 10px',
+                                                    fontWeight: 700,
+                                                    fontSize: 14
+                                                }}>{row.count.toLocaleString('tr-TR')}</span>
+                                            </td>
+                                            <td style={{ padding: '13px 18px', textAlign: 'right' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                                                    <div style={{
+                                                        width: 80, height: 6, background: '#f3f4f6',
+                                                        borderRadius: 99, overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{
+                                                            width: pct + '%', height: '100%',
+                                                            background: color, borderRadius: 99
+                                                        }} />
+                                                    </div>
+                                                    <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, minWidth: 36 }}>{pct}%</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot>
+                                <tr style={{ background: '#f8fafc', borderTop: '1.5px solid #e5e7eb' }}>
+                                    <td colSpan={3} style={{ padding: '11px 18px', fontSize: 13, fontWeight: 700, color: '#374151' }}>Toplam</td>
+                                    <td style={{ padding: '11px 18px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: '#6366f1' }}>
+                                        {leadsByForm.total?.toLocaleString('tr-TR')}
+                                    </td>
+                                    <td style={{ padding: '11px 18px', textAlign: 'right', fontSize: 13, color: '#374151', fontWeight: 700 }}>100%</td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </div>
                 </div>
             )}

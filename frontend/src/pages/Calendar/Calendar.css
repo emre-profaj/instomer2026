@@ -3,7 +3,9 @@
     flex-direction: column;
     padding: 24px;
     background: var(--bg-secondary);
-    min-height: 100vh;
+    flex: 1;
+    min-height: 0;
+    box-sizing: border-box;
 }
 
 .calendar-content {
@@ -11,6 +13,8 @@
     align-items: stretch;
     gap: 16px;
     flex: 1;
+    min-height: 0; /* flex scrolling için kritik */
+    overflow: hidden;
 }
 
 .calendar-main {
@@ -18,6 +22,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 /* Upcoming Appointments Sidebar */
@@ -27,11 +32,11 @@
     background: white;
     border-radius: 12px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    
-    /* Make sidebar a flex column to distribute height */
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* Sidebar kendi yüksekliğini takvime dayatmaz */
+    max-height: 100%;
 }
 
 .upcoming-header {
@@ -59,27 +64,64 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    
-    /* Make only the list scrollable */
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    min-height: 0; /* important for flex scrolling */
-    
+    min-height: 0;
     scrollbar-width: thin;
     scrollbar-color: #cbd5e1 transparent;
 }
 
-.upcoming-list::-webkit-scrollbar {
-    width: 6px;
+.upcoming-list::-webkit-scrollbar { width: 6px; }
+.upcoming-list::-webkit-scrollbar-track { background: transparent; }
+.upcoming-list::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+
+/* Sidebar Pagination */
+.sidebar-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 0 2px;
+    flex-shrink: 0;
+    border-top: 1px solid #f1f5f9;
+    margin-top: 4px;
 }
-.upcoming-list::-webkit-scrollbar-track {
-    background: transparent;
+
+.sidebar-page-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: white;
+    color: #374151;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
 }
-.upcoming-list::-webkit-scrollbar-thumb {
-    background-color: #cbd5e1;
-    border-radius: 10px;
+
+.sidebar-page-btn:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #94a3b8;
 }
+
+.sidebar-page-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.sidebar-page-info {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 500;
+    min-width: 36px;
+    text-align: center;
+}
+
 
 .upcoming-empty {
     display: flex;
@@ -332,17 +374,104 @@
 
 .calendar-header {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+/* Genel satır */
+.cal-header-row {
+    display: flex;
+    align-items: center;
+}
+
+/* Satır 1: Başlık */
+.cal-header-row.cal-title-row {
+    /* sadece başlık, solda */
+}
+
+/* Satır 2: Agent+Kaynak | Aktivite filtreleri + Status filtreleri */
+.cal-header-row.cal-filters-main-row {
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Sol grup: agent + kaynak selectbox'ları */
+.cal-selects-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Sağ grup: aktivite tip filtreleri + status filtreleri yan yana */
+.cal-activity-filters-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Satır 3: view switcher solda (takvim hizası), tarih nav sağda */
+.cal-header-row.cal-actions-row {
+    display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
-    gap: 16px;
-    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* ESKİ: aşağıda kalan eski class'lar için fallback */
+.calendar-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+/* Orta sütun: filtreler — doğal genişlikte */
+.calendar-header-center-filters {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .calendar-header-left {
     display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cal-title-row {
+    display: flex;
     align-items: center;
     gap: 12px;
+}
+
+.cal-nav-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Başlık altındaki filtre satırı: Agent + Kaynak yan yana */
+.cal-filters-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Tarih navigasyon satırı — calendar-main içinde, takvim grid'inin üstünde */
+.calendar-header-nav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0 8px;
+    flex-shrink: 0;
 }
 
 .activity-filters-wrapper {
@@ -501,6 +630,13 @@
 
 .calendar-header-right {
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.calendar-header-right-top {
+    display: flex;
     align-items: center;
     gap: 12px;
 }
@@ -522,14 +658,149 @@
     color: var(--primary);
 }
 
+/* Başlık satırı sağındaki hızlı eylem butonları */
+.cal-quick-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cal-quick-btn {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 7px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.cal-quick-btn:hover {
+    border-color: var(--primary, #e11d48);
+    color: var(--primary, #e11d48);
+    background: #fff1f2;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(225,29,72,0.12);
+}
+
+.cal-quick-btn svg {
+    flex-shrink: 0;
+}
+
 .agent-filter {
-    padding: 8px 12px;
+    padding: 7px 12px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-size: 14px;
-    min-width: 160px;
+    font-size: 13px;
+    min-width: 140px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.agent-filter:hover {
+    border-color: #94a3b8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* Filtreleri Kaldır butonu */
+.clear-filters-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    background: #fff1f2;
+    color: #dc2626;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+.clear-filters-btn:hover {
+    background: #fee2e2;
+    border-color: #ef4444;
+}
+
+/* Multi-select dropdown */
+.agent-multi-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 100;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    min-width: 200px;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 6px 0;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+.agent-multi-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    transition: background 0.15s;
+    user-select: none;
+}
+
+.agent-multi-item:hover {
+    background: #f8fafc;
+}
+
+.agent-multi-item.selected {
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 500;
+}
+
+.agent-multi-check {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    flex-shrink: 0;
+    background: white;
+    color: #3b82f6;
+    font-weight: 700;
+    transition: all 0.15s;
+}
+
+.agent-multi-item.selected .agent-multi-check {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.agent-multi-divider {
+    height: 1px;
+    background: #f1f5f9;
+    margin: 4px 0;
 }
 
 .nav-buttons {
@@ -1861,3 +2132,499 @@
         max-width: 100%;
     }
 }
+
+/* ═══════════════════════════════════════════════
+   WEEKLY VIEW
+═══════════════════════════════════════════════ */
+.calendar-week-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.week-header-row {
+    display: grid;
+    grid-template-columns: 56px repeat(7, 1fr);
+    border-bottom: 2px solid #e2e8f0;
+    background: #f8fafc;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.week-day-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 4px;
+    gap: 4px;
+    border-left: 1px solid #e2e8f0;
+}
+
+.week-day-header.today {
+    background: #eff6ff;
+}
+
+.week-day-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.week-day-number {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.week-day-number.today-badge {
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.week-scroll-body {
+    overflow-y: auto;
+    flex: 1;
+    max-height: calc(100vh - 260px);
+}
+
+.week-hour-row {
+    display: grid;
+    grid-template-columns: 56px repeat(7, 1fr);
+    min-height: 60px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.week-time-label {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 4px;
+    font-size: 11px;
+    color: #94a3b8;
+    font-weight: 500;
+    border-right: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.week-hour-cell {
+    padding: 2px 3px;
+    border-left: 1px solid #f1f5f9;
+    cursor: pointer;
+    transition: background 0.1s;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 60px;
+}
+
+.week-hour-cell:hover {
+    background: #f8fafc;
+}
+
+.week-hour-cell.today-col {
+    background: #fffbeb;
+}
+
+.week-hour-cell.today-col:hover {
+    background: #fef3c7;
+}
+
+.week-event {
+    display: flex;
+    flex-direction: column;
+    padding: 2px 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    color: white;
+    overflow: hidden;
+    transition: opacity 0.15s;
+}
+
+.week-event:hover {
+    opacity: 0.85;
+}
+
+.week-event-time {
+    font-weight: 600;
+    font-size: 10px;
+    opacity: 0.9;
+}
+
+.week-event-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════
+   DAILY VIEW
+═══════════════════════════════════════════════ */
+.calendar-day-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+
+.day-view-header {
+    padding: 16px 20px;
+    border-bottom: 2px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.day-view-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1e293b;
+    text-transform: capitalize;
+}
+
+.day-view-title.today {
+    color: #ef4444;
+}
+
+.day-scroll-body {
+    overflow-y: auto;
+    flex: 1;
+    max-height: calc(100vh - 260px);
+}
+
+.day-hour-row {
+    display: flex;
+    min-height: 64px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.day-time-label {
+    width: 64px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 6px;
+    font-size: 12px;
+    color: #94a3b8;
+    font-weight: 500;
+    border-right: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.day-hour-cell {
+    flex: 1;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: background 0.1s;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.day-hour-cell:hover {
+    background: #f8fafc;
+}
+
+.day-event {
+    display: flex;
+    flex-direction: column;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: white;
+    gap: 1px;
+    transition: opacity 0.15s;
+}
+
+.day-event:hover {
+    opacity: 0.85;
+}
+
+.day-event-time {
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.day-event-title {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.day-event-contact {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+/* ═══════════════════════════════════════════════
+   QUICK-STAT PILL FILTERS (Calendar page copy)
+═══════════════════════════════════════════════ */
+.calendar-page .quick-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    background: #ffffff;
+    border: 1px solid #f0f0f0;
+    border-radius: 7px;
+    transition: box-shadow 0.2s, border-color 0.2s;
+    cursor: pointer;
+    user-select: none;
+}
+
+.calendar-page .quick-stat-card:hover {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    border-color: #e5e7eb;
+}
+
+.calendar-page .quick-stat-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.calendar-page .quick-stat-value {
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1f2937;
+    line-height: 1;
+}
+
+.calendar-page .quick-stat-label {
+    font-size: 9.5px;
+    color: #9ca3af;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.calendar-page .quick-stat-active {
+    border-color: #ef4444 !important;
+    background: #fef2f2 !important;
+    box-shadow: 0 0 0 1px #ef4444 inset, 0 2px 8px rgba(239,68,68,0.12) !important;
+}
+
+.calendar-page .quick-stat-active .quick-stat-label {
+    color: #ef4444;
+    font-weight: 600;
+}
+
+.calendar-page .quick-stat-active .quick-stat-value {
+    color: #dc2626;
+}
+
+/* Icon color classes for Calendar filters */
+.quick-stat-icon.cal-all      { background: #eff6ff; color: #3b82f6; }
+.quick-stat-icon.cal-calls    { background: #fef3c7; color: #f59e0b; }
+.quick-stat-icon.cal-apts     { background: #ecfdf5; color: #10b981; }
+.quick-stat-icon.cal-meetings { background: #ede9fe; color: #7c3aed; }
+.quick-stat-icon.cal-tasks    { background: #fff1f2; color: #ef4444; }
+
+/* ─── Kişi Seçme Modal ────────────────────────────────────────────── */
+.contact-picker-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+}
+
+.contact-picker-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1001;
+    width: 420px;
+    max-width: 95vw;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.contact-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.contact-picker-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.contact-picker-action-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary, #e11d48);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.contact-picker-title h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.contact-picker-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    transition: all 0.15s;
+}
+.contact-picker-close:hover { background: #f1f5f9; color: #475569; }
+
+/* Arama */
+.contact-picker-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 14px 20px 8px;
+    padding: 10px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    transition: border-color 0.2s;
+}
+.contact-picker-search:focus-within {
+    border-color: var(--primary, #e11d48);
+    background: #fff;
+}
+.contact-picker-search svg { color: #94a3b8; flex-shrink: 0; }
+.contact-picker-search input {
+    flex: 1;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #0f172a;
+    outline: none;
+}
+.contact-picker-search input::placeholder { color: #94a3b8; }
+
+/* Spinner */
+.contact-picker-spinner {
+    width: 16px; height: 16px;
+    border: 2px solid #e2e8f0;
+    border-top-color: var(--primary, #e11d48);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Sonuçlar */
+.contact-picker-results {
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px 12px 8px;
+}
+
+.contact-picker-empty,
+.contact-picker-hint {
+    text-align: center;
+    padding: 28px 0;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.contact-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+}
+.contact-picker-item:hover { background: #f8fafc; }
+
+.contact-picker-avatar {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.contact-picker-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.contact-picker-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.contact-picker-sub {
+    font-size: 12px;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Footer */
+.contact-picker-footer {
+    border-top: 1px solid #f1f5f9;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: center;
+}
+.contact-picker-skip {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.15s;
+}
+.contact-picker-skip:hover { background: #f8fafc; color: #475569; }

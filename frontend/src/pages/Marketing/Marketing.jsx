@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import {
+    Megaphone, Users, BarChart2, Phone,
+    Send
+} from 'lucide-react';
 import './Marketing.css';
 
 const DAY_OPTIONS = [7, 14, 30, 90];
@@ -1799,33 +1803,42 @@ export default function Marketing() {
     const [activeTab, setActiveTab] = useState('bulk');
     const wsId = currentWorkspace?.id;
 
+    const TABS = [
+        { key: 'bulk',      label: 'Toplu Gönderim',      Icon: Send },
+        { key: 'groups',    label: 'Gruplar',              Icon: Users },
+        { key: 'analytics', label: 'WhatsApp Şablon Analiz', Icon: BarChart2 },
+        { key: 'calls',     label: 'Arama Analizi',        Icon: Phone },
+    ];
+
     return (
         <div className="mkt-page">
-            {/* Header */}
+            {/* ── Modern Header ── */}
             <div className="mkt-header">
-                <div className="mkt-header-left">
-                    <span className="mkt-header-icon">📣</span>
+                <div className="mkt-header-inner">
+                    <div className="mkt-header-icon-wrap">
+                        <Megaphone size={22} />
+                    </div>
                     <div>
                         <h1 className="mkt-header-title">Pazarlama</h1>
-                        <p className="mkt-header-sub">Toplu gönderim, Retell arama, gruplandırma ve analiz</p>
+                        <p className="mkt-header-sub">Toplu gönderim, arama analizi ve grup yönetimi</p>
                     </div>
                 </div>
             </div>
 
-            {/* Tabs */}
+            {/* ── Modern Tabs ── */}
             <div className="mkt-tabs">
-                <button className={`mkt-tab ${activeTab === 'bulk' ? 'active' : ''}`} onClick={() => setActiveTab('bulk')}>
-                    📤 Toplu Gönderim
-                </button>
-                <button className={`mkt-tab ${activeTab === 'groups' ? 'active' : ''}`} onClick={() => setActiveTab('groups')}>
-                    👥 Gruplar
-                </button>
-                <button className={`mkt-tab ${activeTab === 'analytics' ? 'active' : ''}`} onClick={() => setActiveTab('analytics')}>
-                    💬 WhatsApp Şablon Analiz
-                </button>
-                <button className={`mkt-tab ${activeTab === 'calls' ? 'active' : ''}`} onClick={() => setActiveTab('calls')}>
-                    📞 Arama Analizi
-                </button>
+                <div className="mkt-tabs-inner">
+                    {TABS.map(({ key, label, Icon }) => (
+                        <button
+                            key={key}
+                            className={`mkt-tab ${activeTab === key ? 'active' : ''}`}
+                            onClick={() => setActiveTab(key)}
+                        >
+                            <Icon size={15} />
+                            {label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Tab content */}
