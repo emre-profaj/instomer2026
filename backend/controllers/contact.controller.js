@@ -9,7 +9,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 // ─── AI Topic Classification Cache ─────────────────────────────
 // Cache key: workspaceId + hash of topic list, expires in 10 minutes
 const topicClassificationCache = new Map();
-const TOPIC_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const TOPIC_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 /**
  * AI-powered topic classification: takes raw aiTopic strings and groups semantically similar ones
@@ -32,12 +32,12 @@ async function classifyTopicsWithAI(workspaceId, rawTopics) {
     try {
         const result = await Promise.race([
             _doClassifyTopics(workspaceId, rawTopics, cacheKey),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('AI_TIMEOUT')), 5000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('AI_TIMEOUT')), 12000))
         ]);
         return result;
     } catch (e) {
         if (e.message === 'AI_TIMEOUT') {
-            console.warn('⏱️ [TopicAI] Classification timed out (5s), returning raw topics. Will cache in background.');
+            console.warn('⏱️ [TopicAI] Classification timed out (12s), returning raw topics. Will cache in background.');
             // Fire-and-forget: let it finish in background for next request
             _doClassifyTopics(workspaceId, rawTopics, cacheKey).catch(() => {});
         } else {
@@ -75,6 +75,13 @@ KURALLAR:
 - Türkçe karakter kullan.
 - "talebi", "bilgisi", "hakkında bilgi", "randevusu" gibi ekleri kaldırarak özünü yakala.
 - "Merhaba", "Bilgi", "İletişim" gibi genel/belirsiz konuları "Genel Bilgi Talebi" kategorisine koy.
+- AYNI TİBBI/ESTETİK prosedürü farklı ifade eden konuları BİRLEŞTİR. Örnekler:
+  * "Obezite ameliyatı", "Obezite cerrahisi", "Mide küçültme", "Sleeve gastrektomi", "Tüp mide" → "Obezite Cerrahisi"
+  * "Burun eğritliği ameliyatı", "Burun eğritliği", "Burun estetiği", "Rinoplasti" → "Burun Estetiği"
+  * "Diz protezi", "Diz protez ameliyatı", "Diz protezi randevusu" → "Diz Protezi"
+  * "Botoks", "Botox", "Botoks enjeksiyonu" → "Botoks"
+  * "Fiyat bilgisi", "Fiyat talebi", "Fiyat sorgulama", "Ücret bilgisi" → "Fiyat Bilgisi"
+- Bu örnekler sadece rehber amaçlıdır, gelen konulardaki tüm benzerlikleri yakala.
 - Sonucu SADECE JSON formatında döndür, başka bir şey yazma.
 
 KONU BAŞLIKLARI:
