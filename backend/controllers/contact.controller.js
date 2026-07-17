@@ -32,16 +32,24 @@ function normalizeTopicText(topic) {
         .replace(/[""''""]/g, '')
         .replace(/\.$/, '');
     
-    // Remove suffixes
-    for (const suffix of TOPIC_SUFFIXES) {
-        if (t.endsWith(suffix) && t.length > suffix.length + 1) {
-            t = t.slice(0, -suffix.length).trim();
-            break;
+    // Multi-pass suffix removal — keep stripping until no more matches
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const suffix of TOPIC_SUFFIXES) {
+            if (t.endsWith(suffix) && t.length > suffix.length + 1) {
+                t = t.slice(0, -suffix.length).trim();
+                changed = true;
+                break; // restart from longest suffix
+            }
         }
     }
     
-    // Normalize common variations
+    // Normalize whitespace
     t = t.replace(/\s+/g, ' ').trim();
+    
+    // Empty guard
+    if (!t) return (topic || '').trim();
     
     // Capitalize first letter for consistency
     return t.charAt(0).toUpperCase() + t.slice(1);
