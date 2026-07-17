@@ -3097,36 +3097,6 @@ export const getContactAnalytics = async (req, res) => {
                     .sort((a, b) => b.count - a.count);
             }
 
-            // ── Hard cap: merge tail into "Diğer Talepler" ──
-            if (topicsArray.length > MAX_DISPLAY_TOPICS) {
-                const keep = topicsArray.slice(0, MAX_DISPLAY_TOPICS - 1);
-                const tail = topicsArray.slice(MAX_DISPLAY_TOPICS - 1);
-                const other = {
-                    topic: 'Diğer Talepler',
-                    count: 0, withPhone: 0, called: 0, relevant: 0,
-                    wonCount: 0, wonAmount: 0,
-                    mergedTopics: [],
-                    stageDist: {}
-                };
-                for (const t of tail) {
-                    other.count += t.count;
-                    other.withPhone += t.withPhone;
-                    other.called += t.called;
-                    other.relevant += (t.relevant || t.interested || 0);
-                    other.wonCount += (t.wonCount || 0);
-                    other.wonAmount += (t.wonAmount || 0);
-                    if (t.mergedTopics) other.mergedTopics.push(...t.mergedTopics);
-                    else other.mergedTopics.push(t.topic);
-                    for (const [sName, sData] of Object.entries(t.stageDist || {})) {
-                        if (!other.stageDist[sName]) other.stageDist[sName] = { count: 0, color: sData.color };
-                        other.stageDist[sName].count += sData.count;
-                    }
-                }
-                keep.push(other);
-                topicsArray = keep;
-                console.log(`📊 [TopicCap] ${tail.length} small topics merged into "Diğer Talepler" (${other.count} contacts)`);
-            }
-
             const recentConvList = await prisma.conversation.findMany({
                 where: {
                     workspaceId,
