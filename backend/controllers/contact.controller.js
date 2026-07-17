@@ -2838,7 +2838,7 @@ export const getContactAnalytics = async (req, res) => {
                 const topic = conv.aiTopic?.trim();
                 if (!topic) continue;
                 if (!topicMap[topic]) {
-                    topicMap[topic] = { topic, count: 0, withPhone: 0, called: 0, relevant: 0, contactIds: new Set(), stageDist: {} };
+                    topicMap[topic] = { topic, count: 0, withPhone: 0, called: 0, relevant: 0, wonCount: 0, wonAmount: 0, contactIds: new Set(), stageDist: {} };
                     seenContactsByTopic[topic] = new Set();
                 }
                 // Aynı kişi birden fazla konuşma açmış olabilir, unique say
@@ -2872,6 +2872,37 @@ export const getContactAnalytics = async (req, res) => {
                 }
             }
 
+            // Step 1.5: WON deal'leri topic'lere bağla
+            const topicContactIds = new Set();
+            for (const t of Object.values(topicMap)) {
+                t.contactIds.forEach(id => topicContactIds.add(id));
+            }
+            if (topicContactIds.size > 0) {
+                const wonDealsForTopics = await prisma.deal.findMany({
+                    where: {
+                        workspaceId,
+                        status: 'WON',
+                        contactId: { in: Array.from(topicContactIds) }
+                    },
+                    select: { contactId: true, amount: true }
+                });
+                // contactId → topic mapping
+                const contactToTopics = {};
+                for (const [topicName, tData] of Object.entries(topicMap)) {
+                    tData.contactIds.forEach(cid => {
+                        if (!contactToTopics[cid]) contactToTopics[cid] = [];
+                        contactToTopics[cid].push(topicName);
+                    });
+                }
+                for (const deal of wonDealsForTopics) {
+                    const topics = contactToTopics[deal.contactId] || [];
+                    for (const tn of topics) {
+                        topicMap[tn].wonCount++;
+                        topicMap[tn].wonAmount += (deal.amount || 0);
+                    }
+                }
+            }
+
             const rawTopics = Object.keys(topicMap);
 
             // Step 2: AI sınıflandırma — benzer konuları birleştir
@@ -2884,13 +2915,15 @@ export const getContactAnalytics = async (req, res) => {
                 for (const [rawTopic, rawData] of Object.entries(topicMap)) {
                     const category = aiMapping[rawTopic] || rawTopic; // fallback to raw if not mapped
                     if (!categoryMap[category]) {
-                        categoryMap[category] = { topic: category, count: 0, withPhone: 0, called: 0, relevant: 0, mergedTopics: [], contactIds: new Set(), stageDist: {} };
+                        categoryMap[category] = { topic: category, count: 0, withPhone: 0, called: 0, relevant: 0, wonCount: 0, wonAmount: 0, mergedTopics: [], contactIds: new Set(), stageDist: {} };
                     }
                     const cat = categoryMap[category];
                     cat.count += rawData.count;
                     cat.withPhone += rawData.withPhone;
                     cat.called += rawData.called;
                     cat.relevant += rawData.relevant;
+                    cat.wonCount += (rawData.wonCount || 0);
+                    cat.wonAmount += (rawData.wonAmount || 0);
                     cat.mergedTopics.push(rawTopic);
                     rawData.contactIds.forEach(id => cat.contactIds.add(id));
                     // Merge stage distribution
@@ -2900,13 +2933,13 @@ export const getContactAnalytics = async (req, res) => {
                     }
                 }
                 topicsArray = Object.values(categoryMap)
-                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, mergedTopics: t.mergedTopics, stageDist: t.stageDist }))
+                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, wonCount: t.wonCount || 0, wonAmount: t.wonAmount || 0, mergedTopics: t.mergedTopics, stageDist: t.stageDist }))
                     .sort((a, b) => b.count - a.count);
                 console.log(`🤖 [TopicAI] ${rawTopics.length} raw topics → ${topicsArray.length} categories`);
             } else {
                 // AI kullanılamadı — ham topicler olduğu gibi
                 topicsArray = Object.values(topicMap)
-                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, stageDist: t.stageDist }))
+                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, wonCount: t.wonCount || 0, wonAmount: t.wonAmount || 0, stageDist: t.stageDist }))
                     .sort((a, b) => b.count - a.count);
             }
 

@@ -250,6 +250,11 @@ const RequestReport = () => {
                                         </div>
                                         <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a', minWidth: 36, textAlign: 'right' }}>{topic.count}</span>
                                         <span style={{ fontWeight: 600, fontSize: '0.68rem', color: '#94a3b8', minWidth: 36, textAlign: 'right' }}>{globalPct}%</span>
+                                        {(topic.wonCount || 0) > 0 && (
+                                            <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                                {topic.wonCount} satış · {(topic.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                            </span>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -279,6 +284,8 @@ const RequestReport = () => {
                                     <th>Numaralı</th>
                                     <th>Arandı</th>
                                     <th>İlgili</th>
+                                    <th>Satış Adet</th>
+                                    <th>Satış Tutar</th>
                                     <th>Arama %</th>
                                     <th>İlgi %</th>
                                 </tr>
@@ -317,6 +324,8 @@ const RequestReport = () => {
                                             <td><span style={{ fontWeight: 700, color: (topic.withPhone || 0) > 0 ? '#10b981' : '#d1d5db' }}>{topic.withPhone || 0}</span></td>
                                             <td><span style={{ fontWeight: 700, color: (topic.called || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.called || 0}</span></td>
                                             <td><span style={{ fontWeight: 700, color: (topic.interested || 0) > 0 ? '#f59e0b' : '#d1d5db' }}>{topic.interested || 0}</span></td>
+                                            <td><span style={{ fontWeight: 700, color: (topic.wonCount || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.wonCount || 0}</span></td>
+                                            <td>{(topic.wonAmount || 0) > 0 ? <span style={{ fontWeight: 700, color: '#059669', fontSize: '0.82rem' }}>{(topic.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : <span style={{ color: '#d1d5db' }}>—</span>}</td>
                                             <td>
                                                 {callRate !== '-' ? (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
