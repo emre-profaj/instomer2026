@@ -10,6 +10,7 @@ import Inbox from './pages/Inbox/Inbox';
 import Conversations from './pages/Conversations/Conversations';
 import Settings from './pages/Settings/Settings';
 import WorkspaceSettings from './pages/Settings/WorkspaceSettings';
+import TopicCategories from './pages/Settings/TopicCategories';
 import Assistants from './pages/Assistants/Assistants';
 import Comments from './pages/Comments/Comments';
 import Channels from './pages/Channels/Channels';
@@ -106,6 +107,7 @@ function App() {
               <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="workspace-settings" element={<WorkspaceSettings />} />
+              <Route path="topic-categories" element={<TopicCategories />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="general-report" element={<CeoReport />} />
               <Route path="general-report/general" element={<GeneralReport />} />

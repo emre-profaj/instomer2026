@@ -140,6 +140,7 @@ model Workspace {
   cases                Case[]
   products             Product[]
   marketingCampaigns   MarketingCampaign[]
+  topicCategories      TopicCategory[]
 
   // Retell AI Voice
   retellApiKey          String?
@@ -400,7 +401,9 @@ model Conversation {
   botDelayedUntil       DateTime? // Bot will not respond until this time (for 30sec delay)
   botPausedUntil        DateTime? // Agent yazdığında geçici duraklama — süre dolunca bot devam eder
   assignedTeamId        String? // Team assigned to this conversation
-  aiTopic               String? // AI-generated conversation topic
+  aiTopic               String? // AI-generated conversation topic (ham metin, referans için kalır)
+  topicCategoryId       String? // Önceden tanımlı konu kategorisi
+  topicCategory         TopicCategory? @relation(fields: [topicCategoryId], references: [id], onDelete: SetNull)
   aiSummary             String? // AI-generated conversation summary
   sentiment             String? // AI-generated sentiment (e.g., YÜKSEK İLGİLİ, KIZGIN vb.)
   sentimentScore        Int? // AI-generated sentiment score (0-100)
@@ -462,6 +465,7 @@ model Conversation {
   @@index([contactId])
   @@index([assignedToId])
   @@index([workspaceId, funnelType, funnelStageId, lastMessageAt(sort: Desc)]) // Inbox funnel filter
+  @@index([topicCategoryId]) // Topic category analytics
   @@index([caseId])
   @@map("conversations")
 }
@@ -1247,6 +1251,27 @@ model ScheduledCall {
   @@index([scheduledAt])
   @@index([status])
   @@map("scheduled_calls")
+}
+
+// TopicCategory: Önceden tanımlı konu kategorileri (Obezite, Diz Protezi, vb.)
+model TopicCategory {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String           // "Obezite Cerrahisi"
+  description String?  @db.Text // AI eşleştirme açıklaması
+  icon        String?          // Emoji ikonu
+  color       String   @default("#6b7280")
+  keywords    String?  @db.Text // JSON: ["obezite", "mide küçültme", "sleeve"]
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([workspaceId])
+  @@map("topic_categories")
 }
 
 // Funnel: User-defined pipeline categories

@@ -1,0 +1,356 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import {
+    getTopicCategories,
+    createTopicCategory,
+    updateTopicCategory,
+    deleteTopicCategory,
+    autoGenerateCategories,
+    backfillConversations
+} from '../../services/topicCategory.api';
+import './TopicCategories.css';
+
+const TopicCategories = () => {
+    const { workspaceId } = useParams();
+    const [categories, setCategories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [generating, setGenerating] = useState(false);
+    const [backfilling, setBackfilling] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+    const [editForm, setEditForm] = useState({});
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [newCategory, setNewCategory] = useState({ name: '', description: '', icon: '', keywords: '' });
+    const [statusMessage, setStatusMessage] = useState(null);
+
+    const fetchCategories = useCallback(async () => {
+        try {
+            setLoading(true);
+            const res = await getTopicCategories(workspaceId);
+            setCategories(res.data);
+        } catch (err) {
+            console.error('Kategoriler yüklenemedi:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, [workspaceId]);
+
+    useEffect(() => {
+        fetchCategories();
+    }, [fetchCategories]);
+
+    const handleAutoGenerate = async () => {
+        if (!window.confirm('Bilgi bankası ve mevcut konuşmalardan otomatik kategoriler oluşturulacak. Devam etmek istiyor musunuz?')) return;
+        try {
+            setGenerating(true);
+            setStatusMessage({ type: 'info', text: '🤖 AI kategorileri oluşturuyor... Bu birkaç dakika sürebilir.' });
+            const res = await autoGenerateCategories(workspaceId);
+            setStatusMessage({
+                type: 'success',
+                text: `✅ ${res.data.created} yeni kategori oluşturuldu! (${res.data.skipped} mevcut atlandı)`
+            });
+            await fetchCategories();
+        } catch (err) {
+            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    const handleBackfill = async () => {
+        if (!window.confirm('Mevcut konuşmalar kategorilere eşleştirilecek. Devam?')) return;
+        try {
+            setBackfilling(true);
+            setStatusMessage({ type: 'info', text: '🔄 Konuşmalar eşleştiriliyor...' });
+            const res = await backfillConversations(workspaceId);
+            setStatusMessage({
+                type: 'success',
+                text: `✅ ${res.data.matched} konuşma eşleştirildi. ${res.data.unmatched} eşleşmeyen kaldı.`
+            });
+        } catch (err) {
+            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
+        } finally {
+            setBackfilling(false);
+        }
+    };
+
+    const handleAdd = async () => {
+        if (!newCategory.name.trim()) return;
+        try {
+            const keywords = newCategory.keywords
+                ? newCategory.keywords.split(',').map(k => k.trim()).filter(Boolean)
+                : [];
+            await createTopicCategory(workspaceId, {
+                name: newCategory.name.trim(),
+                description: newCategory.description.trim() || null,
+                icon: newCategory.icon || null,
+                keywords
+            });
+            setNewCategory({ name: '', description: '', icon: '', keywords: '' });
+            setShowAddForm(false);
+            await fetchCategories();
+        } catch (err) {
+            alert('Hata: ' + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleEdit = (cat) => {
+        setEditingId(cat.id);
+        setEditForm({
+            name: cat.name,
+            description: cat.description || '',
+            icon: cat.icon || '',
+            keywords: cat.keywords ? JSON.parse(cat.keywords).join(', ') : ''
+        });
+    };
+
+    const handleSaveEdit = async (id) => {
+        try {
+            const keywords = editForm.keywords
+                ? editForm.keywords.split(',').map(k => k.trim()).filter(Boolean)
+                : [];
+            await updateTopicCategory(workspaceId, id, {
+                name: editForm.name,
+                description: editForm.description || null,
+                icon: editForm.icon || null,
+                keywords
+            });
+            setEditingId(null);
+            await fetchCategories();
+        } catch (err) {
+            alert('Hata: ' + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleDelete = async (id, name) => {
+        if (!window.confirm(`"${name}" kategorisini silmek istediğinize emin misiniz?`)) return;
+        try {
+            await deleteTopicCategory(workspaceId, id);
+            await fetchCategories();
+        } catch (err) {
+            alert('Hata: ' + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const handleToggleActive = async (id, currentActive) => {
+        try {
+            await updateTopicCategory(workspaceId, id, { isActive: !currentActive });
+            await fetchCategories();
+        } catch (err) {
+            alert('Hata: ' + (err.response?.data?.error || err.message));
+        }
+    };
+
+    const totalConversations = categories.reduce((sum, c) => sum + (c._count?.conversations || 0), 0);
+
+    return (
+        <div className="topic-categories-page">
+            <div className="tc-header">
+                <div className="tc-header-left">
+                    <h2>🏷️ Konu Kategorileri</h2>
+                    <span className="tc-subtitle">
+                        {categories.length} kategori · {totalConversations} konuşma eşleştirildi
+                    </span>
+                </div>
+                <div className="tc-header-actions">
+                    <button
+                        className="tc-btn tc-btn-secondary"
+                        onClick={() => setShowAddForm(!showAddForm)}
+                    >
+                        + Elle Ekle
+                    </button>
+                    <button
+                        className="tc-btn tc-btn-primary"
+                        onClick={handleAutoGenerate}
+                        disabled={generating}
+                    >
+                        {generating ? '⏳ Oluşturuluyor...' : '🤖 Otomatik Oluştur'}
+                    </button>
+                    <button
+                        className="tc-btn tc-btn-outline"
+                        onClick={handleBackfill}
+                        disabled={backfilling || categories.length === 0}
+                    >
+                        {backfilling ? '⏳ Eşleştiriliyor...' : '🔄 Konuşmaları Eşleştir'}
+                    </button>
+                </div>
+            </div>
+
+            {statusMessage && (
+                <div className={`tc-status tc-status-${statusMessage.type}`}>
+                    {statusMessage.text}
+                    <button className="tc-status-close" onClick={() => setStatusMessage(null)}>×</button>
+                </div>
+            )}
+
+            {showAddForm && (
+                <div className="tc-add-form">
+                    <h3>Yeni Kategori Ekle</h3>
+                    <div className="tc-form-grid">
+                        <div className="tc-form-field">
+                            <label>İkon</label>
+                            <input
+                                type="text"
+                                placeholder="🏥"
+                                value={newCategory.icon}
+                                onChange={e => setNewCategory({ ...newCategory, icon: e.target.value })}
+                                className="tc-input tc-input-icon"
+                            />
+                        </div>
+                        <div className="tc-form-field tc-form-field-wide">
+                            <label>Kategori Adı *</label>
+                            <input
+                                type="text"
+                                placeholder="Obezite Cerrahisi"
+                                value={newCategory.name}
+                                onChange={e => setNewCategory({ ...newCategory, name: e.target.value })}
+                                className="tc-input"
+                            />
+                        </div>
+                        <div className="tc-form-field tc-form-field-full">
+                            <label>Açıklama</label>
+                            <input
+                                type="text"
+                                placeholder="Obezite ameliyatı, tüp mide, sleeve gastrektomi talepleri"
+                                value={newCategory.description}
+                                onChange={e => setNewCategory({ ...newCategory, description: e.target.value })}
+                                className="tc-input"
+                            />
+                        </div>
+                        <div className="tc-form-field tc-form-field-full">
+                            <label>Anahtar Kelimeler (virgülle ayırın)</label>
+                            <input
+                                type="text"
+                                placeholder="obezite, mide küçültme, sleeve, tüp mide"
+                                value={newCategory.keywords}
+                                onChange={e => setNewCategory({ ...newCategory, keywords: e.target.value })}
+                                className="tc-input"
+                            />
+                        </div>
+                    </div>
+                    <div className="tc-form-actions">
+                        <button className="tc-btn tc-btn-secondary" onClick={() => setShowAddForm(false)}>İptal</button>
+                        <button className="tc-btn tc-btn-primary" onClick={handleAdd} disabled={!newCategory.name.trim()}>Kaydet</button>
+                    </div>
+                </div>
+            )}
+
+            {loading ? (
+                <div className="tc-loading">Yükleniyor...</div>
+            ) : categories.length === 0 ? (
+                <div className="tc-empty">
+                    <div className="tc-empty-icon">🏷️</div>
+                    <h3>Henüz kategori yok</h3>
+                    <p>Bilgi bankası ve mevcut konuşmalarınızdan otomatik kategoriler oluşturun.</p>
+                    <button className="tc-btn tc-btn-primary" onClick={handleAutoGenerate} disabled={generating}>
+                        🤖 Otomatik Oluştur
+                    </button>
+                </div>
+            ) : (
+                <div className="tc-table-wrapper">
+                    <table className="tc-table">
+                        <thead>
+                            <tr>
+                                <th style={{ width: 40 }}>#</th>
+                                <th>Kategori</th>
+                                <th>Açıklama</th>
+                                <th>Anahtar Kelimeler</th>
+                                <th style={{ width: 100 }}>Konuşma</th>
+                                <th style={{ width: 80 }}>Aktif</th>
+                                <th style={{ width: 120 }}>İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {categories.map((cat, idx) => (
+                                <tr key={cat.id} className={!cat.isActive ? 'tc-row-disabled' : ''}>
+                                    <td className="tc-cell-num">{idx + 1}</td>
+                                    <td>
+                                        {editingId === cat.id ? (
+                                            <div className="tc-inline-edit">
+                                                <input
+                                                    type="text"
+                                                    value={editForm.icon}
+                                                    onChange={e => setEditForm({ ...editForm, icon: e.target.value })}
+                                                    className="tc-input tc-input-icon"
+                                                    placeholder="🏥"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={editForm.name}
+                                                    onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                                                    className="tc-input"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <span className="tc-cat-name">
+                                                {cat.icon && <span className="tc-cat-icon">{cat.icon}</span>}
+                                                {cat.name}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {editingId === cat.id ? (
+                                            <input
+                                                type="text"
+                                                value={editForm.description}
+                                                onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                                                className="tc-input"
+                                            />
+                                        ) : (
+                                            <span className="tc-description">{cat.description || '—'}</span>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {editingId === cat.id ? (
+                                            <input
+                                                type="text"
+                                                value={editForm.keywords}
+                                                onChange={e => setEditForm({ ...editForm, keywords: e.target.value })}
+                                                className="tc-input"
+                                                placeholder="obezite, mide küçültme"
+                                            />
+                                        ) : (
+                                            <div className="tc-keywords">
+                                                {cat.keywords && JSON.parse(cat.keywords).slice(0, 4).map((kw, i) => (
+                                                    <span key={i} className="tc-keyword-tag">{kw}</span>
+                                                ))}
+                                                {cat.keywords && JSON.parse(cat.keywords).length > 4 && (
+                                                    <span className="tc-keyword-more">+{JSON.parse(cat.keywords).length - 4}</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="tc-cell-count">
+                                        <span className="tc-count-badge">{cat._count?.conversations || 0}</span>
+                                    </td>
+                                    <td>
+                                        <button
+                                            className={`tc-toggle ${cat.isActive ? 'tc-toggle-on' : 'tc-toggle-off'}`}
+                                            onClick={() => handleToggleActive(cat.id, cat.isActive)}
+                                        >
+                                            {cat.isActive ? '✅' : '⬜'}
+                                        </button>
+                                    </td>
+                                    <td>
+                                        {editingId === cat.id ? (
+                                            <div className="tc-row-actions">
+                                                <button className="tc-btn-sm tc-btn-save" onClick={() => handleSaveEdit(cat.id)}>💾</button>
+                                                <button className="tc-btn-sm tc-btn-cancel" onClick={() => setEditingId(null)}>✕</button>
+                                            </div>
+                                        ) : (
+                                            <div className="tc-row-actions">
+                                                <button className="tc-btn-sm tc-btn-edit" onClick={() => handleEdit(cat)}>✏️</button>
+                                                <button className="tc-btn-sm tc-btn-delete" onClick={() => handleDelete(cat.id, cat.name)}>🗑️</button>
+                                            </div>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default TopicCategories;
