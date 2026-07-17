@@ -1,5 +1,18 @@
 import prisma from '../lib/prisma.js';
 import axios from 'axios';
+import { randomUUID } from 'crypto';
+
+// ─── In-memory bulk-send job tracker ───────────────────────────────────────────
+// Maps jobId → { sent, failed, total, done, templateName, startedAt }
+const bulkSendJobs = new Map();
+
+// Clean up jobs older than 2 hours to avoid memory leak
+setInterval(() => {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+    for (const [id, job] of bulkSendJobs.entries()) {
+        if (job.startedAt < cutoff) bulkSendJobs.delete(id);
+    }
+}, 15 * 60 * 1000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /marketing/:workspaceId/template-analytics
@@ -78,6 +91,12 @@ export const getTemplateAnalytics = async (req, res) => {
             }
 
             const contact = msg.conversation?.contact;
+            // Parse error reason from content for FAILED messages: "[HATA: ...]"
+            let errorReason = null;
+            if (msg.status === 'FAILED') {
+                const errMatch = msg.content?.match(/\[HATA:\s*(.+?)\]$/s);
+                if (errMatch) errorReason = errMatch[1].trim();
+            }
             t.recipients.push({
                 messageId: msg.id,
                 whatsappMessageId: msg.whatsappMessageId,
@@ -88,7 +107,8 @@ export const getTemplateAnalytics = async (req, res) => {
                 name: contact?.name || '—',
                 phone: contact?.phone || '—',
                 email: contact?.email || null,
-                tags: contact?.tags || []
+                tags: contact?.tags || [],
+                errorReason
             });
         }
 
@@ -313,9 +333,23 @@ export const bulkSendTemplate = async (req, res) => {
             select: { id: true, name: true, fullName: true, phone: true }
         });
 
-        // Respond immediately — send in background
+        // Create job tracker entry
+        const jobId = randomUUID();
+        bulkSendJobs.set(jobId, {
+            sent: 0,
+            failed: 0,
+            total: contacts.length,
+            done: false,
+            templateName: template.name,
+            lastError: null,
+            errors: [],
+            startedAt: Date.now()
+        });
+
+        // Respond immediately with jobId — send in background
         res.json({
             success: true,
+            jobId,
             queued: contacts.length,
             templateName: template.name,
             message: `${contacts.length} kişiye "${template.name}" şablonu gönderiliyor...`
@@ -323,16 +357,47 @@ export const bulkSendTemplate = async (req, res) => {
 
         // Background send with 1.5s delay between messages (WhatsApp rate limit)
         setImmediate(async () => {
+            const job = bulkSendJobs.get(jobId);
             let sent = 0, failed = 0;
 
-            for (const contact of contacts) {
+            // ── Pre-upload media header ONCE before the loop (VIDEO/IMAGE/DOCUMENT) ──
+            let prebuiltHeaderParam = null;
+            if (template.headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(template.headerType)) {
+                const mediaUrl = toAbsoluteUrl(template.headerContent);
+
+                if (mediaUrl) {
+                    const needsUpload = mediaUrl.includes('scontent.whatsapp.net')
+                        || mediaUrl.includes('scontent.cdninstagram.com')
+                        || mediaUrl.includes('drive.google.com')
+                        || mediaUrl.includes('drive.usercontent.google.com');
+
+                    if (needsUpload) {
+                        console.log(`☁️ [BulkSend] Uploading media to Meta once for all contacts...`);
+                        const mediaId = await uploadMediaToMeta(mediaUrl, template.headerType, whatsappPhone.phoneNumberId, whatsappPhone.accessToken);
+                        if (mediaId) {
+                            prebuiltHeaderParam = { type: template.headerType.toLowerCase(), [template.headerType.toLowerCase()]: { id: mediaId } };
+                            console.log(`✅ [BulkSend] Media uploaded, id: ${mediaId}`);
+                        } else {
+                            prebuiltHeaderParam = { type: template.headerType.toLowerCase(), [template.headerType.toLowerCase()]: { link: mediaUrl } };
+                        }
+                    } else {
+                        prebuiltHeaderParam = { type: template.headerType.toLowerCase(), [template.headerType.toLowerCase()]: { link: mediaUrl } };
+                    }
+                    console.log(`📎 [BulkSend] Header param ready:`, JSON.stringify(prebuiltHeaderParam));
+                } else {
+                    console.warn(`⚠️ [BulkSend] Template has media header but no headerContent stored — skipping header component`);
+                }
+            }
+
+            for (let i = 0; i < contacts.length; i++) {
+                const contact = contacts[i];
                 try {
-                    // Clean phone
+                    // Clean phone — same as automation controller
                     let phone = contact.phone.replace(/[\s\+\-\(\)]/g, '');
                     if (phone.startsWith('0')) phone = '90' + phone.substring(1);
                     else if (!phone.startsWith('90') && phone.length === 10) phone = '90' + phone;
 
-                    // Build payload
+                    // Build payload — EXACT same structure as automation sendTemplateMessage
                     const payload = {
                         messaging_product: 'whatsapp',
                         to: phone,
@@ -343,15 +408,33 @@ export const bulkSendTemplate = async (req, res) => {
                         }
                     };
 
-                    // Body variables: {{1}} = contact name
-                    const placeholderCount = (template.bodyText?.match(/\{\{\d+\}\}/g) || []).length;
-                    if (placeholderCount > 0) {
-                        const params = [];
+                    const components = [];
+
+                    // Header component (pre-built above)
+                    if (prebuiltHeaderParam) {
+                        components.push({ type: 'header', parameters: [prebuiltHeaderParam] });
+                    }
+
+                    // Body: only add parameters if template has {{N}} placeholders
+                    // (same condition as automation: variables.length > 0)
+                    const bodyPlaceholders = (template.bodyText?.match(/\{\{\d+\}\}/g) || []);
+                    if (bodyPlaceholders.length > 0) {
                         const contactName = contact.fullName || contact.name || phone;
-                        params.push({ type: 'text', text: contactName });
-                        variables.forEach(v => { if (v?.trim()) params.push({ type: 'text', text: v }); });
-                        while (params.length < placeholderCount) params.push({ type: 'text', text: '' });
-                        payload.template.components = [{ type: 'body', parameters: params }];
+                        const bodyParams = bodyPlaceholders.map((_, idx) => ({
+                            type: 'text',
+                            text: idx === 0 ? contactName : ''
+                        }));
+                        components.push({ type: 'body', parameters: bodyParams });
+                    }
+
+                    // Only attach components if there are any (same as automation)
+                    if (components.length > 0) {
+                        payload.template.components = components;
+                    }
+
+                    // Debug log for first contact
+                    if (i === 0) {
+                        console.log(`🔍 [BulkSend] First contact payload:`, JSON.stringify(payload, null, 2));
                     }
 
                     const response = await axios.post(
@@ -384,18 +467,56 @@ export const bulkSendTemplate = async (req, res) => {
                     await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
 
                     sent++;
+                    // Update job progress
+                    if (job) { job.sent = sent; job.failed = failed; }
                     console.log(`📤 [BulkSend] ${sent}/${contacts.length} sent to ${phone}`);
                 } catch (err) {
                     failed++;
-                    console.error(`❌ [BulkSend] Failed for contact ${contact.id}:`, err.response?.data?.error?.message || err.message);
-                }
+                    // Extract detailed error info from WhatsApp API response
+                    const waError = err.response?.data?.error;
+                    const errMsg = waError?.error_user_msg || waError?.message || err.message || 'Bilinmeyen hata';
+                    const errCode = waError?.code || err.response?.status || '';
+                    const fullErrLog = `[${errCode}] ${errMsg}`;
+                    if (job) {
+                        job.sent = sent;
+                        job.failed = failed;
+                        job.lastError = fullErrLog;
+                        if (job.errors.length < 5) job.errors.push({ phone: contact.phone, msg: fullErrLog });
+                    }
+                    console.error(`❌ [BulkSend] Failed for contact ${contact.id} (${contact.phone}):`, JSON.stringify(waError || err.message));
 
-                // Rate limit delay
-                if (contacts.indexOf(contact) < contacts.length - 1) {
+                    // Save FAILED message to DB so it appears in analytics with the error reason
+                    try {
+                        let conversation = await prisma.conversation.findFirst({
+                            where: { contactId: contact.id, workspaceId, channel: 'WHATSAPP' }
+                        });
+                        if (!conversation) {
+                            conversation = await prisma.conversation.create({
+                                data: { contactId: contact.id, workspaceId, whatsappPhoneNumberId: whatsappPhone.id, channel: 'WHATSAPP', status: 'OPEN' }
+                            });
+                        }
+                        await prisma.message.create({
+                            data: {
+                                conversationId: conversation.id,
+                                content: `[Şablon: ${template.name}]\n${template.bodyText}\n\n[HATA: ${fullErrLog}]`,
+                                messageType: 'TEMPLATE',
+                                isFromContact: false,
+                                status: 'FAILED'
+                            }
+                        });
+                    } catch (dbErr) {
+                        console.error(`⚠️ [BulkSend] Failed to save FAILED message to DB:`, dbErr.message);
+                    }
+                } // end catch(err)
+
+                // Rate limit delay (skip after last contact)
+                if (i < contacts.length - 1) {
                     await new Promise(r => setTimeout(r, 1500));
                 }
             }
 
+            // Mark job as done
+            if (job) { job.done = true; job.sent = sent; job.failed = failed; }
             console.log(`✅ [BulkSend] Done. Sent: ${sent}, Failed: ${failed}, Template: ${template.name}`);
         });
 
@@ -403,6 +524,25 @@ export const bulkSendTemplate = async (req, res) => {
         console.error('❌ [bulkSendTemplate]', error);
         res.status(500).json({ error: 'Toplu gönderim başlatılamadı' });
     }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /marketing/:workspaceId/bulk-send-status/:jobId
+// Poll for live progress of a running bulk send job
+// ─────────────────────────────────────────────────────────────────────────────
+export const getBulkSendStatus = async (req, res) => {
+    const { jobId } = req.params;
+    const job = bulkSendJobs.get(jobId);
+    if (!job) return res.status(404).json({ error: 'Job bulunamadı' });
+    res.json({
+        sent: job.sent,
+        failed: job.failed,
+        total: job.total,
+        done: job.done,
+        templateName: job.templateName,
+        lastError: job.lastError || null,
+        errors: job.errors || []
+    });
 };
 
 const WHATSAPP_API_VERSION = 'v22.0';

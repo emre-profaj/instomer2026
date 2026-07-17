@@ -83,6 +83,8 @@ function BulkSendTab({ wsId }) {
     const [callResult, setCallResult] = useState(null);
     const [sending, setSending] = useState(false);
     const [sentMsg, setSentMsg] = useState('');
+    const [bulkJob, setBulkJob] = useState(null); // { jobId, sent, failed, total, done, templateName }
+    const pollRef = useRef(null);
 
     const searchTimer = useRef(null);
 
@@ -162,16 +164,35 @@ function BulkSendTab({ wsId }) {
         try {
             const body = { templateId };
             if (selectAllPages) {
-                // Pass filters, backend fetches all matching contacts
                 body.selectAll = true;
                 body.filters = { search, status: statusFilter, source: sourceFilter };
             } else {
                 body.contactIds = [...selected];
             }
             const res = await api.post(`/marketing/${wsId}/bulk-send`, body);
-            setSentMsg(res.data.message);
+            const { jobId, queued, templateName } = res.data;
+
+            // Start live progress tracking
+            setBulkJob({ jobId, sent: 0, failed: 0, total: queued, done: false, templateName });
+            setSentMsg('');
             setSelected(new Set());
             setSelectAllPages(false);
+
+            // Poll for progress every 2 seconds
+            pollRef.current = setInterval(async () => {
+                try {
+                    const status = await api.get(`/marketing/${wsId}/bulk-send-status/${jobId}`);
+                    const { sent, failed, total, done, lastError, errors } = status.data;
+                    setBulkJob(prev => prev ? { ...prev, sent, failed, total, done, lastError, errors } : null);
+                    if (done) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                    }
+                } catch (e) {
+                    // Ignore polling errors silently
+                }
+            }, 2000);
+
         } catch (e) {
             alert('Gönderim hatası: ' + (e.response?.data?.error || e.message));
         }
@@ -208,6 +229,99 @@ function BulkSendTab({ wsId }) {
 
     return (
         <div className="mkt-bulk-wrap">
+            {/* ── Floating bulk-send progress banner (visible when modal is closed) ── */}
+            {bulkJob && !showModal && (
+                <div
+                    onClick={() => setShowModal(true)}
+                    style={{
+                        position: 'sticky',
+                        top: 0,
+                        zIndex: 100,
+                        background: bulkJob.done
+                            ? (bulkJob.sent > 0 ? '#f0fdf4' : '#fef2f2')
+                            : 'linear-gradient(90deg, #1e40af 0%, #3b82f6 100%)',
+                        color: bulkJob.done ? '#111' : '#fff',
+                        padding: '10px 20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 14,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
+                        borderRadius: '0 0 12px 12px',
+                        marginBottom: 8,
+                        userSelect: 'none',
+                        flexWrap: 'wrap'
+                    }}
+                >
+                    {bulkJob.done ? (
+                        <span style={{ fontSize: 18 }}>{bulkJob.sent > 0 ? '✅' : '❌'}</span>
+                    ) : (
+                        <span style={{
+                            width: 16, height: 16,
+                            border: '2.5px solid rgba(255,255,255,0.35)',
+                            borderTop: '2.5px solid #fff',
+                            borderRadius: '50%',
+                            display: 'inline-block',
+                            flexShrink: 0,
+                            animation: 'mkt-spin 0.8s linear infinite'
+                        }} />
+                    )}
+
+                    <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
+                        {bulkJob.templateName || 'Toplu Gönderim'}
+                    </span>
+
+                    <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-0.5px' }}>
+                        {(bulkJob.sent + bulkJob.failed).toLocaleString('tr-TR')}
+                        <span style={{ fontWeight: 400, fontSize: 13, opacity: 0.75 }}> / {bulkJob.total.toLocaleString('tr-TR')}</span>
+                    </span>
+
+                    <span style={{ fontSize: 12, opacity: 0.9 }}>
+                        ✅ {bulkJob.sent.toLocaleString('tr-TR')}
+                        {bulkJob.failed > 0 && (
+                            <span style={{ marginLeft: 8, color: bulkJob.done ? '#ef4444' : '#fca5a5' }}>
+                                ❌ {bulkJob.failed.toLocaleString('tr-TR')}
+                            </span>
+                        )}
+                    </span>
+
+                    <div style={{ flex: 1, background: 'rgba(255,255,255,0.25)', borderRadius: 999, height: 7, overflow: 'hidden', minWidth: 80 }}>
+                        <div style={{
+                            height: '100%',
+                            background: bulkJob.done ? '#22c55e' : '#fff',
+                            borderRadius: 999,
+                            width: bulkJob.total > 0
+                                ? `${Math.round(((bulkJob.sent + bulkJob.failed) / bulkJob.total) * 100)}%`
+                                : '0%',
+                            transition: 'width 1.5s ease'
+                        }} />
+                    </div>
+
+                    <span style={{ fontSize: 12, opacity: 0.85, flexShrink: 0 }}>
+                        {bulkJob.total > 0
+                            ? `${Math.round(((bulkJob.sent + bulkJob.failed) / bulkJob.total) * 100)}%`
+                            : '0%'}
+                    </span>
+
+                    {!bulkJob.done && (
+                        <span style={{ fontSize: 11, opacity: 0.7, flexShrink: 0 }}>↗ detay</span>
+                    )}
+
+                    {bulkJob.done && (
+                        <button
+                            onClick={e => { e.stopPropagation(); setBulkJob(null); }}
+                            style={{
+                                background: 'rgba(0,0,0,0.1)', border: 'none', cursor: 'pointer',
+                                fontSize: 14, borderRadius: '50%', width: 22, height: 22,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                marginLeft: 4, flexShrink: 0
+                            }}
+                            title="Kapat"
+                        >×</button>
+                    )}
+                </div>
+            )}
+
             {/* Toolbar */}
             <div className="mkt-bulk-toolbar">
                 <div className="mkt-bulk-toolbar-row">
@@ -347,8 +461,13 @@ function BulkSendTab({ wsId }) {
                     templates={templates}
                     sending={sending}
                     sentMsg={sentMsg}
+                    bulkJob={bulkJob}
                     onSend={handleBulkSend}
-                    onClose={() => setShowModal(false)}
+                    onClose={() => {
+                        setShowModal(false);
+                        // Don't stop polling or clear bulkJob — send continues in background
+                        setSentMsg('');
+                    }}
                 />
             )}
 
@@ -456,9 +575,17 @@ function BulkCallModal({ count, wsId, calling, callResult, onCall, onClose }) {
     );
 }
 
-function BulkSendModal({ count, templates, sending, sentMsg, onSend, onClose }) {
+function BulkSendModal({ count, templates, sending, sentMsg, bulkJob, onSend, onClose }) {
     const [templateId, setTemplateId] = useState('');
     const selectedTpl = templates.find(t => t.id === templateId);
+
+    // Active job running
+    const isRunning = bulkJob && !bulkJob.done;
+    const isDone    = bulkJob && bulkJob.done;
+
+    const pct = bulkJob && bulkJob.total > 0
+        ? Math.round(((bulkJob.sent + bulkJob.failed) / bulkJob.total) * 100)
+        : 0;
 
     return (
         <div className="mkt-modal-overlay" onClick={onClose}>
@@ -468,7 +595,114 @@ function BulkSendModal({ count, templates, sending, sentMsg, onSend, onClose }) 
                     <button className="mkt-close-btn" onClick={onClose}>✕</button>
                 </div>
 
-                {sentMsg ? (
+                {/* ── PROGRESS VIEW (running or done) ── */}
+                {bulkJob ? (
+                    <div className="mkt-modal-body">
+                        <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
+                            <div style={{ fontSize: '2rem', marginBottom: 10 }}>
+                                {isDone ? '✅' : '📤'}
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: 16, color: isDone ? '#16a34a' : '#1e293b', marginBottom: 4 }}>
+                                {isDone
+                                    ? `Gönderim tamamlandı!`
+                                    : `"${bulkJob.templateName}" gönderiliyor...`}
+                            </div>
+
+                            {/* Counter: 51 / 1600 */}
+                            <div style={{
+                                fontSize: 36,
+                                fontWeight: 800,
+                                color: '#4f46e5',
+                                letterSpacing: '-1px',
+                                margin: '12px 0 4px'
+                            }}>
+                                {bulkJob.sent + bulkJob.failed}
+                                <span style={{ fontSize: 18, color: '#94a3b8', fontWeight: 500 }}>
+                                    {' '}/ {bulkJob.total}
+                                </span>
+                            </div>
+
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+                                ✅ {bulkJob.sent} gönderildi
+                                {bulkJob.failed > 0 && <span style={{ color: '#ef4444', marginLeft: 8 }}>❌ {bulkJob.failed} başarısız</span>}
+                            </div>
+
+                            {/* Progress bar */}
+                            <div style={{
+                                width: '100%',
+                                height: 10,
+                                background: '#e2e8f0',
+                                borderRadius: 999,
+                                overflow: 'hidden',
+                                marginBottom: 8
+                            }}>
+                                <div style={{
+                                    height: '100%',
+                                    width: pct + '%',
+                                    background: isDone ? '#22c55e' : 'linear-gradient(90deg, #4f46e5, #818cf8)',
+                                    borderRadius: 999,
+                                    transition: 'width 1.8s ease'
+                                }} />
+                            </div>
+                            <div style={{ fontSize: 13, color: '#64748b' }}>{pct}%</div>
+
+                            {!isDone && (
+                                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 12 }}>
+                                    ⏱ Mesajlar arasında 1.5 sn bekleniyor. Modal'ı kapatabilirsiniz, gönderim arka planda devam eder.
+                                </div>
+                            )}
+
+                            {isDone && bulkJob.failed > 0 && (
+                                <div style={{
+                                    marginTop: 12,
+                                    padding: '10px 14px',
+                                    background: '#fef2f2',
+                                    borderRadius: 8,
+                                    fontSize: 12,
+                                    color: '#dc2626',
+                                    textAlign: 'left'
+                                }}>
+                                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                                        ❌ {bulkJob.failed} gönderim başarısız
+                                    </div>
+                                    {bulkJob.lastError && (
+                                        <div style={{
+                                            background: '#fff',
+                                            border: '1px solid #fecaca',
+                                            borderRadius: 6,
+                                            padding: '6px 10px',
+                                            marginBottom: 6,
+                                            fontFamily: 'monospace',
+                                            fontSize: 11,
+                                            wordBreak: 'break-all'
+                                        }}>
+                                            🔍 Hata: {bulkJob.lastError}
+                                        </div>
+                                    )}
+                                    {bulkJob.errors?.length > 0 && (
+                                        <div>
+                                            <div style={{ fontSize: 11, color: '#92400e', marginBottom: 4 }}>İlk başarısız numaralar:</div>
+                                            {bulkJob.errors.map((e, i) => (
+                                                <div key={i} style={{ fontSize: 11, color: '#7f1d1d', padding: '2px 0' }}>
+                                                    📱 {e.phone} — {e.msg}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            className="mkt-btn-primary"
+                            onClick={onClose}
+                            style={{ marginTop: 8, width: '100%' }}
+                        >
+                            {isDone ? 'Kapat' : 'Arka planda devam et →'}
+                        </button>
+                    </div>
+
+                ) : sentMsg ? (
                     <div className="mkt-modal-body">
                         <div className="mkt-success-box">
                             <div style={{ fontSize: '2rem', marginBottom: 8 }}>✅</div>
@@ -548,6 +782,7 @@ function AnalyticsTab({ wsId }) {
     const [sortDir, setSortDir] = useState('desc');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo]     = useState('');
+    const [errorPopup, setErrorPopup] = useState(null); // messageId of the row showing error tooltip
 
     const commitSearch = () => setSearch(inputSearch);
     const clearSearch  = () => { setInputSearch(''); setSearch(''); };
@@ -812,7 +1047,55 @@ function AnalyticsTab({ wsId }) {
                                                             </div>
                                                         </td>
                                                         <td><span className="mkt-phone">{r.phone}</span></td>
-                                                        <td><span className="mkt-status-badge" style={{ background: st.bg, color: st.text }}>{st.icon} {st.label}</span></td>
+                                                        <td>
+                                                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                                <span
+                                                                    className="mkt-status-badge"
+                                                                    style={{
+                                                                        background: st.bg,
+                                                                        color: st.text,
+                                                                        cursor: r.status === 'FAILED' && r.errorReason ? 'pointer' : 'default'
+                                                                    }}
+                                                                    title={r.status === 'FAILED' && r.errorReason ? 'Hata detayı için tıkla' : undefined}
+                                                                    onClick={() => {
+                                                                        if (r.status === 'FAILED' && r.errorReason) {
+                                                                            setErrorPopup(prev => prev === r.messageId ? null : r.messageId);
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {st.icon} {st.label}
+                                                                    {r.status === 'FAILED' && r.errorReason && (
+                                                                        <span style={{ marginLeft: 4, fontSize: 11, opacity: 0.7 }}>ℹ️</span>
+                                                                    )}
+                                                                </span>
+                                                                {errorPopup === r.messageId && r.errorReason && (
+                                                                    <div style={{
+                                                                        position: 'absolute',
+                                                                        top: '110%',
+                                                                        left: 0,
+                                                                        zIndex: 999,
+                                                                        background: '#1e293b',
+                                                                        color: '#f1f5f9',
+                                                                        borderRadius: 8,
+                                                                        padding: '10px 14px',
+                                                                        fontSize: 12,
+                                                                        maxWidth: 320,
+                                                                        minWidth: 200,
+                                                                        lineHeight: 1.5,
+                                                                        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                                                                        whiteSpace: 'pre-wrap',
+                                                                        wordBreak: 'break-word'
+                                                                    }}>
+                                                                        <div style={{ fontWeight: 700, marginBottom: 4, color: '#f87171' }}>❌ Gönderim Hatası</div>
+                                                                        <div style={{ opacity: 0.9 }}>{r.errorReason}</div>
+                                                                        <div
+                                                                            onClick={e => { e.stopPropagation(); setErrorPopup(null); }}
+                                                                            style={{ marginTop: 8, color: '#94a3b8', cursor: 'pointer', fontSize: 11 }}
+                                                                        >× Kapat</div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
                                                         <td className="mkt-date-cell">
                                                             <div>{new Date(r.sentAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</div>
                                                             <div className="mkt-time">{new Date(r.sentAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</div>

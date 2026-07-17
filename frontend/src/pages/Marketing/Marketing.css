@@ -2,6 +2,11 @@
    Marketing Page — Modern Header & Tabs
    Consistent with WorkspaceSettings design
 ───────────────────────────────────────────── */
+
+@keyframes mkt-spin {
+    to { transform: rotate(360deg); }
+}
+
 .mkt-page {
     display: flex;
     flex-direction: column;

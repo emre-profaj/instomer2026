@@ -599,7 +599,8 @@ export const getContacts = async (req, res) => {
         };
 
         // ── "Sadece Aktifleri Göster" / onlyOpenCases filter ──
-        // Exclude contacts whose funnelStageId is a closing stage (isClosing=true or has statusType)
+        // Exclude contacts whose effective stage (contact.funnelStageId OR their cases' stages) is a
+        // closing stage (isClosing=true or has statusType), OR whose cases are all LOST/WON/CLOSED.
         // This must be applied BEFORE the statsWhere snapshot so pill counts match the visible list.
         if (onlyOpenCases === 'true' || onlyOpenCases === undefined) {
             // Fetch all closing stage IDs for this workspace
@@ -619,9 +620,61 @@ export const getContacts = async (req, res) => {
                     AND: [
                         where,
                         {
+                            // Contact must NOT be in a closing stage themselves
                             OR: [
                                 { funnelStageId: null },
                                 { funnelStageId: { notIn: closingStageIds } }
+                            ]
+                        },
+                        {
+                            // AND must not have ALL their cases closed/lost/won
+                            // i.e., must have at least one ACTIVE case OR no cases at all
+                            OR: [
+                                // Has at least one active case that is NOT in a closing stage
+                                {
+                                    cases: {
+                                        some: {
+                                            workspaceId,
+                                            status: 'ACTIVE',
+                                            OR: [
+                                                { funnelStageId: null },
+                                                { funnelStageId: { notIn: closingStageIds } }
+                                            ]
+                                        }
+                                    }
+                                },
+                                // Has no cases at all (fresh contact)
+                                {
+                                    cases: {
+                                        none: { workspaceId }
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                };
+            } else {
+                // No closing stages defined — still exclude contacts whose ALL cases are LOST/WON/CLOSED
+                where = {
+                    AND: [
+                        where,
+                        {
+                            OR: [
+                                // Has at least one ACTIVE case
+                                {
+                                    cases: {
+                                        some: {
+                                            workspaceId,
+                                            status: 'ACTIVE'
+                                        }
+                                    }
+                                },
+                                // Has no cases at all
+                                {
+                                    cases: {
+                                        none: { workspaceId }
+                                    }
+                                }
                             ]
                         }
                     ]

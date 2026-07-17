@@ -5,6 +5,7 @@ import {
     clearTemplateHistory,
     getMarketingContacts,
     bulkSendTemplate,
+    getBulkSendStatus,
     getCampaigns,
     getCampaignDetail,
     createCampaign,
@@ -26,6 +27,7 @@ router.get('/:workspaceId/contacts', requireWorkspaceAccess, getMarketingContact
 
 // Bulk send
 router.post('/:workspaceId/bulk-send', requireWorkspaceAccess, bulkSendTemplate);
+router.get('/:workspaceId/bulk-send-status/:jobId', requireWorkspaceAccess, getBulkSendStatus);
 
 // Campaign routes
 router.get('/:workspaceId/campaigns', requireWorkspaceAccess, getCampaigns);

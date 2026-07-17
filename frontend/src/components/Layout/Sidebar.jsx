@@ -457,8 +457,20 @@ const Sidebar = () => {
 
                 <div className="sidebar-footer">
                     {/* Notifications */}
-                    <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 4, borderTop: 'none' }}>
+                    <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 0, borderTop: 'none' }}>
                         <NotificationPanel isCollapsed={isCollapsed} />
+                    </div>
+                    {/* Logout */}
+                    <div className={`sidebar-footer-row stacked ${isCollapsed ? 'collapsed' : ''}`} style={{ padding: '0 12px', marginBottom: 8, borderTop: 'none' }}>
+                        <button
+                            className="notification-trigger"
+                            onClick={handleLogout}
+                            title="Çıkış Yap"
+                            style={{ color: '#ef4444' }}
+                        >
+                            <LogOut size={20} className="nav-icon" style={{ color: '#ef4444' }} />
+                            {!isCollapsed && <span style={{ color: '#ef4444' }}>Çıkış Yap</span>}
+                        </button>
                     </div>
                 </div>
             </div>

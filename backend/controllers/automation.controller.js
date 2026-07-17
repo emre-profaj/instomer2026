@@ -392,16 +392,29 @@ export const updateTemplate = async (req, res) => {
         }
 
         // Handle JSON fields
-        if (updateData.buttons) {
+        if (updateData.buttons && typeof updateData.buttons !== 'string') {
             updateData.buttons = JSON.stringify(updateData.buttons);
         }
-        if (updateData.exampleValues) {
+        if (updateData.exampleValues && typeof updateData.exampleValues !== 'string') {
             updateData.exampleValues = JSON.stringify(updateData.exampleValues);
+        }
+
+        // Only pass fields that exist in the WhatsappTemplate schema
+        // (filter out transient request fields like headerMediaUrl, etc.)
+        const ALLOWED_FIELDS = new Set([
+            'name', 'language', 'category', 'status', 'bodyText',
+            'headerType', 'headerContent', 'footerText', 'buttons',
+            'components', 'exampleValues', 'templateId',
+            'whatsappPhoneNumberId'
+        ]);
+        const safeData = {};
+        for (const [key, val] of Object.entries(updateData)) {
+            if (ALLOWED_FIELDS.has(key)) safeData[key] = val;
         }
 
         const template = await prisma.whatsappTemplate.update({
             where: { id: templateId },
-            data: updateData
+            data: safeData
         });
 
         res.json({ template });
