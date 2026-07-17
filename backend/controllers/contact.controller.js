@@ -11,49 +11,97 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const topicClassificationCache = new Map();
 const TOPIC_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
-// ─── Phase 1: Text-based pre-normalization ─────────────────────
-// Strips common Turkish suffixes to group obvious duplicates before AI
+// ─── Phase 1: Aggressive text-based pre-normalization ──────────
+// Strips common Turkish suffixes/patterns to group duplicates before AI
 const TOPIC_SUFFIXES = [
-    'hakkında genel bilgi', 'hakkında bilgi almak istiyorum', 'hakkında bilgi',
-    'hakkında', 'randevu talebi', 'randevu almak', 'randevusu', 'randevu',
-    'ameliyatı talebi', 'ameliyati talebi', 'ameliyatı', 'ameliyati',
-    'cerrahisi talebi', 'cerrahisi', 'tedavisi talebi', 'tedavisi',
-    'enjeksiyonu', 'operasyonu', 'prosedürü',
+    // Long phrases first
+    'hakkında genel bilgi', 'hakkında bilgi almak istiyorum', 'hakkında bilgi almak',
+    'hakkında bilgi', 'ile ilgili bilgi', 'ile ilgili',
+    'için bilgi almak', 'için randevu', 'için',
+    'nasıl yapılır', 'nasıl uygulanır', 'ne demek', 'nedir',
+    // Randevu variants
+    'randevu talebi', 'randevu almak', 'randevusu', 'randevu',
+    // Ameliyat/cerrahi variants
+    'ameliyatı talebi', 'ameliyati talebi', 'ameliyatı', 'ameliyati', 'ameliyat',
+    'cerrahisi talebi', 'cerrahisi', 'cerrahi',
+    // Tedavi/muayene
+    'tedavisi talebi', 'tedavisi', 'tedavi',
+    'muayenesi', 'muayene',
+    'konsültasyonu', 'konsültasyon',
+    'ön değerlendirme', 'değerlendirmesi', 'değerlendirme',
+    // Enjeksiyon/operasyon
+    'enjeksiyonu', 'enjeksiyon', 'operasyonu', 'operasyon', 'prosedürü', 'prosedür',
+    'uygulaması', 'uygulama',
+    // Bilgi/fiyat/ücret
     'bilgi talebi', 'bilgisi', 'bilgi almak', 'bilgi',
-    'fiyat sorgulama', 'fiyat talebi', 'fiyatı', 'fiyati', 'fiyat',
-    'ücret bilgisi', 'ücretleri', 'ücreti', 'ucretleri', 'ucreti',
+    'fiyat sorgulama', 'fiyat talebi', 'fiyatlandırma', 'fiyatı', 'fiyati', 'fiyat',
+    'ücret bilgisi', 'ücretleri', 'ücreti', 'ucretleri', 'ucreti', 'ücret',
+    'maliyet bilgisi', 'maliyeti', 'maliyet',
+    // Genel ekler
     'sorgulama', 'sorgusu', 'talebi', 'talep',
     'kliniği', 'klinigi', 'merkezi',
+    'hakkında', 'sonrası', 'öncesi',
+    'programı', 'paketi', 'planı',
 ].sort((a, b) => b.length - a.length); // longest first
+
+// Turkish plural/possessive endings to normalize
+const TR_ENDINGS = [
+    // Plural possessives: paketleri, hizmetleri
+    { pattern: /leri$/i, replace: '' },
+    { pattern: /ları$/i, replace: '' },
+    // Plurals: paketler, hizmetler
+    { pattern: /ler$/i, replace: '' },
+    { pattern: /lar$/i, replace: '' },
+];
 
 function normalizeTopicText(topic) {
     let t = (topic || '').toLowerCase().trim()
         .replace(/\s+/g, ' ')
-        .replace(/[""''""]/g, '')
-        .replace(/\.$/, '');
+        .replace(/[""''""«»]/g, '')
+        .replace(/[.!?,;:]+$/, '')
+        .replace(/^\d+[\.\)\-]\s*/, ''); // strip leading numbers "1. " "2) "
     
     // Multi-pass suffix removal — keep stripping until no more matches
     let changed = true;
-    while (changed) {
+    let iterations = 0;
+    while (changed && iterations < 5) {
         changed = false;
+        iterations++;
         for (const suffix of TOPIC_SUFFIXES) {
             if (t.endsWith(suffix) && t.length > suffix.length + 1) {
                 t = t.slice(0, -suffix.length).trim();
                 changed = true;
-                break; // restart from longest suffix
+                break;
             }
         }
     }
     
-    // Normalize whitespace
+    // Turkish plural/possessive normalization (only if word is long enough)
+    t = t.replace(/\s+/g, ' ').trim();
+    if (t.length > 5) {
+        for (const ending of TR_ENDINGS) {
+            if (ending.pattern.test(t)) {
+                const stripped = t.replace(ending.pattern, ending.replace).trim();
+                if (stripped.length >= 3) { // don't strip too short
+                    t = stripped;
+                    break;
+                }
+            }
+        }
+    }
+    
     t = t.replace(/\s+/g, ' ').trim();
     
-    // Empty guard
-    if (!t) return (topic || '').trim();
+    // Empty/too-short guard
+    if (!t || t.length < 2) return (topic || '').trim();
     
-    // Capitalize first letter for consistency
+    // Capitalize first letter
     return t.charAt(0).toUpperCase() + t.slice(1);
 }
+
+// Hard cap: if more than MAX_TOPICS after normalization, merge tail into "Diğer Talepler"
+const MAX_DISPLAY_TOPICS = 150;
+
 
 /**
  * 2-Phase topic classification:
@@ -3047,6 +3095,36 @@ export const getContactAnalytics = async (req, res) => {
                 topicsArray = Object.values(topicMap)
                     .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, wonCount: t.wonCount || 0, wonAmount: t.wonAmount || 0, stageDist: t.stageDist }))
                     .sort((a, b) => b.count - a.count);
+            }
+
+            // ── Hard cap: merge tail into "Diğer Talepler" ──
+            if (topicsArray.length > MAX_DISPLAY_TOPICS) {
+                const keep = topicsArray.slice(0, MAX_DISPLAY_TOPICS - 1);
+                const tail = topicsArray.slice(MAX_DISPLAY_TOPICS - 1);
+                const other = {
+                    topic: 'Diğer Talepler',
+                    count: 0, withPhone: 0, called: 0, relevant: 0,
+                    wonCount: 0, wonAmount: 0,
+                    mergedTopics: [],
+                    stageDist: {}
+                };
+                for (const t of tail) {
+                    other.count += t.count;
+                    other.withPhone += t.withPhone;
+                    other.called += t.called;
+                    other.relevant += (t.relevant || t.interested || 0);
+                    other.wonCount += (t.wonCount || 0);
+                    other.wonAmount += (t.wonAmount || 0);
+                    if (t.mergedTopics) other.mergedTopics.push(...t.mergedTopics);
+                    else other.mergedTopics.push(t.topic);
+                    for (const [sName, sData] of Object.entries(t.stageDist || {})) {
+                        if (!other.stageDist[sName]) other.stageDist[sName] = { count: 0, color: sData.color };
+                        other.stageDist[sName].count += sData.count;
+                    }
+                }
+                keep.push(other);
+                topicsArray = keep;
+                console.log(`📊 [TopicCap] ${tail.length} small topics merged into "Diğer Talepler" (${other.count} contacts)`);
             }
 
             const recentConvList = await prisma.conversation.findMany({
