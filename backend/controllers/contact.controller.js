@@ -7,47 +7,114 @@ import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // ─── AI Topic Classification Cache ─────────────────────────────
-// Cache key: workspaceId + hash of topic list, expires in 10 minutes
+// Cache key: workspaceId + hash of topic list, expires in 30 minutes
 const topicClassificationCache = new Map();
 const TOPIC_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
+// ─── Phase 1: Text-based pre-normalization ─────────────────────
+// Strips common Turkish suffixes to group obvious duplicates before AI
+const TOPIC_SUFFIXES = [
+    'hakkında genel bilgi', 'hakkında bilgi almak istiyorum', 'hakkında bilgi',
+    'hakkında', 'randevu talebi', 'randevu almak', 'randevusu', 'randevu',
+    'ameliyatı talebi', 'ameliyati talebi', 'ameliyatı', 'ameliyati',
+    'cerrahisi talebi', 'cerrahisi', 'tedavisi talebi', 'tedavisi',
+    'enjeksiyonu', 'operasyonu', 'prosedürü',
+    'bilgi talebi', 'bilgisi', 'bilgi almak', 'bilgi',
+    'fiyat sorgulama', 'fiyat talebi', 'fiyatı', 'fiyati', 'fiyat',
+    'ücret bilgisi', 'ücretleri', 'ücreti', 'ucretleri', 'ucreti',
+    'sorgulama', 'sorgusu', 'talebi', 'talep',
+    'kliniği', 'klinigi', 'merkezi',
+].sort((a, b) => b.length - a.length); // longest first
+
+function normalizeTopicText(topic) {
+    let t = (topic || '').toLowerCase().trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[""''""]/g, '')
+        .replace(/\.$/, '');
+    
+    // Remove suffixes
+    for (const suffix of TOPIC_SUFFIXES) {
+        if (t.endsWith(suffix) && t.length > suffix.length + 1) {
+            t = t.slice(0, -suffix.length).trim();
+            break;
+        }
+    }
+    
+    // Normalize common variations
+    t = t.replace(/\s+/g, ' ').trim();
+    
+    // Capitalize first letter for consistency
+    return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /**
- * AI-powered topic classification: takes raw aiTopic strings and groups semantically similar ones
+ * 2-Phase topic classification:
+ * Phase 1: Text normalization groups obvious duplicates (1400 → ~150)
+ * Phase 2: AI semantic grouping merges remaining similar ones (~150 → ~40)
  * Returns a mapping: { "raw topic" => "canonical category name" }
- * Has a 5-second timeout to prevent blocking the analytics response.
  */
 async function classifyTopicsWithAI(workspaceId, rawTopics) {
     if (!rawTopics || rawTopics.length === 0) return null;
     
-    // Create a cache key from sorted topic list
-    const sortedTopics = [...rawTopics].sort();
-    const cacheKey = workspaceId + ':' + sortedTopics.join('|').substring(0, 500);
+    // Create a stable cache key
+    const topicCount = rawTopics.length;
+    const sampleKey = [...rawTopics].sort().slice(0, 20).join('|');
+    const cacheKey = `${workspaceId}:${topicCount}:${sampleKey.substring(0, 300)}`;
     const cached = topicClassificationCache.get(cacheKey);
     if (cached && cached.expiry > Date.now()) {
         return cached.data;
     }
 
-    // Wrap AI call in a 5-second timeout — if it takes longer, return null
-    // and let the background job cache it for next time
+    // ── Phase 1: Text normalization ──
+    // Group raw topics by their normalized form
+    const normGroups = {}; // normalized → [raw1, raw2, ...]
+    for (const raw of rawTopics) {
+        const norm = normalizeTopicText(raw);
+        if (!normGroups[norm]) normGroups[norm] = [];
+        normGroups[norm].push(raw);
+    }
+    
+    const uniqueNorms = Object.keys(normGroups);
+    console.log(`📋 [TopicNorm] Phase 1: ${rawTopics.length} raw → ${uniqueNorms.length} normalized groups`);
+
+    // Build phase-1 mapping (raw → normalized)
+    const phase1Mapping = {};
+    for (const [norm, raws] of Object.entries(normGroups)) {
+        for (const raw of raws) {
+            phase1Mapping[raw] = norm;
+        }
+    }
+
+    // If very few unique groups, skip AI
+    if (uniqueNorms.length <= 3) {
+        topicClassificationCache.set(cacheKey, { data: phase1Mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
+        return phase1Mapping;
+    }
+
+    // ── Phase 2: AI semantic grouping on reduced set ──
     try {
         const result = await Promise.race([
-            _doClassifyTopics(workspaceId, rawTopics, cacheKey),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('AI_TIMEOUT')), 12000))
+            _doClassifyTopics(workspaceId, uniqueNorms, cacheKey, phase1Mapping, rawTopics),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('AI_TIMEOUT')), 15000))
         ]);
         return result;
     } catch (e) {
         if (e.message === 'AI_TIMEOUT') {
-            console.warn('⏱️ [TopicAI] Classification timed out (12s), returning raw topics. Will cache in background.');
-            // Fire-and-forget: let it finish in background for next request
-            _doClassifyTopics(workspaceId, rawTopics, cacheKey).catch(() => {});
+            console.warn('⏱️ [TopicAI] Phase 2 timed out (15s). Using Phase 1 normalization only. Caching AI in background.');
+            // Cache phase-1 result immediately so user sees grouped data
+            topicClassificationCache.set(cacheKey, { data: phase1Mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
+            // Fire-and-forget: let AI finish in background for next request
+            _doClassifyTopics(workspaceId, uniqueNorms, cacheKey, phase1Mapping, rawTopics).catch(() => {});
         } else {
             console.error('AI topic classification error (non-fatal):', e.message);
+            // Still cache phase-1 result
+            topicClassificationCache.set(cacheKey, { data: phase1Mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
         }
-        return null;
+        return phase1Mapping;
     }
 }
 
-async function _doClassifyTopics(workspaceId, rawTopics, cacheKey) {
+async function _doClassifyTopics(workspaceId, uniqueNorms, cacheKey, phase1Mapping, rawTopics) {
     // Get AI API key for workspace
     const workspace = await prisma.workspace.findUnique({
         where: { id: workspaceId },
@@ -58,53 +125,77 @@ async function _doClassifyTopics(workspaceId, rawTopics, cacheKey) {
         const globalSettings = await prisma.globalSettings.findUnique({ where: { id: 'singleton' } });
         aiApiKey = globalSettings?.globalAiApiKey;
     }
-    if (!aiApiKey) return null;
+    if (!aiApiKey) return phase1Mapping;
 
     const genAI = new GoogleGenerativeAI(aiApiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    const topicListText = rawTopics.map((t, i) => `${i + 1}. ${t}`).join('\n');
+    // If still too many, batch — send max 200 at a time
+    const BATCH_SIZE = 200;
+    let aiMapping = {};
 
-    const prompt = `Sen bir müşteri talep sınıflandırma uzmanısın. Aşağıda bir CRM sistemindeki müşteri taleplerinin konu başlıkları var. 
+    for (let i = 0; i < uniqueNorms.length; i += BATCH_SIZE) {
+        const batch = uniqueNorms.slice(i, i + BATCH_SIZE);
+        const topicListText = batch.map((t, idx) => `${idx + 1}. ${t}`).join('\n');
+
+        const prompt = `Sen bir müşteri talep sınıflandırma uzmanısın. Aşağıda normalize edilmiş müşteri talep konuları var.
 Bunların birçoğu aslında aynı konuyu farklı şekillerde ifade ediyor.
 
-GÖREV: Her konu başlığını standart bir kategori adıyla eşleştir. Semantik olarak aynı anlama gelen konuları aynı kategoriye koy.
+GÖREV: Her konuyu standart bir kategori adıyla eşleştir. Semantik olarak aynı/çok benzer konuları aynı kategoriye koy.
 
 KURALLAR:
-- Kategori adları kısa ve net olsun (2-4 kelime). 
+- Kategori adları kısa ve net olsun (2-4 kelime).
 - Türkçe karakter kullan.
-- "talebi", "bilgisi", "hakkında bilgi", "randevusu" gibi ekleri kaldırarak özünü yakala.
-- "Merhaba", "Bilgi", "İletişim" gibi genel/belirsiz konuları "Genel Bilgi Talebi" kategorisine koy.
-- AYNI TİBBI/ESTETİK prosedürü farklı ifade eden konuları BİRLEŞTİR. Örnekler:
-  * "Obezite ameliyatı", "Obezite cerrahisi", "Mide küçültme", "Sleeve gastrektomi", "Tüp mide" → "Obezite Cerrahisi"
-  * "Burun eğritliği ameliyatı", "Burun eğritliği", "Burun estetiği", "Rinoplasti" → "Burun Estetiği"
-  * "Diz protezi", "Diz protez ameliyatı", "Diz protezi randevusu" → "Diz Protezi"
-  * "Botoks", "Botox", "Botoks enjeksiyonu" → "Botoks"
-  * "Fiyat bilgisi", "Fiyat talebi", "Fiyat sorgulama", "Ücret bilgisi" → "Fiyat Bilgisi"
-- Bu örnekler sadece rehber amaçlıdır, gelen konulardaki tüm benzerlikleri yakala.
+- AYNI prosedür/hizmeti farklı ifade edenleri BİRLEŞTİR. Örnekler:
+  * "Obezite", "Mide küçültme", "Sleeve gastrektomi", "Tüp mide", "Bariatrik" → "Obezite Cerrahisi"
+  * "Burun eğritliği", "Burun", "Rinoplasti", "Septoplasti" → "Burun Estetiği"
+  * "Diz protezi", "Diz protez" → "Diz Protezi"
+  * "Botoks", "Botox" → "Botoks"
+  * "Fiyat", "Ücret", "Maliyet" → "Fiyat Bilgisi"
+  * "Genel", "Merhaba", "Bilgi", "İletişim", "Teşekkür" → "Genel Bilgi"
+  * "Annelik estetiği", "Mommy makeover" → "Annelik Estetiği"
+- Emin olmadığın konuları olduğu gibi bırak, yanlış birleştirme yapma.
 - Sonucu SADECE JSON formatında döndür, başka bir şey yazma.
 
-KONU BAŞLIKLARI:
+KONULAR:
 ${topicListText}
 
-ÇIKTI FORMATI (sadece JSON):
-{"mapping": {"orijinal konu 1": "Kategori Adı", "orijinal konu 2": "Kategori Adı", ...}}`;
+ÇIKTI (sadece JSON):
+{"mapping": {"konu1": "Kategori", "konu2": "Kategori", ...}}`;
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
-    
-    // Parse JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    
-    const parsed = JSON.parse(jsonMatch[0]);
-    const mapping = parsed.mapping || parsed;
+        try {
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text();
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                const batchMapping = parsed.mapping || parsed;
+                Object.assign(aiMapping, batchMapping);
+            }
+        } catch (batchErr) {
+            console.error(`AI batch ${i / BATCH_SIZE + 1} error:`, batchErr.message);
+            // For failed batches, keep normalized names as-is
+            for (const t of batch) {
+                aiMapping[t] = t;
+            }
+        }
+    }
 
-    // Cache the result
-    topicClassificationCache.set(cacheKey, { data: mapping, expiry: Date.now() + TOPIC_CACHE_TTL });
-    console.log(`🤖 [TopicAI] Classified ${rawTopics.length} topics into ${new Set(Object.values(mapping)).size} categories for workspace ${workspaceId}`);
+    // Build final mapping: raw topic → AI category
+    // Chain: raw → phase1(normalized) → phase2(AI category)
+    const finalMapping = {};
+    for (const raw of rawTopics) {
+        const normalized = phase1Mapping[raw] || raw;
+        const aiCategory = aiMapping[normalized] || normalized;
+        finalMapping[raw] = aiCategory;
+    }
+
+    // Cache the final result
+    topicClassificationCache.set(cacheKey, { data: finalMapping, expiry: Date.now() + TOPIC_CACHE_TTL });
+    const categoryCount = new Set(Object.values(finalMapping)).size;
+    console.log(`🤖 [TopicAI] Phase 2 complete: ${uniqueNorms.length} normalized → ${categoryCount} categories for workspace ${workspaceId}`);
     
-    return mapping;
+    return finalMapping;
 }
 
 // ─── Turkey Timezone Helpers (UTC+3) ───────────────────────────

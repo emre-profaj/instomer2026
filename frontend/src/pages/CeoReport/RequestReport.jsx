@@ -77,7 +77,7 @@ const RequestReport = () => {
     const topics = reqAnalysis.topics || [];
     const prev = analytics?.previousPeriod || {};
 
-    // Merge similar topics (basic normalization)
+    // Merge similar topics (basic normalization - backup for any backend didn't catch)
     const mergedTopics = [];
     const seen = new Map();
     for (const t of topics) {
@@ -89,6 +89,8 @@ const RequestReport = () => {
             existing.called = (existing.called || 0) + (t.called || 0);
             existing.interested = (existing.interested || 0) + (t.interested || 0);
             existing.relevant = (existing.relevant || 0) + (t.relevant || 0);
+            existing.wonCount = (existing.wonCount || 0) + (t.wonCount || 0);
+            existing.wonAmount = (existing.wonAmount || 0) + (t.wonAmount || 0);
             // Merge stageDist
             if (t.stageDist) {
                 if (!existing.stageDist) existing.stageDist = {};
