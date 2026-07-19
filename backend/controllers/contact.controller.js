@@ -5176,18 +5176,18 @@ export const getSalesReport = async (req, res) => {
     }
 };
 
-// ── Talep Raporu (contact bazlı — her kişi = 1 talep) ──
+// ── Talep Raporu (conversation bazlı — her konuşma = 1 talep) ──
 export const getRequestReport = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const { startDate, endDate } = req.query;
 
-        // Contact bazlı: her kişi = 1 talep
-        const contacts = await prisma.contact.findMany({
+        // Conversation bazlı: lastMessageAt ile filtrele (aktif konuşmalar)
+        const conversations = await prisma.conversation.findMany({
             where: {
                 workspaceId,
                 ...(startDate || endDate ? {
-                    createdAt: {
+                    lastMessageAt: {
                         ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
                         ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
                     }
@@ -5195,62 +5195,77 @@ export const getRequestReport = async (req, res) => {
             },
             select: {
                 id: true,
-                name: true,
-                phone: true,
-                status: true,
-                funnelStageId: true,
-                funnelStage: {
+                contactId: true,
+                topicCategoryId: true,
+                topicCategory: { select: { id: true, name: true, icon: true, color: true } },
+                aiTopic: true,
+                assignedToId: true,
+                assignedTo: { select: { id: true, name: true } },
+                contact: {
                     select: {
                         id: true,
-                        name: true,
-                        color: true,
-                        funnel: { select: { id: true, name: true } }
+                        phone: true,
+                        status: true,
+                        funnelStageId: true,
+                        funnelStage: {
+                            select: {
+                                id: true, name: true, color: true,
+                                funnel: { select: { id: true, name: true } }
+                            }
+                        }
                     }
-                },
-                conversations: {
-                    where: { topicCategoryId: { not: null } },
-                    select: {
-                        topicCategory: { select: { id: true, name: true, icon: true, color: true } },
-                        assignedToId: true,
-                        assignedTo: { select: { id: true, name: true } }
-                    },
-                    take: 1,
-                    orderBy: { lastMessageAt: 'desc' }
-                },
-                deals: {
-                    where: { status: 'WON' },
-                    select: { amount: true }
                 }
             }
         });
 
-        // Her contact'ı item'a çevir
-        const items = contacts.map(c => {
-            const conv = c.conversations?.[0];
-            const topicCat = conv?.topicCategory || null;
-            const hasPhone = !!(c.phone && c.phone.trim());
+        // Dedup: aynı kişiyi 1 kez say (en son konuşmasını al)
+        const contactMap = {};
+        for (const conv of conversations) {
+            if (!conv.contactId) continue;
+            // Eğer bu kişi daha önce eklendiyse atla (ilk gelen en güncel olur)
+            if (contactMap[conv.contactId]) continue;
+            contactMap[conv.contactId] = conv;
+        }
+        const uniqueConvs = Object.values(contactMap);
+
+        // WON deal'ları
+        const allContactIds = Object.keys(contactMap);
+        const wonDeals = allContactIds.length > 0 ? await prisma.deal.findMany({
+            where: { workspaceId, status: 'WON', contactId: { in: allContactIds } },
+            select: { contactId: true, amount: true }
+        }) : [];
+        const wonMap = {};
+        for (const d of wonDeals) {
+            if (!wonMap[d.contactId]) wonMap[d.contactId] = { count: 0, amount: 0 };
+            wonMap[d.contactId].count++;
+            wonMap[d.contactId].amount += (d.amount || 0);
+        }
+
+        // Item'lara çevir
+        const items = uniqueConvs.map(conv => {
+            const c = conv.contact;
+            const catName = conv.topicCategory?.name || conv.aiTopic?.trim() || 'Kategorisiz';
+            const hasPhone = !!(c?.phone && c.phone.trim());
             const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
-            const isRelevant = relevantStatuses.includes(c.status);
-            const stageInfo = c.funnelStage;
-            const wonDeals = c.deals || [];
-            const wonCount = wonDeals.length;
-            const wonAmount = wonDeals.reduce((s, d) => s + (d.amount || 0), 0);
+            const isRelevant = relevantStatuses.includes(c?.status);
+            const stageInfo = c?.funnelStage;
+            const won = wonMap[conv.contactId] || { count: 0, amount: 0 };
 
             return {
-                contactId: c.id,
-                categoryName: topicCat?.name || 'Kategorisiz',
-                categoryIcon: topicCat?.icon || null,
-                categoryColor: topicCat?.color || null,
-                agentName: conv?.assignedTo?.name || 'Atanmamış',
-                agentId: conv?.assignedToId || null,
+                contactId: conv.contactId,
+                categoryName: catName,
+                categoryIcon: conv.topicCategory?.icon || null,
+                categoryColor: conv.topicCategory?.color || null,
+                agentName: conv.assignedTo?.name || 'Atanmamış',
+                agentId: conv.assignedToId,
                 hasPhone,
                 isRelevant,
                 stageName: stageInfo?.name || 'Atanmamış',
                 stageColor: stageInfo?.color || '#94a3b8',
                 funnelName: stageInfo?.funnel?.name || 'Akış Yok',
                 funnelId: stageInfo?.funnel?.id || null,
-                wonCount,
-                wonAmount
+                wonCount: won.count,
+                wonAmount: won.amount
             };
         });
 
@@ -5279,7 +5294,6 @@ export const getRequestReport = async (req, res) => {
             if (item.isRelevant) g.relevant++;
             if (item.wonCount > 0) { g.wonCount++; g.wonAmount += item.wonAmount; }
 
-            // Agent sub-group
             if (!g.agents[item.agentName]) {
                 g.agents[item.agentName] = { name: item.agentName, count: 0, relevant: 0, wonCount: 0, wonAmount: 0, stages: {} };
             }
@@ -5290,7 +5304,6 @@ export const getRequestReport = async (req, res) => {
             if (!ag.stages[item.stageName]) ag.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
             ag.stages[item.stageName].count++;
 
-            // Stage dist for topic
             if (!g.stages[item.stageName]) g.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
             g.stages[item.stageName].count++;
         }
@@ -5318,7 +5331,6 @@ export const getRequestReport = async (req, res) => {
             if (item.isRelevant) g.relevant++;
             if (item.wonCount > 0) { g.wonCount++; g.wonAmount += item.wonAmount; }
 
-            // Topic sub-group
             if (!g.topics[item.categoryName]) {
                 g.topics[item.categoryName] = {
                     name: item.categoryName, icon: item.categoryIcon, color: item.categoryColor,
@@ -5332,7 +5344,6 @@ export const getRequestReport = async (req, res) => {
             if (!tg.stages[item.stageName]) tg.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
             tg.stages[item.stageName].count++;
 
-            // Stage dist for funnel
             if (!g.stages[item.stageName]) g.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
             g.stages[item.stageName].count++;
         }
@@ -5359,4 +5370,3 @@ export const getRequestReport = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
-
