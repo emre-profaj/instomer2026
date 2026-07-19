@@ -5038,7 +5038,7 @@ export const getSalesReport = async (req, res) => {
             if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
-        // WON deal'ları çek — contact, conversation, topicCategory bilgileriyle
+        // WON deal'ları çek — case üzerinden topicCategory bilgisiyle
         const deals = await prisma.deal.findMany({
             where: {
                 workspaceId,
@@ -5054,12 +5054,18 @@ export const getSalesReport = async (req, res) => {
                 createdAt: true,
                 assignedToId: true,
                 assignedTo: { select: { id: true, name: true, avatar: true } },
+                contactId: true,
                 contact: {
                     select: {
                         id: true,
                         name: true,
                         phone: true,
-                        email: true,
+                        email: true
+                    }
+                },
+                caseId: true,
+                case: {
+                    select: {
                         conversations: {
                             where: { topicCategoryId: { not: null } },
                             select: {
@@ -5074,9 +5080,21 @@ export const getSalesReport = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Her deal'a topicCategory ekle
-        const salesList = deals.map(d => {
-            const topicCat = d.contact?.conversations?.[0]?.topicCategory || null;
+        // Her deal'a topicCategory ekle — önce case'den, yoksa contact'ın conversation'ından
+        const salesList = await Promise.all(deals.map(async (d) => {
+            // 1. Deal'ın kendi case'inden topicCategory
+            let topicCat = d.case?.conversations?.[0]?.topicCategory || null;
+
+            // 2. Case yoksa veya topic yoksa, contact'ın conversation'larından bul
+            if (!topicCat && d.contactId) {
+                const contactConv = await prisma.conversation.findFirst({
+                    where: { contactId: d.contactId, topicCategoryId: { not: null } },
+                    select: { topicCategory: { select: { id: true, name: true, icon: true, color: true } } },
+                    orderBy: { lastMessageAt: 'desc' }
+                });
+                topicCat = contactConv?.topicCategory || null;
+            }
+
             return {
                 id: d.id,
                 title: d.title,
@@ -5095,7 +5113,7 @@ export const getSalesReport = async (req, res) => {
                 categoryIcon: topicCat?.icon || null,
                 categoryColor: topicCat?.color || null
             };
-        });
+        }));
 
         // Toplam
         const totalCount = salesList.length;
