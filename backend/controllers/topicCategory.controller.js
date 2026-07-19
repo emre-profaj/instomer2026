@@ -642,6 +642,140 @@ export const mergeCategories = async (req, res) => {
     }
 };
 
+// ─── AI İLE KATEGORİ SADELEŞTİRME ──────────────────────
+
+export const simplifyCategories = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+
+        const categories = await prisma.topicCategory.findMany({
+            where: { workspaceId },
+            include: { _count: { select: { conversations: true } } }
+        });
+
+        if (categories.length < 3) {
+            return res.status(400).json({ error: 'Sadeleştirmek için en az 3 kategori gerekli' });
+        }
+
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
+            return res.status(500).json({ error: 'AI API anahtarı yapılandırılmamış' });
+        }
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const catList = categories.map(c => `"${c.name}" (${c._count.conversations} konuşma)`).join('\n');
+
+        const prompt = `Aşağıdaki kategori listesini sadeleştir. Benzer, tekrar eden ve birbiriyle örtüşen kategorileri grupla.
+
+KATEGORİ LİSTESİ:
+${catList}
+
+KURALLAR:
+- Benzer kategorileri BİRLEŞTİR (örn: "Üroloji", "Üroloji Fiyat Talebi", "Üroloji Operasyonları" → "Üroloji")
+- "X fiyat talebi" şeklindeki kategorileri ana kategoriye birleştir
+- En az 2 kategorinin birleşmesi gereken grupları döndür
+- Tek başına kalan (birleşmeye gerek olmayan) kategorileri dahil ETme
+- Sonuç kategori adı kısa ve net olsun
+
+JSON formatında döndür:
+{
+  "mergeGroups": [
+    {
+      "targetName": "Üroloji",
+      "sourceNames": ["Üroloji", "Üroloji Fiyat Talebi", "Üroloji Operasyonları"]
+    }
+  ]
+}
+
+SADECE JSON döndür.`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text().trim();
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return res.status(500).json({ error: 'AI yanıtı parse edilemedi' });
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const mergeGroups = parsed.mergeGroups || [];
+
+        if (mergeGroups.length === 0) {
+            return res.json({ success: true, message: 'Sadeleştirilecek benzer kategori bulunamadı', merged: 0 });
+        }
+
+        // Her grup için merge işlemi yap
+        let totalMerged = 0;
+        let totalMoved = 0;
+        const results = [];
+
+        for (const group of mergeGroups) {
+            const sourceNames = group.sourceNames.map(n => n.toLowerCase().trim());
+            const sourceCats = categories.filter(c => sourceNames.includes(c.name.toLowerCase().trim()));
+
+            if (sourceCats.length < 2) continue;
+
+            const sourceIds = sourceCats.map(c => c.id);
+
+            // Keyword'leri birleştir
+            let mergedKeywords = [];
+            for (const cat of sourceCats) {
+                if (cat.keywords) {
+                    try { mergedKeywords = [...mergedKeywords, ...JSON.parse(cat.keywords)]; } catch(e) {}
+                }
+                mergedKeywords.push(cat.name.toLowerCase());
+            }
+            mergedKeywords = [...new Set(mergedKeywords)];
+
+            // Yeni kategori oluştur
+            const targetCat = await prisma.topicCategory.create({
+                data: {
+                    workspaceId,
+                    name: group.targetName,
+                    icon: getCategoryIcon(group.targetName),
+                    color: sourceCats[0].color,
+                    keywords: JSON.stringify(mergedKeywords),
+                    description: sourceCats.map(c => c.name).join(', '),
+                    order: sourceCats[0].order,
+                }
+            });
+
+            // Konuşmaları taşı
+            const moveResult = await prisma.conversation.updateMany({
+                where: { workspaceId, topicCategoryId: { in: sourceIds } },
+                data: { topicCategoryId: targetCat.id }
+            });
+
+            // Eski kategorileri sil
+            await prisma.topicCategory.deleteMany({
+                where: { id: { in: sourceIds }, workspaceId }
+            });
+
+            totalMerged += sourceCats.length;
+            totalMoved += moveResult.count;
+            results.push({
+                target: group.targetName,
+                merged: sourceCats.map(c => c.name),
+                movedConversations: moveResult.count
+            });
+
+            console.log(`🧹 [Simplify] ${sourceCats.length} kategori → "${group.targetName}" | ${moveResult.count} konuşma`);
+        }
+
+        console.log(`✅ [Simplify] Toplam: ${totalMerged} kategori sadeleştirildi, ${totalMoved} konuşma taşındı`);
+
+        res.json({
+            success: true,
+            totalMerged,
+            totalMoved,
+            groups: results
+        });
+    } catch (error) {
+        console.error('simplifyCategories error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
 
 // ─── HELPERS ─────────────────────────────────────────────
 

@@ -30,3 +30,8 @@ export const importFromExcel = (workspaceId, textContent) =>
 
 export const mergeCategories = (workspaceId, sourceIds, targetName) =>
     api.post(`/topic-categories/${workspaceId}/merge`, { sourceIds, targetName });
+
+export const simplifyCategories = (workspaceId) =>
+    api.post(`/topic-categories/${workspaceId}/simplify`, {}, {
+        timeout: 120000
+    });

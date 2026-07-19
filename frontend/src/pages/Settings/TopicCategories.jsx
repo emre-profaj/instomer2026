@@ -7,7 +7,8 @@ import {
     deleteTopicCategory,
     autoGenerateCategories,
     backfillConversations,
-    mergeCategories
+    mergeCategories,
+    simplifyCategories
 } from '../../services/topicCategory.api';
 import './TopicCategories.css';
 
@@ -24,6 +25,8 @@ const TopicCategories = () => {
     const [newCategory, setNewCategory] = useState({ name: '', description: '', icon: '', keywords: '' });
     const [statusMessage, setStatusMessage] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
+    const [searchFilter, setSearchFilter] = useState('');
+    const [simplifying, setSimplifying] = useState(false);
 
     const fetchCategories = useCallback(async () => {
         try {
@@ -77,6 +80,30 @@ const TopicCategories = () => {
             setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
         } finally {
             setBackfilling(false);
+            await fetchCategories();
+        }
+    };
+
+    const handleSimplify = async () => {
+        if (!window.confirm('AI benzer kategorileri otomatik birleştirecek. Devam?')) return;
+        try {
+            setSimplifying(true);
+            setStatusMessage({ type: 'info', text: '🧠 AI kategorileri analiz ediyor...' });
+            const res = await simplifyCategories(workspaceId);
+            if (res.data.totalMerged > 0) {
+                const details = res.data.groups.map(g => `${g.merged.length} → "${g.target}"`).join(', ');
+                setStatusMessage({
+                    type: 'success',
+                    text: `✅ ${res.data.totalMerged} kategori sadeleştirildi (${details}). ${res.data.totalMoved} konuşma taşındı.`
+                });
+            } else {
+                setStatusMessage({ type: 'info', text: 'ℹ️ Sadeleştirilecek benzer kategori bulunamadı.' });
+            }
+            await fetchCategories();
+        } catch (err) {
+            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
+        } finally {
+            setSimplifying(false);
         }
     };
 
@@ -222,8 +249,39 @@ const TopicCategories = () => {
                     >
                         {backfilling ? '⏳ Eşleştiriliyor...' : '🔄 Konuşmaları Eşleştir'}
                     </button>
+                    <button
+                        className="tc-btn"
+                        style={{ background: 'linear-gradient(45deg, #8b5cf6, #6366f1)', color: 'white', border: 'none' }}
+                        onClick={handleSimplify}
+                        disabled={simplifying || categories.length < 3}
+                    >
+                        {simplifying ? '⏳ Sadeleştiriliyor...' : '🧠 AI ile Sadeleştir'}
+                    </button>
                 </div>
             </div>
+
+            {/* Arama Filtresi */}
+            {categories.length > 5 && (
+                <div style={{ margin: '0 0 12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                        type="text"
+                        placeholder="🔍 Kategori ara..."
+                        value={searchFilter}
+                        onChange={e => setSearchFilter(e.target.value)}
+                        className="tc-input"
+                        style={{ maxWidth: 300, padding: '8px 12px', fontSize: '14px' }}
+                    />
+                    {searchFilter && (
+                        <button
+                            className="tc-btn tc-btn-secondary"
+                            onClick={() => setSearchFilter('')}
+                            style={{ padding: '8px 12px', fontSize: '13px' }}
+                        >
+                            ✕ Temizle
+                        </button>
+                    )}
+                </div>
+            )}
 
             {statusMessage && (
                 <div className={`tc-status tc-status-${statusMessage.type}`}>
@@ -318,7 +376,16 @@ const TopicCategories = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {categories.map((cat, idx) => (
+                            {categories
+                                .filter(cat => {
+                                    if (!searchFilter) return true;
+                                    const q = searchFilter.toLowerCase();
+                                    const name = (cat.name || '').toLowerCase();
+                                    const desc = (cat.description || '').toLowerCase();
+                                    const kws = cat.keywords ? JSON.parse(cat.keywords).join(' ').toLowerCase() : '';
+                                    return name.includes(q) || desc.includes(q) || kws.includes(q);
+                                })
+                                .map((cat, idx) => (
                                 <tr key={cat.id} className={!cat.isActive ? 'tc-row-disabled' : ''}>
                                     <td style={{ textAlign: 'center' }}>
                                         <input 

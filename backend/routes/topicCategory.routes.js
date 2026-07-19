@@ -8,7 +8,8 @@ import {
   autoGenerateCategories,
   backfillConversations,
   importFromExcel,
-  mergeCategories
+  mergeCategories,
+  simplifyCategories
 } from '../controllers/topicCategory.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -33,5 +34,8 @@ router.post('/:workspaceId/backfill', requireWorkspaceAccess, backfillConversati
 
 // Merge categories
 router.post('/:workspaceId/merge', requireWorkspaceAccess, mergeCategories);
+
+// AI simplify (merge similar categories)
+router.post('/:workspaceId/simplify', requireWorkspaceAccess, simplifyCategories);
 
 export default router;
