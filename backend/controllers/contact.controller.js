@@ -5184,9 +5184,9 @@ export const getRequestReport = async (req, res) => {
 
         let dateFilter = {};
         if (startDate || endDate) {
-            dateFilter.createdAt = {};
-            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
-            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+            dateFilter.lastMessageAt = {};
+            if (startDate) dateFilter.lastMessageAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.lastMessageAt.lte = parseDateEndTR(endDate);
         }
 
         // Tüm konuşmaları çek — topicCategory, contact (funnelStage, deals), assignedTo

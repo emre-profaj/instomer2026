@@ -1402,6 +1402,80 @@ const CeoReport = () => {
                 </div>
             )}
 
+                {/* ──── Detaylı Rapor Menüsü ──── */}
+                <div className="dash-panel dash-panel-wide" style={{ cursor: 'default' }}>
+                    <div className="dash-panel-header">
+                        <h3><BarChart3 size={18} /> Detaylı Raporlar</h3>
+                    </div>
+                    <div className="dash-panel-body">
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                            <div
+                                onClick={() => navigate('/general-report/requests')}
+                                style={{
+                                    flex: '1 1 200px', padding: '16px 20px', borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)',
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                    border: '1px solid #c7d2fe',
+                                    display: 'flex', alignItems: 'center', gap: 12
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(99,102,241,0.15)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #6366f1, #818cf8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Target size={20} style={{ color: '#fff' }} />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#312e81' }}>Talep Raporu</div>
+                                    <div style={{ fontSize: '0.72rem', color: '#6366f1' }}>Konu, temsilci, akış bazlı analiz</div>
+                                </div>
+                                <ArrowRight size={16} style={{ color: '#818cf8', marginLeft: 'auto' }} />
+                            </div>
+                            <div
+                                onClick={() => navigate('/general-report/sales')}
+                                style={{
+                                    flex: '1 1 200px', padding: '16px 20px', borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                    border: '1px solid #a7f3d0',
+                                    display: 'flex', alignItems: 'center', gap: 12
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(5,150,105,0.15)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #059669, #10b981)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <DollarSign size={20} style={{ color: '#fff' }} />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#064e3b' }}>Satış Raporu</div>
+                                    <div style={{ fontSize: '0.72rem', color: '#059669' }}>Kategori ve temsilci bazlı satışlar</div>
+                                </div>
+                                <ArrowRight size={16} style={{ color: '#34d399', marginLeft: 'auto' }} />
+                            </div>
+                            <div
+                                onClick={() => navigate('/general-report/analysis')}
+                                style={{
+                                    flex: '1 1 200px', padding: '16px 20px', borderRadius: 12,
+                                    background: 'linear-gradient(135deg, #f5f3ff, #ede9fe)',
+                                    cursor: 'pointer', transition: 'all 0.15s',
+                                    border: '1px solid #ddd6fe',
+                                    display: 'flex', alignItems: 'center', gap: 12
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(139,92,246,0.15)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Sparkles size={20} style={{ color: '#fff' }} />
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#4c1d95' }}>Analiz Raporu</div>
+                                    <div style={{ fontSize: '0.72rem', color: '#8b5cf6' }}>Detaylı pivot tablo analizi</div>
+                                </div>
+                                <ArrowRight size={16} style={{ color: '#a78bfa', marginLeft: 'auto' }} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
         </div>
     );
 };
