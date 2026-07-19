@@ -5182,13 +5182,6 @@ export const getRequestReport = async (req, res) => {
         const { workspaceId } = req.params;
         const { startDate, endDate } = req.query;
 
-        let dateFilter = {};
-        if (startDate || endDate) {
-            dateFilter.lastMessageAt = {};
-            if (startDate) dateFilter.lastMessageAt.gte = parseDateStartTR(startDate);
-            if (endDate) dateFilter.lastMessageAt.lte = parseDateEndTR(endDate);
-        }
-
         // Tüm konuşmaları çek — topicCategory, contact (funnelStage, deals), assignedTo
         const conversations = await prisma.conversation.findMany({
             where: {
@@ -5197,7 +5190,12 @@ export const getRequestReport = async (req, res) => {
                     { topicCategoryId: { not: null } },
                     { aiTopic: { not: null } }
                 ],
-                ...dateFilter
+                ...(startDate || endDate ? {
+                    createdAt: {
+                        ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
+                        ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
+                    }
+                } : {})
             },
             select: {
                 id: true,
