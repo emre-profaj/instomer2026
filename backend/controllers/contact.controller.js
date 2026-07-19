@@ -5182,6 +5182,16 @@ export const getRequestReport = async (req, res) => {
         const { workspaceId } = req.params;
         const { startDate, endDate } = req.query;
 
+        console.log('=== TALEP RAPORU DEBUG ===');
+        console.log('workspaceId:', workspaceId);
+        console.log('startDate:', startDate, 'endDate:', endDate);
+        if (startDate) console.log('parsedStart:', parseDateStartTR(startDate));
+        if (endDate) console.log('parsedEnd:', parseDateEndTR(endDate));
+
+        // Önce filtre olmadan kaç conversation var bakalım
+        const totalConvCount = await prisma.conversation.count({ where: { workspaceId } });
+        console.log('TOPLAM CONVERSATION (filtresiz):', totalConvCount);
+
         // Conversation bazlı: lastMessageAt ile filtrele (aktif konuşmalar)
         const conversations = await prisma.conversation.findMany({
             where: {
@@ -5218,6 +5228,8 @@ export const getRequestReport = async (req, res) => {
             }
         });
 
+        console.log('FİLTRELİ CONVERSATION SAYISI:', conversations.length);
+
         // Dedup: aynı kişiyi 1 kez say (en son konuşmasını al)
         const contactMap = {};
         for (const conv of conversations) {
@@ -5227,6 +5239,8 @@ export const getRequestReport = async (req, res) => {
             contactMap[conv.contactId] = conv;
         }
         const uniqueConvs = Object.values(contactMap);
+        console.log('UNIQUE CONTACTS:', uniqueConvs.length);
+        console.log('=== TALEP RAPORU DEBUG SON ===');
 
         // WON deal'ları
         const allContactIds = Object.keys(contactMap);
