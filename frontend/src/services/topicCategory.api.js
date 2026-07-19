@@ -20,3 +20,12 @@ export const autoGenerateCategories = (workspaceId) =>
 
 export const backfillConversations = (workspaceId) =>
     api.post(`/topic-categories/${workspaceId}/backfill`);
+
+export const importFromExcel = (workspaceId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/topic-categories/${workspaceId}/import-excel`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000 // 2 dakika (AI processing)
+    });
+};

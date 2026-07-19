@@ -464,3 +464,189 @@ function getCategoryIcon(name) {
     }
     return '📋';
 }
+
+// ─── EXCEL'DEN ÜRÜN + KATEGORİ İMPORT ───────────────────────
+
+export const importFromExcel = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({ error: 'Dosya yüklenmedi' });
+        }
+
+        // Excel/CSV oku
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+
+        // Tüm sayfaları birleştir
+        let allRows = [];
+        for (const sheetName of workbook.SheetNames) {
+            const sheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+            allRows.push({ sheet: sheetName, rows });
+        }
+
+        // İlk 500 satırı AI'a gönder (çok büyük dosyalar için limit)
+        const flatContent = allRows.map(s => {
+            const header = s.rows[0] ? s.rows[0].join(' | ') : '';
+            const dataRows = s.rows.slice(1, 300).map(r => r.join(' | ')).join('\n');
+            return `--- Sayfa: ${s.sheet} ---\nBaşlıklar: ${header}\n${dataRows}`;
+        }).join('\n\n');
+
+        if (!flatContent.trim()) {
+            return res.status(400).json({ error: 'Dosya boş veya okunamadı' });
+        }
+
+        // Workspace bilgilerini al
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { name: true, companyName: true }
+        });
+
+        // AI ile yapılandır
+        const aiApiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+        if (!aiApiKey) {
+            return res.status(500).json({ error: 'AI API anahtarı yapılandırılmamış' });
+        }
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+        const prompt = `Bir şirketin (${workspace?.companyName || workspace?.name || 'Bilinmeyen'}) ürün/hizmet listesini içeren Excel dosyası içeriği aşağıda. 
+
+Bu verileri analiz edip yapılandırılmış ürün listesi oluştur.
+
+EXCEL İÇERİĞİ:
+${flatContent}
+
+KURALLAR:
+- Her satırdaki ürün/hizmeti ayrı bir ürün olarak çıkar
+- groupName: Benzer ürünleri mantıksal gruplara ayır (örn: "Obezite Cerrahisi", "Diş İmplant", "2+1 Daire")
+- Fiyat bilgisi varsa price alanına yaz (sayı olarak, para birimi olmadan)
+- Açıklama bilgisi varsa description'a yaz
+- Gereksiz başlık satırlarını, toplam satırlarını, boş satırları atla
+- SADECE ürün/hizmet olan satırları al
+
+SADECE JSON dizisi döndür:
+[
+  {
+    "name": "Tüp Mide Ameliyatı",
+    "description": "Laparoskopik sleeve gastrektomi",
+    "groupName": "Obezite Cerrahisi",
+    "price": 150000
+  }
+]
+
+SADECE JSON dizisi döndür, başka metin ekleme.`;
+
+        console.log(`📊 [ExcelImport] ${workspaceId}: ${flatContent.length} karakter Excel verisi AI'a gönderiliyor...`);
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text().trim();
+
+        let products;
+        try {
+            const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+            if (!jsonMatch) throw new Error('JSON dizisi bulunamadı');
+            products = JSON.parse(jsonMatch[0]);
+        } catch (parseErr) {
+            console.error('AI response parse error:', parseErr.message);
+            return res.status(500).json({
+                error: 'AI yanıtı parse edilemedi',
+                rawResponse: responseText.slice(0, 1000)
+            });
+        }
+
+        if (!Array.isArray(products) || products.length === 0) {
+            return res.status(400).json({ error: 'Excel dosyasından ürün çıkarılamadı' });
+        }
+
+        // Mevcut ürünleri kontrol et (duplicate önleme)
+        const existingProducts = await prisma.product.findMany({
+            where: { workspaceId },
+            select: { name: true }
+        });
+        const existingNames = new Set(existingProducts.map(p => p.name.toLowerCase().trim()));
+
+        // Ürünleri oluştur
+        const created = [];
+        const skipped = [];
+        for (const p of products) {
+            if (!p.name) continue;
+            if (existingNames.has(p.name.toLowerCase().trim())) {
+                skipped.push(p.name);
+                continue;
+            }
+
+            try {
+                const newProduct = await prisma.product.create({
+                    data: {
+                        workspaceId,
+                        name: p.name.trim(),
+                        description: p.description || null,
+                        groupName: p.groupName || null,
+                        price: typeof p.price === 'number' ? p.price : 0,
+                        isActive: true,
+                    }
+                });
+                created.push(newProduct);
+                existingNames.add(p.name.toLowerCase().trim());
+            } catch (err) {
+                console.error(`Product create error: ${p.name}:`, err.message);
+            }
+        }
+
+        console.log(`✅ [ExcelImport] ${created.length} ürün oluşturuldu, ${skipped.length} atlandı`);
+
+        // Ürünlerden otomatik kategori oluştur
+        const groups = new Map();
+        for (const p of created) {
+            const group = (p.groupName || '').trim() || p.name.trim();
+            if (!groups.has(group)) {
+                groups.set(group, { products: [], descriptions: [] });
+            }
+            groups.get(group).products.push(p.name);
+            if (p.description) groups.get(group).descriptions.push(p.description);
+        }
+
+        const existingCats = await prisma.topicCategory.findMany({
+            where: { workspaceId },
+            select: { name: true }
+        });
+        const existingCatNames = new Set(existingCats.map(c => c.name.toLowerCase()));
+
+        const createdCats = [];
+        let order = existingCats.length;
+        for (const [groupName, data] of groups) {
+            if (existingCatNames.has(groupName.toLowerCase())) continue;
+
+            try {
+                const newCat = await prisma.topicCategory.create({
+                    data: {
+                        workspaceId,
+                        name: groupName,
+                        description: data.products.slice(0, 5).join(', '),
+                        icon: getCategoryIcon(groupName),
+                        color: getColorForIndex(order),
+                        keywords: JSON.stringify(data.products.map(n => n.toLowerCase())),
+                        order: order++,
+                    }
+                });
+                createdCats.push(newCat);
+            } catch (err) {
+                console.error(`Category create error: ${groupName}:`, err.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            products: { created: created.length, skipped: skipped.length, total: products.length },
+            categories: { created: createdCats.length, list: createdCats },
+        });
+    } catch (error) {
+        console.error('importFromExcel error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};

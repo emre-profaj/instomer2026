@@ -6,7 +6,8 @@ import {
     updateTopicCategory,
     deleteTopicCategory,
     autoGenerateCategories,
-    backfillConversations
+    backfillConversations,
+    importFromExcel
 } from '../../services/topicCategory.api';
 import './TopicCategories.css';
 
@@ -17,7 +18,9 @@ const TopicCategories = () => {
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
     const [backfilling, setBackfilling] = useState(false);
+    const [importing, setImporting] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const fileInputRef = React.useRef(null);
     const [editForm, setEditForm] = useState({});
     const [showAddForm, setShowAddForm] = useState(false);
     const [newCategory, setNewCategory] = useState({ name: '', description: '', icon: '', keywords: '' });
@@ -58,6 +61,28 @@ const TopicCategories = () => {
             setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const handleExcelImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            setImporting(true);
+            setStatusMessage({ type: 'info', text: '📊 Excel dosyası AI ile analiz ediliyor... Bu birkaç dakika sürebilir.' });
+            const res = await importFromExcel(workspaceId, file);
+            const p = res.data.products;
+            const c = res.data.categories;
+            setStatusMessage({
+                type: 'success',
+                text: `✅ ${p.created} ürün oluşturuldu (${p.skipped} mevcut atlandı). ${c.created} yeni kategori eklendi.`
+            });
+            await fetchCategories();
+        } catch (err) {
+            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
+        } finally {
+            setImporting(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
 
@@ -170,6 +195,20 @@ const TopicCategories = () => {
                     >
                         {generating ? '⏳ Oluşturuluyor...' : '🤖 Otomatik Oluştur'}
                     </button>
+                    <button
+                        className="tc-btn tc-btn-success"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={importing}
+                    >
+                        {importing ? '⏳ Yükleniyor...' : '📊 Excel\'den Yükle'}
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        style={{ display: 'none' }}
+                        onChange={handleExcelImport}
+                    />
                     <button
                         className="tc-btn tc-btn-outline"
                         onClick={handleBackfill}
