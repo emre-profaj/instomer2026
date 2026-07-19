@@ -349,7 +349,7 @@ export const backfillConversations = async (req, res) => {
         const { workspaceId } = req.params;
 
         // 1. Workspace'in kategorilerini çek
-        const categories = await prisma.topicCategory.findMany({
+        let categories = await prisma.topicCategory.findMany({
             where: { workspaceId, isActive: true },
             select: { id: true, name: true, keywords: true, description: true }
         });
@@ -358,11 +358,10 @@ export const backfillConversations = async (req, res) => {
             return res.status(400).json({ error: 'Önce kategorileri oluşturun' });
         }
 
-        // 2. Kategori lookup map oluştur (keyword → categoryId)
-        const keywordMap = new Map(); // keyword → categoryId
+        // 2. Keyword lookup map
+        const keywordMap = new Map();
         for (const cat of categories) {
             const keywords = cat.keywords ? JSON.parse(cat.keywords) : [];
-            // Kategori ismini de keyword olarak ekle
             const allKeywords = [...keywords, cat.name.toLowerCase()];
             for (const kw of allKeywords) {
                 keywordMap.set(kw.toLowerCase().trim(), cat.id);
@@ -374,16 +373,17 @@ export const backfillConversations = async (req, res) => {
             where: {
                 workspaceId,
                 aiTopic: { not: null },
-                topicCategoryId: null // Henüz kategorisi olmayanlar
+                topicCategoryId: null
             },
             select: { id: true, aiTopic: true }
         });
 
         console.log(`🔄 [Backfill] ${conversations.length} konuşma kategorilere eşleştirilecek...`);
 
-        // 4. Her konuşma için en uygun kategoriyi bul
+        // 4. Pass 1: Keyword eşleştirme
         let matched = 0;
         let unmatched = 0;
+        const unmatchedConvs = [];
         const batchSize = 100;
 
         for (let i = 0; i < conversations.length; i += batchSize) {
@@ -397,7 +397,6 @@ export const backfillConversations = async (req, res) => {
 
                 for (const [keyword, catId] of keywordMap) {
                     if (topic.includes(keyword)) {
-                        // Longer keyword match = better score
                         const score = keyword.length;
                         if (score > bestScore) {
                             bestScore = score;
@@ -415,6 +414,7 @@ export const backfillConversations = async (req, res) => {
                     );
                     matched++;
                 } else {
+                    unmatchedConvs.push(conv);
                     unmatched++;
                 }
             }
@@ -424,25 +424,224 @@ export const backfillConversations = async (req, res) => {
             }
         }
 
-        // 5. Eşleşmeyen konuşmalar için AI batch
-        if (unmatched > 0) {
-            console.log(`⚠️ [Backfill] ${unmatched} konuşma keyword ile eşleşmedi — AI ile eşleştirilecek`);
-            // AI backfill arka planda çalışabilir — şimdilik skip
+        console.log(`📊 [Backfill] Keyword: ${matched} eşleşti, ${unmatched} AI'a gidecek`);
+
+        // 5. Pass 2: AI ile eşleştirme (eşleşmeyen konuşmalar)
+        let aiMatched = 0;
+        let newCategories = 0;
+
+        if (unmatchedConvs.length > 0) {
+            const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+            if (aiApiKey) {
+                const genAI = new GoogleGenerativeAI(aiApiKey);
+                const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+                // AI batch'leri (her seferde max 50 konuşma)
+                const aiBatchSize = 50;
+                for (let i = 0; i < unmatchedConvs.length; i += aiBatchSize) {
+                    const aiBatch = unmatchedConvs.slice(i, i + aiBatchSize);
+
+                    // Mevcut kategorileri yenile (yeni eklenmiş olabilir)
+                    categories = await prisma.topicCategory.findMany({
+                        where: { workspaceId, isActive: true },
+                        select: { id: true, name: true }
+                    });
+
+                    const catListStr = categories.map(c => `${c.id}: ${c.name}`).join('\n');
+                    const topicsList = aiBatch.map((c, idx) => `${idx}: "${c.aiTopic}"`).join('\n');
+
+                    const prompt = `Bir hastane/işletmenin konuşma konularını kategorilere sınıflandır.
+
+MEVCUT KATEGORİLER:
+${catListStr}
+
+SINIFLANDIRILACAK KONULAR:
+${topicsList}
+
+KURALLAR:
+- Her konuyu mevcut bir kategoriye ata VEYA yeni kategori öner
+- Şikayet, destek, bilgi talebi, randevu gibi konular için yeni kategori oluştur
+- Benzer konuları aynı kategoriye ata
+- Her konu için SADECE bir kategori seç
+
+JSON formatında döndür:
+{
+  "assignments": [
+    { "index": 0, "categoryId": "mevcut-id-buraya", "categoryName": null },
+    { "index": 1, "categoryId": null, "categoryName": "Şikayet" }
+  ]
+}
+
+Eğer categoryId null ise yeni kategori oluşturulacak. categoryName ile yeni kategori adı ver.
+SADECE JSON döndür.`;
+
+                    try {
+                        const result = await model.generateContent(prompt);
+                        const responseText = result.response.text().trim();
+                        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                        if (!jsonMatch) continue;
+
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (!parsed.assignments) continue;
+
+                        // Yeni kategori cache'i (aynı batch'te aynı kategori birden fazla kez çıkabilir)
+                        const newCatCache = new Map();
+
+                        for (const assign of parsed.assignments) {
+                            const conv = aiBatch[assign.index];
+                            if (!conv) continue;
+
+                            let targetCatId = assign.categoryId;
+
+                            // Yeni kategori oluştur
+                            if (!targetCatId && assign.categoryName) {
+                                const catNameLower = assign.categoryName.toLowerCase().trim();
+
+                                // Cache'te var mı?
+                                if (newCatCache.has(catNameLower)) {
+                                    targetCatId = newCatCache.get(catNameLower);
+                                } else {
+                                    // DB'de zaten var mı?
+                                    const existing = categories.find(c => c.name.toLowerCase() === catNameLower);
+                                    if (existing) {
+                                        targetCatId = existing.id;
+                                    } else {
+                                        try {
+                                            const newCat = await prisma.topicCategory.create({
+                                                data: {
+                                                    workspaceId,
+                                                    name: assign.categoryName.trim(),
+                                                    icon: getCategoryIcon(assign.categoryName),
+                                                    color: getColorForIndex(categories.length + newCategories),
+                                                    order: categories.length + newCategories,
+                                                }
+                                            });
+                                            targetCatId = newCat.id;
+                                            newCatCache.set(catNameLower, newCat.id);
+                                            categories.push({ id: newCat.id, name: newCat.name });
+                                            newCategories++;
+                                            console.log(`🆕 [Backfill] Yeni kategori: ${newCat.name}`);
+                                        } catch (err) {
+                                            console.error(`Category create error: ${assign.categoryName}:`, err.message);
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Konuşmayı kategoriye ata
+                            if (targetCatId) {
+                                try {
+                                    await prisma.conversation.update({
+                                        where: { id: conv.id },
+                                        data: { topicCategoryId: targetCatId }
+                                    });
+                                    aiMatched++;
+                                } catch (err) {
+                                    // skip
+                                }
+                            }
+                        }
+                    } catch (aiErr) {
+                        console.error(`AI batch error:`, aiErr.message);
+                    }
+                }
+            }
         }
 
-        console.log(`✅ [Backfill] ${matched} konuşma eşleştirildi, ${unmatched} eşleşmedi`);
+        const finalUnmatched = unmatched - aiMatched;
+        console.log(`✅ [Backfill] Keyword: ${matched}, AI: ${aiMatched}, Yeni Kategori: ${newCategories}, Kalan: ${finalUnmatched}`);
 
         res.json({
             success: true,
             total: conversations.length,
             matched,
-            unmatched
+            aiMatched,
+            newCategories,
+            unmatched: finalUnmatched
         });
     } catch (error) {
         console.error('backfillConversations error:', error);
         res.status(500).json({ error: error.message });
     }
 };
+
+// ─── KATEGORİ BİRLEŞTİRME ───────────────────────────────
+
+export const mergeCategories = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { sourceIds, targetName } = req.body;
+
+        if (!sourceIds || sourceIds.length < 2) {
+            return res.status(400).json({ error: 'En az 2 kategori seçin' });
+        }
+        if (!targetName) {
+            return res.status(400).json({ error: 'Hedef kategori adı gerekli' });
+        }
+
+        // Kaynak kategorileri çek
+        const sourceCats = await prisma.topicCategory.findMany({
+            where: { id: { in: sourceIds }, workspaceId }
+        });
+
+        if (sourceCats.length < 2) {
+            return res.status(400).json({ error: 'Geçerli kategoriler bulunamadı' });
+        }
+
+        // Tüm keyword'leri birleştir
+        let mergedKeywords = [];
+        for (const cat of sourceCats) {
+            if (cat.keywords) {
+                try {
+                    mergedKeywords = [...mergedKeywords, ...JSON.parse(cat.keywords)];
+                } catch (e) {}
+            }
+            mergedKeywords.push(cat.name.toLowerCase());
+        }
+        mergedKeywords = [...new Set(mergedKeywords)];
+
+        // Hedef kategoriyi oluştur veya güncelle
+        const targetCat = await prisma.topicCategory.create({
+            data: {
+                workspaceId,
+                name: targetName,
+                icon: getCategoryIcon(targetName),
+                color: sourceCats[0].color,
+                keywords: JSON.stringify(mergedKeywords),
+                description: sourceCats.map(c => c.name).join(', '),
+                order: sourceCats[0].order,
+            }
+        });
+
+        // Konuşmaları hedef kategoriye taşı
+        const moveResult = await prisma.conversation.updateMany({
+            where: {
+                workspaceId,
+                topicCategoryId: { in: sourceIds }
+            },
+            data: { topicCategoryId: targetCat.id }
+        });
+
+        // Kaynak kategorileri sil
+        await prisma.topicCategory.deleteMany({
+            where: { id: { in: sourceIds }, workspaceId }
+        });
+
+        console.log(`🔀 [Merge] ${sourceCats.length} kategori → "${targetName}" | ${moveResult.count} konuşma taşındı`);
+
+        res.json({
+            success: true,
+            mergedCount: sourceCats.length,
+            movedConversations: moveResult.count,
+            newCategory: targetCat
+        });
+    } catch (error) {
+        console.error('mergeCategories error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 
 // ─── HELPERS ─────────────────────────────────────────────
 

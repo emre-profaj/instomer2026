@@ -7,7 +7,8 @@ import {
   reorderCategories,
   autoGenerateCategories,
   backfillConversations,
-  importFromExcel
+  importFromExcel,
+  mergeCategories
 } from '../controllers/topicCategory.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -29,5 +30,8 @@ router.post('/:workspaceId/import-excel', requireWorkspaceAccess, importFromExce
 
 // Backfill existing conversations
 router.post('/:workspaceId/backfill', requireWorkspaceAccess, backfillConversations);
+
+// Merge categories
+router.post('/:workspaceId/merge', requireWorkspaceAccess, mergeCategories);
 
 export default router;

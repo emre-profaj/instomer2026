@@ -6,7 +6,8 @@ import {
     updateTopicCategory,
     deleteTopicCategory,
     autoGenerateCategories,
-    backfillConversations
+    backfillConversations,
+    mergeCategories
 } from '../../services/topicCategory.api';
 import './TopicCategories.css';
 
@@ -22,6 +23,7 @@ const TopicCategories = () => {
     const [showAddForm, setShowAddForm] = useState(false);
     const [newCategory, setNewCategory] = useState({ name: '', description: '', icon: '', keywords: '' });
     const [statusMessage, setStatusMessage] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
 
     const fetchCategories = useCallback(async () => {
         try {
@@ -69,7 +71,7 @@ const TopicCategories = () => {
             const res = await backfillConversations(workspaceId);
             setStatusMessage({
                 type: 'success',
-                text: `✅ ${res.data.matched} konuşma eşleştirildi. ${res.data.unmatched} eşleşmeyen kaldı.`
+                text: `✅ ${res.data.matched} konuşma eşleştirildi. ${res.data.aiMatched || 0} AI ile eşleştirildi. ${res.data.newCategories || 0} yeni kategori oluşturuldu.`
             });
         } catch (err) {
             setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
@@ -145,6 +147,40 @@ const TopicCategories = () => {
         }
     };
 
+    const handleMerge = async () => {
+        if (selectedIds.size < 2) return;
+        const ids = [...selectedIds];
+        const targetName = window.prompt('Birleştirilen kategori adı:', '');
+        if (!targetName) return;
+        try {
+            setStatusMessage({ type: 'info', text: '🔄 Kategoriler birleştiriliyor...' });
+            const res = await mergeCategories(workspaceId, ids, targetName);
+            setStatusMessage({ type: 'success', text: `✅ ${res.data.mergedCount} kategori birleştirildi. ${res.data.movedConversations} konuşma taşındı.` });
+            setSelectedIds(new Set());
+            await fetchCategories();
+        } catch (err) {
+            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
+        }
+    };
+
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            setSelectedIds(new Set(categories.map(c => c.id)));
+        } else {
+            setSelectedIds(new Set());
+        }
+    };
+
+    const handleSelectOne = (id, checked) => {
+        const newSet = new Set(selectedIds);
+        if (checked) {
+            newSet.add(id);
+        } else {
+            newSet.delete(id);
+        }
+        setSelectedIds(newSet);
+    };
+
     const totalConversations = categories.reduce((sum, c) => sum + (c._count?.conversations || 0), 0);
 
     return (
@@ -157,6 +193,15 @@ const TopicCategories = () => {
                     </span>
                 </div>
                 <div className="tc-header-actions">
+                    {selectedIds.size >= 2 && (
+                        <button
+                            className="tc-btn"
+                            style={{ background: 'linear-gradient(45deg, #ff416c, #ff4b2b)', color: 'white', border: 'none' }}
+                            onClick={handleMerge}
+                        >
+                            🔗 Birleştir ({selectedIds.size})
+                        </button>
+                    )}
                     <button
                         className="tc-btn tc-btn-secondary"
                         onClick={() => setShowAddForm(!showAddForm)}
@@ -255,6 +300,14 @@ const TopicCategories = () => {
                     <table className="tc-table">
                         <thead>
                             <tr>
+                                <th style={{ width: 40, textAlign: 'center' }}>
+                                    <input 
+                                        type="checkbox" 
+                                        style={{ cursor: 'pointer' }}
+                                        checked={categories.length > 0 && selectedIds.size === categories.length}
+                                        onChange={handleSelectAll}
+                                    />
+                                </th>
                                 <th style={{ width: 40 }}>#</th>
                                 <th>Kategori</th>
                                 <th>Açıklama</th>
@@ -267,6 +320,14 @@ const TopicCategories = () => {
                         <tbody>
                             {categories.map((cat, idx) => (
                                 <tr key={cat.id} className={!cat.isActive ? 'tc-row-disabled' : ''}>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <input 
+                                            type="checkbox" 
+                                            style={{ cursor: 'pointer' }}
+                                            checked={selectedIds.has(cat.id)}
+                                            onChange={e => handleSelectOne(cat.id, e.target.checked)}
+                                        />
+                                    </td>
                                     <td className="tc-cell-num">{idx + 1}</td>
                                     <td>
                                         {editingId === cat.id ? (

@@ -19,9 +19,14 @@ export const autoGenerateCategories = (workspaceId) =>
     api.post(`/topic-categories/${workspaceId}/auto-generate`);
 
 export const backfillConversations = (workspaceId) =>
-    api.post(`/topic-categories/${workspaceId}/backfill`);
+    api.post(`/topic-categories/${workspaceId}/backfill`, {}, {
+        timeout: 300000 // 5 dakika (AI processing)
+    });
 
 export const importFromExcel = (workspaceId, textContent) =>
     api.post(`/topic-categories/${workspaceId}/import-excel`, { textContent }, {
         timeout: 120000
     });
+
+export const mergeCategories = (workspaceId, sourceIds, targetName) =>
+    api.post(`/topic-categories/${workspaceId}/merge`, { sourceIds, targetName });
