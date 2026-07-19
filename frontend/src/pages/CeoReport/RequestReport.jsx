@@ -297,7 +297,7 @@ const RequestReport = () => {
                             <tbody>
                                 {displayTopics.map((topic, idx) => {
                                     const callRate = (topic.withPhone || 0) > 0 ? (((topic.called || 0) / topic.withPhone) * 100).toFixed(0) : '-';
-                                    const interestRate = (topic.count || 0) > 0 ? (((topic.interested || 0) / topic.count) * 100).toFixed(0) : '-';
+                                    const interestRate = (topic.count || 0) > 0 ? (((topic.relevant || topic.interested || 0) / topic.count) * 100).toFixed(0) : '-';
                                     return (
                                         <tr key={idx} style={{ cursor: 'pointer' }} onClick={() => fetchTopicContacts(topic.topic || topic.name)} title="Kişi listesini görmek için tıklayın">
                                             <td><span style={{ fontWeight: 800, color: idx < 3 ? '#6366f1' : '#94a3b8', fontSize: '0.82rem' }}>{idx + 1}</span></td>
@@ -327,7 +327,7 @@ const RequestReport = () => {
                                             </td>
                                             <td><span style={{ fontWeight: 700, color: (topic.withPhone || 0) > 0 ? '#10b981' : '#d1d5db' }}>{topic.withPhone || 0}</span></td>
                                             <td><span style={{ fontWeight: 700, color: (topic.called || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.called || 0}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: (topic.interested || 0) > 0 ? '#f59e0b' : '#d1d5db' }}>{topic.interested || 0}</span></td>
+                                            <td><span style={{ fontWeight: 700, color: (topic.relevant || topic.interested || 0) > 0 ? '#f59e0b' : '#d1d5db' }}>{topic.relevant || topic.interested || 0}</span></td>
                                             <td><span style={{ fontWeight: 700, color: (topic.wonCount || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.wonCount || 0}</span></td>
                                             <td>{(topic.wonAmount || 0) > 0 ? <span style={{ fontWeight: 700, color: '#059669', fontSize: '0.82rem' }}>{(topic.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : <span style={{ color: '#d1d5db' }}>—</span>}</td>
                                             <td>

@@ -4615,15 +4615,21 @@ export const getTopicContacts = async (req, res) => {
             if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
+        // Hem topicCategory.name hem aiTopic ile ara
         const conversations = await prisma.conversation.findMany({
             where: {
                 workspaceId,
-                aiTopic: topic,
+                OR: [
+                    { topicCategory: { name: topic } },
+                    { aiTopic: topic }
+                ],
                 ...dateFilter
             },
             select: {
                 id: true,
                 aiTopic: true,
+                topicCategoryId: true,
+                topicCategory: { select: { name: true, icon: true } },
                 createdAt: true,
                 channel: true,
                 contact: {
