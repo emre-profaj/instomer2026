@@ -5176,28 +5176,18 @@ export const getSalesReport = async (req, res) => {
     }
 };
 
-// ── Talep Raporu (conversation bazlı — her konuşma = 1 talep) ──
+// ── Talep Raporu (Case bazlı — her case = 1 talep) ──
 export const getRequestReport = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const { startDate, endDate } = req.query;
 
-        console.log('=== TALEP RAPORU DEBUG ===');
-        console.log('workspaceId:', workspaceId);
-        console.log('startDate:', startDate, 'endDate:', endDate);
-        if (startDate) console.log('parsedStart:', parseDateStartTR(startDate));
-        if (endDate) console.log('parsedEnd:', parseDateEndTR(endDate));
-
-        // Önce filtre olmadan kaç conversation var bakalım
-        const totalConvCount = await prisma.conversation.count({ where: { workspaceId } });
-        console.log('TOPLAM CONVERSATION (filtresiz):', totalConvCount);
-
-        // Conversation bazlı: lastMessageAt ile filtrele (aktif konuşmalar)
-        const conversations = await prisma.conversation.findMany({
+        // Case bazlı sorgula
+        const cases = await prisma.case.findMany({
             where: {
                 workspaceId,
                 ...(startDate || endDate ? {
-                    lastMessageAt: {
+                    createdAt: {
                         ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
                         ...(endDate ? { lte: parseDateEndTR(endDate) } : {})
                     }
@@ -5205,47 +5195,51 @@ export const getRequestReport = async (req, res) => {
             },
             select: {
                 id: true,
-                contactId: true,
-                topicCategoryId: true,
-                topicCategory: { select: { id: true, name: true, icon: true, color: true } },
-                aiTopic: true,
+                title: true,
+                status: true,
+                funnelType: true,
+                funnelStageId: true,
                 assignedToId: true,
                 assignedTo: { select: { id: true, name: true } },
+                contactId: true,
                 contact: {
                     select: {
                         id: true,
                         phone: true,
-                        status: true,
-                        funnelStageId: true,
-                        funnelStage: {
-                            select: {
-                                id: true, name: true, color: true,
-                                funnel: { select: { id: true, name: true } }
-                            }
-                        }
+                        status: true
                     }
+                },
+                conversations: {
+                    select: {
+                        topicCategoryId: true,
+                        topicCategory: { select: { id: true, name: true, icon: true, color: true } },
+                        aiTopic: true
+                    },
+                    take: 1,
+                    orderBy: { lastMessageAt: 'desc' }
+                },
+                activities: {
+                    select: { type: true }
                 }
             }
         });
 
-        console.log('FİLTRELİ CONVERSATION SAYISI:', conversations.length);
-
-        // Dedup: aynı kişiyi 1 kez say (en son konuşmasını al)
-        const contactMap = {};
-        for (const conv of conversations) {
-            if (!conv.contactId) continue;
-            // Eğer bu kişi daha önce eklendiyse atla (ilk gelen en güncel olur)
-            if (contactMap[conv.contactId]) continue;
-            contactMap[conv.contactId] = conv;
+        // FunnelStage lookup
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: { stages: { select: { id: true, name: true, color: true }, orderBy: { order: 'asc' } } }
+        });
+        const stageLookup = {};
+        for (const f of allFunnels) {
+            for (const s of f.stages) {
+                stageLookup[s.id] = { name: s.name, color: s.color, funnelName: f.name, funnelId: f.id };
+            }
         }
-        const uniqueConvs = Object.values(contactMap);
-        console.log('UNIQUE CONTACTS:', uniqueConvs.length);
-        console.log('=== TALEP RAPORU DEBUG SON ===');
 
         // WON deal'ları
-        const allContactIds = Object.keys(contactMap);
-        const wonDeals = allContactIds.length > 0 ? await prisma.deal.findMany({
-            where: { workspaceId, status: 'WON', contactId: { in: allContactIds } },
+        const wonContactIds = [...new Set(cases.filter(c => c.status === 'WON').map(c => c.contactId))];
+        const wonDeals = wonContactIds.length > 0 ? await prisma.deal.findMany({
+            where: { workspaceId, status: 'WON', contactId: { in: wonContactIds } },
             select: { contactId: true, amount: true }
         }) : [];
         const wonMap = {};
@@ -5256,40 +5250,60 @@ export const getRequestReport = async (req, res) => {
         }
 
         // Item'lara çevir
-        const items = uniqueConvs.map(conv => {
-            const c = conv.contact;
-            const catName = conv.topicCategory?.name || conv.aiTopic?.trim() || 'Kategorisiz';
-            const hasPhone = !!(c?.phone && c.phone.trim());
-            const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
-            const isRelevant = relevantStatuses.includes(c?.status);
-            const stageInfo = c?.funnelStage;
-            const won = wonMap[conv.contactId] || { count: 0, amount: 0 };
+        const items = cases.map(c => {
+            const conv = c.conversations?.[0];
+            const catName = conv?.topicCategory?.name || conv?.aiTopic?.trim() || c.title || 'Kategorisiz';
+            const hasPhone = !!(c.contact?.phone && c.contact.phone.trim());
+            const stageInfo = c.funnelStageId ? stageLookup[c.funnelStageId] : null;
+            const isWon = c.status === 'WON';
+            const won = wonMap[c.contactId] || { count: 0, amount: 0 };
+
+            // Aktivite sayıları
+            const acts = c.activities || [];
+            const callCount = acts.filter(a => a.type === 'CALL').length;
+            const meetingCount = acts.filter(a => a.type === 'MEETING').length;
+            const appointmentCount = acts.filter(a => a.type === 'REMINDER').length;
+            const proposalCount = acts.filter(a => a.type === 'PROPOSAL').length;
+            const orderCount = acts.filter(a => a.type === 'ORDER').length;
 
             return {
-                contactId: conv.contactId,
+                contactId: c.contactId,
+                caseId: c.id,
+                caseStatus: c.status,
                 categoryName: catName,
-                categoryIcon: conv.topicCategory?.icon || null,
-                categoryColor: conv.topicCategory?.color || null,
-                agentName: conv.assignedTo?.name || 'Atanmamış',
-                agentId: conv.assignedToId,
+                categoryIcon: conv?.topicCategory?.icon || null,
+                categoryColor: conv?.topicCategory?.color || null,
+                agentName: c.assignedTo?.name || 'Atanmamış',
+                agentId: c.assignedToId,
                 hasPhone,
-                isRelevant,
+                isWon,
+                callCount,
+                meetingCount,
+                appointmentCount,
+                proposalCount,
+                orderCount,
                 stageName: stageInfo?.name || 'Atanmamış',
                 stageColor: stageInfo?.color || '#94a3b8',
-                funnelName: stageInfo?.funnel?.name || 'Akış Yok',
-                funnelId: stageInfo?.funnel?.id || null,
-                wonCount: won.count,
-                wonAmount: won.amount
+                funnelName: stageInfo?.funnelName || 'Akış Yok',
+                funnelId: stageInfo?.funnelId || null,
+                wonCount: isWon ? (won.count || 1) : 0,
+                wonAmount: isWon ? won.amount : 0
             };
         });
 
         // Toplam KPI
         const totalCount = items.length;
         const withPhoneCount = items.filter(i => i.hasPhone).length;
-        const relevantCount = items.filter(i => i.isRelevant).length;
-        const irrelevantCount = totalCount - relevantCount;
-        const totalWonCount = items.filter(i => i.wonCount > 0).length;
-        const totalWonAmount = items.reduce((s, i) => s + i.wonAmount, 0);
+        const wonItems = items.filter(i => i.isWon);
+        const totalWonCount = wonItems.length;
+        const totalWonAmount = wonItems.reduce((s, i) => s + i.wonAmount, 0);
+        const relevantCount = items.filter(i => ['ACTIVE', 'WON'].includes(i.caseStatus)).length;
+        const irrelevantCount = items.filter(i => ['LOST', 'CLOSED'].includes(i.caseStatus)).length;
+        const totalCalls = items.reduce((s, i) => s + i.callCount, 0);
+        const totalMeetings = items.reduce((s, i) => s + i.meetingCount, 0);
+        const totalAppointments = items.reduce((s, i) => s + i.appointmentCount, 0);
+        const totalProposals = items.reduce((s, i) => s + i.proposalCount, 0);
+        const totalOrders = items.reduce((s, i) => s + i.orderCount, 0);
 
         // ── Konu Bazlı Gruplama ──
         const byTopic = {};
@@ -5299,22 +5313,28 @@ export const getRequestReport = async (req, res) => {
                 byTopic[key] = {
                     name: key, icon: item.categoryIcon, color: item.categoryColor,
                     count: 0, withPhone: 0, relevant: 0, wonCount: 0, wonAmount: 0,
+                    calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0,
                     agents: {}, stages: {}
                 };
             }
             const g = byTopic[key];
             g.count++;
             if (item.hasPhone) g.withPhone++;
-            if (item.isRelevant) g.relevant++;
-            if (item.wonCount > 0) { g.wonCount++; g.wonAmount += item.wonAmount; }
+            g.calls += item.callCount;
+            g.meetings += item.meetingCount;
+            g.appointments += item.appointmentCount;
+            g.proposals += item.proposalCount;
+            g.orders += item.orderCount;
+            if (['ACTIVE', 'WON'].includes(item.caseStatus)) g.relevant++;
+            if (item.isWon) { g.wonCount++; g.wonAmount += item.wonAmount; }
 
             if (!g.agents[item.agentName]) {
                 g.agents[item.agentName] = { name: item.agentName, count: 0, relevant: 0, wonCount: 0, wonAmount: 0, stages: {} };
             }
             const ag = g.agents[item.agentName];
             ag.count++;
-            if (item.isRelevant) ag.relevant++;
-            if (item.wonCount > 0) { ag.wonCount++; ag.wonAmount += item.wonAmount; }
+            if (['ACTIVE', 'WON'].includes(item.caseStatus)) ag.relevant++;
+            if (item.isWon) { ag.wonCount++; ag.wonAmount += item.wonAmount; }
             if (!ag.stages[item.stageName]) ag.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
             ag.stages[item.stageName].count++;
 
@@ -5342,8 +5362,8 @@ export const getRequestReport = async (req, res) => {
             }
             const g = byFunnel[key];
             g.count++;
-            if (item.isRelevant) g.relevant++;
-            if (item.wonCount > 0) { g.wonCount++; g.wonAmount += item.wonAmount; }
+            if (['ACTIVE', 'WON'].includes(item.caseStatus)) g.relevant++;
+            if (item.isWon) { g.wonCount++; g.wonAmount += item.wonAmount; }
 
             if (!g.topics[item.categoryName]) {
                 g.topics[item.categoryName] = {
@@ -5353,8 +5373,8 @@ export const getRequestReport = async (req, res) => {
             }
             const tg = g.topics[item.categoryName];
             tg.count++;
-            if (item.isRelevant) tg.relevant++;
-            if (item.wonCount > 0) { tg.wonCount++; tg.wonAmount += item.wonAmount; }
+            if (['ACTIVE', 'WON'].includes(item.caseStatus)) tg.relevant++;
+            if (item.isWon) { tg.wonCount++; tg.wonAmount += item.wonAmount; }
             if (!tg.stages[item.stageName]) tg.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
             tg.stages[item.stageName].count++;
 
@@ -5376,6 +5396,11 @@ export const getRequestReport = async (req, res) => {
             irrelevantCount,
             totalWonCount,
             totalWonAmount,
+            totalCalls,
+            totalMeetings,
+            totalAppointments,
+            totalProposals,
+            totalOrders,
             topicGroups,
             funnelGroups
         });
@@ -5384,3 +5409,4 @@ export const getRequestReport = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+

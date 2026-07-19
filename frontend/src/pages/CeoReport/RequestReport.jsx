@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
     ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, DollarSign,
     Users, ShoppingCart, TrendingUp, ChevronRight, Hash, Layers,
-    UserCheck, ThumbsUp, ThumbsDown
+    UserCheck, ThumbsUp, ThumbsDown, PhoneCall, MessageSquare,
+    Calendar, FileText, Package
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -94,6 +95,8 @@ const RequestReport = () => {
     const {
         totalCount = 0, withPhoneCount = 0, relevantCount = 0, irrelevantCount = 0,
         totalWonCount = 0, totalWonAmount = 0,
+        totalCalls = 0, totalMeetings = 0, totalAppointments = 0,
+        totalProposals = 0, totalOrders = 0,
         topicGroups = [], funnelGroups = []
     } = data || {};
 
@@ -212,6 +215,49 @@ const RequestReport = () => {
                 </div>
             </div>
 
+            {/* ═══ AKTİVİTE TABLOSU ═══ */}
+            <div style={{
+                background: '#fff', borderRadius: 16, padding: '0', marginBottom: 24,
+                border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                overflow: 'hidden'
+            }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                            {[
+                                { label: 'ARAMA', icon: <PhoneCall size={13} />, color: '#6366f1' },
+                                { label: 'GÖRÜŞME', icon: <MessageSquare size={13} />, color: '#8b5cf6' },
+                                { label: 'RANDEVU', icon: <Calendar size={13} />, color: '#f59e0b' },
+                                { label: 'TEKLİF', icon: <FileText size={13} />, color: '#ec4899' },
+                                { label: 'SİPARİŞ', icon: <Package size={13} />, color: '#10b981' },
+                                { label: 'CİRO (SATIŞ)', icon: <DollarSign size={13} />, color: '#059669' },
+                            ].map((col, i) => (
+                                <th key={i} style={{
+                                    padding: '14px 12px', textAlign: 'center',
+                                    fontSize: '0.72rem', fontWeight: 700, color: '#64748b',
+                                    textTransform: 'uppercase', letterSpacing: '0.05em'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                        <span style={{ color: col.color }}>{col.icon}</span>
+                                        {col.label}
+                                    </div>
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#6366f1' }}>{formatNumber(totalCalls)}</td>
+                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#8b5cf6' }}>{formatNumber(totalMeetings)}</td>
+                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#f59e0b' }}>{formatNumber(totalAppointments)}</td>
+                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#ec4899' }}>{formatNumber(totalProposals)}</td>
+                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#10b981' }}>{formatNumber(totalOrders)}</td>
+                            <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#059669' }}>{formatCurrency(totalWonAmount)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
             {/* ═══ 2. KONU BAZLI TALEP RAPORU ═══ */}
             <div className="ceo-section" style={{ marginBottom: 24 }}>
                     <div className="ceo-section-header">
@@ -247,6 +293,13 @@ const RequestReport = () => {
                                             <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${group.color || '#6366f1'}, ${group.color ? group.color + '99' : '#818cf8'})`, borderRadius: 6, transition: 'width 0.6s' }} />
                                         </div>
                                         <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#6366f1', minWidth: 40, textAlign: 'right' }}>{group.count}</span>
+                                        <div style={{ display: 'flex', gap: 6, fontSize: '0.68rem', fontWeight: 600 }}>
+                                            {group.calls > 0 && <span style={{ color: '#6366f1' }} title="Arama">📞{group.calls}</span>}
+                                            {group.meetings > 0 && <span style={{ color: '#8b5cf6' }} title="Görüşme">💬{group.meetings}</span>}
+                                            {group.appointments > 0 && <span style={{ color: '#f59e0b' }} title="Randevu">📅{group.appointments}</span>}
+                                            {group.proposals > 0 && <span style={{ color: '#ec4899' }} title="Teklif">📄{group.proposals}</span>}
+                                            {group.orders > 0 && <span style={{ color: '#10b981' }} title="Sipariş">📦{group.orders}</span>}
+                                        </div>
                                         <StageBadges stages={group.stages} max={3} />
                                         {group.wonCount > 0 && (
                                             <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
