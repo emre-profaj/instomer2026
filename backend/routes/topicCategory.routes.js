@@ -9,7 +9,8 @@ import {
   backfillConversations,
   importFromExcel,
   mergeCategories,
-  simplifyCategories
+  simplifyCategories,
+  aiChatCategories
 } from '../controllers/topicCategory.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -37,5 +38,8 @@ router.post('/:workspaceId/merge', requireWorkspaceAccess, mergeCategories);
 
 // AI simplify (merge similar categories)
 router.post('/:workspaceId/simplify', requireWorkspaceAccess, simplifyCategories);
+
+// AI chat for category management
+router.post('/:workspaceId/ai-chat', requireWorkspaceAccess, aiChatCategories);
 
 export default router;

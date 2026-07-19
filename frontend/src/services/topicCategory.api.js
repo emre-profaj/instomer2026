@@ -35,3 +35,8 @@ export const simplifyCategories = (workspaceId) =>
     api.post(`/topic-categories/${workspaceId}/simplify`, {}, {
         timeout: 120000
     });
+
+export const aiChatCategories = (workspaceId, message) =>
+    api.post(`/topic-categories/${workspaceId}/ai-chat`, { message }, {
+        timeout: 60000
+    });

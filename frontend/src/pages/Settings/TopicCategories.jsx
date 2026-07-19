@@ -8,7 +8,8 @@ import {
     autoGenerateCategories,
     backfillConversations,
     mergeCategories,
-    simplifyCategories
+    simplifyCategories,
+    aiChatCategories
 } from '../../services/topicCategory.api';
 import './TopicCategories.css';
 
@@ -27,6 +28,26 @@ const TopicCategories = () => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [searchFilter, setSearchFilter] = useState('');
     const [simplifying, setSimplifying] = useState(false);
+    const [chatInput, setChatInput] = useState('');
+    const [chatLoading, setChatLoading] = useState(false);
+    const [chatHistory, setChatHistory] = useState([]);
+
+    const handleAiChat = async () => {
+        const msg = chatInput.trim();
+        if (!msg) return;
+        setChatHistory(prev => [...prev, { role: 'user', text: msg }]);
+        setChatInput('');
+        setChatLoading(true);
+        try {
+            const res = await aiChatCategories(workspaceId, msg);
+            setChatHistory(prev => [...prev, { role: 'ai', reply: res.data.reply, changes: res.data.changes }]);
+            if (res.data.changes?.length > 0) await fetchCategories();
+        } catch (err) {
+            setChatHistory(prev => [...prev, { role: 'ai', reply: `\u274c Hata: ${err.message}`, changes: [] }]);
+        } finally {
+            setChatLoading(false);
+        }
+    };
 
     const fetchCategories = useCallback(async () => {
         try {
@@ -86,22 +107,54 @@ const TopicCategories = () => {
 
     const handleSimplify = async () => {
         if (!window.confirm('AI benzer kategorileri otomatik birleştirecek. Devam?')) return;
+        setSimplifying(true);
+        setStatusMessage({ type: 'info', text: '🧠 AI kategorileri analiz ediyor...' });
+
         try {
-            setSimplifying(true);
-            setStatusMessage({ type: 'info', text: '🧠 AI kategorileri analiz ediyor...' });
-            const res = await simplifyCategories(workspaceId);
-            if (res.data.totalMerged > 0) {
-                const details = res.data.groups.map(g => `${g.merged.length} → "${g.target}"`).join(', ');
-                setStatusMessage({
-                    type: 'success',
-                    text: `✅ ${res.data.totalMerged} kategori sadeleştirildi (${details}). ${res.data.totalMoved} konuşma taşındı.`
-                });
-            } else {
-                setStatusMessage({ type: 'info', text: 'ℹ️ Sadeleştirilecek benzer kategori bulunamadı.' });
+            const token = localStorage.getItem('token');
+            const baseUrl = import.meta.env.VITE_API_URL || '/api';
+            const response = await fetch(`${baseUrl}/topic-categories/${workspaceId}/simplify`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.type === 'progress') {
+                            setStatusMessage({ type: 'info', text: data.message });
+                        } else if (data.type === 'done') {
+                            if (data.totalMerged > 0) {
+                                setStatusMessage({ type: 'success', text: data.message });
+                            } else {
+                                setStatusMessage({ type: 'info', text: 'ℹ️ Sadeleştirilecek benzer kategori bulunamadı.' });
+                            }
+                        } else if (data.type === 'error') {
+                            setStatusMessage({ type: 'error', text: `❌ ${data.message}` });
+                        }
+                    } catch (e) {}
+                }
             }
+
             await fetchCategories();
         } catch (err) {
-            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });
+            setStatusMessage({ type: 'error', text: `❌ Hata: ${err.message}` });
         } finally {
             setSimplifying(false);
         }
@@ -482,6 +535,66 @@ const TopicCategories = () => {
                     </table>
                 </div>
             )}
+            {/* AI Sohbet Asistanı */}
+            <div style={{
+                marginTop: 20, padding: 16, background: 'linear-gradient(135deg, #f0f4ff, #e8f0fe)',
+                borderRadius: 12, border: '1px solid #c7d2fe'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <span style={{ fontSize: 20 }}>🤖</span>
+                    <strong style={{ color: '#4338ca' }}>AI Kategori Asistanı</strong>
+                    <span style={{ fontSize: 12, color: '#6b7280' }}>— Doğal dille kategori yönet</span>
+                </div>
+
+                {chatHistory.length > 0 && (
+                    <div style={{
+                        maxHeight: 200, overflowY: 'auto', marginBottom: 10,
+                        background: 'white', borderRadius: 8, padding: 10, fontSize: 13
+                    }}>
+                        {chatHistory.map((msg, i) => (
+                            <div key={i} style={{
+                                padding: '6px 0',
+                                borderBottom: i < chatHistory.length - 1 ? '1px solid #f1f5f9' : 'none'
+                            }}>
+                                {msg.role === 'user' ? (
+                                    <div style={{ color: '#1e40af' }}><strong>Sen:</strong> {msg.text}</div>
+                                ) : (
+                                    <div>
+                                        {msg.reply && <div style={{ color: '#4b5563', marginBottom: 4 }}>🤖 {msg.reply}</div>}
+                                        {msg.changes?.map((c, ci) => (
+                                            <div key={ci} style={{ color: '#059669', paddingLeft: 8 }}>{c}</div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                        type="text"
+                        value={chatInput}
+                        onChange={e => setChatInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && !chatLoading && chatInput.trim() && handleAiChat()}
+                        placeholder="Örn: 'bel fıtığını sinir cerrahisine taşı' veya 'üroloji kategorilerini birleştir'"
+                        className="tc-input"
+                        style={{ flex: 1, padding: '10px 14px', fontSize: 14 }}
+                        disabled={chatLoading}
+                    />
+                    <button
+                        className="tc-btn tc-btn-primary"
+                        onClick={handleAiChat}
+                        disabled={chatLoading || !chatInput.trim()}
+                        style={{ whiteSpace: 'nowrap' }}
+                    >
+                        {chatLoading ? '⏳ İşleniyor...' : '🚀 Gönder'}
+                    </button>
+                </div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>
+                    💡 Birleştir, taşı, yeni oluştur, yeniden adlandır, sil — doğal dille yaz
+                </div>
+            </div>
         </div>
     );
 };

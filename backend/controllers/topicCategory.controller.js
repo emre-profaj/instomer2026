@@ -645,8 +645,20 @@ export const mergeCategories = async (req, res) => {
 // ─── AI İLE KATEGORİ SADELEŞTİRME ──────────────────────
 
 export const simplifyCategories = async (req, res) => {
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const send = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
     try {
         const { workspaceId } = req.params;
+
+        send({ type: 'progress', message: '📋 Kategoriler yükleniyor...' });
 
         const categories = await prisma.topicCategory.findMany({
             where: { workspaceId },
@@ -654,12 +666,16 @@ export const simplifyCategories = async (req, res) => {
         });
 
         if (categories.length < 3) {
-            return res.status(400).json({ error: 'Sadeleştirmek için en az 3 kategori gerekli' });
+            send({ type: 'error', message: 'Sadeleştirmek için en az 3 kategori gerekli' });
+            return res.end();
         }
+
+        send({ type: 'progress', message: `📊 ${categories.length} kategori bulundu. AI analiz ediyor...` });
 
         const aiApiKey = await getEffectiveAiApiKey(workspaceId);
         if (!aiApiKey) {
-            return res.status(500).json({ error: 'AI API anahtarı yapılandırılmamış' });
+            send({ type: 'error', message: 'AI API anahtarı yapılandırılmamış' });
+            return res.end();
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
@@ -695,26 +711,32 @@ SADECE JSON döndür.`;
         const responseText = result.response.text().trim();
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
-            return res.status(500).json({ error: 'AI yanıtı parse edilemedi' });
+            send({ type: 'error', message: 'AI yanıtı parse edilemedi' });
+            return res.end();
         }
 
         const parsed = JSON.parse(jsonMatch[0]);
         const mergeGroups = parsed.mergeGroups || [];
 
         if (mergeGroups.length === 0) {
-            return res.json({ success: true, message: 'Sadeleştirilecek benzer kategori bulunamadı', merged: 0 });
+            send({ type: 'done', message: 'Sadeleştirilecek benzer kategori bulunamadı', totalMerged: 0, totalMoved: 0, groups: [] });
+            return res.end();
         }
 
-        // Her grup için merge işlemi yap
+        send({ type: 'progress', message: `🧠 AI ${mergeGroups.length} birleştirme grubu buldu. İşleniyor...` });
+
         let totalMerged = 0;
         let totalMoved = 0;
         const results = [];
 
-        for (const group of mergeGroups) {
+        for (let gi = 0; gi < mergeGroups.length; gi++) {
+            const group = mergeGroups[gi];
             const sourceNames = group.sourceNames.map(n => n.toLowerCase().trim());
             const sourceCats = categories.filter(c => sourceNames.includes(c.name.toLowerCase().trim()));
 
             if (sourceCats.length < 2) continue;
+
+            send({ type: 'progress', message: `🔄 [${gi + 1}/${mergeGroups.length}] "${group.targetName}" birleştiriliyor (${sourceCats.length} kategori)...` });
 
             const sourceIds = sourceCats.map(c => c.id);
 
@@ -728,7 +750,6 @@ SADECE JSON döndür.`;
             }
             mergedKeywords = [...new Set(mergedKeywords)];
 
-            // Yeni kategori oluştur
             const targetCat = await prisma.topicCategory.create({
                 data: {
                     workspaceId,
@@ -741,13 +762,11 @@ SADECE JSON döndür.`;
                 }
             });
 
-            // Konuşmaları taşı
             const moveResult = await prisma.conversation.updateMany({
                 where: { workspaceId, topicCategoryId: { in: sourceIds } },
                 data: { topicCategoryId: targetCat.id }
             });
 
-            // Eski kategorileri sil
             await prisma.topicCategory.deleteMany({
                 where: { id: { in: sourceIds }, workspaceId }
             });
@@ -760,19 +779,237 @@ SADECE JSON döndür.`;
                 movedConversations: moveResult.count
             });
 
+            send({ type: 'progress', message: `✅ [${gi + 1}/${mergeGroups.length}] "${group.targetName}" → ${sourceCats.length} kategori birleşti, ${moveResult.count} konuşma taşındı` });
             console.log(`🧹 [Simplify] ${sourceCats.length} kategori → "${group.targetName}" | ${moveResult.count} konuşma`);
         }
 
         console.log(`✅ [Simplify] Toplam: ${totalMerged} kategori sadeleştirildi, ${totalMoved} konuşma taşındı`);
 
-        res.json({
-            success: true,
+        send({
+            type: 'done',
+            message: `✅ ${totalMerged} kategori sadeleştirildi, ${totalMoved} konuşma taşındı`,
             totalMerged,
             totalMoved,
             groups: results
         });
+        res.end();
     } catch (error) {
         console.error('simplifyCategories error:', error);
+        send({ type: 'error', message: error.message });
+        res.end();
+    }
+};
+
+// ─── AI SOHBET İLE KATEGORİ YÖNETİMİ ────────────────────
+
+export const aiChatCategories = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { message } = req.body;
+
+        if (!message?.trim()) {
+            return res.status(400).json({ error: 'Mesaj gerekli' });
+        }
+
+        // Mevcut kategorileri çek
+        const categories = await prisma.topicCategory.findMany({
+            where: { workspaceId },
+            include: { _count: { select: { conversations: true } } }
+        });
+
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
+            return res.status(500).json({ error: 'AI API anahtarı yapılandırılmamış' });
+        }
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+        const catListStr = categories.map(c => {
+            const kws = c.keywords ? JSON.parse(c.keywords).slice(0, 5).join(', ') : '';
+            return `ID: ${c.id} | Ad: "${c.name}" | Konuşma: ${c._count.conversations} | Anahtar Kelimeler: ${kws}`;
+        }).join('\n');
+
+        const prompt = `Sen bir kategori yönetim asistanısın. Kullanıcının talimatını analiz et ve yapılacak işlemleri belirle.
+
+MEVCUT KATEGORİLER:
+${catListStr}
+
+KULLANICI TALİMATI: "${message}"
+
+Yapabileceğin işlemler:
+1. MERGE: Kategorileri birleştir (sourceIds + targetName)
+2. CREATE: Yeni kategori oluştur (name + keywords)
+3. MOVE_KEYWORDS: Anahtar kelimeleri bir kategoriden diğerine taşı (fromId, toId, keywords)
+4. RENAME: Kategori adını değiştir (categoryId + newName)
+5. DELETE: Kategori sil (categoryId)
+6. REASSIGN: Konuşmaları bir kategoriden diğerine taşı (fromId, toId)
+
+JSON formatında döndür:
+{
+  "explanation": "Ne yapacağımın Türkçe açıklaması",
+  "actions": [
+    { "type": "MERGE", "sourceIds": ["id1", "id2"], "targetName": "Yeni Ad" },
+    { "type": "CREATE", "name": "Yeni Kategori", "keywords": ["kw1", "kw2"] },
+    { "type": "MOVE_KEYWORDS", "fromId": "id1", "toId": "id2", "keywords": ["bel fıtığı", "disk hernisi"] },
+    { "type": "RENAME", "categoryId": "id1", "newName": "Yeni Ad" },
+    { "type": "DELETE", "categoryId": "id1" },
+    { "type": "REASSIGN", "fromId": "id1", "toId": "id2" }
+  ]
+}
+
+KURALLAR:
+- Kullanıcı "bel fıtığını sinir cerrahisine taşı" derse, MOVE_KEYWORDS veya REASSIGN kullan
+- Birleştirme isterse MERGE kullan
+- Yeni kategori isterse CREATE kullan
+- Emin olamadığın durumlarda explanation'da sor, actions boş bırak
+- SADECE JSON döndür`;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text().trim();
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return res.json({ success: false, reply: 'Anlayamadım, lütfen tekrar deneyin.' });
+        }
+
+        const parsed = JSON.parse(jsonMatch[0]);
+        const actions = parsed.actions || [];
+        const explanation = parsed.explanation || '';
+
+        if (actions.length === 0) {
+            return res.json({ success: true, reply: explanation || 'Yapılacak işlem bulunamadı.', changes: [] });
+        }
+
+        // İşlemleri uygula
+        const changes = [];
+
+        for (const action of actions) {
+            try {
+                switch (action.type) {
+                    case 'MERGE': {
+                        if (!action.sourceIds || action.sourceIds.length < 2) break;
+                        const sourceCats = categories.filter(c => action.sourceIds.includes(c.id));
+                        if (sourceCats.length < 2) break;
+
+                        let mergedKws = [];
+                        for (const cat of sourceCats) {
+                            if (cat.keywords) try { mergedKws = [...mergedKws, ...JSON.parse(cat.keywords)]; } catch(e) {}
+                            mergedKws.push(cat.name.toLowerCase());
+                        }
+
+                        const newCat = await prisma.topicCategory.create({
+                            data: {
+                                workspaceId, name: action.targetName,
+                                icon: getCategoryIcon(action.targetName),
+                                color: sourceCats[0].color,
+                                keywords: JSON.stringify([...new Set(mergedKws)]),
+                                order: sourceCats[0].order,
+                            }
+                        });
+                        const moved = await prisma.conversation.updateMany({
+                            where: { workspaceId, topicCategoryId: { in: action.sourceIds } },
+                            data: { topicCategoryId: newCat.id }
+                        });
+                        await prisma.topicCategory.deleteMany({ where: { id: { in: action.sourceIds }, workspaceId } });
+                        changes.push(`🔗 ${sourceCats.map(c => c.name).join(' + ')} → "${action.targetName}" (${moved.count} konuşma taşındı)`);
+                        break;
+                    }
+
+                    case 'CREATE': {
+                        await prisma.topicCategory.create({
+                            data: {
+                                workspaceId, name: action.name,
+                                icon: getCategoryIcon(action.name),
+                                color: getColorForIndex(categories.length),
+                                keywords: JSON.stringify(action.keywords || []),
+                                order: categories.length,
+                            }
+                        });
+                        changes.push(`➕ "${action.name}" oluşturuldu`);
+                        break;
+                    }
+
+                    case 'MOVE_KEYWORDS': {
+                        const fromCat = categories.find(c => c.id === action.fromId);
+                        const toCat = categories.find(c => c.id === action.toId);
+                        if (!fromCat || !toCat) break;
+
+                        // fromCat'ten keyword'leri çıkar
+                        let fromKws = fromCat.keywords ? JSON.parse(fromCat.keywords) : [];
+                        const movedKws = action.keywords || [];
+                        fromKws = fromKws.filter(k => !movedKws.some(mk => k.toLowerCase().includes(mk.toLowerCase())));
+                        await prisma.topicCategory.update({ where: { id: fromCat.id }, data: { keywords: JSON.stringify(fromKws) } });
+
+                        // toCat'e keyword'leri ekle
+                        let toKws = toCat.keywords ? JSON.parse(toCat.keywords) : [];
+                        toKws = [...new Set([...toKws, ...movedKws])];
+                        await prisma.topicCategory.update({ where: { id: toCat.id }, data: { keywords: JSON.stringify(toKws) } });
+
+                        // İlgili konuşmaları taşı
+                        const convs = await prisma.conversation.findMany({
+                            where: { workspaceId, topicCategoryId: fromCat.id },
+                            select: { id: true, aiTopic: true }
+                        });
+                        const toMove = convs.filter(c => {
+                            const topic = (c.aiTopic || '').toLowerCase();
+                            return movedKws.some(kw => topic.includes(kw.toLowerCase()));
+                        });
+                        if (toMove.length > 0) {
+                            await prisma.conversation.updateMany({
+                                where: { id: { in: toMove.map(c => c.id) } },
+                                data: { topicCategoryId: toCat.id }
+                            });
+                        }
+                        changes.push(`📦 "${fromCat.name}" → "${toCat.name}": ${movedKws.join(', ')} taşındı (${toMove.length} konuşma)`);
+                        break;
+                    }
+
+                    case 'RENAME': {
+                        const cat = categories.find(c => c.id === action.categoryId);
+                        if (!cat) break;
+                        await prisma.topicCategory.update({ where: { id: cat.id }, data: { name: action.newName } });
+                        changes.push(`✏️ "${cat.name}" → "${action.newName}"`);
+                        break;
+                    }
+
+                    case 'DELETE': {
+                        const cat = categories.find(c => c.id === action.categoryId);
+                        if (!cat) break;
+                        await prisma.conversation.updateMany({
+                            where: { topicCategoryId: cat.id },
+                            data: { topicCategoryId: null }
+                        });
+                        await prisma.topicCategory.delete({ where: { id: cat.id } });
+                        changes.push(`🗑️ "${cat.name}" silindi (${cat._count.conversations} konuşma serbest bırakıldı)`);
+                        break;
+                    }
+
+                    case 'REASSIGN': {
+                        const fromCat = categories.find(c => c.id === action.fromId);
+                        const toCat = categories.find(c => c.id === action.toId);
+                        if (!fromCat || !toCat) break;
+                        const moved = await prisma.conversation.updateMany({
+                            where: { workspaceId, topicCategoryId: fromCat.id },
+                            data: { topicCategoryId: toCat.id }
+                        });
+                        changes.push(`➡️ "${fromCat.name}" → "${toCat.name}": ${moved.count} konuşma taşındı`);
+                        break;
+                    }
+                }
+            } catch (actionErr) {
+                changes.push(`⚠️ İşlem hatası: ${actionErr.message}`);
+            }
+        }
+
+        console.log(`🤖 [AI Chat] "${message}" → ${changes.length} işlem yapıldı`);
+
+        res.json({
+            success: true,
+            reply: explanation,
+            changes
+        });
+    } catch (error) {
+        console.error('aiChatCategories error:', error);
         res.status(500).json({ error: error.message });
     }
 };
