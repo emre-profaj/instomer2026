@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, DollarSign,
     Users, ShoppingCart, TrendingUp, ChevronRight, Hash, Layers,
-    UserCheck, ThumbsUp, ThumbsDown, PhoneCall, MessageSquare,
-    Calendar, FileText, Package
+    UserCheck, PhoneCall, MessageSquare, Calendar, FileText, Package
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -14,34 +13,12 @@ import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 
 const formatNumber = (n) => {
     if (!n && n !== 0) return '0';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
     return n.toLocaleString('tr-TR');
 };
 
 const formatCurrency = (n) => {
-    if (!n && n !== 0) return '₺0';
+    if (!n && n !== 0) return '0 ₺';
     return (n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
-};
-
-const StageBadges = ({ stages, max = 5 }) => {
-    if (!stages || stages.length === 0) return <span style={{ color: '#d1d5db', fontSize: '0.68rem' }}>—</span>;
-    return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-            {stages.slice(0, max).map((s, i) => (
-                <span key={i} style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 3,
-                    padding: '2px 6px', borderRadius: 6,
-                    background: `${s.color || '#64748b'}18`,
-                    fontSize: '0.66rem', fontWeight: 600, color: s.color || '#64748b',
-                    whiteSpace: 'nowrap'
-                }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.color || '#64748b' }} />
-                    {s.name?.length > 10 ? s.name.slice(0, 10) + '..' : s.name} {s.count}
-                </span>
-            ))}
-        </div>
-    );
 };
 
 const RequestReport = () => {
@@ -52,10 +29,9 @@ const RequestReport = () => {
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
+    const [expandedAgent, setExpandedAgent] = useState(null);
     const [expandedTopics, setExpandedTopics] = useState({});
-    const [expandedTopicAgents, setExpandedTopicAgents] = useState({});
     const [expandedFunnels, setExpandedFunnels] = useState({});
-    const [expandedFunnelTopics, setExpandedFunnelTopics] = useState({});
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -93,20 +69,13 @@ const RequestReport = () => {
     }
 
     const {
-        totalCount = 0, withPhoneCount = 0, relevantCount = 0, irrelevantCount = 0,
+        totalCount = 0, totalCases = 0, totalDeals = 0,
+        withPhoneCount = 0,
         totalWonCount = 0, totalWonAmount = 0,
         totalCalls = 0, totalMeetings = 0, totalAppointments = 0,
         totalProposals = 0, totalOrders = 0,
-        topicGroups = [], funnelGroups = []
+        agentTable = [], topicGroups = [], funnelGroups = []
     } = data || {};
-
-    const toggleTopic = (n) => setExpandedTopics(p => ({ ...p, [n]: !p[n] }));
-    const toggleTopicAgent = (k) => setExpandedTopicAgents(p => ({ ...p, [k]: !p[k] }));
-    const toggleFunnel = (n) => setExpandedFunnels(p => ({ ...p, [n]: !p[n] }));
-    const toggleFunnelTopic = (k) => setExpandedFunnelTopics(p => ({ ...p, [k]: !p[k] }));
-
-    const maxTopicCount = topicGroups.length > 0 ? topicGroups[0].count : 1;
-    const maxFunnelCount = funnelGroups.length > 0 ? funnelGroups[0].count : 1;
 
     return (
         <div className="ceo-report">
@@ -139,85 +108,56 @@ const RequestReport = () => {
                 </div>
             </div>
 
-            {/* ═══ 1. TOPLAM KPI'LAR ═══ */}
+            {/* ═══ KPI KARTLARI ═══ */}
             <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
-                {/* Toplam Talep */}
                 <div style={{
                     flex: '1 1 160px', minWidth: 160,
                     background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-                    borderRadius: 16, padding: '24px 24px', color: '#fff',
+                    borderRadius: 16, padding: '20px 24px', color: '#fff',
                     boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
                     position: 'relative', overflow: 'hidden'
                 }}>
                     <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Users size={14} /> Toplam Talep
                     </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.02em' }}>{formatNumber(totalCount)}</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(totalCount)}</div>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.7 }}>{totalCases} case · {totalDeals} satış</div>
                 </div>
 
-                {/* Numaralı */}
                 <div style={{
                     flex: '1 1 160px', minWidth: 160,
                     background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
-                    borderRadius: 16, padding: '24px 24px', color: '#fff',
+                    borderRadius: 16, padding: '20px 24px', color: '#fff',
                     boxShadow: '0 8px 32px rgba(16, 185, 129, 0.3)',
                     position: 'relative', overflow: 'hidden'
                 }}>
                     <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <Phone size={14} /> Numaralı
-                    </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(withPhoneCount)}</div>
-                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{totalCount > 0 ? ((withPhoneCount / totalCount) * 100).toFixed(0) : 0}%</div>
-                </div>
-
-                {/* Satış */}
-                <div style={{
-                    flex: '1 1 200px', minWidth: 200,
-                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                    borderRadius: 16, padding: '24px 24px', color: '#fff',
-                    boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
-                    position: 'relative', overflow: 'hidden'
-                }}>
-                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
                         <ShoppingCart size={14} /> Satış
                     </div>
                     <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalWonCount} adet</div>
                     <div style={{ fontSize: '0.88rem', fontWeight: 700, opacity: 0.9 }}>{formatCurrency(totalWonAmount)}</div>
                 </div>
 
-                {/* İlgili / İlgisiz */}
                 <div style={{
-                    flex: '1 1 200px', minWidth: 200,
-                    background: '#fff', borderRadius: 16, padding: '24px 24px',
-                    border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                    display: 'flex', gap: 20, alignItems: 'center'
+                    flex: '1 1 160px', minWidth: 160,
+                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                    borderRadius: 16, padding: '20px 24px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
+                    position: 'relative', overflow: 'hidden'
                 }}>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#f59e0b', marginBottom: 4 }}>
-                            <ThumbsUp size={14} />
-                            <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>İlgili</span>
-                        </div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>{formatNumber(relevantCount)}</div>
-                        <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{totalCount > 0 ? ((relevantCount / totalCount) * 100).toFixed(0) : 0}%</div>
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <Phone size={14} /> Kişi
                     </div>
-                    <div style={{ width: 1, height: 40, background: '#e2e8f0' }} />
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94a3b8', marginBottom: 4 }}>
-                            <ThumbsDown size={14} />
-                            <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>İlgisiz</span>
-                        </div>
-                        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>{formatNumber(irrelevantCount)}</div>
-                        <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{totalCount > 0 ? ((irrelevantCount / totalCount) * 100).toFixed(0) : 0}%</div>
-                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(withPhoneCount)}</div>
                 </div>
             </div>
 
             {/* ═══ AKTİVİTE TABLOSU ═══ */}
             <div style={{
-                background: '#fff', borderRadius: 16, padding: '0', marginBottom: 24,
+                background: '#fff', borderRadius: 16, marginBottom: 24,
                 border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
                 overflow: 'hidden'
             }}>
@@ -225,28 +165,25 @@ const RequestReport = () => {
                     <thead>
                         <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                             {[
-                                { label: 'ARAMA', icon: <PhoneCall size={13} />, color: '#6366f1' },
-                                { label: 'GÖRÜŞME', icon: <MessageSquare size={13} />, color: '#8b5cf6' },
-                                { label: 'RANDEVU', icon: <Calendar size={13} />, color: '#f59e0b' },
-                                { label: 'TEKLİF', icon: <FileText size={13} />, color: '#ec4899' },
-                                { label: 'SİPARİŞ', icon: <Package size={13} />, color: '#10b981' },
-                                { label: 'CİRO (SATIŞ)', icon: <DollarSign size={13} />, color: '#059669' },
+                                { label: 'ARAMA', color: '#6366f1' },
+                                { label: 'GÖRÜŞME', color: '#8b5cf6' },
+                                { label: 'RANDEVU', color: '#f59e0b' },
+                                { label: 'TEKLİF', color: '#ec4899' },
+                                { label: 'SİPARİŞ', color: '#10b981' },
+                                { label: 'CİRO (SATIŞ)', color: '#059669' },
                             ].map((col, i) => (
                                 <th key={i} style={{
                                     padding: '14px 12px', textAlign: 'center',
                                     fontSize: '0.72rem', fontWeight: 700, color: '#64748b',
                                     textTransform: 'uppercase', letterSpacing: '0.05em'
                                 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                                        <span style={{ color: col.color }}>{col.icon}</span>
-                                        {col.label}
-                                    </div>
+                                    <span style={{ color: col.color }}>{col.label}</span>
                                 </th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
-                        <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <tr>
                             <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#6366f1' }}>{formatNumber(totalCalls)}</td>
                             <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#8b5cf6' }}>{formatNumber(totalMeetings)}</td>
                             <td style={{ padding: '18px 12px', textAlign: 'center', fontSize: '1.4rem', fontWeight: 800, color: '#f59e0b' }}>{formatNumber(totalAppointments)}</td>
@@ -258,188 +195,235 @@ const RequestReport = () => {
                 </table>
             </div>
 
-            {/* ═══ 2. KONU BAZLI TALEP RAPORU ═══ */}
+            {/* ═══ TEMSİLCİ BAZLI TABLO ═══ */}
             <div className="ceo-section" style={{ marginBottom: 24 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
-                        <h2>Konu Bazlı Talep Raporu</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0 }}>
-                        {topicGroups.length === 0 && (
-                            <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
-                                <TrendingUp size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
-                                <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Konu verisi bulunamadı</p>
-                            </div>
-                        )}
-                        {topicGroups.map((group, gi) => {
-                            const pct = ((group.count / maxTopicCount) * 100).toFixed(0);
-                            const isExpanded = expandedTopics[group.name];
-                            return (
-                                <div key={gi} style={{ borderBottom: gi < topicGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                    {/* Ana Grup */}
-                                    <div
-                                        onClick={() => toggleTopic(group.name)}
-                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', transition: 'background 0.15s' }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                    >
-                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-                                        </div>
-                                        <span style={{ fontSize: '0.9rem', width: 22, textAlign: 'center' }}>{group.icon || '📁'}</span>
-                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', minWidth: 120 }}>{group.name}</span>
-                                        <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 160 }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${group.color || '#6366f1'}, ${group.color ? group.color + '99' : '#818cf8'})`, borderRadius: 6, transition: 'width 0.6s' }} />
-                                        </div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#6366f1', minWidth: 40, textAlign: 'right' }}>{group.count}</span>
-                                        <div style={{ display: 'flex', gap: 6, fontSize: '0.68rem', fontWeight: 600 }}>
-                                            {group.calls > 0 && <span style={{ color: '#6366f1' }} title="Arama">📞{group.calls}</span>}
-                                            {group.meetings > 0 && <span style={{ color: '#8b5cf6' }} title="Görüşme">💬{group.meetings}</span>}
-                                            {group.appointments > 0 && <span style={{ color: '#f59e0b' }} title="Randevu">📅{group.appointments}</span>}
-                                            {group.proposals > 0 && <span style={{ color: '#ec4899' }} title="Teklif">📄{group.proposals}</span>}
-                                            {group.orders > 0 && <span style={{ color: '#10b981' }} title="Sipariş">📦{group.orders}</span>}
-                                        </div>
-                                        <StageBadges stages={group.stages} max={3} />
-                                        {group.wonCount > 0 && (
-                                            <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                                {group.wonCount} satış · {formatCurrency(group.wonAmount)}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Alt Grup: Temsilciler */}
-                                    {isExpanded && (
-                                        <div style={{ background: '#fafbfc', padding: '4px 16px 8px 46px' }}>
-                                            {group.agents.map((agent, ai) => {
-                                                const agentKey = `${group.name}__${agent.name}`;
-                                                const showDetail = expandedTopicAgents[agentKey];
-                                                return (
-                                                    <div key={ai}>
-                                                        <div
-                                                            onClick={() => toggleTopicAgent(agentKey)}
-                                                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s', marginBottom: 2 }}
-                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                        >
-                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showDetail ? 'rotate(90deg)' : 'none' }} />
-                                                            <UserCheck size={13} style={{ color: '#6366f1' }} />
-                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', flex: 1 }}>{agent.name}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#6366f1', minWidth: 30 }}>{agent.count}</span>
-                                                            {agent.wonCount > 0 && (
-                                                                <span style={{ fontWeight: 600, fontSize: '0.65rem', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: 4 }}>
-                                                                    {agent.wonCount} satış
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {showDetail && (
-                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12, padding: '4px 12px' }}>
-                                                                <StageBadges stages={agent.stages} max={10} />
-                                                                {agent.wonAmount > 0 && (
-                                                                    <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
-                                                                        Satış: {formatCurrency(agent.wonAmount)}
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                <div className="ceo-section-header">
+                    <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><UserCheck size={18} /></div>
+                    <h2>Temsilci Bazlı Talep Raporu</h2>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{agentTable.length} temsilci</span>
+                </div>
+                <div className="ceo-section-body" style={{ padding: 0, overflow: 'auto' }}>
+                    {agentTable.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
+                            <UserCheck size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Temsilci verisi bulunamadı</p>
+                        </div>
+                    ) : (
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>Temsilci</th>
+                                    <th>Talep</th>
+                                    <th>Kişi</th>
+                                    <th>Arama</th>
+                                    <th>Görüşme</th>
+                                    <th>Randevu</th>
+                                    <th>Teklif</th>
+                                    <th>Sipariş</th>
+                                    <th>Ciro (Satış)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {agentTable.map((agent, idx) => {
+                                    const isExpanded = expandedAgent === (agent.agentId || idx);
+                                    const topicEntries = Object.entries(agent.topicBreakdown || {}).sort((a, b) => b[1].count - a[1].count);
+                                    return (
+                                        <React.Fragment key={agent.agentId || idx}>
+                                            <tr
+                                                style={{ cursor: topicEntries.length > 0 ? 'pointer' : 'default' }}
+                                                onClick={() => topicEntries.length > 0 && setExpandedAgent(isExpanded ? null : (agent.agentId || idx))}
+                                            >
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                        {topicEntries.length > 0 && (
+                                                            <ChevronRight size={14} style={{ color: '#94a3b8', transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }} />
                                                         )}
+                                                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#eef2ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', color: '#6366f1', flexShrink: 0 }}>
+                                                            {agent.agentName?.charAt(0)}
+                                                        </div>
+                                                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{agent.agentName}</div>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
+                                                </td>
+                                                <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{agent.caseCount}</span></td>
+                                                <td><span style={{ fontWeight: 700 }}>{agent.contactCount}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: agent.calls > 0 ? '#059669' : '#d1d5db' }}>{agent.calls}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: agent.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{agent.meetings}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: agent.appointments > 0 ? '#f97316' : '#d1d5db' }}>{agent.appointments}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: agent.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{agent.proposals}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: agent.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{agent.orders}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: agent.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{agent.wonAmount ? formatCurrency(agent.wonAmount) : '0 ₺'}</span></td>
+                                            </tr>
+                                            {isExpanded && topicEntries.length > 0 && (
+                                                <tr>
+                                                    <td colSpan={9} style={{ padding: 0, background: '#f8fafc' }}>
+                                                        <div style={{ padding: '16px 20px 16px 56px' }}>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                                                <ClipboardList size={14} style={{ color: '#6366f1' }} />
+                                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#1e293b' }}>{agent.agentName} — Konu Dağılımı</span>
+                                                                <span style={{ fontSize: '0.68rem', color: '#94a3b8', fontWeight: 600 }}>{topicEntries.length} konu</span>
+                                                            </div>
+                                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                                                <thead>
+                                                                    <tr style={{ background: '#e2e8f0' }}>
+                                                                        <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Konu</th>
+                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Talep</th>
+                                                                        <th style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#475569' }}>Satış</th>
+                                                                        <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#475569' }}>Ciro</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {topicEntries.slice(0, 20).map(([topic, td]) => (
+                                                                        <tr key={topic} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                                            <td style={{ padding: '6px 10px', fontWeight: 600, color: '#1e293b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic}</td>
+                                                                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: '#6366f1' }}>{td.count}</td>
+                                                                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: td.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{td.wonCount || 0}</td>
+                                                                            <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: td.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{td.wonAmount ? formatCurrency(td.wonAmount) : '—'}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                                {/* Toplam satırı */}
+                                <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
+                                    <td style={{ color: '#059669' }}>Toplam</td>
+                                    <td><span style={{ color: '#6366f1' }}>{agentTable.reduce((s, a) => s + a.caseCount, 0)}</span></td>
+                                    <td><span style={{ color: '#0f172a' }}>{agentTable.reduce((s, a) => s + a.contactCount, 0)}</span></td>
+                                    <td><span style={{ color: '#059669' }}>{totalCalls}</span></td>
+                                    <td><span style={{ color: '#0ea5e9' }}>{totalMeetings}</span></td>
+                                    <td><span style={{ color: '#f97316' }}>{totalAppointments}</span></td>
+                                    <td><span style={{ color: '#8b5cf6' }}>{totalProposals}</span></td>
+                                    <td><span style={{ color: '#f59e0b' }}>{totalOrders}</span></td>
+                                    <td><span style={{ color: '#10b981' }}>{formatCurrency(totalWonAmount)}</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+
+            {/* ═══ KONU BAZLI TALEP TABLOSU ═══ */}
+            <div className="ceo-section" style={{ marginBottom: 24 }}>
+                <div className="ceo-section-header">
+                    <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
+                    <h2>Konu Bazlı Talep Raporu</h2>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
+                </div>
+                <div className="ceo-section-body" style={{ padding: 0, overflow: 'auto' }}>
+                    {topicGroups.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
+                            <TrendingUp size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Konu verisi bulunamadı</p>
+                        </div>
+                    ) : (
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>Konu</th>
+                                    <th>Talep</th>
+                                    <th>Arama</th>
+                                    <th>Görüşme</th>
+                                    <th>Randevu</th>
+                                    <th>Teklif</th>
+                                    <th>Sipariş</th>
+                                    <th>Satış</th>
+                                    <th>Ciro</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {topicGroups.map((group, gi) => (
+                                    <tr key={gi} style={{ borderBottom: gi < topicGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                        <td>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <span style={{ fontSize: '0.9rem' }}>{group.icon || '📁'}</span>
+                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: group.color || '#0f172a' }}>{group.name}</span>
+                                            </div>
+                                        </td>
+                                        <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{group.count}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.calls > 0 ? '#059669' : '#d1d5db' }}>{group.calls}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{group.meetings}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.appointments > 0 ? '#f97316' : '#d1d5db' }}>{group.appointments}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{group.proposals}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{group.orders}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonCount}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonAmount ? formatCurrency(group.wonAmount) : '—'}</span></td>
+                                    </tr>
+                                ))}
+                                <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
+                                    <td style={{ color: '#059669' }}>Toplam</td>
+                                    <td><span style={{ color: '#6366f1' }}>{topicGroups.reduce((s, g) => s + g.count, 0)}</span></td>
+                                    <td><span style={{ color: '#059669' }}>{topicGroups.reduce((s, g) => s + g.calls, 0)}</span></td>
+                                    <td><span style={{ color: '#0ea5e9' }}>{topicGroups.reduce((s, g) => s + g.meetings, 0)}</span></td>
+                                    <td><span style={{ color: '#f97316' }}>{topicGroups.reduce((s, g) => s + g.appointments, 0)}</span></td>
+                                    <td><span style={{ color: '#8b5cf6' }}>{topicGroups.reduce((s, g) => s + g.proposals, 0)}</span></td>
+                                    <td><span style={{ color: '#f59e0b' }}>{topicGroups.reduce((s, g) => s + g.orders, 0)}</span></td>
+                                    <td><span style={{ color: '#10b981' }}>{topicGroups.reduce((s, g) => s + g.wonCount, 0)}</span></td>
+                                    <td><span style={{ color: '#10b981' }}>{formatCurrency(topicGroups.reduce((s, g) => s + g.wonAmount, 0))}</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+
+            {/* ═══ AKIŞ BAZLI TALEP RAPORU ═══ */}
+            <div className="ceo-section" style={{ marginBottom: 24 }}>
+                <div className="ceo-section-header">
+                    <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><Layers size={18} /></div>
+                    <h2>Akış Bazlı Talep Raporu</h2>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{funnelGroups.length} akış</span>
+                </div>
+                <div className="ceo-section-body" style={{ padding: 0 }}>
+                    {funnelGroups.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
+                            <Layers size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Akış verisi bulunamadı</p>
+                        </div>
+                    ) : funnelGroups.map((group, gi) => {
+                        const isExpanded = expandedFunnels[group.name];
+                        return (
+                            <div key={gi} style={{ borderBottom: gi < funnelGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                <div
+                                    onClick={() => setExpandedFunnels(p => ({ ...p, [group.name]: !p[group.name] }))}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', transition: 'background 0.15s' }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    <ChevronRight size={14} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }} />
+                                    <Layers size={16} style={{ color: '#8b5cf6' }} />
+                                    <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
+                                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#8b5cf6' }}>{group.count}</span>
+                                    {group.wonCount > 0 && (
+                                        <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6 }}>
+                                            {group.wonCount} satış
+                                        </span>
                                     )}
                                 </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-            {/* ═══ 3. AKIŞ BAZLI TALEP RAPORU ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><Layers size={18} /></div>
-                        <h2>Akış Bazlı Talep Raporu</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{funnelGroups.length} akış</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0 }}>
-                        {funnelGroups.length === 0 && (
-                            <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
-                                <Layers size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
-                                <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Akış verisi bulunamadı</p>
-                            </div>
-                        )}
-                        {funnelGroups.map((group, gi) => {
-                            const pct = ((group.count / maxFunnelCount) * 100).toFixed(0);
-                            const isExpanded = expandedFunnels[group.name];
-                            return (
-                                <div key={gi} style={{ borderBottom: gi < funnelGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                    {/* Ana Grup */}
-                                    <div
-                                        onClick={() => toggleFunnel(group.name)}
-                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', transition: 'background 0.15s' }}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                    >
-                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
-                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
-                                        </div>
-                                        <Layers size={16} style={{ color: '#8b5cf6' }} />
-                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', minWidth: 120 }}>{group.name}</span>
-                                        <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 160 }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)', borderRadius: 6, transition: 'width 0.6s' }} />
-                                        </div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#8b5cf6', minWidth: 40, textAlign: 'right' }}>{group.count}</span>
-                                        <StageBadges stages={group.stages} max={3} />
-                                        {group.wonCount > 0 && (
-                                            <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                                {group.wonCount} satış · {formatCurrency(group.wonAmount)}
+                                {isExpanded && group.stages && (
+                                    <div style={{ padding: '4px 16px 12px 46px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                        {group.stages.map((s, i) => (
+                                            <span key={i} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '4px 10px', borderRadius: 8,
+                                                background: `${s.color || '#64748b'}15`,
+                                                fontSize: '0.75rem', fontWeight: 700, color: s.color || '#64748b'
+                                            }}>
+                                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.color || '#64748b' }} />
+                                                {s.name} <span style={{ fontWeight: 800, marginLeft: 2 }}>{s.count}</span>
                                             </span>
-                                        )}
+                                        ))}
                                     </div>
-
-                                    {/* Alt Grup: Konular */}
-                                    {isExpanded && (
-                                        <div style={{ background: '#fafbfc', padding: '4px 16px 8px 46px' }}>
-                                            {group.topics.map((topic, ti) => {
-                                                const topicKey = `${group.name}__${topic.name}`;
-                                                const showDetail = expandedFunnelTopics[topicKey];
-                                                return (
-                                                    <div key={ti}>
-                                                        <div
-                                                            onClick={() => toggleFunnelTopic(topicKey)}
-                                                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s', marginBottom: 2 }}
-                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
-                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                        >
-                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showDetail ? 'rotate(90deg)' : 'none' }} />
-                                                            <span style={{ fontSize: '0.8rem' }}>{topic.icon || '📁'}</span>
-                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: topic.color || '#374151', flex: 1 }}>{topic.name}</span>
-                                                            <span style={{ fontWeight: 700, fontSize: '0.78rem', color: topic.color || '#6366f1', minWidth: 30 }}>{topic.count}</span>
-                                                            {topic.wonCount > 0 && (
-                                                                <span style={{ fontWeight: 600, fontSize: '0.65rem', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: 4 }}>
-                                                                    {topic.wonCount} satış
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {showDetail && (
-                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12, padding: '4px 12px' }}>
-                                                                <StageBadges stages={topic.stages} max={10} />
-                                                                {topic.wonAmount > 0 && (
-                                                                    <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
-                                                                        Satış: {formatCurrency(topic.wonAmount)}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
+            </div>
         </div>
     );
 };
