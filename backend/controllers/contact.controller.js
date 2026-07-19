@@ -5024,3 +5024,154 @@ export const getAnalysisReport = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+// ── Satış Raporu (Yeni — topicCategory bazlı) ──
+export const getSalesReport = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate } = req.query;
+
+        let dateFilter = {};
+        if (startDate || endDate) {
+            dateFilter.createdAt = {};
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+        }
+
+        // WON deal'ları çek — contact, conversation, topicCategory bilgileriyle
+        const deals = await prisma.deal.findMany({
+            where: {
+                workspaceId,
+                status: 'WON',
+                ...dateFilter
+            },
+            select: {
+                id: true,
+                title: true,
+                amount: true,
+                currency: true,
+                stage: true,
+                createdAt: true,
+                assignedToId: true,
+                assignedTo: { select: { id: true, name: true, avatar: true } },
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        email: true,
+                        conversations: {
+                            where: { topicCategoryId: { not: null } },
+                            select: {
+                                topicCategory: { select: { id: true, name: true, icon: true, color: true } }
+                            },
+                            take: 1,
+                            orderBy: { lastMessageAt: 'desc' }
+                        }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Her deal'a topicCategory ekle
+        const salesList = deals.map(d => {
+            const topicCat = d.contact?.conversations?.[0]?.topicCategory || null;
+            return {
+                id: d.id,
+                title: d.title,
+                amount: d.amount || 0,
+                currency: d.currency || 'TRY',
+                stage: d.stage,
+                createdAt: d.createdAt,
+                agentId: d.assignedToId,
+                agentName: d.assignedTo?.name || 'Atanmamış',
+                agentAvatar: d.assignedTo?.avatar || null,
+                contactName: d.contact?.name || 'Bilinmeyen',
+                contactPhone: d.contact?.phone || '',
+                contactEmail: d.contact?.email || '',
+                categoryId: topicCat?.id || null,
+                categoryName: topicCat?.name || 'Kategorisiz',
+                categoryIcon: topicCat?.icon || null,
+                categoryColor: topicCat?.color || null
+            };
+        });
+
+        // Toplam
+        const totalCount = salesList.length;
+        const totalAmount = salesList.reduce((s, d) => s + d.amount, 0);
+
+        // Konuya göre gruplama
+        const byTopic = {};
+        for (const s of salesList) {
+            const key = s.categoryName;
+            if (!byTopic[key]) {
+                byTopic[key] = {
+                    name: key,
+                    icon: s.categoryIcon,
+                    color: s.categoryColor,
+                    count: 0,
+                    amount: 0,
+                    agents: {}
+                };
+            }
+            byTopic[key].count++;
+            byTopic[key].amount += s.amount;
+            // Agent alt grubu
+            const aKey = s.agentName;
+            if (!byTopic[key].agents[aKey]) {
+                byTopic[key].agents[aKey] = { name: aKey, count: 0, amount: 0 };
+            }
+            byTopic[key].agents[aKey].count++;
+            byTopic[key].agents[aKey].amount += s.amount;
+        }
+        const topicGroups = Object.values(byTopic)
+            .map(g => ({
+                ...g,
+                agents: Object.values(g.agents).sort((a, b) => b.amount - a.amount)
+            }))
+            .sort((a, b) => b.amount - a.amount);
+
+        // Temsilciye göre gruplama
+        const byAgent = {};
+        for (const s of salesList) {
+            const key = s.agentName;
+            if (!byAgent[key]) {
+                byAgent[key] = {
+                    name: key,
+                    agentId: s.agentId,
+                    avatar: s.agentAvatar,
+                    count: 0,
+                    amount: 0,
+                    topics: {}
+                };
+            }
+            byAgent[key].count++;
+            byAgent[key].amount += s.amount;
+            // Topic alt grubu
+            const tKey = s.categoryName;
+            if (!byAgent[key].topics[tKey]) {
+                byAgent[key].topics[tKey] = { name: tKey, icon: s.categoryIcon, color: s.categoryColor, count: 0, amount: 0 };
+            }
+            byAgent[key].topics[tKey].count++;
+            byAgent[key].topics[tKey].amount += s.amount;
+        }
+        const agentGroups = Object.values(byAgent)
+            .map(g => ({
+                ...g,
+                topics: Object.values(g.topics).sort((a, b) => b.amount - a.amount)
+            }))
+            .sort((a, b) => b.amount - a.amount);
+
+        res.json({
+            totalCount,
+            totalAmount,
+            topicGroups,
+            agentGroups,
+            salesList
+        });
+    } catch (error) {
+        console.error('Sales report error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};

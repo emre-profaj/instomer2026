@@ -1,5 +1,5 @@
 import express from 'express';
-import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary, getTopicContacts, getAnalysisReport } from '../controllers/contact.controller.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary, getTopicContacts, getAnalysisReport, getSalesReport } from '../controllers/contact.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -25,6 +25,9 @@ router.get('/:workspaceId/topic-contacts', requireWorkspaceAccess, getTopicConta
 
 // Analysis report (agent × topic × stage pivot)
 router.get('/:workspaceId/analysis', requireWorkspaceAccess, getAnalysisReport);
+
+// Sales report (topic × agent grouped)
+router.get('/:workspaceId/sales-report', requireWorkspaceAccess, getSalesReport);
 
 // List contacts in workspace
 router.get('/:workspaceId', requireWorkspaceAccess, getContacts);

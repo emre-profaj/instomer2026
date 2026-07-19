@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    DollarSign, ShoppingCart, FileText, RefreshCw, Filter, ArrowLeft,
-    TrendingUp, UserCheck, Receipt, XCircle, CheckCircle2, Clock,
-    ArrowUpRight, ArrowDownRight, PieChart, Package
+    DollarSign, ShoppingCart, RefreshCw, Filter, ArrowLeft,
+    TrendingUp, ChevronDown, ChevronRight, Users, UserCheck, Hash
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -11,27 +10,23 @@ import './CeoReport.css';
 import './CeoDetailReport.css';
 import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 
-const formatNumber = (n) => {
-    if (!n && n !== 0) return '0';
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
-    return n.toLocaleString('tr-TR');
-};
-
 const formatCurrency = (n) => {
     if (!n && n !== 0) return '₺0';
-    return '₺' + formatNumber(n);
+    return (n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
 };
 
 const SalesReport = () => {
     const { currentWorkspace } = useAuth();
     const navigate = useNavigate();
-    const [analytics, setAnalytics] = useState(null);
-    const [agentPerformance, setAgentPerformance] = useState(null);
+    const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
+    const [expandedTopics, setExpandedTopics] = useState({});
+    const [expandedAgents, setExpandedAgents] = useState({});
+    const [expandedTopicSales, setExpandedTopicSales] = useState({});
+    const [expandedAgentSales, setExpandedAgentSales] = useState({});
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -39,21 +34,15 @@ const SalesReport = () => {
         sessionStorage.setItem('reportEndDate', endDate);
     }, [dateFilter, startDate, endDate]);
 
-    const getDateRange = () => {
-        return getDateRangeLogic(dateFilter, startDate, endDate);
-    };
+    const getDateRange = () => getDateRangeLogic(dateFilter, startDate, endDate);
 
     const fetchData = async () => {
         if (!currentWorkspace?.id) return;
         setLoading(true);
         try {
-            const params = { ...getDateRange(), comparePrevious: true };
-            const [analyticsRes, perfRes] = await Promise.all([
-                contactAPI.getAnalytics(currentWorkspace.id, params),
-                contactAPI.getAgentPerformance(currentWorkspace.id, params)
-            ]);
-            setAnalytics(analyticsRes.data);
-            setAgentPerformance(perfRes.data);
+            const params = getDateRange();
+            const res = await contactAPI.getSalesReport(currentWorkspace.id, params);
+            setData(res.data);
         } catch (err) {
             console.error('Sales report error:', err);
         } finally {
@@ -63,37 +52,7 @@ const SalesReport = () => {
 
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
 
-    const ds = analytics?.dealStats || {};
-    const prev = analytics?.previousPeriod || {};
-    const agents = agentPerformance?.agents || [];
-
-    const calcTrend = (current, previous) => {
-        if (!previous || previous === 0) return null;
-        const pct = ((current - previous) / previous * 100).toFixed(0);
-        return { pct: Math.abs(pct), direction: current >= previous ? 'up' : 'down' };
-    };
-
-    const TrendBadge = ({ current, previous }) => {
-        const trend = calcTrend(current, previous);
-        if (!trend) return null;
-        return (
-            <span className={`kpi-trend ${trend.direction}`}>
-                {trend.direction === 'up' ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
-                %{trend.pct}
-            </span>
-        );
-    };
-
-    // Agent sales sorted by order amount
-    const salesAgents = [...agents].filter(a => (a.dealOrders || 0) > 0 || (a.dealTotalAmount || 0) > 0 || (a.dealWon || 0) > 0)
-        .sort((a, b) => (b.dealTotalAmount || 0) - (a.dealTotalAmount || 0));
-
-    // Extract unique product names for agent table
-    const uniqueProductNames = [...new Set(
-        salesAgents.flatMap(a => Object.keys(a.salesByProduct || {}))
-    )].sort();
-
-    if (loading && !analytics) {
+    if (loading && !data) {
         return (
             <div className="ceo-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
                 <div style={{ textAlign: 'center', color: '#64748b' }}>
@@ -104,137 +63,21 @@ const SalesReport = () => {
         );
     }
 
-    const orderDeals = (ds.recentDeals || []).filter(deal => deal.stage === 'ORDER');
+    const { totalCount = 0, totalAmount = 0, topicGroups = [], agentGroups = [], salesList = [] } = data || {};
+    const maxTopicAmount = topicGroups.length > 0 ? topicGroups[0].amount : 1;
+    const maxAgentAmount = agentGroups.length > 0 ? agentGroups[0].amount : 1;
 
-    const getGroupedSubjects = () => {
-        if (!orderDeals || orderDeals.length === 0) return [];
-        const groups = {};
+    const toggleTopic = (name) => setExpandedTopics(p => ({ ...p, [name]: !p[name] }));
+    const toggleAgent = (name) => setExpandedAgents(p => ({ ...p, [name]: !p[name] }));
+    const toggleTopicSales = (key) => setExpandedTopicSales(p => ({ ...p, [key]: !p[key] }));
+    const toggleAgentSales = (key) => setExpandedAgentSales(p => ({ ...p, [key]: !p[key] }));
 
-        const normalizeTitle = (str) => {
-            if (!str) return 'belirtilmemis';
-            return str
-                .toLocaleLowerCase('tr-TR')
-                .replace(/ğ/g, 'g')
-                .replace(/ü/g, 'u')
-                .replace(/ş/g, 's')
-                .replace(/ı/g, 'i')
-                .replace(/ö/g, 'o')
-                .replace(/ç/g, 'c')
-                .replace(/[^a-z0-9]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-        };
-
-        orderDeals.forEach(deal => {
-            let title = (deal.title || 'Belirtilmemiş').trim();
-            const key = normalizeTitle(title);
-            
-            if (!groups[key]) {
-                groups[key] = {
-                    title: title,
-                    count: 0,
-                    amount: 0,
-                    wonCount: 0,
-                    lostCount: 0,
-                    openCount: 0
-                };
-            }
-            groups[key].count += 1;
-            groups[key].amount += (deal.amount || 0);
-            
-            if (deal.status === 'WON') groups[key].wonCount += 1;
-            else if (deal.status === 'LOST') groups[key].lostCount += 1;
-            else groups[key].openCount += 1;
-        });
-        
-        return Object.values(groups).sort((a, b) => b.count - a.count);
+    // Get sales for a specific topic+agent combination
+    const getSalesFor = (categoryName, agentName) => {
+        return salesList.filter(s =>
+            s.categoryName === categoryName && (agentName ? s.agentName === agentName : true)
+        );
     };
-
-    const getGroupedSources = () => {
-        if (!orderDeals || orderDeals.length === 0) return [];
-        const groups = {};
-
-        orderDeals.forEach(deal => {
-            const rawSource = deal.contact?.source || 'MANUAL';
-            const title = rawSource.charAt(0).toUpperCase() + rawSource.slice(1).toLowerCase();
-            const key = title.toLowerCase();
-            
-            if (!groups[key]) {
-                groups[key] = {
-                    title: title,
-                    count: 0,
-                    amount: 0,
-                    wonCount: 0,
-                    lostCount: 0,
-                    openCount: 0
-                };
-            }
-            groups[key].count += 1;
-            groups[key].amount += (deal.amount || 0);
-            
-            if (deal.status === 'WON') groups[key].wonCount += 1;
-            else if (deal.status === 'LOST') groups[key].lostCount += 1;
-            else groups[key].openCount += 1;
-        });
-        
-        return Object.values(groups).sort((a, b) => b.count - a.count);
-    };
-
-    const getGroupedProducts = () => {
-        if (!orderDeals || orderDeals.length === 0) return [];
-        const products = {};
-        orderDeals.forEach(deal => {
-            let items = [];
-            try {
-                items = typeof deal.products === 'string' ? JSON.parse(deal.products || '[]') : (deal.products || []);
-            } catch { return; }
-            items.forEach(item => {
-                if (!item.name) return;
-                const key = item.name.trim().toLowerCase();
-                if (!products[key]) {
-                    products[key] = { name: item.name.trim(), totalQty: 0, totalRevenue: 0, dealCount: 0 };
-                }
-                products[key].totalQty += (item.quantity || 1);
-                products[key].totalRevenue += ((item.quantity || 1) * (item.unitPrice || 0));
-                products[key].dealCount += 1;
-            });
-        });
-        return Object.values(products).sort((a, b) => b.totalRevenue - a.totalRevenue);
-    };
-
-    const getGroupedProductGroups = () => {
-        // Group products by their catalog group if possible — 
-        // since deals store products inline without group info,
-        // we group by product name prefix or just show per-product
-        // For now, we'll aggregate all unique product names and group by first word as category
-        if (!orderDeals || orderDeals.length === 0) return [];
-        const groups = {};
-        orderDeals.forEach(deal => {
-            let items = [];
-            try {
-                items = typeof deal.products === 'string' ? JSON.parse(deal.products || '[]') : (deal.products || []);
-            } catch { return; }
-            items.forEach(item => {
-                if (!item.name) return;
-                // Use item.group if available (new catalog items may have it), otherwise use product name as group
-                const groupName = item.group || item.name.trim();
-                const key = groupName.toLowerCase();
-                if (!groups[key]) {
-                    groups[key] = { name: groupName, totalQty: 0, totalRevenue: 0, productCount: 0, dealCount: 0 };
-                }
-                groups[key].totalQty += (item.quantity || 1);
-                groups[key].totalRevenue += ((item.quantity || 1) * (item.unitPrice || 0));
-                groups[key].productCount += 1;
-                groups[key].dealCount += 1;
-            });
-        });
-        return Object.values(groups).sort((a, b) => b.totalRevenue - a.totalRevenue);
-    };
-
-    const groupedSubjects = getGroupedSubjects();
-    const groupedSources = getGroupedSources();
-    const groupedProducts = getGroupedProducts();
-    const groupedProductGroups = getGroupedProductGroups();
 
     return (
         <div className="ceo-report">
@@ -243,7 +86,7 @@ const SalesReport = () => {
             <div className="ceo-detail-header">
                 <div className="ceo-detail-header-left">
                     <h1><DollarSign size={24} style={{ color: '#059669' }} /> Satış Raporu</h1>
-                    <p>Teklif, sipariş, fatura ve temsilci bazlı satış performansı</p>
+                    <p>Kategori ve temsilci bazlı satış analizi</p>
                 </div>
                 <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
             </div>
@@ -267,443 +110,288 @@ const SalesReport = () => {
                 </div>
             </div>
 
-            {/* Pipeline Cards */}
-            <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                {/* Teklif */}
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #8b5cf6, #8b5cf688)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><FileText size={20} /></div>
-                    <div className="kpi-label">Teklif</div>
-                    <div className="kpi-value">{formatCurrency(ds.quoteAmount || 0)}</div>
-                    <div className="kpi-sub">{formatNumber(ds.totalQuotes || 0)} Adet</div>
-                </div>
-                {/* Sipariş */}
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><ShoppingCart size={20} /></div>
-                    <div className="kpi-label">Sipariş</div>
-                    <div className="kpi-value">{formatCurrency(ds.orderAmount || 0)}</div>
-                    <div className="kpi-sub">{formatNumber(ds.totalOrders || 0)} Adet</div>
-                    <TrendBadge current={ds.orderAmount || 0} previous={prev.orderAmount} />
-                </div>
-                {/* Fatura */}
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><Receipt size={20} /></div>
-                    <div className="kpi-label">Fatura</div>
-                    <div className="kpi-value">{formatCurrency(ds.invoiceAmount || 0)}</div>
-                    <div className="kpi-sub">{formatNumber(ds.totalInvoices || 0)} Adet</div>
-                </div>
-            </div>
-
-            {/* Status Distribution */}
-            <div className="ceo-section" style={{ marginBottom: 20 }}>
-                <div className="ceo-section-header">
-                    <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
-                    <h2>Durum Dağılımı</h2>
-                </div>
-                <div className="ceo-section-body">
-                    <div className="ceo-mini-grid cols-4">
-                        <div className="ceo-mini-card" style={{ background: '#eff6ff' }}>
-                            <div className="mini-value" style={{ color: '#2563eb', fontSize: '1.4rem' }}>{formatCurrency(ds.openAmount || 0)}</div>
-                            <div className="mini-label" style={{ color: '#3b82f6' }}>Açık</div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{ds.openCount || 0} Adet</div>
-                        </div>
-                        <div className="ceo-mini-card" style={{ background: '#f0fdf4' }}>
-                            <div className="mini-value" style={{ color: '#16a34a', fontSize: '1.4rem' }}>{formatCurrency(ds.wonAmount || 0)}</div>
-                            <div className="mini-label" style={{ color: '#059669' }}>Tamamlandı</div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{ds.wonCount || 0} Adet</div>
-                        </div>
-                        <div className="ceo-mini-card" style={{ background: '#fef2f2' }}>
-                            <div className="mini-value" style={{ color: '#dc2626', fontSize: '1.4rem' }}>{formatCurrency(ds.lostAmount || 0)}</div>
-                            <div className="mini-label" style={{ color: '#dc2626' }}>İptal</div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginTop: 2 }}>{ds.lostCount || 0} Adet</div>
-                        </div>
-                        <div className="ceo-mini-card" style={{ background: '#fef3c7' }}>
-                            <div className="mini-value" style={{ color: '#b45309' }}>
-                                {((ds.wonCount || 0) + (ds.openCount || 0) + (ds.lostCount || 0)) > 0
-                                    ? (((ds.wonCount || 0) / ((ds.wonCount || 0) + (ds.openCount || 0) + (ds.lostCount || 0))) * 100).toFixed(0)
-                                    : 0}%
-                            </div>
-                            <div className="mini-label" style={{ color: '#d97706' }}>Kapanış Oranı</div>
-                        </div>
+            {/* ═══ 1. TOPLAM SATIŞ ═══ */}
+            <div style={{
+                display: 'flex', gap: 20, marginBottom: 24, flexWrap: 'wrap'
+            }}>
+                <div style={{
+                    flex: 1, minWidth: 200,
+                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                    borderRadius: 16, padding: '28px 32px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, opacity: 0.85, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <DollarSign size={16} /> Toplam Satış Tutarı
                     </div>
-
-                    {/* Visual bar */}
-                    {((ds.wonCount || 0) + (ds.openCount || 0) + (ds.lostCount || 0)) > 0 && (
-                        <div style={{ marginTop: 16 }}>
-                            <div style={{ display: 'flex', height: 12, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9' }}>
-                                {ds.wonCount > 0 && <div style={{ width: `${(ds.wonCount / ((ds.wonCount || 0) + (ds.openCount || 0) + (ds.lostCount || 0))) * 100}%`, background: '#10b981', transition: 'width 0.8s' }} title={`Tamamlandı: ${ds.wonCount}`} />}
-                                {ds.openCount > 0 && <div style={{ width: `${(ds.openCount / ((ds.wonCount || 0) + (ds.openCount || 0) + (ds.lostCount || 0))) * 100}%`, background: '#3b82f6', transition: 'width 0.8s' }} title={`Açık: ${ds.openCount}`} />}
-                                {ds.lostCount > 0 && <div style={{ width: `${(ds.lostCount / ((ds.wonCount || 0) + (ds.openCount || 0) + (ds.lostCount || 0))) * 100}%`, background: '#ef4444', transition: 'width 0.8s' }} title={`İptal: ${ds.lostCount}`} />}
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: '#10b981' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#10b981' }} />Tamamlandı</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: '#3b82f6' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#3b82f6' }} />Açık</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.7rem', color: '#ef4444' }}><span style={{ width: 8, height: 8, borderRadius: 2, background: '#ef4444' }} />İptal</span>
-                            </div>
-                        </div>
-                    )}
+                    <div style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                        {formatCurrency(totalAmount)}
+                    </div>
+                </div>
+                <div style={{
+                    flex: 1, minWidth: 200,
+                    background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
+                    borderRadius: 16, padding: '28px 32px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, opacity: 0.85, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <ShoppingCart size={16} /> Toplam Satış Adedi
+                    </div>
+                    <div style={{ fontSize: '2.4rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+                        {totalCount}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', opacity: 0.7, marginTop: 4 }}>
+                        Ort: {totalCount > 0 ? formatCurrency(totalAmount / totalCount) : '₺0'}
+                    </div>
                 </div>
             </div>
 
-            {/* Agent Sales Leaderboard */}
-            {salesAgents.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
+            {/* ═══ 2. KONUYA GÖRE SATIŞ ═══ */}
+            {topicGroups.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 24 }}>
                     <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#ecfdf5', color: '#059669' }}><UserCheck size={18} /></div>
-                        <h2>Satış Lider Tablosu</h2>
+                        <div className="ceo-section-icon" style={{ background: '#ecfdf5', color: '#059669' }}><TrendingUp size={18} /></div>
+                        <h2>Konuya Göre Satış</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
                     </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Temsilci</th>
-                                    <th>Sipariş</th>
-                                    <th>Ciro (₺)</th>
-                                    <th>Ort. Sipariş</th>
-                                    <th>Teklif</th>
-                                    <th>Fatura</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {salesAgents.map((agent, idx) => {
-                                    const avgOrder = (agent.dealOrders || 0) > 0 ? Math.round((agent.dealTotalAmount || 0) / agent.dealOrders) : 0;
-                                    const getMedalClass = (i) => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : 'default';
-                                    const getRowClass = (i) => i === 0 ? 'gold-row' : i === 1 ? 'silver-row' : i === 2 ? 'bronze-row' : '';
-                                    return (
-                                        <tr key={agent.userId || idx} className={getRowClass(idx)}>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <div className={`medal-badge ${getMedalClass(idx)}`}>{idx + 1}</div>
-                                                    {agent.avatar ? (
-                                                        <img src={agent.avatar} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
-                                                    ) : (
-                                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.8rem', color: '#059669' }}>{agent.name?.charAt(0)}</div>
-                                                    )}
-                                                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{agent.name}</span>
-                                                </div>
-                                            </td>
-                                            <td><span style={{ fontWeight: 800, color: '#f59e0b', fontSize: '1.05rem' }}>{agent.dealOrders || 0}</span></td>
-                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1.05rem' }}>{formatCurrency(agent.dealTotalAmount || 0)}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{formatCurrency(avgOrder)}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: '#8b5cf6' }}>{agent.dealQuotes || 0}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: '#10b981' }}>{agent.dealInvoices || 0}</span></td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+                    <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {topicGroups.map((group, gi) => {
+                            const pct = ((group.amount / maxTopicAmount) * 100).toFixed(0);
+                            const isExpanded = expandedTopics[group.name];
+                            return (
+                                <div key={gi} style={{ borderBottom: gi < topicGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    {/* Ana Grup Satırı */}
+                                    <div
+                                        onClick={() => toggleTopic(group.name)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+                                            cursor: 'pointer', transition: 'background 0.15s'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                    >
+                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+                                        </div>
+                                        <span style={{ fontSize: '0.9rem', width: 22, textAlign: 'center' }}>{group.icon || '📁'}</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
+                                        <div style={{ flex: 2, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 200 }}>
+                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${group.color || '#059669'}, ${group.color ? group.color + '99' : '#34d399'})`, borderRadius: 6, transition: 'width 0.6s' }} />
+                                        </div>
+                                        <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#059669', minWidth: 50, textAlign: 'right' }}>{group.count} adet</span>
+                                        <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#0f172a', minWidth: 100, textAlign: 'right' }}>{formatCurrency(group.amount)}</span>
+                                    </div>
 
-            {/* Konu Gruplaması */}
-            {groupedSubjects.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><PieChart size={18} /></div>
-                        <h2>Satış Konuları (Gruplanmış)</h2>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Konu</th>
-                                    <th>Toplam Adet</th>
-                                    <th>Kazanılan (Tamamlandı)</th>
-                                    <th>Açık</th>
-                                    <th>Kaybedilen (İptal)</th>
-                                    <th>Toplam Tutar</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {groupedSubjects.map((grp, idx) => (
-                                    <tr key={idx}>
-                                        <td>
-                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{grp.title}</div>
-                                        </td>
-                                        <td><span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{grp.count}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: '#10b981' }}>{grp.wonCount}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: '#3b82f6' }}>{grp.openCount}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: '#ef4444' }}>{grp.lostCount}</span></td>
-                                        <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(grp.amount)}</span></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* Kaynak Gruplaması */}
-            {groupedSources.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#e0f2fe', color: '#0284c7' }}><PieChart size={18} /></div>
-                        <h2>Satış Kaynakları (Gruplanmış)</h2>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Kaynak</th>
-                                    <th>Toplam Adet</th>
-                                    <th>Kazanılan (Tamamlandı)</th>
-                                    <th>Açık</th>
-                                    <th>Kaybedilen (İptal)</th>
-                                    <th>Toplam Tutar</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {groupedSources.map((grp, idx) => (
-                                    <tr key={idx}>
-                                        <td>
-                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{grp.title}</div>
-                                        </td>
-                                        <td><span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{grp.count}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: '#10b981' }}>{grp.wonCount}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: '#3b82f6' }}>{grp.openCount}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: '#ef4444' }}>{grp.lostCount}</span></td>
-                                        <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(grp.amount)}</span></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* Ürün Bazlı Satışlar */}
-            {groupedProducts.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#fce7f3', color: '#db2777' }}><Package size={18} /></div>
-                        <h2>Ürün Bazlı Satışlar</h2>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Ürün</th>
-                                    <th>Satış Adedi</th>
-                                    <th>Toplam Miktar</th>
-                                    <th>Toplam Ciro</th>
-                                    <th>Oran</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {groupedProducts.map((prod, idx) => {
-                                    const totalRev = groupedProducts.reduce((s, p) => s + p.totalRevenue, 0);
-                                    const pct = totalRev > 0 ? ((prod.totalRevenue / totalRev) * 100).toFixed(1) : 0;
-                                    return (
-                                        <tr key={idx}>
-                                            <td>
-                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{prod.name}</div>
-                                            </td>
-                                            <td><span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{prod.dealCount}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{prod.totalQty}</span></td>
-                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(prod.totalRevenue)}</span></td>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden' }}>
-                                                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #ec4899, #db2777)', borderRadius: 3, transition: 'width 0.6s' }} />
-                                                    </div>
-                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#db2777', minWidth: 36 }}>%{pct}</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* Ürün Grubu Bazlı Satışlar */}
-            {groupedProductGroups.length > 1 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#ede9fe', color: '#7c3aed' }}><PieChart size={18} /></div>
-                        <h2>Ürün Grubu Bazlı Satışlar</h2>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Grup</th>
-                                    <th>Ürün Çeşidi</th>
-                                    <th>Toplam Miktar</th>
-                                    <th>Toplam Ciro</th>
-                                    <th>Oran</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {groupedProductGroups.map((grp, idx) => {
-                                    const totalRev = groupedProductGroups.reduce((s, g) => s + g.totalRevenue, 0);
-                                    const pct = totalRev > 0 ? ((grp.totalRevenue / totalRev) * 100).toFixed(1) : 0;
-                                    return (
-                                        <tr key={idx}>
-                                            <td>
-                                                <span style={{
-                                                    display: 'inline-block', padding: '3px 10px',
-                                                    background: '#ede9fe', color: '#7c3aed',
-                                                    borderRadius: 6, fontSize: '0.78rem', fontWeight: 700
-                                                }}>
-                                                    {grp.name}
-                                                </span>
-                                            </td>
-                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{grp.productCount}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: '#475569' }}>{grp.totalQty}</span></td>
-                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '1rem' }}>{formatCurrency(grp.totalRevenue)}</span></td>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    <div style={{ flex: 1, height: 6, borderRadius: 3, background: '#f1f5f9', overflow: 'hidden' }}>
-                                                        <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #8b5cf6, #7c3aed)', borderRadius: 3, transition: 'width 0.6s' }} />
-                                                    </div>
-                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#7c3aed', minWidth: 36 }}>%{pct}</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* Temsilci Bazlı Ürün/Konu Satışları */}
-            {salesAgents.length > 0 && uniqueProductNames.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#dcfce7', color: '#16a34a' }}><UserCheck size={18} /></div>
-                        <h2>Temsilci ve Konu Bazlı Satışlar (Tamamlanan)</h2>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Temsilci</th>
-                                    {uniqueProductNames.map(name => (
-                                        <th key={name}>{name}</th>
-                                    ))}
-                                    <th>Genel Toplam</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {salesAgents.map((agent, idx) => {
-                                    const products = agent.salesByProduct || {};
-                                    let agentTotalCount = 0;
-                                    let agentTotalAmount = 0;
-                                    return (
-                                        <tr key={idx}>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <img src={agent.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(agent.name || 'U') + '&background=f1f5f9&color=64748b'} alt={agent.name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
-                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{agent.name}</div>
-                                                </div>
-                                            </td>
-                                            {uniqueProductNames.map(name => {
-                                                const p = products[name];
-                                                const c = p ? p.count : 0;
-                                                const a = p ? p.amount : 0;
-                                                agentTotalCount += c;
-                                                agentTotalAmount += a;
+                                    {/* Alt Grup: Temsilciler */}
+                                    {isExpanded && (
+                                        <div style={{ background: '#fafbfc', padding: '0 16px 8px 46px' }}>
+                                            {group.agents.map((agent, ai) => {
+                                                const agentKey = `${group.name}__${agent.name}`;
+                                                const showSales = expandedTopicSales[agentKey];
+                                                const agentSales = getSalesFor(group.name, agent.name);
                                                 return (
-                                                    <td key={name}>
-                                                        {c > 0 ? (
-                                                            <div>
-                                                                <span style={{ fontWeight: 800, color: '#334155', fontSize: '1rem' }}>{c}</span>
-                                                                <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>{formatCurrency(a)}</div>
+                                                    <div key={ai}>
+                                                        <div
+                                                            onClick={() => toggleTopicSales(agentKey)}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                                                                borderRadius: 8, cursor: 'pointer', marginBottom: 2,
+                                                                transition: 'background 0.15s'
+                                                            }}
+                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                        >
+                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showSales ? 'rotate(90deg)' : 'none' }} />
+                                                            <UserCheck size={13} style={{ color: '#6366f1' }} />
+                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', flex: 1 }}>{agent.name}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#6366f1' }}>{agent.count}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', minWidth: 80, textAlign: 'right' }}>{formatCurrency(agent.amount)}</span>
+                                                        </div>
+                                                        {/* Satış listesi */}
+                                                        {showSales && agentSales.length > 0 && (
+                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12 }}>
+                                                                {agentSales.map((s, si) => (
+                                                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.72rem', color: '#64748b' }}>
+                                                                        <Hash size={10} style={{ color: '#cbd5e1' }} />
+                                                                        <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
+                                                                        <span>{s.title}</span>
+                                                                        <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
+                                                                        <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                        ) : (
-                                                            <span style={{ color: '#cbd5e1' }}>-</span>
                                                         )}
-                                                    </td>
+                                                    </div>
                                                 );
                                             })}
-                                            <td>
-                                                <div>
-                                                    <span style={{ fontWeight: 800, color: '#0f172a', fontSize: '1.05rem' }}>{agentTotalCount}</span>
-                                                    <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700 }}>{formatCurrency(agentTotalAmount)}</div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ 3. TEMSİLCİYE GÖRE SATIŞ ═══ */}
+            {agentGroups.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 24 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={18} /></div>
+                        <h2>Temsilciye Göre Satış</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{agentGroups.length} temsilci</span>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {agentGroups.map((group, gi) => {
+                            const pct = ((group.amount / maxAgentAmount) * 100).toFixed(0);
+                            const isExpanded = expandedAgents[group.name];
+                            return (
+                                <div key={gi} style={{ borderBottom: gi < agentGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    {/* Ana Grup Satırı */}
+                                    <div
+                                        onClick={() => toggleAgent(group.name)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+                                            cursor: 'pointer', transition: 'background 0.15s'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                    >
+                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+                                        </div>
+                                        <div style={{
+                                            width: 28, height: 28, borderRadius: '50%',
+                                            background: 'linear-gradient(135deg, #6366f1, #818cf8)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            color: '#fff', fontWeight: 800, fontSize: '0.7rem'
+                                        }}>
+                                            {group.name?.charAt(0)?.toUpperCase() || '?'}
+                                        </div>
+                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
+                                        <div style={{ flex: 2, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 200 }}>
+                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #6366f1, #818cf8)', borderRadius: 6, transition: 'width 0.6s' }} />
+                                        </div>
+                                        <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#6366f1', minWidth: 50, textAlign: 'right' }}>{group.count} adet</span>
+                                        <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#0f172a', minWidth: 100, textAlign: 'right' }}>{formatCurrency(group.amount)}</span>
+                                    </div>
+
+                                    {/* Alt Grup: Konular */}
+                                    {isExpanded && (
+                                        <div style={{ background: '#fafbfc', padding: '0 16px 8px 46px' }}>
+                                            {group.topics.map((topic, ti) => {
+                                                const topicKey = `${group.name}__${topic.name}`;
+                                                const showSales = expandedAgentSales[topicKey];
+                                                const topicSales = salesList.filter(s => s.agentName === group.name && s.categoryName === topic.name);
+                                                return (
+                                                    <div key={ti}>
+                                                        <div
+                                                            onClick={() => toggleAgentSales(topicKey)}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                                                                borderRadius: 8, cursor: 'pointer', marginBottom: 2,
+                                                                transition: 'background 0.15s'
+                                                            }}
+                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                        >
+                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showSales ? 'rotate(90deg)' : 'none' }} />
+                                                            <span style={{ fontSize: '0.8rem' }}>{topic.icon || '📁'}</span>
+                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: topic.color || '#374151', flex: 1 }}>{topic.name}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: topic.color || '#059669' }}>{topic.count}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', minWidth: 80, textAlign: 'right' }}>{formatCurrency(topic.amount)}</span>
+                                                        </div>
+                                                        {/* Satış listesi */}
+                                                        {showSales && topicSales.length > 0 && (
+                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12 }}>
+                                                                {topicSales.map((s, si) => (
+                                                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.72rem', color: '#64748b' }}>
+                                                                        <Hash size={10} style={{ color: '#cbd5e1' }} />
+                                                                        <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
+                                                                        <span>{s.title}</span>
+                                                                        <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
+                                                                        <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ 4. TÜM SATIŞ LİSTESİ ═══ */}
+            {salesList.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 24 }}>
+                    <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><ShoppingCart size={18} /></div>
+                            <h2>Tüm Satış Listesi</h2>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8' }}>{salesList.length} satış</span>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
+                        <table className="ceo-league-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Müşteri</th>
+                                    <th>Kategori</th>
+                                    <th>Temsilci</th>
+                                    <th>Başlık</th>
+                                    <th>Tutar</th>
+                                    <th>Tarih</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {salesList.map((s, idx) => (
+                                    <tr key={s.id}>
+                                        <td><span style={{ fontWeight: 800, color: idx < 3 ? '#059669' : '#94a3b8', fontSize: '0.82rem' }}>{idx + 1}</span></td>
+                                        <td>
+                                            <div>
+                                                <span style={{ fontWeight: 700, fontSize: '0.82rem', color: '#0f172a' }}>{s.contactName}</span>
+                                                {s.contactPhone && <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{s.contactPhone}</div>}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '2px 8px', borderRadius: 6,
+                                                background: s.categoryColor ? s.categoryColor + '18' : '#f1f5f9',
+                                                color: s.categoryColor || '#64748b',
+                                                fontSize: '0.72rem', fontWeight: 600
+                                            }}>
+                                                {s.categoryIcon && <span>{s.categoryIcon}</span>}
+                                                {s.categoryName}
+                                            </span>
+                                        </td>
+                                        <td><span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151' }}>{s.agentName}</span></td>
+                                        <td><span style={{ fontSize: '0.78rem', color: '#64748b' }}>{s.title}</span></td>
+                                        <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '0.88rem' }}>{formatCurrency(s.amount)}</span></td>
+                                        <td><span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span></td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
                 </div>
             )}
 
-            {/* Satış Listesi */}
-            {orderDeals?.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#fef3c7', color: '#d97706' }}><FileText size={18} /></div>
-                        <h2>Satış Listesi</h2>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>Tarih</th>
-                                    <th>Satıcı</th>
-                                    <th>Konu</th>
-                                    <th>Müşteri</th>
-                                    <th>Kaynak</th>
-                                    <th>Durum</th>
-                                    <th>Tutar</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {orderDeals.map((deal, idx) => {
-                                    const statusConfig = {
-                                        'OPEN': { label: 'Açık', bg: '#eff6ff', color: '#3b82f6' },
-                                        'WON': { label: 'Tamamlandı', bg: '#f0fdf4', color: '#10b981' },
-                                        'LOST': { label: 'Tamamlanmadı', bg: '#fef2f2', color: '#ef4444' },
-                                    };
-                                    const st = statusConfig[deal.status] || statusConfig['OPEN'];
-                                    const typeLabel = deal.stage === 'ORDER' ? 'Sipariş' : deal.stage === 'QUOTE' ? 'Teklif' : deal.stage === 'INVOICE' ? 'Fatura' : deal.stage;
-                                    return (
-                                        <tr key={deal.id || idx}>
-                                            <td><span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>{deal.createdAt ? new Date(deal.createdAt).toLocaleDateString('tr-TR') : '-'}</span></td>
-                                            <td>
-                                                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
-                                                    {deal.assignedTo?.name || 'Atanmadı'}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div>
-                                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{deal.title || 'Belirtilmemiş'}</div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: 2 }}>{typeLabel}</div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <div style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 500 }}>
-                                                    {deal.contact?.name || 'İsimsiz Müşteri'}
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '2px 8px', borderRadius: 12 }}>
-                                                    {(deal.contact?.source || 'Manuel').charAt(0).toUpperCase() + (deal.contact?.source || 'MANUAL').slice(1).toLowerCase()}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <span style={{ display: 'inline-block', padding: '4px 10px', borderRadius: 20, background: st.bg, color: st.color, fontSize: '0.75rem', fontWeight: 700 }}>
-                                                    {st.label}
-                                                </span>
-                                            </td>
-                                            <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '0.95rem' }}>{formatCurrency(deal.amount || 0)}</span></td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+            {totalCount === 0 && !loading && (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+                    <ShoppingCart size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
+                    <p style={{ fontSize: '1rem', fontWeight: 600 }}>Bu dönemde satış bulunamadı</p>
+                    <p style={{ fontSize: '0.82rem' }}>Tarih filtresini değiştirmeyi deneyin</p>
                 </div>
             )}
         </div>
