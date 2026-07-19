@@ -213,14 +213,19 @@ const RequestReport = () => {
             </div>
 
             {/* ═══ 2. KONU BAZLI TALEP RAPORU ═══ */}
-            {topicGroups.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 24 }}>
+            <div className="ceo-section" style={{ marginBottom: 24 }}>
                     <div className="ceo-section-header">
                         <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
                         <h2>Konu Bazlı Talep Raporu</h2>
                         <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
                     </div>
                     <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {topicGroups.length === 0 && (
+                            <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
+                                <TrendingUp size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                                <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Konu verisi bulunamadı</p>
+                            </div>
+                        )}
                         {topicGroups.map((group, gi) => {
                             const pct = ((group.count / maxTopicCount) * 100).toFixed(0);
                             const isExpanded = expandedTopics[group.name];
@@ -294,17 +299,21 @@ const RequestReport = () => {
                         })}
                     </div>
                 </div>
-            )}
 
             {/* ═══ 3. AKIŞ BAZLI TALEP RAPORU ═══ */}
-            {funnelGroups.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 24 }}>
+            <div className="ceo-section" style={{ marginBottom: 24 }}>
                     <div className="ceo-section-header">
                         <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><Layers size={18} /></div>
                         <h2>Akış Bazlı Talep Raporu</h2>
                         <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{funnelGroups.length} akış</span>
                     </div>
                     <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {funnelGroups.length === 0 && (
+                            <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
+                                <Layers size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                                <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Akış verisi bulunamadı</p>
+                            </div>
+                        )}
                         {funnelGroups.map((group, gi) => {
                             const pct = ((group.count / maxFunnelCount) * 100).toFixed(0);
                             const isExpanded = expandedFunnels[group.name];
@@ -378,15 +387,6 @@ const RequestReport = () => {
                         })}
                     </div>
                 </div>
-            )}
-
-            {totalCount === 0 && !loading && (
-                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
-                    <ClipboardList size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-                    <p style={{ fontSize: '1rem', fontWeight: 600 }}>Bu dönemde talep bulunamadı</p>
-                    <p style={{ fontSize: '0.82rem' }}>Tarih filtresini değiştirmeyi deneyin</p>
-                </div>
-            )}
         </div>
     );
 };
