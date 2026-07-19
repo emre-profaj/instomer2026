@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase } from 'lucide-react';
 import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
+import { getTopicCategories } from '../../services/topicCategory.api';
 import { activityAPI } from '../../services/activity.api';
 import CaseCards from './CaseCards';
 import TransferModal from '../TransferModal/TransferModal';
@@ -178,6 +179,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [caseIdDropdownOpen, setCaseIdDropdownOpen] = useState(false);
     const [showNewCaseInline, setShowNewCaseInline] = useState(false);
     const [newCaseTitle, setNewCaseTitle] = useState('');
+    const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
+    const [availableCategories, setAvailableCategories] = useState([]);
+    const [categorySearch, setCategorySearch] = useState('');
     const [creatingCase, setCreatingCase] = useState(false);
     const [showExtraFields, setShowExtraFields] = useState(false);
     const [caseStatusDropdownOpen, setCaseStatusDropdownOpen] = useState(false);
@@ -2003,25 +2007,121 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         {/* ── Satır 1: Case ID + Kategori etiketi ── */}
                                         {activeCaseInfo?.caseNumber && (
                                             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                                {/* Kategori etiketi */}
-                                                {activeConv?.topicCategory?.name && (
-                                                    <span style={{
-                                                        background: (activeConv.topicCategory.color || '#6366f1') + '18',
-                                                        color: activeConv.topicCategory.color || '#6366f1',
-                                                        border: `1px solid ${(activeConv.topicCategory.color || '#6366f1')}40`,
-                                                        borderRadius: 4,
-                                                        padding: '1px 6px',
-                                                        fontSize: '0.55rem',
-                                                        fontWeight: 600,
-                                                        whiteSpace: 'nowrap',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: 3
-                                                    }}>
-                                                        {activeConv.topicCategory.icon && <span style={{ fontSize: '0.6rem' }}>{activeConv.topicCategory.icon}</span>}
-                                                        {activeConv.topicCategory.name}
-                                                    </span>
-                                                )}
+                                                {/* Kategori etiketi — tıklanabilir */}
+                                                <div style={{ position: 'relative' }}>
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!categoryDropdownOpen && availableCategories.length === 0) {
+                                                                try {
+                                                                    const res = await getTopicCategories(currentWorkspace.id);
+                                                                    setAvailableCategories(res.data.categories || []);
+                                                                } catch (e) { console.error(e); }
+                                                            }
+                                                            setCategoryDropdownOpen(v => !v);
+                                                            setCategorySearch('');
+                                                        }}
+                                                        style={{
+                                                            background: activeConv?.topicCategory?.name
+                                                                ? (activeConv.topicCategory.color || '#6366f1') + '18'
+                                                                : '#f1f5f9',
+                                                            color: activeConv?.topicCategory?.color || '#64748b',
+                                                            border: `1px solid ${activeConv?.topicCategory?.name ? (activeConv.topicCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
+                                                            borderRadius: 4,
+                                                            padding: '1px 6px',
+                                                            fontSize: '0.55rem',
+                                                            fontWeight: 600,
+                                                            whiteSpace: 'nowrap',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 3,
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        {activeConv?.topicCategory?.icon && <span style={{ fontSize: '0.6rem' }}>{activeConv.topicCategory.icon}</span>}
+                                                        {activeConv?.topicCategory?.name || 'Kategori Seç'}
+                                                        <ChevronDown size={8} style={{ opacity: 0.5 }} />
+                                                    </button>
+
+                                                    {categoryDropdownOpen && (
+                                                        <>
+                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryDropdownOpen(false)} />
+                                                        <div style={{
+                                                            position: 'absolute', top: '100%', right: 0, zIndex: 9999,
+                                                            background: '#fff', border: '1px solid #e5e7eb',
+                                                            borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                                                            minWidth: 220, maxHeight: 280, overflow: 'hidden',
+                                                            marginTop: 4
+                                                        }}>
+                                                            <div style={{ padding: '6px 8px', borderBottom: '1px solid #f1f5f9' }}>
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Kategori ara..."
+                                                                    value={categorySearch}
+                                                                    onChange={e => setCategorySearch(e.target.value)}
+                                                                    autoFocus
+                                                                    style={{
+                                                                        width: '100%', padding: '5px 8px', fontSize: '0.72rem',
+                                                                        border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none'
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                                                                {/* Kategoriyi kaldır seçeneği */}
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        try {
+                                                                            await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null });
+                                                                            setLocalConvOverride(prev => ({ ...(prev || activeConv), topicCategory: null }));
+                                                                            setCategoryDropdownOpen(false);
+                                                                        } catch (e) { console.error(e); }
+                                                                    }}
+                                                                    style={{
+                                                                        width: '100%', padding: '6px 10px', background: 'transparent',
+                                                                        border: 'none', borderBottom: '1px solid #f1f5f9',
+                                                                        fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
+                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
+                                                                    }}
+                                                                >
+                                                                    <X size={12} /> Kategoriyi Kaldır
+                                                                </button>
+                                                                {availableCategories
+                                                                    .filter(c => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                                                                    .map(cat => (
+                                                                        <button
+                                                                            key={cat.id}
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id });
+                                                                                    setLocalConvOverride(prev => ({
+                                                                                        ...(prev || activeConv),
+                                                                                        topicCategory: res.data.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
+                                                                                    }));
+                                                                                    setCategoryDropdownOpen(false);
+                                                                                } catch (e) { console.error(e); }
+                                                                            }}
+                                                                            style={{
+                                                                                width: '100%', padding: '6px 10px',
+                                                                                background: activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent',
+                                                                                border: 'none', fontSize: '0.72rem',
+                                                                                color: '#374151', cursor: 'pointer',
+                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
+                                                                                transition: 'background 0.1s'
+                                                                            }}
+                                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                                                            onMouseLeave={e => { e.currentTarget.style.background = activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent'; }}
+                                                                        >
+                                                                            <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
+                                                                            <span style={{ flex: 1 }}>{cat.name}</span>
+                                                                            {activeConv?.topicCategory?.id === cat.id && <Check size={12} style={{ color: '#22c55e' }} />}
+                                                                        </button>
+                                                                    ))
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                        </>
+                                                    )}
+                                                </div>
                                                 <div style={{ position: 'relative' }}>
                                                     <button
                                                         onClick={() => { setCaseIdDropdownOpen(v => !v); setShowNewCaseInline(false); }}

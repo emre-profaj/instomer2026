@@ -2955,14 +2955,17 @@ export const getContactAnalytics = async (req, res) => {
             console.error('Meeting stats error (non-fatal):', e.message);
         }
 
-        // ── Gelen Talep Analizi (aiTopic bazlı + AI sınıflandırma) ──
+        // ── Gelen Talep Analizi (topicCategory bazlı — yeni kategori sistemi) ──
         let requestAnalysis = { topics: [], totalRequests: 0, withPhoneCount: 0, calledCount: 0, relevantCount: 0 };
         try {
-            // Seçili tarih aralığında oluşturulan kişilerin konuşmalarından aiTopic çek
+            // topicCategory atanmış konuşmaları çek
             const topicConversations = await prisma.conversation.findMany({
                 where: {
                     workspaceId,
-                    aiTopic: { not: null },
+                    OR: [
+                        { topicCategoryId: { not: null } },
+                        { aiTopic: { not: null } }
+                    ],
                     ...(startDate || endDate ? {
                         createdAt: {
                             ...(startDate ? { gte: parseDateStartTR(startDate) } : {}),
@@ -2973,6 +2976,10 @@ export const getContactAnalytics = async (req, res) => {
                 select: {
                     id: true,
                     aiTopic: true,
+                    topicCategoryId: true,
+                    topicCategory: {
+                        select: { id: true, name: true, icon: true, color: true }
+                    },
                     contactId: true,
                     contact: {
                         select: {
@@ -2985,31 +2992,41 @@ export const getContactAnalytics = async (req, res) => {
                 }
             });
 
-            // Step 1: Topic bazlı ham gruplama
+            // Kategori bazlı gruplama — topicCategory varsa onu kullan, yoksa aiTopic
             const topicMap = {};
             const seenContactsByTopic = {};
             for (const conv of topicConversations) {
-                const topic = conv.aiTopic?.trim();
-                if (!topic) continue;
-                if (!topicMap[topic]) {
-                    topicMap[topic] = { topic, count: 0, withPhone: 0, called: 0, relevant: 0, wonCount: 0, wonAmount: 0, contactIds: new Set(), stageDist: {} };
-                    seenContactsByTopic[topic] = new Set();
-                }
-                // Aynı kişi birden fazla konuşma açmış olabilir, unique say
-                if (seenContactsByTopic[topic].has(conv.contactId)) continue;
-                seenContactsByTopic[topic].add(conv.contactId);
+                const catName = conv.topicCategory?.name || conv.aiTopic?.trim();
+                if (!catName) continue;
 
-                const t = topicMap[topic];
+                const key = catName;
+                if (!topicMap[key]) {
+                    topicMap[key] = {
+                        topic: catName,
+                        icon: conv.topicCategory?.icon || null,
+                        color: conv.topicCategory?.color || null,
+                        categoryId: conv.topicCategoryId || null,
+                        count: 0, withPhone: 0, called: 0, relevant: 0,
+                        wonCount: 0, wonAmount: 0,
+                        contactIds: new Set(),
+                        stageDist: {}
+                    };
+                    seenContactsByTopic[key] = new Set();
+                }
+
+                // Aynı kişi birden fazla konuşma açmış olabilir, unique say
+                if (seenContactsByTopic[key].has(conv.contactId)) continue;
+                seenContactsByTopic[key].add(conv.contactId);
+
+                const t = topicMap[key];
                 t.count++;
                 t.contactIds.add(conv.contactId);
                 if (conv.contact?.phone && conv.contact.phone.trim()) {
                     t.withPhone++;
                 }
-                // Aranan mı? calledContactIds set'ini kullan (yukarıda zaten hesaplanmış)
                 if (calledContactIds.has(conv.contactId)) {
                     t.called++;
                 }
-                // İlgili mi? (status OPPORTUNITY, HOT_OPPORTUNITY, MEETING_PLANNED, PROPOSAL, CONVERTED ise ilgili say)
                 const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
                 if (relevantStatuses.includes(conv.contact?.status)) {
                     t.relevant++;
@@ -3026,7 +3043,7 @@ export const getContactAnalytics = async (req, res) => {
                 }
             }
 
-            // Step 1.5: WON deal'leri topic'lere bağla
+            // WON deal'leri topic'lere bağla
             const topicContactIds = new Set();
             for (const t of Object.values(topicMap)) {
                 t.contactIds.forEach(id => topicContactIds.add(id));
@@ -3040,7 +3057,6 @@ export const getContactAnalytics = async (req, res) => {
                     },
                     select: { contactId: true, amount: true }
                 });
-                // contactId → topic mapping
                 const contactToTopics = {};
                 for (const [topicName, tData] of Object.entries(topicMap)) {
                     tData.contactIds.forEach(cid => {
@@ -3057,54 +3073,34 @@ export const getContactAnalytics = async (req, res) => {
                 }
             }
 
-            const rawTopics = Object.keys(topicMap);
-
-            // Step 2: AI sınıflandırma — benzer konuları birleştir
-            let topicsArray;
-            const aiMapping = rawTopics.length > 2 ? await classifyTopicsWithAI(workspaceId, rawTopics) : null;
-            
-            if (aiMapping && Object.keys(aiMapping).length > 0) {
-                // AI sınıflandırma başarılı — kategorilere göre birleştir
-                const categoryMap = {};
-                for (const [rawTopic, rawData] of Object.entries(topicMap)) {
-                    const category = aiMapping[rawTopic] || rawTopic; // fallback to raw if not mapped
-                    if (!categoryMap[category]) {
-                        categoryMap[category] = { topic: category, count: 0, withPhone: 0, called: 0, relevant: 0, wonCount: 0, wonAmount: 0, mergedTopics: [], contactIds: new Set(), stageDist: {} };
-                    }
-                    const cat = categoryMap[category];
-                    cat.count += rawData.count;
-                    cat.withPhone += rawData.withPhone;
-                    cat.called += rawData.called;
-                    cat.relevant += rawData.relevant;
-                    cat.wonCount += (rawData.wonCount || 0);
-                    cat.wonAmount += (rawData.wonAmount || 0);
-                    cat.mergedTopics.push(rawTopic);
-                    rawData.contactIds.forEach(id => cat.contactIds.add(id));
-                    // Merge stage distribution
-                    for (const [sName, sData] of Object.entries(rawData.stageDist || {})) {
-                        if (!cat.stageDist[sName]) cat.stageDist[sName] = { count: 0, color: sData.color };
-                        cat.stageDist[sName].count += sData.count;
-                    }
-                }
-                topicsArray = Object.values(categoryMap)
-                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, wonCount: t.wonCount || 0, wonAmount: t.wonAmount || 0, mergedTopics: t.mergedTopics, stageDist: t.stageDist }))
-                    .sort((a, b) => b.count - a.count);
-                console.log(`🤖 [TopicAI] ${rawTopics.length} raw topics → ${topicsArray.length} categories`);
-            } else {
-                // AI kullanılamadı — ham topicler olduğu gibi
-                topicsArray = Object.values(topicMap)
-                    .map(t => ({ topic: t.topic, count: t.count, withPhone: t.withPhone, called: t.called, relevant: t.relevant, wonCount: t.wonCount || 0, wonAmount: t.wonAmount || 0, stageDist: t.stageDist }))
-                    .sort((a, b) => b.count - a.count);
-            }
+            const topicsArray = Object.values(topicMap)
+                .map(t => ({
+                    topic: t.topic,
+                    icon: t.icon,
+                    color: t.color,
+                    categoryId: t.categoryId,
+                    count: t.count,
+                    withPhone: t.withPhone,
+                    called: t.called,
+                    relevant: t.relevant,
+                    wonCount: t.wonCount || 0,
+                    wonAmount: t.wonAmount || 0,
+                    stageDist: t.stageDist
+                }))
+                .sort((a, b) => b.count - a.count);
 
             const recentConvList = await prisma.conversation.findMany({
                 where: {
                     workspaceId,
-                    aiTopic: { not: null }
+                    OR: [
+                        { topicCategoryId: { not: null } },
+                        { aiTopic: { not: null } }
+                    ]
                 },
                 take: 5,
                 orderBy: { createdAt: 'desc' },
                 include: {
+                    topicCategory: { select: { name: true, icon: true } },
                     contact: {
                         select: {
                             id: true,
@@ -3118,7 +3114,8 @@ export const getContactAnalytics = async (req, res) => {
 
             const recentRequests = recentConvList.map(c => ({
                 id: c.id,
-                topic: c.aiTopic,
+                topic: c.topicCategory?.name || c.aiTopic,
+                icon: c.topicCategory?.icon || null,
                 createdAt: c.createdAt,
                 contactName: c.contact?.name || 'Bilinmeyen Müşteri',
                 phone: c.contact?.phone || '—',
@@ -3131,7 +3128,7 @@ export const getContactAnalytics = async (req, res) => {
                 withPhoneCount: topicsArray.reduce((s, t) => s + t.withPhone, 0),
                 calledCount: topicsArray.reduce((s, t) => s + t.called, 0),
                 relevantCount: topicsArray.reduce((s, t) => s + t.relevant, 0),
-                aiClassified: !!(aiMapping && Object.keys(aiMapping).length > 0),
+                aiClassified: false,
                 recentRequests,
                 stageDistribution: (() => {
                     const overallStageDist = {};

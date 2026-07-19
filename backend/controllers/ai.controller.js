@@ -563,18 +563,25 @@ ${chatLog}
 export const updateConversationAnalysis = async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const { topic, summary } = req.body;
+        const { topic, summary, topicCategoryId } = req.body;
+
+        const data = {};
+        if (topic !== undefined) data.aiTopic = topic || null;
+        if (summary !== undefined) data.aiSummary = summary || null;
+        if (topicCategoryId !== undefined) data.topicCategoryId = topicCategoryId || null;
 
         const updated = await prisma.conversation.update({
             where: { id: conversationId },
-            data: {
-                aiTopic: topic || null,
-                aiSummary: summary || null
+            data,
+            include: {
+                topicCategory: {
+                    select: { id: true, name: true, icon: true, color: true }
+                }
             }
         });
 
         console.log(`✅ Updated AI analysis for conversation ${conversationId}`);
-        res.json({ success: true, topic: updated.aiTopic, summary: updated.aiSummary });
+        res.json({ success: true, topic: updated.aiTopic, summary: updated.aiSummary, topicCategory: updated.topicCategory });
     } catch (error) {
         console.error('Update analysis error:', error);
         res.status(500).json({ error: 'Analiz kaydedilemedi.', details: error.message });

@@ -136,7 +136,7 @@ const RequestReport = () => {
             <div className="ceo-detail-header">
                 <div className="ceo-detail-header-left">
                     <h1><ClipboardList size={24} style={{ color: '#6366f1' }} /> Talep Analizi</h1>
-                    <p>AI destekli konu sınıflandırması ve talep detayları</p>
+                    <p>Kategori bazlı talep analizi ve performans detayları</p>
                 </div>
                 <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
             </div>
@@ -231,10 +231,9 @@ const RequestReport = () => {
                 <div className="ceo-section" style={{ marginBottom: 20 }}>
                     <div className="ceo-section-header">
                         <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><BarChart3 size={18} /></div>
-                        <h2>En Çok Talep Edilen Konular</h2>
+                        <h2>En Çok Talep Edilen Kategoriler</h2>
                         <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>
-                            <Sparkles size={12} style={{ color: '#8b5cf6', marginRight: 4 }} />
-                            AI Sınıflandırma
+                            Kategori Bazlı
                         </span>
                     </div>
                     <div className="ceo-section-body">
@@ -246,9 +245,12 @@ const RequestReport = () => {
                                 return (
                                     <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                                         <span style={{ width: 22, textAlign: 'center', fontWeight: 800, fontSize: '0.72rem', color: idx < 3 ? '#6366f1' : '#94a3b8' }}>{idx + 1}</span>
-                                        <span style={{ minWidth: 140, maxWidth: 200, fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{topic.topic || topic.name}</span>
+                                        <span style={{ minWidth: 140, maxWidth: 200, fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            {topic.icon && <span style={{ fontSize: '0.85rem' }}>{topic.icon}</span>}
+                                            {topic.topic || topic.name}
+                                        </span>
                                         <div style={{ flex: 1, height: 10, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, #6366f1, #818cf8)`, borderRadius: 6, transition: 'width 0.6s ease' }} />
+                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${topic.color || '#6366f1'}, ${topic.color ? topic.color + '99' : '#818cf8'})`, borderRadius: 6, transition: 'width 0.6s ease' }} />
                                         </div>
                                         <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a', minWidth: 36, textAlign: 'right' }}>{topic.count}</span>
                                         <span style={{ fontWeight: 600, fontSize: '0.68rem', color: '#94a3b8', minWidth: 36, textAlign: 'right' }}>{globalPct}%</span>
@@ -301,8 +303,8 @@ const RequestReport = () => {
                                             <td><span style={{ fontWeight: 800, color: idx < 3 ? '#6366f1' : '#94a3b8', fontSize: '0.82rem' }}>{idx + 1}</span></td>
                                             <td>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    {topic.icon && <span style={{ fontSize: '0.9rem' }}>{topic.icon}</span>}
                                                     <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{topic.topic || topic.name}</span>
-                                                    {topic.isAiClassified && <Sparkles size={11} style={{ color: '#8b5cf6' }} />}
                                                 </div>
                                             </td>
                                             <td><span style={{ fontWeight: 800, color: '#6366f1' }}>{topic.count}</span></td>
