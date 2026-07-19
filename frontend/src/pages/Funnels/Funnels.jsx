@@ -902,8 +902,22 @@ const Funnels = () => {
                                 <div className="settings-section-title">🔒 Zorunluluklar</div>
                                 <p className="settings-hint">Bu aşamaya geçerken karşılanması gereken koşullar</p>
                                 {(() => {
-                                    const config = stagePanel.requiredFields ? (typeof stagePanel.requiredFields === 'string' ? JSON.parse(stagePanel.requiredFields) : stagePanel.requiredFields) : { mode: 'FREE', fields: [] };
-                                    const fields = config.fields || [];
+                                    const config = stagePanel.requiredFields ? (typeof stagePanel.requiredFields === 'string' ? JSON.parse(stagePanel.requiredFields) : stagePanel.requiredFields) : { mode: 'FREE', fields: [], autoAdvance: false };
+                                    const existingFields = config.fields || [];
+                                    const AI_FIELDS = [
+                                        { key: 'name', label: '👤 Ad Soyad', desc: 'Müşterinin ismi' },
+                                        { key: 'phone', label: '📞 Telefon', desc: 'Telefon numarası' },
+                                        { key: 'email', label: '📧 E-posta', desc: 'E-posta adresi' },
+                                        { key: 'topic', label: '💬 İlgi Alanı', desc: 'İlgilendiği ürün/hizmet' },
+                                        { key: 'budget', label: '💰 Bütçe', desc: 'Bütçe bilgisi' },
+                                        { key: 'city', label: '📍 Şehir', desc: 'Şehir/konum' },
+                                        { key: 'company', label: '🏢 Firma', desc: 'Firma adı' },
+                                        { key: 'preferredCallTime', label: '⏰ Aranma Zamanı', desc: 'Müsait olduğu saat' },
+                                    ];
+                                    // Mevcut fields listesindeki string alanları (AI tarafından toplanacaklar)
+                                    const activeAiFields = existingFields.filter(f => typeof f === 'string');
+                                    // Mevcut fields listesindeki object alanları (eski zorunluluklar)
+                                    const activeOldFields = existingFields.filter(f => typeof f === 'object' && f.type);
                                     return (
                                         <>
                                             <div className="settings-field">
@@ -919,14 +933,56 @@ const Funnels = () => {
                                             </div>
                                             {config.mode !== 'FREE' && (
                                                 <>
-                                                    {fields.map((f, i) => (
+                                                    {/* AI Bilgi Toplama Alanları */}
+                                                    <div className="settings-field">
+                                                        <label>🤖 Bot'un Toplaması Gereken Bilgiler</label>
+                                                        <p className="settings-hint" style={{margin: '0 0 8px', fontSize: '0.75rem', color: '#64748b'}}>Bot bu bilgileri doğal konuşma akışında müşteriden sorar</p>
+                                                        <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px'}}>
+                                                            {AI_FIELDS.map(af => {
+                                                                const isActive = activeAiFields.includes(af.key);
+                                                                return (
+                                                                    <button
+                                                                        key={af.key}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const newAiFields = isActive
+                                                                                ? activeAiFields.filter(k => k !== af.key)
+                                                                                : [...activeAiFields, af.key];
+                                                                            setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: [...newAiFields, ...activeOldFields] }) }));
+                                                                        }}
+                                                                        style={{
+                                                                            padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', fontWeight: 500,
+                                                                            border: isActive ? '2px solid #10b981' : '1px solid #d1d5db',
+                                                                            background: isActive ? '#ecfdf5' : '#fff',
+                                                                            color: isActive ? '#047857' : '#475569',
+                                                                            cursor: 'pointer', transition: 'all 0.15s'
+                                                                        }}
+                                                                    >
+                                                                        {af.label}{isActive && ' ✓'}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                    {/* Otomatik İlerleme */}
+                                                    <div className="settings-field" style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={config.autoAdvance || false}
+                                                            onChange={e => setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, autoAdvance: e.target.checked }) }))}
+                                                            style={{width: 16, height: 16}}
+                                                        />
+                                                        <label style={{margin: 0, cursor: 'pointer'}}>🚀 Tüm bilgiler tamamlanınca otomatik sonraki aşamaya geç</label>
+                                                    </div>
+                                                    {/* Eski zorunluluklar (NOT, DEAL, APPOINTMENT vb.) */}
+                                                    {activeOldFields.map((f, i) => (
                                                         <div key={i} className="automation-item">
                                                             <select
                                                                 value={f.type}
                                                                 onChange={e => {
-                                                                    const newFields = [...fields];
-                                                                    newFields[i] = { ...f, type: e.target.value };
-                                                                    setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: newFields }) }));
+                                                                    const newOld = [...activeOldFields];
+                                                                    newOld[i] = { ...f, type: e.target.value };
+                                                                    setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: [...activeAiFields, ...newOld] }) }));
                                                                 }}
                                                             >
                                                                 <option value="NOTE">📝 Not girilmeli</option>
@@ -938,21 +994,21 @@ const Funnels = () => {
                                                                 placeholder="Kullanıcıya mesaj"
                                                                 value={f.prompt || ''}
                                                                 onChange={e => {
-                                                                    const newFields = [...fields];
-                                                                    newFields[i] = { ...f, prompt: e.target.value };
-                                                                    setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: newFields }) }));
+                                                                    const newOld = [...activeOldFields];
+                                                                    newOld[i] = { ...f, prompt: e.target.value };
+                                                                    setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: [...activeAiFields, ...newOld] }) }));
                                                                 }}
                                                             />
                                                             <button className="btn-icon" onClick={() => {
-                                                                const newFields = fields.filter((_, idx) => idx !== i);
-                                                                setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: newFields }) }));
+                                                                const newOld = activeOldFields.filter((_, idx) => idx !== i);
+                                                                setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: [...activeAiFields, ...newOld] }) }));
                                                             }}><X size={12} /></button>
                                                         </div>
                                                     ))}
                                                     <button className="btn-add-sm" onClick={() => {
-                                                        const newFields = [...fields, { type: 'NOTE', prompt: '' }];
-                                                        setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: newFields }) }));
-                                                    }}>+ Zorunluluk Ekle</button>
+                                                        const newOld = [...activeOldFields, { type: 'NOTE', prompt: '' }];
+                                                        setStagePanel(p => ({ ...p, requiredFields: JSON.stringify({ ...config, fields: [...activeAiFields, ...newOld] }) }));
+                                                    }}>+ İş Kuralı Ekle</button>
                                                 </>
                                             )}
                                         </>

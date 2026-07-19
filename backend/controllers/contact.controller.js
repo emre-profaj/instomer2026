@@ -3708,9 +3708,11 @@ export const getAgentPerformance = async (req, res) => {
 
             // ── Topic Breakdown per Agent ──
             const agentTopicConvs = await prisma.conversation.findMany({
-                where: { workspaceId, assignedToId: userId, aiTopic: { not: null }, ...dateFilter },
+                where: { workspaceId, assignedToId: userId, OR: [{ aiTopic: { not: null } }, { topicCategoryId: { not: null } }], ...dateFilter },
                 select: {
                     aiTopic: true,
+                    topicCategoryId: true,
+                    topicCategory: { select: { name: true, icon: true } },
                     contactId: true,
                     contact: { select: { funnelStageId: true, status: true } }
                 }
@@ -3719,9 +3721,11 @@ export const getAgentPerformance = async (req, res) => {
             const topicBreakdown = {};
             const seenTopicContacts = {};
             for (const c of agentTopicConvs) {
-                const t = c.aiTopic.trim();
+                // Kategori varsa onu kullan, yoksa aiTopic'e düş
+                const t = c.topicCategory?.name || (c.aiTopic || '').trim();
+                if (!t) continue;
                 if (!topicBreakdown[t]) {
-                    topicBreakdown[t] = { count: 0, converted: 0, opportunity: 0, stages: {} };
+                    topicBreakdown[t] = { count: 0, converted: 0, opportunity: 0, stages: {}, icon: c.topicCategory?.icon || null };
                     seenTopicContacts[t] = new Set();
                 }
                 if (seenTopicContacts[t].has(c.contactId)) continue;
@@ -4731,8 +4735,17 @@ export const getAnalysisReport = async (req, res) => {
             ...dateFilter
         };
         if (agentId) convWhere.assignedToId = agentId;
-        if (topic) convWhere.aiTopic = topic;
-        else convWhere.aiTopic = { not: null };
+        if (topic) {
+            convWhere.OR = [
+                { aiTopic: topic },
+                { topicCategory: { name: topic } }
+            ];
+        } else {
+            convWhere.OR = [
+                { aiTopic: { not: null } },
+                { topicCategoryId: { not: null } }
+            ];
+        }
 
         // Fetch conversations
         const conversations = await prisma.conversation.findMany({
@@ -4740,6 +4753,8 @@ export const getAnalysisReport = async (req, res) => {
             select: {
                 id: true,
                 aiTopic: true,
+                topicCategoryId: true,
+                topicCategory: { select: { name: true, icon: true } },
                 assignedToId: true,
                 channel: true,
                 createdAt: true,
@@ -4777,7 +4792,7 @@ export const getAnalysisReport = async (req, res) => {
         for (const conv of filteredConvs) {
             const aId = conv.assignedToId || '__unassigned';
             const aName = conv.assignedTo?.name || 'Atanmamış';
-            const t = (conv.aiTopic || '').trim();
+            const t = conv.topicCategory?.name || (conv.aiTopic || '').trim();
             if (!t) continue;
 
             topicSet.add(t);

@@ -31,7 +31,7 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
     const defaultResult = {
         classification: 'GENEL',
         confidence: 0,
-        extractedData: { name: null, phone: null, topic: null, preferredCallTime: null, requestedAction: null, requestedDate: null, branchInfo: null },
+        extractedData: { name: null, phone: null, email: null, topic: null, preferredCallTime: null, requestedAction: null, requestedDate: null, branchInfo: null, budget: null, city: null, company: null, source: null },
         isQualifiedLead: false,
         matchedFunnelId: null,
         reasoning: 'Sınıflandırma yapılamadı'
@@ -160,11 +160,16 @@ ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ ###\nAşağıdaki kate
 2. Yapılandırılmış veri çıkar:
    - name: Kişinin adı soyadı (konuşmada açıkça söylediyse. Platform adını KULLANMA, null yaz)
    - phone: Telefon numarası (konuşmada paylaştıysa. Yoksa null)
+   - email: E-posta adresi (konuşmada paylaştıysa. Yoksa null)
    - topic: Konuşmanın ana konusu / ilgilenilen hizmet (kısa, 3-5 kelime)
    - preferredCallTime: Aranmak istediği zaman (örn: "12:00-15:00", "yarın öğleden sonra")
    - requestedAction: CALL (aranmak istiyor), VISIT (ziyaret istiyor), MEETING (görüşme istiyor), null
    - requestedDate: Talep edilen tarih (ISO format: "2026-06-05", null ise bugün)
    - branchInfo: Şube veya branş bilgisi (varsa)
+   - budget: Bütçe/fiyat aralığı (konuşmada belirtildiyse, null yoksa)
+   - city: Şehir/ilçe bilgisi (konuşmada geçtiyse)
+   - company: Firma/şirket adı (konuşmada söylendiyse)
+   - source: Nereden geldiği (örn: "Instagram reklamı", "arkadaş tavsiyesi" — konuşmada geçtiyse)
 
 3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz. Hiçbirine uymuyorsa null yaz ama emin değilsen en yakın olanı seç.
 
@@ -176,11 +181,16 @@ SADECE JSON döndür, başka bir şey yazma:
   "extractedData": {
     "name": "Arzu Yılmaz",
     "phone": "+905324715163",
+    "email": null,
     "topic": "2+1 Konut İlgisi",
     "preferredCallTime": "12:00-15:00",
     "requestedAction": "CALL",
     "requestedDate": null,
-    "branchInfo": null
+    "branchInfo": null,
+    "budget": null,
+    "city": null,
+    "company": null,
+    "source": null
   },
   "matchedFunnelId": null,
   "topicCategoryId": null,
@@ -314,9 +324,12 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
         const convForChannel = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { channel: true } });
         const channel = convForChannel?.channel || 'UNKNOWN';
 
-        // --- Kişi bilgilerini güncelle (eksik olanları doldur) ---
+        // --- Kişi bilgilerini güncelle (SADECE kişisel bilgiler) ---
+        // NOT: budget, source, city, company gibi talep bazlı veriler Contact'a yazılmaz!
+        // Bunlar classificationData JSON'ında Conversation üzerinde kalır.
+        // Çünkü bir kişi birden fazla taleple ilgilenebilir (her biri farklı bütçe/konu).
         if (extractedData) {
-            const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, phone: true } });
+            const contact = await prisma.contact.findUnique({ where: { id: contactId }, select: { name: true, phone: true, email: true } });
             const updateData = {};
             if (extractedData.name && (!contact?.name || contact.name === 'Instagram Kullanıcısı' || contact.name === 'Web Kullanıcısı')) {
                 updateData.name = extractedData.name;
@@ -324,6 +337,9 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
             if (extractedData.phone && !contact?.phone) {
                 updateData.phone = extractedData.phone;
+            }
+            if (extractedData.email && !contact?.email) {
+                updateData.email = extractedData.email;
             }
             if (Object.keys(updateData).length > 0) {
                 await prisma.contact.update({ where: { id: contactId }, data: updateData });

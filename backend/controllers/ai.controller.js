@@ -1409,6 +1409,9 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     teamIds: true,
                     routingState: true,
                     appointmentState: true,
+                    funnelStageId: true,
+                    classificationData: true,
+                    aiTopic: true,
                     assignedBot: { include: { documents: true } },
                     facebookPage: {
                         include: {
@@ -1724,6 +1727,23 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             enhancedSystemPrompt = isEnglish
                 ? `⛔ IMPORTANT: Customer's name and phone number are ALREADY KNOWN. Do NOT ask for this information again!\n\n${enhancedSystemPrompt}`
                 : `⛔ ÖNEMLİ: Müşterinin isim ve telefon bilgisi ZATEN VAR. Bu bilgileri TEKRAR SORMA!\n\n${enhancedSystemPrompt}`;
+        }
+
+        // Aşama gereksinim kontrolü — eksik alanları bot'a bildir
+        let stageQualHint = '';
+        if (conversation?.funnelStageId) {
+            try {
+                const { checkStageRequirements } = await import('../services/stageQualification.service.js');
+                const stageReq = await checkStageRequirements(conversationId);
+                if (stageReq.promptHint) {
+                    stageQualHint = stageReq.promptHint;
+                }
+            } catch (sqErr) {
+                console.error('⚠️ [StageQual] Non-fatal error:', sqErr.message);
+            }
+        }
+        if (stageQualHint) {
+            enhancedSystemPrompt += stageQualHint;
         }
 
         // Build enhanced system instruction with clear structure
@@ -2894,6 +2914,19 @@ ${systemPrompt}${appointmentContextPrompt}`;
                 console.log(`⏰ [Follow-up] lastBotMessageAt updated for ${conversationId}`);
             } catch (e) {
                 console.error(`❌ [Follow-up] Failed to update lastBotMessageAt:`, e.message);
+            }
+        }
+
+        // Aşama otomatik ilerleme kontrolü
+        if (conversationId) {
+            try {
+                const { tryAutoAdvance } = await import('../services/stageQualification.service.js');
+                const advancedTo = await tryAutoAdvance(conversationId);
+                if (advancedTo) {
+                    console.log(`🚀 [AutoAdvance] ${conversationId}: Aşama otomatik ilerletildi`);
+                }
+            } catch (aaErr) {
+                console.error('⚠️ [AutoAdvance] Non-fatal:', aaErr.message);
             }
         }
 
