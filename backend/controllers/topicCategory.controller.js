@@ -505,7 +505,7 @@ export const importFromExcel = async (req, res) => {
         }
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
         const prompt = `Bir şirketin (${workspace?.companyName || workspace?.name || 'Bilinmeyen'}) ürün/hizmet listesini içeren Excel dosyası içeriği aşağıda. 
 
