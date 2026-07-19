@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -64,6 +64,7 @@ const Sidebar = () => {
         { path: '/assistants', icon: Bot, label: t('nav.assistants') },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
+        { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' },
         { path: '/automations', icon: Zap, label: t('nav.automations') },
         { path: '/functions', icon: Wrench, label: 'Fonksiyonlar (API)' }
     ];
@@ -71,8 +72,7 @@ const Sidebar = () => {
     const salesSubItems = [
         { path: '/quotes', icon: FileText, label: 'Teklifler' },
         { path: '/orders', icon: ShoppingCart, label: 'Siparişler' },
-        { path: '/invoices', icon: Receipt, label: 'Faturalar' },
-        { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' }
+        { path: '/invoices', icon: Receipt, label: 'Faturalar' }
     ];
 
     const workspaceMember = currentWorkspace?.members?.find(m => m.userId === user?.id);
