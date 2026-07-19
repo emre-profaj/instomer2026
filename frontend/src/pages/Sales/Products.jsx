@@ -227,17 +227,37 @@ const Products = () => {
 
         try {
             setLoading(true);
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('workspaceId', currentWorkspace.id);
+            showToast('📊 Excel analiz ediliyor...', 'info');
 
-            await importFromExcel(formData);
-            showToast('Excel başarıyla içe aktarıldı.');
+            // Tarayıcıda Excel parse et
+            const XLSX = await import('xlsx');
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data);
+
+            let textContent = '';
+            for (const sheetName of workbook.SheetNames) {
+                const sheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+                textContent += `--- Sayfa: ${sheetName} ---\n`;
+                if (rows[0]) textContent += `Başlıklar: ${rows[0].join(' | ')}\n`;
+                textContent += rows.slice(1, 300).map(r => r.join(' | ')).join('\n') + '\n\n';
+            }
+
+            if (!textContent.trim()) {
+                showToast('Dosya boş veya okunamadı.', 'error');
+                return;
+            }
+
+            // Metin olarak backend'e gönder
+            const res = await importFromExcel(currentWorkspace.id, textContent);
+            const p = res.data.products;
+            const c = res.data.categories;
+            showToast(`✅ ${p.created} ürün + ${c.created} kategori oluşturuldu!`);
             fetchProducts();
             fetchGroups();
         } catch (error) {
             console.error('Excel import error:', error);
-            showToast('Excel içe aktarılırken bir hata oluştu.', 'error');
+            showToast(`❌ ${error.response?.data?.error || error.message}`, 'error');
         } finally {
             setLoading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';

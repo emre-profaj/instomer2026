@@ -470,34 +470,13 @@ function getCategoryIcon(name) {
 export const importFromExcel = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const file = req.file;
+        const { textContent } = req.body;
 
-        if (!file) {
-            return res.status(400).json({ error: 'Dosya yüklenmedi' });
+        if (!textContent || !textContent.trim()) {
+            return res.status(400).json({ error: 'Dosya içeriği boş' });
         }
 
-        // Excel/CSV oku
-        const XLSX = await import('xlsx');
-        const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-
-        // Tüm sayfaları birleştir
-        let allRows = [];
-        for (const sheetName of workbook.SheetNames) {
-            const sheet = workbook.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-            allRows.push({ sheet: sheetName, rows });
-        }
-
-        // İlk 500 satırı AI'a gönder (çok büyük dosyalar için limit)
-        const flatContent = allRows.map(s => {
-            const header = s.rows[0] ? s.rows[0].join(' | ') : '';
-            const dataRows = s.rows.slice(1, 300).map(r => r.join(' | ')).join('\n');
-            return `--- Sayfa: ${s.sheet} ---\nBaşlıklar: ${header}\n${dataRows}`;
-        }).join('\n\n');
-
-        if (!flatContent.trim()) {
-            return res.status(400).json({ error: 'Dosya boş veya okunamadı' });
-        }
+        const flatContent = textContent.trim();
 
         // Workspace bilgilerini al
         const workspace = await prisma.workspace.findUnique({

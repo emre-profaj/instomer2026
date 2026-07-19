@@ -1,5 +1,4 @@
 import express from 'express';
-import multer from 'multer';
 import {
   getCategories,
   createCategory,
@@ -13,7 +12,6 @@ import {
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
 router.use(authenticateJWT);
 
 // CRUD
@@ -27,7 +25,7 @@ router.put('/:workspaceId/reorder', requireWorkspaceAccess, reorderCategories);
 router.post('/:workspaceId/auto-generate', requireWorkspaceAccess, autoGenerateCategories);
 
 // Excel import
-router.post('/:workspaceId/import-excel', requireWorkspaceAccess, upload.single('file'), importFromExcel);
+router.post('/:workspaceId/import-excel', requireWorkspaceAccess, importFromExcel);
 
 // Backfill existing conversations
 router.post('/:workspaceId/backfill', requireWorkspaceAccess, backfillConversations);
