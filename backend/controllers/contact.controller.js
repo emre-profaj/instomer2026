@@ -5038,7 +5038,7 @@ export const getSalesReport = async (req, res) => {
             if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
         }
 
-        // WON deal'ları çek — case üzerinden topicCategory bilgisiyle
+        // WON deal'ları çek — conversation üzerinden topicCategory bilgisiyle
         const deals = await prisma.deal.findMany({
             where: {
                 workspaceId,
@@ -5063,29 +5063,23 @@ export const getSalesReport = async (req, res) => {
                         email: true
                     }
                 },
-                caseId: true,
-                case: {
+                conversationId: true,
+                conversation: {
                     select: {
-                        conversations: {
-                            where: { topicCategoryId: { not: null } },
-                            select: {
-                                topicCategory: { select: { id: true, name: true, icon: true, color: true } }
-                            },
-                            take: 1,
-                            orderBy: { lastMessageAt: 'desc' }
-                        }
+                        topicCategoryId: true,
+                        topicCategory: { select: { id: true, name: true, icon: true, color: true } }
                     }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        // Her deal'a topicCategory ekle — önce case'den, yoksa contact'ın conversation'ından
+        // Her deal'a topicCategory ekle — önce kendi conversation'ından, yoksa contact'ın conversation'ından
         const salesList = await Promise.all(deals.map(async (d) => {
-            // 1. Deal'ın kendi case'inden topicCategory
-            let topicCat = d.case?.conversations?.[0]?.topicCategory || null;
+            // 1. Deal'ın kendi conversation'ının topicCategory'si
+            let topicCat = d.conversation?.topicCategory || null;
 
-            // 2. Case yoksa veya topic yoksa, contact'ın conversation'larından bul
+            // 2. Conversation yoksa veya topic yoksa, contact'ın conversation'larından bul
             if (!topicCat && d.contactId) {
                 const contactConv = await prisma.conversation.findFirst({
                     where: { contactId: d.contactId, topicCategoryId: { not: null } },
