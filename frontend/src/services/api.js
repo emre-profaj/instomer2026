@@ -434,6 +434,7 @@ export const contactAPI = {
     getTopicContacts: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/topic-contacts`, { params }),
     getAnalysis: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/analysis`, { params }),
     getSalesReport: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/sales-report`, { params }),
+    getRequestReport: (workspaceId, params = {}) => api.get(`/contacts/${workspaceId}/request-report`, { params }),
     block: (workspaceId, id, reason) => api.post(`/contacts/${workspaceId}/${id}/block`, { reason }),
     unblock: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/unblock`),
     archive: (workspaceId, id) => api.post(`/contacts/${workspaceId}/${id}/archive`),

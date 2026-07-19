@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, PhoneCall,
-    Users, MessageSquare, Sparkles, BarChart3, ChevronDown, X, ExternalLink
+    ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, DollarSign,
+    Users, ShoppingCart, TrendingUp, ChevronRight, Hash, Layers,
+    UserCheck, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -17,39 +18,61 @@ const formatNumber = (n) => {
     return n.toLocaleString('tr-TR');
 };
 
+const formatCurrency = (n) => {
+    if (!n && n !== 0) return '₺0';
+    return (n || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 });
+};
+
+const StageBadges = ({ stages, max = 5 }) => {
+    if (!stages || stages.length === 0) return <span style={{ color: '#d1d5db', fontSize: '0.68rem' }}>—</span>;
+    return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            {stages.slice(0, max).map((s, i) => (
+                <span key={i} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                    padding: '2px 6px', borderRadius: 6,
+                    background: `${s.color || '#64748b'}18`,
+                    fontSize: '0.66rem', fontWeight: 600, color: s.color || '#64748b',
+                    whiteSpace: 'nowrap'
+                }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: s.color || '#64748b' }} />
+                    {s.name?.length > 10 ? s.name.slice(0, 10) + '..' : s.name} {s.count}
+                </span>
+            ))}
+        </div>
+    );
+};
+
 const RequestReport = () => {
     const { currentWorkspace } = useAuth();
     const navigate = useNavigate();
-    const [analytics, setAnalytics] = useState(null);
+    const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
+    const [expandedTopics, setExpandedTopics] = useState({});
+    const [expandedTopicAgents, setExpandedTopicAgents] = useState({});
+    const [expandedFunnels, setExpandedFunnels] = useState({});
+    const [expandedFunnelTopics, setExpandedFunnelTopics] = useState({});
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
         sessionStorage.setItem('reportStartDate', startDate);
         sessionStorage.setItem('reportEndDate', endDate);
     }, [dateFilter, startDate, endDate]);
-    const [showAllTopics, setShowAllTopics] = useState(false);
-    const [selectedTopic, setSelectedTopic] = useState(null);
-    const [topicContacts, setTopicContacts] = useState([]);
-    const [topicContactsLoading, setTopicContactsLoading] = useState(false);
 
-    const getDateRange = () => {
-        return getDateRangeLogic(dateFilter, startDate, endDate);
-    };
+    const getDateRange = () => getDateRangeLogic(dateFilter, startDate, endDate);
 
     const fetchData = async () => {
         if (!currentWorkspace?.id) return;
         setLoading(true);
         try {
-            const dateParams = getDateRange();
-            const params = { ...dateParams, comparePrevious: true };
-            const res = await contactAPI.getAnalytics(currentWorkspace.id, params);
-            setAnalytics(res.data);
+            const params = getDateRange();
+            const res = await contactAPI.getRequestReport(currentWorkspace.id, params);
+            setData(res.data);
         } catch (err) {
-            console.error('Request report fetch error:', err);
+            console.error('Request report error:', err);
         } finally {
             setLoading(false);
         }
@@ -57,68 +80,7 @@ const RequestReport = () => {
 
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
 
-    const fetchTopicContacts = async (topicName) => {
-        if (!currentWorkspace?.id) return;
-        setSelectedTopic(topicName);
-        setTopicContactsLoading(true);
-        try {
-            const dateParams = getDateRange();
-            const res = await contactAPI.getTopicContacts(currentWorkspace.id, { topic: topicName, ...dateParams });
-            setTopicContacts(res.data?.contacts || []);
-        } catch (err) {
-            console.error('Topic contacts error:', err);
-            setTopicContacts([]);
-        } finally {
-            setTopicContactsLoading(false);
-        }
-    };
-
-    const reqAnalysis = analytics?.requestAnalysis || {};
-    const topics = reqAnalysis.topics || [];
-    const prev = analytics?.previousPeriod || {};
-
-    // Merge similar topics (basic normalization - backup for any backend didn't catch)
-    const mergedTopics = [];
-    const seen = new Map();
-    for (const t of topics) {
-        const key = (t.topic || t.name || '').toLowerCase().trim().replace(/\s+/g, ' ');
-        if (seen.has(key)) {
-            const existing = mergedTopics[seen.get(key)];
-            existing.count = (existing.count || 0) + (t.count || 0);
-            existing.withPhone = (existing.withPhone || 0) + (t.withPhone || 0);
-            existing.called = (existing.called || 0) + (t.called || 0);
-            existing.interested = (existing.interested || 0) + (t.interested || 0);
-            existing.relevant = (existing.relevant || 0) + (t.relevant || 0);
-            existing.wonCount = (existing.wonCount || 0) + (t.wonCount || 0);
-            existing.wonAmount = (existing.wonAmount || 0) + (t.wonAmount || 0);
-            // Merge stageDist
-            if (t.stageDist) {
-                if (!existing.stageDist) existing.stageDist = {};
-                for (const [sName, sData] of Object.entries(t.stageDist)) {
-                    if (!existing.stageDist[sName]) existing.stageDist[sName] = { count: 0, color: sData.color };
-                    existing.stageDist[sName].count += sData.count;
-                }
-            }
-        } else {
-            seen.set(key, mergedTopics.length);
-            mergedTopics.push({ ...t, stageDist: t.stageDist ? { ...t.stageDist } : {} });
-        }
-    }
-    const sortedTopics = [...mergedTopics].sort((a, b) => (b.count || 0) - (a.count || 0));
-    const displayTopics = showAllTopics ? sortedTopics : sortedTopics.slice(0, 15);
-    const maxTopicCount = sortedTopics.length > 0 ? sortedTopics[0].count : 1;
-    const totalTopicCount = sortedTopics.reduce((s, t) => s + (t.count || 0), 0) || 1;
-
-    const totalRequests = reqAnalysis.totalRequests || analytics?.totalContacts || 0;
-    const totalWithPhone = reqAnalysis.withPhoneCount || reqAnalysis.totalWithPhone || 0;
-    const totalCalled = reqAnalysis.calledCount || reqAnalysis.totalCalled || 0;
-    const totalInterested = reqAnalysis.relevantCount || reqAnalysis.totalInterested || 0;
-
-    // Overall stage distribution from backend or computed
-    const overallStageDist = reqAnalysis.stageDistribution || {};
-    const stageDistEntries = Object.entries(overallStageDist).sort((a, b) => b[1].count - a[1].count);
-
-    if (loading && !analytics) {
+    if (loading && !data) {
         return (
             <div className="ceo-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
                 <div style={{ textAlign: 'center', color: '#64748b' }}>
@@ -129,14 +91,28 @@ const RequestReport = () => {
         );
     }
 
-    const mainContent = (
+    const {
+        totalCount = 0, withPhoneCount = 0, relevantCount = 0, irrelevantCount = 0,
+        totalWonCount = 0, totalWonAmount = 0,
+        topicGroups = [], funnelGroups = []
+    } = data || {};
+
+    const toggleTopic = (n) => setExpandedTopics(p => ({ ...p, [n]: !p[n] }));
+    const toggleTopicAgent = (k) => setExpandedTopicAgents(p => ({ ...p, [k]: !p[k] }));
+    const toggleFunnel = (n) => setExpandedFunnels(p => ({ ...p, [n]: !p[n] }));
+    const toggleFunnelTopic = (k) => setExpandedFunnelTopics(p => ({ ...p, [k]: !p[k] }));
+
+    const maxTopicCount = topicGroups.length > 0 ? topicGroups[0].count : 1;
+    const maxFunnelCount = funnelGroups.length > 0 ? funnelGroups[0].count : 1;
+
+    return (
         <div className="ceo-report">
             <button className="ceo-back-btn" onClick={() => navigate('/general-report')}><ArrowLeft size={16} /> Dashboard</button>
 
             <div className="ceo-detail-header">
                 <div className="ceo-detail-header-left">
-                    <h1><ClipboardList size={24} style={{ color: '#6366f1' }} /> Talep Analizi</h1>
-                    <p>Kategori bazlı talep analizi ve performans detayları</p>
+                    <h1><ClipboardList size={24} style={{ color: '#6366f1' }} /> Talep Raporu</h1>
+                    <p>Kategori, temsilci ve akış bazlı talep analizi</p>
                 </div>
                 <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
             </div>
@@ -160,312 +136,258 @@ const RequestReport = () => {
                 </div>
             </div>
 
-            {/* Summary KPIs */}
-            <div className="ceo-detail-kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #6366f1, #6366f188)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#eef2ff', color: '#6366f1' }}><Users size={20} /></div>
-                    <div className="kpi-label">Toplam Talep</div>
-                    <div className="kpi-value">{formatNumber(totalRequests)}</div>
+            {/* ═══ 1. TOPLAM KPI'LAR ═══ */}
+            <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
+                {/* Toplam Talep */}
+                <div style={{
+                    flex: '1 1 160px', minWidth: 160,
+                    background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
+                    borderRadius: 16, padding: '24px 24px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(99, 102, 241, 0.3)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <Users size={14} /> Toplam Talep
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.02em' }}>{formatNumber(totalCount)}</div>
                 </div>
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #10b981, #10b98188)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#10b981' }}><Phone size={20} /></div>
-                    <div className="kpi-label">Numaralı</div>
-                    <div className="kpi-value">{formatNumber(totalWithPhone)}</div>
+
+                {/* Numaralı */}
+                <div style={{
+                    flex: '1 1 160px', minWidth: 160,
+                    background: 'linear-gradient(135deg, #10b981 0%, #34d399 100%)',
+                    borderRadius: 16, padding: '24px 24px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(16, 185, 129, 0.3)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <Phone size={14} /> Numaralı
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 900 }}>{formatNumber(withPhoneCount)}</div>
+                    <div style={{ fontSize: '0.72rem', opacity: 0.7 }}>{totalCount > 0 ? ((withPhoneCount / totalCount) * 100).toFixed(0) : 0}%</div>
                 </div>
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #059669, #05966988)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#ecfdf5', color: '#059669' }}><PhoneCall size={20} /></div>
-                    <div className="kpi-label">Arandı</div>
-                    <div className="kpi-value">{formatNumber(totalCalled)}</div>
+
+                {/* Satış */}
+                <div style={{
+                    flex: '1 1 200px', minWidth: 200,
+                    background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                    borderRadius: 16, padding: '24px 24px', color: '#fff',
+                    boxShadow: '0 8px 32px rgba(5, 150, 105, 0.3)',
+                    position: 'relative', overflow: 'hidden'
+                }}>
+                    <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600, opacity: 0.85, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <ShoppingCart size={14} /> Satış
+                    </div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 900 }}>{totalWonCount} adet</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, opacity: 0.9 }}>{formatCurrency(totalWonAmount)}</div>
                 </div>
-                <div className="ceo-detail-kpi-card">
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: 'linear-gradient(90deg, #f59e0b, #f59e0b88)' }} />
-                    <div className="kpi-icon-wrap" style={{ background: '#fef3c7', color: '#d97706' }}><Sparkles size={20} /></div>
-                    <div className="kpi-label">İlgili Çıktı</div>
-                    <div className="kpi-value">{formatNumber(totalInterested)}</div>
+
+                {/* İlgili / İlgisiz */}
+                <div style={{
+                    flex: '1 1 200px', minWidth: 200,
+                    background: '#fff', borderRadius: 16, padding: '24px 24px',
+                    border: '1px solid #e2e8f0', boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+                    display: 'flex', gap: 20, alignItems: 'center'
+                }}>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#f59e0b', marginBottom: 4 }}>
+                            <ThumbsUp size={14} />
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>İlgili</span>
+                        </div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>{formatNumber(relevantCount)}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{totalCount > 0 ? ((relevantCount / totalCount) * 100).toFixed(0) : 0}%</div>
+                    </div>
+                    <div style={{ width: 1, height: 40, background: '#e2e8f0' }} />
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, color: '#94a3b8', marginBottom: 4 }}>
+                            <ThumbsDown size={14} />
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>İlgisiz</span>
+                        </div>
+                        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a' }}>{formatNumber(irrelevantCount)}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{totalCount > 0 ? ((irrelevantCount / totalCount) * 100).toFixed(0) : 0}%</div>
+                    </div>
                 </div>
             </div>
 
-            {/* Stage Distribution Overview */}
-            {stageDistEntries.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
+            {/* ═══ 2. KONU BAZLI TALEP RAPORU ═══ */}
+            {topicGroups.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 24 }}>
                     <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#f0fdf4', color: '#10b981' }}><BarChart3 size={18} /></div>
-                        <h2>Talep Son Durum Dağılımı</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>
-                            Kişilerin mevcut aşaması
-                        </span>
+                        <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
+                        <h2>Konu Bazlı Talep Raporu</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
                     </div>
-                    <div className="ceo-section-body">
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-                            {stageDistEntries.map(([sName, sData]) => (
-                                <div key={sName} style={{ 
-                                    display: 'flex', alignItems: 'center', gap: 8, 
-                                    padding: '8px 14px', borderRadius: 10, 
-                                    background: `${sData.color || '#64748b'}12`, 
-                                    border: `1px solid ${sData.color || '#64748b'}30` 
-                                }}>
-                                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: sData.color || '#64748b' }} />
-                                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#1e293b' }}>{sName}</span>
-                                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: sData.color || '#64748b' }}>{sData.count}</span>
-                                </div>
-                            ))}
-                        </div>
-                        {/* Horizontal stacked bar */}
-                        <div style={{ display: 'flex', height: 14, borderRadius: 8, overflow: 'hidden', background: '#f1f5f9' }}>
-                            {stageDistEntries.map(([sName, sData]) => {
-                                const pct = (sData.count / totalRequests) * 100;
-                                return pct > 0 ? (
-                                    <div key={sName} style={{ width: `${pct}%`, background: sData.color || '#64748b', transition: 'width 0.6s ease' }} title={`${sName}: ${sData.count} (${pct.toFixed(1)}%)`} />
-                                ) : null;
-                            })}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Top Topics Bar Chart */}
-            {sortedTopics.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header">
-                        <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><BarChart3 size={18} /></div>
-                        <h2>En Çok Talep Edilen Kategoriler</h2>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>
-                            Kategori Bazlı
-                        </span>
-                    </div>
-                    <div className="ceo-section-body">
-                        {/* Simple horizontal bar chart for top 10 */}
-                        <div style={{ marginBottom: 20 }}>
-                            {sortedTopics.slice(0, 10).map((topic, idx) => {
-                                const pct = ((topic.count / maxTopicCount) * 100).toFixed(0);
-                                const globalPct = ((topic.count / totalTopicCount) * 100).toFixed(1);
-                                return (
-                                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                                        <span style={{ width: 22, textAlign: 'center', fontWeight: 800, fontSize: '0.72rem', color: idx < 3 ? '#6366f1' : '#94a3b8' }}>{idx + 1}</span>
-                                        <span style={{ minWidth: 140, maxWidth: 200, fontSize: '0.82rem', fontWeight: 600, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                            {topic.icon && <span style={{ fontSize: '0.85rem' }}>{topic.icon}</span>}
-                                            {topic.topic || topic.name}
-                                        </span>
-                                        <div style={{ flex: 1, height: 10, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
-                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${topic.color || '#6366f1'}, ${topic.color ? topic.color + '99' : '#818cf8'})`, borderRadius: 6, transition: 'width 0.6s ease' }} />
+                    <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {topicGroups.map((group, gi) => {
+                            const pct = ((group.count / maxTopicCount) * 100).toFixed(0);
+                            const isExpanded = expandedTopics[group.name];
+                            return (
+                                <div key={gi} style={{ borderBottom: gi < topicGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    {/* Ana Grup */}
+                                    <div
+                                        onClick={() => toggleTopic(group.name)}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', transition: 'background 0.15s' }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                    >
+                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
                                         </div>
-                                        <span style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a', minWidth: 36, textAlign: 'right' }}>{topic.count}</span>
-                                        <span style={{ fontWeight: 600, fontSize: '0.68rem', color: '#94a3b8', minWidth: 36, textAlign: 'right' }}>{globalPct}%</span>
-                                        {(topic.wonCount || 0) > 0 && (
+                                        <span style={{ fontSize: '0.9rem', width: 22, textAlign: 'center' }}>{group.icon || '📁'}</span>
+                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', minWidth: 120 }}>{group.name}</span>
+                                        <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 160 }}>
+                                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${group.color || '#6366f1'}, ${group.color ? group.color + '99' : '#818cf8'})`, borderRadius: 6, transition: 'width 0.6s' }} />
+                                        </div>
+                                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#6366f1', minWidth: 40, textAlign: 'right' }}>{group.count}</span>
+                                        <StageBadges stages={group.stages} max={3} />
+                                        {group.wonCount > 0 && (
                                             <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
-                                                {topic.wonCount} satış · {(topic.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}
+                                                {group.wonCount} satış · {formatCurrency(group.wonAmount)}
                                             </span>
                                         )}
                                     </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-            )}
 
-            {/* Full Topic Table */}
-            {sortedTopics.length > 0 && (
-                <div className="ceo-section" style={{ marginBottom: 20 }}>
-                    <div className="ceo-section-header" style={{ justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><ClipboardList size={18} /></div>
-                            <h2>Konu Detay Tablosu</h2>
-                        </div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8' }}>{sortedTopics.length} konu</span>
-                    </div>
-                    <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto' }}>
-                        <table className="ceo-league-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Konu</th>
-                                    <th>Toplam</th>
-                                    <th>Aşama Dağılımı</th>
-                                    <th>Numaralı</th>
-                                    <th>Arandı</th>
-                                    <th>İlgili</th>
-                                    <th>Satış Adet</th>
-                                    <th>Satış Tutar</th>
-                                    <th>Arama %</th>
-                                    <th>İlgi %</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {displayTopics.map((topic, idx) => {
-                                    const callRate = (topic.withPhone || 0) > 0 ? (((topic.called || 0) / topic.withPhone) * 100).toFixed(0) : '-';
-                                    const interestRate = (topic.count || 0) > 0 ? (((topic.relevant || topic.interested || 0) / topic.count) * 100).toFixed(0) : '-';
-                                    return (
-                                        <tr key={idx} style={{ cursor: 'pointer' }} onClick={() => fetchTopicContacts(topic.topic || topic.name)} title="Kişi listesini görmek için tıklayın">
-                                            <td><span style={{ fontWeight: 800, color: idx < 3 ? '#6366f1' : '#94a3b8', fontSize: '0.82rem' }}>{idx + 1}</span></td>
-                                            <td>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    {topic.icon && <span style={{ fontSize: '0.9rem' }}>{topic.icon}</span>}
-                                                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>{topic.topic || topic.name}</span>
-                                                </div>
-                                            </td>
-                                            <td><span style={{ fontWeight: 800, color: '#6366f1' }}>{topic.count}</span></td>
-                                            <td>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                                                    {Object.entries(topic.stageDist || {}).sort((a, b) => b[1].count - a[1].count).slice(0, 4).map(([sName, sData]) => (
-                                                        <span key={sName} style={{ 
-                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                            padding: '2px 6px', borderRadius: 6, 
-                                                            background: `${sData.color || '#64748b'}18`, 
-                                                            fontSize: '0.68rem', fontWeight: 600, color: sData.color || '#64748b',
-                                                            whiteSpace: 'nowrap'
-                                                        }}>
-                                                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: sData.color || '#64748b' }} />
-                                                            {sName.length > 10 ? sName.slice(0, 10) + '..' : sName} {sData.count}
-                                                        </span>
-                                                    ))}
-                                                    {Object.keys(topic.stageDist || {}).length === 0 && <span style={{ color: '#d1d5db', fontSize: '0.68rem' }}>—</span>}
-                                                </div>
-                                            </td>
-                                            <td><span style={{ fontWeight: 700, color: (topic.withPhone || 0) > 0 ? '#10b981' : '#d1d5db' }}>{topic.withPhone || 0}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: (topic.called || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.called || 0}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: (topic.relevant || topic.interested || 0) > 0 ? '#f59e0b' : '#d1d5db' }}>{topic.relevant || topic.interested || 0}</span></td>
-                                            <td><span style={{ fontWeight: 700, color: (topic.wonCount || 0) > 0 ? '#059669' : '#d1d5db' }}>{topic.wonCount || 0}</span></td>
-                                            <td>{(topic.wonAmount || 0) > 0 ? <span style={{ fontWeight: 700, color: '#059669', fontSize: '0.82rem' }}>{(topic.wonAmount || 0).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })}</span> : <span style={{ color: '#d1d5db' }}>—</span>}</td>
-                                            <td>
-                                                {callRate !== '-' ? (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                        <span style={{ fontWeight: 700, color: parseInt(callRate) > 70 ? '#10b981' : parseInt(callRate) > 40 ? '#f59e0b' : '#ef4444', fontSize: '0.85rem' }}>{callRate}%</span>
-                                                        <div style={{ width: 36, height: 3, background: '#f1f5f9', borderRadius: 2 }}><div style={{ height: '100%', width: `${callRate}%`, background: parseInt(callRate) > 70 ? '#10b981' : parseInt(callRate) > 40 ? '#f59e0b' : '#ef4444', borderRadius: 2 }} /></div>
+                                    {/* Alt Grup: Temsilciler */}
+                                    {isExpanded && (
+                                        <div style={{ background: '#fafbfc', padding: '4px 16px 8px 46px' }}>
+                                            {group.agents.map((agent, ai) => {
+                                                const agentKey = `${group.name}__${agent.name}`;
+                                                const showDetail = expandedTopicAgents[agentKey];
+                                                return (
+                                                    <div key={ai}>
+                                                        <div
+                                                            onClick={() => toggleTopicAgent(agentKey)}
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s', marginBottom: 2 }}
+                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                        >
+                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showDetail ? 'rotate(90deg)' : 'none' }} />
+                                                            <UserCheck size={13} style={{ color: '#6366f1' }} />
+                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', flex: 1 }}>{agent.name}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#6366f1', minWidth: 30 }}>{agent.count}</span>
+                                                            {agent.wonCount > 0 && (
+                                                                <span style={{ fontWeight: 600, fontSize: '0.65rem', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: 4 }}>
+                                                                    {agent.wonCount} satış
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {showDetail && (
+                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12, padding: '4px 12px' }}>
+                                                                <StageBadges stages={agent.stages} max={10} />
+                                                                {agent.wonAmount > 0 && (
+                                                                    <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
+                                                                        Satış: {formatCurrency(agent.wonAmount)}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ) : <span style={{ color: '#d1d5db' }}>-</span>}
-                                            </td>
-                                            <td>
-                                                {interestRate !== '-' ? (
-                                                    <span style={{ fontWeight: 700, color: parseInt(interestRate) > 50 ? '#10b981' : '#64748b', fontSize: '0.85rem' }}>{interestRate}%</span>
-                                                ) : <span style={{ color: '#d1d5db' }}>-</span>}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                        {sortedTopics.length > 15 && (
-                            <div style={{ textAlign: 'center', padding: '14px' }}>
-                                <button
-                                    onClick={() => setShowAllTopics(!showAllTopics)}
-                                    style={{ border: 'none', background: '#f8fafc', padding: '8px 20px', borderRadius: 10, fontSize: '0.78rem', fontWeight: 600, color: '#6366f1', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                                >
-                                    {showAllTopics ? 'Daha az göster' : `Tümünü göster (${sortedTopics.length})`}
-                                    <ChevronDown size={14} style={{ transform: showAllTopics ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-                                </button>
-                            </div>
-                        )}
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
-            {/* No data */}
-            {sortedTopics.length === 0 && !loading && (
-                <div className="ceo-section">
-                    <div className="ceo-section-body" style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-                        <ClipboardList size={32} style={{ marginBottom: 12 }} />
-                        <p>Henüz konu sınıflandırma verisi bulunamadı</p>
+            {/* ═══ 3. AKIŞ BAZLI TALEP RAPORU ═══ */}
+            {funnelGroups.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 24 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#f5f3ff', color: '#8b5cf6' }}><Layers size={18} /></div>
+                        <h2>Akış Bazlı Talep Raporu</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{funnelGroups.length} akış</span>
                     </div>
+                    <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {funnelGroups.map((group, gi) => {
+                            const pct = ((group.count / maxFunnelCount) * 100).toFixed(0);
+                            const isExpanded = expandedFunnels[group.name];
+                            return (
+                                <div key={gi} style={{ borderBottom: gi < funnelGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    {/* Ana Grup */}
+                                    <div
+                                        onClick={() => toggleFunnel(group.name)}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', cursor: 'pointer', transition: 'background 0.15s' }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                    >
+                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+                                        </div>
+                                        <Layers size={16} style={{ color: '#8b5cf6' }} />
+                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', minWidth: 120 }}>{group.name}</span>
+                                        <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 160 }}>
+                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)', borderRadius: 6, transition: 'width 0.6s' }} />
+                                        </div>
+                                        <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#8b5cf6', minWidth: 40, textAlign: 'right' }}>{group.count}</span>
+                                        <StageBadges stages={group.stages} max={3} />
+                                        {group.wonCount > 0 && (
+                                            <span style={{ fontWeight: 700, fontSize: '0.7rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: 6, whiteSpace: 'nowrap' }}>
+                                                {group.wonCount} satış · {formatCurrency(group.wonAmount)}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Alt Grup: Konular */}
+                                    {isExpanded && (
+                                        <div style={{ background: '#fafbfc', padding: '4px 16px 8px 46px' }}>
+                                            {group.topics.map((topic, ti) => {
+                                                const topicKey = `${group.name}__${topic.name}`;
+                                                const showDetail = expandedFunnelTopics[topicKey];
+                                                return (
+                                                    <div key={ti}>
+                                                        <div
+                                                            onClick={() => toggleFunnelTopic(topicKey)}
+                                                            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s', marginBottom: 2 }}
+                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                        >
+                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showDetail ? 'rotate(90deg)' : 'none' }} />
+                                                            <span style={{ fontSize: '0.8rem' }}>{topic.icon || '📁'}</span>
+                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: topic.color || '#374151', flex: 1 }}>{topic.name}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.78rem', color: topic.color || '#6366f1', minWidth: 30 }}>{topic.count}</span>
+                                                            {topic.wonCount > 0 && (
+                                                                <span style={{ fontWeight: 600, fontSize: '0.65rem', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: 4 }}>
+                                                                    {topic.wonCount} satış
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {showDetail && (
+                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12, padding: '4px 12px' }}>
+                                                                <StageBadges stages={topic.stages} max={10} />
+                                                                {topic.wonAmount > 0 && (
+                                                                    <div style={{ marginTop: 4, fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
+                                                                        Satış: {formatCurrency(topic.wonAmount)}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {totalCount === 0 && !loading && (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94a3b8' }}>
+                    <ClipboardList size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
+                    <p style={{ fontSize: '1rem', fontWeight: 600 }}>Bu dönemde talep bulunamadı</p>
+                    <p style={{ fontSize: '0.82rem' }}>Tarih filtresini değiştirmeyi deneyin</p>
                 </div>
             )}
         </div>
-    );
-
-    // Contact list modal
-    const statusLabels = {
-        NEW: 'Yeni', OPPORTUNITY: 'Fırsat', HOT_OPPORTUNITY: 'Sıcak Fırsat',
-        INFORMED: 'Bilgi Verildi', MEETING_PLANNED: 'Görüşme Planlandı',
-        PROPOSAL: 'Teklif', CONVERTED: 'Satış', UNREACHABLE: 'Ulaşılamadı', LOST: 'Kayıp'
-    };
-    const statusColors = {
-        NEW: '#6366f1', OPPORTUNITY: '#f59e0b', HOT_OPPORTUNITY: '#ef4444',
-        INFORMED: '#0ea5e9', MEETING_PLANNED: '#8b5cf6',
-        PROPOSAL: '#f97316', CONVERTED: '#10b981', UNREACHABLE: '#94a3b8', LOST: '#ef4444'
-    };
-
-    return (
-        <>
-            {mainContent}
-
-            {/* Topic Contact List Modal */}
-            {selectedTopic && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-                     onClick={() => setSelectedTopic(null)}>
-                    <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 900, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
-                         onClick={e => e.stopPropagation()}>
-                        {/* Modal Header */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#1e293b' }}>{selectedTopic}</h3>
-                                <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                                    {topicContactsLoading ? 'Yükleniyor...' : `${topicContacts.length} kişi`}
-                                </p>
-                            </div>
-                            <button onClick={() => setSelectedTopic(null)} style={{ border: 'none', background: '#f1f5f9', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-                                <X size={18} color="#64748b" />
-                            </button>
-                        </div>
-                        {/* Modal Body */}
-                        <div style={{ overflowY: 'auto', flex: 1 }}>
-                            {topicContactsLoading ? (
-                                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-                                    <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
-                                    <p>Kişiler yükleniyor...</p>
-                                </div>
-                            ) : topicContacts.length === 0 ? (
-                                <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-                                    <Users size={28} style={{ marginBottom: 8 }} />
-                                    <p>Bu konuda kişi bulunamadı</p>
-                                </div>
-                            ) : (
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                                    <thead>
-                                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>#</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>İsim</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Telefon</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Durum</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Aşama</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Temsilci</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Kanal</th>
-                                            <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#475569' }}>Tarih</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {topicContacts.map((c, idx) => (
-                                            <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={{ padding: '8px 14px', color: '#94a3b8', fontWeight: 600 }}>{idx + 1}</td>
-                                                <td style={{ padding: '8px 14px', fontWeight: 700, color: '#1e293b' }}>{c.name}</td>
-                                                <td style={{ padding: '8px 14px', color: '#475569' }}>{c.phone || '—'}</td>
-                                                <td style={{ padding: '8px 14px' }}>
-                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${statusColors[c.status] || '#94a3b8'}15`, color: statusColors[c.status] || '#94a3b8' }}>
-                                                        {statusLabels[c.status] || c.status}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '8px 14px' }}>
-                                                    {c.stageName ? (
-                                                        <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, background: `${c.stageColor || '#64748b'}15`, color: c.stageColor || '#64748b' }}>
-                                                            {c.stageName}
-                                                        </span>
-                                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                                </td>
-                                                <td style={{ padding: '8px 14px', fontWeight: 600, color: c.assigneeName ? '#1e293b' : '#d1d5db' }}>{c.assigneeName || '—'}</td>
-                                                <td style={{ padding: '8px 14px', fontWeight: 600, color: '#64748b', fontSize: '0.75rem' }}>{c.channel || '—'}</td>
-                                                <td style={{ padding: '8px 14px', color: '#94a3b8', fontSize: '0.75rem' }}>{c.conversationCreatedAt ? new Date(c.conversationCreatedAt).toLocaleDateString('tr-TR') : '—'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-        </>
     );
 };
 

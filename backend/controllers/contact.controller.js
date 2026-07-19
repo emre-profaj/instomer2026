@@ -5175,3 +5175,220 @@ export const getSalesReport = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+// ── Talep Raporu (topicCategory + funnel bazlı) ──
+export const getRequestReport = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { startDate, endDate } = req.query;
+
+        let dateFilter = {};
+        if (startDate || endDate) {
+            dateFilter.createdAt = {};
+            if (startDate) dateFilter.createdAt.gte = parseDateStartTR(startDate);
+            if (endDate) dateFilter.createdAt.lte = parseDateEndTR(endDate);
+        }
+
+        // Tüm konuşmaları çek — topicCategory, contact (funnelStage, deals), assignedTo
+        const conversations = await prisma.conversation.findMany({
+            where: {
+                workspaceId,
+                OR: [
+                    { topicCategoryId: { not: null } },
+                    { aiTopic: { not: null } }
+                ],
+                ...dateFilter
+            },
+            select: {
+                id: true,
+                aiTopic: true,
+                topicCategoryId: true,
+                topicCategory: { select: { id: true, name: true, icon: true, color: true } },
+                assignedToId: true,
+                assignedTo: { select: { id: true, name: true } },
+                contactId: true,
+                contact: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        status: true,
+                        funnelStageId: true,
+                        funnelStage: {
+                            select: {
+                                id: true,
+                                name: true,
+                                color: true,
+                                funnel: { select: { id: true, name: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // WON deal'ları çek (contactId bazlı)
+        const allContactIds = [...new Set(conversations.map(c => c.contactId).filter(Boolean))];
+        const wonDeals = allContactIds.length > 0 ? await prisma.deal.findMany({
+            where: { workspaceId, status: 'WON', contactId: { in: allContactIds } },
+            select: { contactId: true, amount: true }
+        }) : [];
+        const contactWonMap = {};
+        for (const d of wonDeals) {
+            if (!contactWonMap[d.contactId]) contactWonMap[d.contactId] = { count: 0, amount: 0 };
+            contactWonMap[d.contactId].count++;
+            contactWonMap[d.contactId].amount += (d.amount || 0);
+        }
+
+        // Stage lookup
+        const allFunnels = await prisma.funnel.findMany({
+            where: { workspaceId },
+            include: { stages: { select: { id: true, name: true, color: true }, orderBy: { order: 'asc' } } }
+        });
+        const stageLookup = {};
+        for (const f of allFunnels) {
+            for (const s of f.stages) {
+                stageLookup[s.id] = { name: s.name, color: s.color, funnelName: f.name, funnelId: f.id };
+            }
+        }
+
+        // Dedup: aynı kişiyi aynı kategoride 1 kez say
+        const seenContacts = {};
+        const items = [];
+        for (const conv of conversations) {
+            const catName = conv.topicCategory?.name || conv.aiTopic?.trim();
+            if (!catName || !conv.contactId) continue;
+            const dedup = `${catName}__${conv.contactId}`;
+            if (seenContacts[dedup]) continue;
+            seenContacts[dedup] = true;
+
+            const stageInfo = conv.contact?.funnelStageId ? stageLookup[conv.contact.funnelStageId] : null;
+            const won = contactWonMap[conv.contactId] || null;
+            const hasPhone = !!(conv.contact?.phone && conv.contact.phone.trim());
+            const relevantStatuses = ['OPPORTUNITY', 'HOT_OPPORTUNITY', 'MEETING_PLANNED', 'PROPOSAL', 'CONVERTED'];
+            const isRelevant = relevantStatuses.includes(conv.contact?.status);
+
+            items.push({
+                contactId: conv.contactId,
+                categoryName: catName,
+                categoryIcon: conv.topicCategory?.icon || null,
+                categoryColor: conv.topicCategory?.color || null,
+                agentName: conv.assignedTo?.name || 'Atanmamış',
+                agentId: conv.assignedToId,
+                hasPhone,
+                isRelevant,
+                stageName: stageInfo?.name || 'Atanmamış',
+                stageColor: stageInfo?.color || '#94a3b8',
+                funnelName: stageInfo?.funnelName || 'Akış Yok',
+                funnelId: stageInfo?.funnelId || null,
+                wonCount: won?.count || 0,
+                wonAmount: won?.amount || 0
+            });
+        }
+
+        // Toplam KPI
+        const totalCount = items.length;
+        const withPhoneCount = items.filter(i => i.hasPhone).length;
+        const relevantCount = items.filter(i => i.isRelevant).length;
+        const irrelevantCount = totalCount - relevantCount;
+        const totalWonCount = items.filter(i => i.wonCount > 0).length;
+        const totalWonAmount = items.reduce((s, i) => s + i.wonAmount, 0);
+
+        // ── Konu Bazlı Gruplama ──
+        const byTopic = {};
+        for (const item of items) {
+            const key = item.categoryName;
+            if (!byTopic[key]) {
+                byTopic[key] = {
+                    name: key, icon: item.categoryIcon, color: item.categoryColor,
+                    count: 0, withPhone: 0, relevant: 0, wonCount: 0, wonAmount: 0,
+                    agents: {}, stages: {}
+                };
+            }
+            const g = byTopic[key];
+            g.count++;
+            if (item.hasPhone) g.withPhone++;
+            if (item.isRelevant) g.relevant++;
+            if (item.wonCount > 0) { g.wonCount++; g.wonAmount += item.wonAmount; }
+
+            // Agent sub-group
+            if (!g.agents[item.agentName]) {
+                g.agents[item.agentName] = { name: item.agentName, count: 0, relevant: 0, wonCount: 0, wonAmount: 0, stages: {} };
+            }
+            const ag = g.agents[item.agentName];
+            ag.count++;
+            if (item.isRelevant) ag.relevant++;
+            if (item.wonCount > 0) { ag.wonCount++; ag.wonAmount += item.wonAmount; }
+            // Agent stage dist
+            if (!ag.stages[item.stageName]) ag.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
+            ag.stages[item.stageName].count++;
+
+            // Stage dist for topic
+            if (!g.stages[item.stageName]) g.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
+            g.stages[item.stageName].count++;
+        }
+        const topicGroups = Object.values(byTopic)
+            .map(g => ({
+                ...g,
+                agents: Object.values(g.agents).map(a => ({ ...a, stages: Object.values(a.stages).sort((x, y) => y.count - x.count) })).sort((a, b) => b.count - a.count),
+                stages: Object.values(g.stages).sort((a, b) => b.count - a.count)
+            }))
+            .sort((a, b) => b.count - a.count);
+
+        // ── Akış Bazlı Gruplama ──
+        const byFunnel = {};
+        for (const item of items) {
+            const key = item.funnelName;
+            if (!byFunnel[key]) {
+                byFunnel[key] = {
+                    name: key, funnelId: item.funnelId,
+                    count: 0, relevant: 0, wonCount: 0, wonAmount: 0,
+                    topics: {}, stages: {}
+                };
+            }
+            const g = byFunnel[key];
+            g.count++;
+            if (item.isRelevant) g.relevant++;
+            if (item.wonCount > 0) { g.wonCount++; g.wonAmount += item.wonAmount; }
+
+            // Topic sub-group
+            if (!g.topics[item.categoryName]) {
+                g.topics[item.categoryName] = {
+                    name: item.categoryName, icon: item.categoryIcon, color: item.categoryColor,
+                    count: 0, relevant: 0, wonCount: 0, wonAmount: 0, stages: {}
+                };
+            }
+            const tg = g.topics[item.categoryName];
+            tg.count++;
+            if (item.isRelevant) tg.relevant++;
+            if (item.wonCount > 0) { tg.wonCount++; tg.wonAmount += item.wonAmount; }
+            if (!tg.stages[item.stageName]) tg.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
+            tg.stages[item.stageName].count++;
+
+            // Stage dist for funnel
+            if (!g.stages[item.stageName]) g.stages[item.stageName] = { name: item.stageName, color: item.stageColor, count: 0 };
+            g.stages[item.stageName].count++;
+        }
+        const funnelGroups = Object.values(byFunnel)
+            .map(g => ({
+                ...g,
+                topics: Object.values(g.topics).map(t => ({ ...t, stages: Object.values(t.stages).sort((x, y) => y.count - x.count) })).sort((a, b) => b.count - a.count),
+                stages: Object.values(g.stages).sort((a, b) => b.count - a.count)
+            }))
+            .sort((a, b) => b.count - a.count);
+
+        res.json({
+            totalCount,
+            withPhoneCount,
+            relevantCount,
+            irrelevantCount,
+            totalWonCount,
+            totalWonAmount,
+            topicGroups,
+            funnelGroups
+        });
+    } catch (error) {
+        console.error('Request report error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
