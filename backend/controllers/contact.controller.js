@@ -5233,6 +5233,18 @@ export const getRequestReport = async (req, res) => {
             }
         }
 
+        // 4. Randevular (Appointment tablosundan)
+        const appointments = await prisma.appointment.findMany({
+            where: { workspaceId, ...dateFilter },
+            select: { assignedToId: true, createdById: true }
+        });
+        // Agent bazlı randevu sayısı
+        const appointmentsByAgent = {};
+        for (const apt of appointments) {
+            const key = apt.assignedToId || apt.createdById || '__unassigned__';
+            appointmentsByAgent[key] = (appointmentsByAgent[key] || 0) + 1;
+        }
+
         // ── Temsilci bazlı tablo verisi ──
         const agentMap = {};
         const getAgent = (id, name) => {
@@ -5262,7 +5274,6 @@ export const getRequestReport = async (req, res) => {
             for (const act of (c.activities || [])) {
                 if (act.type === 'CALL') ag.calls++;
                 else if (act.type === 'MEETING') ag.meetings++;
-                else if (act.type === 'REMINDER') ag.appointments++;
                 else if (act.type === 'PROPOSAL') ag.proposals++;
                 else if (act.type === 'ORDER') ag.orders++;
             }
@@ -5271,8 +5282,8 @@ export const getRequestReport = async (req, res) => {
             const conv = c.conversations?.[0];
             if (conv?._count?.messages) ag.messageCount += conv._count.messages;
 
-            // Konu
-            const catName = conv?.topicCategory?.name || conv?.aiTopic?.trim() || c.title || 'Kategorisiz';
+            // Konu (sadece topicCategory kullan, aiTopic/title kirli veri)
+            const catName = conv?.topicCategory?.name || 'Kategorisiz';
             if (!ag.topicBreakdown[catName]) {
                 ag.topicBreakdown[catName] = { count: 0, wonCount: 0, wonAmount: 0 };
             }
@@ -5295,23 +5306,28 @@ export const getRequestReport = async (req, res) => {
             else if (d.stage === 'ORDER') ag.dealOrders++;
             else if (d.stage === 'INVOICE') ag.dealInvoices++;
 
+            const catName = 'Manuel Satış';
+            if (!ag.topicBreakdown[catName]) {
+                ag.topicBreakdown[catName] = { count: 0, wonCount: 0, wonAmount: 0 };
+            }
+            ag.topicBreakdown[catName].count++;
+
             if (d.status === 'WON') {
                 ag.wonCount++;
                 ag.wonAmount += (d.amount || 0);
-                // Konu
-                const catName = d.title || 'Manuel Satış';
-                if (!ag.topicBreakdown[catName]) {
-                    ag.topicBreakdown[catName] = { count: 0, wonCount: 0, wonAmount: 0 };
-                }
-                ag.topicBreakdown[catName].count++;
                 ag.topicBreakdown[catName].wonCount++;
                 ag.topicBreakdown[catName].wonAmount += (d.amount || 0);
+            }
+        }
+
+        // Randevu sayılarını agent'lara uygula (Appointment tablosundan)
+        for (const [key, count] of Object.entries(appointmentsByAgent)) {
+            if (agentMap[key]) {
+                agentMap[key].appointments = count;
             } else {
-                const catName = d.title || 'Manuel Satış';
-                if (!ag.topicBreakdown[catName]) {
-                    ag.topicBreakdown[catName] = { count: 0, wonCount: 0, wonAmount: 0 };
-                }
-                ag.topicBreakdown[catName].count++;
+                // Agent henüz map'te yoksa oluştur
+                const ag = getAgent(key, null);
+                ag.appointments = count;
             }
         }
 
@@ -5354,7 +5370,7 @@ export const getRequestReport = async (req, res) => {
         // Case'lerden
         for (const c of cases) {
             const conv = c.conversations?.[0];
-            const catName = conv?.topicCategory?.name || conv?.aiTopic?.trim() || c.title || 'Kategorisiz';
+            const catName = conv?.topicCategory?.name || 'Kategorisiz';
             if (!byTopic[catName]) {
                 byTopic[catName] = {
                     name: catName,
@@ -5369,15 +5385,14 @@ export const getRequestReport = async (req, res) => {
             for (const act of (c.activities || [])) {
                 if (act.type === 'CALL') g.calls++;
                 else if (act.type === 'MEETING') g.meetings++;
-                else if (act.type === 'REMINDER') g.appointments++;
                 else if (act.type === 'PROPOSAL') g.proposals++;
                 else if (act.type === 'ORDER') g.orders++;
             }
             if (c.status === 'WON') g.wonCount++;
         }
-        // Deal'lerden
+        // Deal'lerden — hepsi 'Manuel Satış' kategorisi
         for (const d of deals) {
-            const catName = d.title || 'Manuel Satış';
+            const catName = 'Manuel Satış';
             if (!byTopic[catName]) {
                 byTopic[catName] = {
                     name: catName, icon: null, color: null,

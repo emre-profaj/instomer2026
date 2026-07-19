@@ -196,20 +196,20 @@ const RequestReport = () => {
             </div>
 
             {/* ═══ TEMSİLCİ BAZLI TABLO ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24 }}>
+            <div className="ceo-section" style={{ marginBottom: 24, overflow: 'visible' }}>
                 <div className="ceo-section-header">
                     <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><UserCheck size={18} /></div>
                     <h2>Temsilci Bazlı Talep Raporu</h2>
                     <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{agentTable.length} temsilci</span>
                 </div>
-                <div className="ceo-section-body" style={{ padding: 0, overflow: 'auto' }}>
+                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     {agentTable.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
                             <UserCheck size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
                             <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Temsilci verisi bulunamadı</p>
                         </div>
                     ) : (
-                        <table className="ceo-league-table">
+                        <table className="ceo-league-table" style={{ minWidth: 800 }}>
                             <thead>
                                 <tr>
                                     <th>Temsilci</th>
@@ -308,20 +308,20 @@ const RequestReport = () => {
             </div>
 
             {/* ═══ KONU BAZLI TALEP TABLOSU ═══ */}
-            <div className="ceo-section" style={{ marginBottom: 24 }}>
+            <div className="ceo-section" style={{ marginBottom: 24, overflow: 'visible' }}>
                 <div className="ceo-section-header">
                     <div className="ceo-section-icon" style={{ background: '#eef2ff', color: '#6366f1' }}><TrendingUp size={18} /></div>
                     <h2>Konu Bazlı Talep Raporu</h2>
                     <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{topicGroups.length} kategori</span>
                 </div>
-                <div className="ceo-section-body" style={{ padding: 0, overflow: 'auto' }}>
+                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     {topicGroups.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
                             <TrendingUp size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
                             <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Konu verisi bulunamadı</p>
                         </div>
                     ) : (
-                        <table className="ceo-league-table">
+                        <table className="ceo-league-table" style={{ minWidth: 800 }}>
                             <thead>
                                 <tr>
                                     <th>Konu</th>
