@@ -5236,13 +5236,21 @@ export const getRequestReport = async (req, res) => {
         // 4. Randevular (Appointment tablosundan)
         const appointments = await prisma.appointment.findMany({
             where: { workspaceId, ...dateFilter },
-            select: { assignedToId: true, createdById: true }
+            select: { assignedToId: true, createdById: true, contactId: true }
         });
         // Agent bazlı randevu sayısı
         const appointmentsByAgent = {};
         for (const apt of appointments) {
             const key = apt.assignedToId || apt.createdById || '__unassigned__';
             appointmentsByAgent[key] = (appointmentsByAgent[key] || 0) + 1;
+        }
+        // Contact → Topic eşleştirmesi (randevuları konulara dağıtmak için)
+        const contactToTopic = {};
+        for (const c of cases) {
+            if (c.contactId && !contactToTopic[c.contactId]) {
+                const conv = c.conversations?.[0];
+                contactToTopic[c.contactId] = conv?.topicCategory?.name || 'Kategorisiz';
+            }
         }
 
         // ── Temsilci bazlı tablo verisi ──
@@ -5404,6 +5412,18 @@ export const getRequestReport = async (req, res) => {
             g.count++;
             if (d.status === 'WON') { g.wonCount++; g.wonAmount += (d.amount || 0); }
             if (d.stage === 'ORDER') g.orders++;
+        }
+        // Randevuları konulara dağıt (contact → topic eşleştirmesi ile)
+        for (const apt of appointments) {
+            const topicName = (apt.contactId && contactToTopic[apt.contactId]) || 'Kategorisiz';
+            if (!byTopic[topicName]) {
+                byTopic[topicName] = {
+                    name: topicName, icon: null, color: null,
+                    count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0,
+                    wonCount: 0, wonAmount: 0
+                };
+            }
+            byTopic[topicName].appointments++;
         }
         const topicGroups = Object.values(byTopic).sort((a, b) => b.count - a.count);
 
