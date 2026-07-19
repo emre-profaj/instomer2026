@@ -101,6 +101,83 @@ export const reorderCategories = async (req, res) => {
 export const autoGenerateCategories = async (req, res) => {
     try {
         const { workspaceId } = req.params;
+        const { source } = req.body; // 'products' | 'ai' | undefined (auto-detect)
+
+        // Mevcut kategorileri kontrol et (duplicate önleme)
+        const existingCategories = await prisma.topicCategory.findMany({
+            where: { workspaceId },
+            select: { name: true }
+        });
+        const existingNames = new Set(existingCategories.map(c => c.name.toLowerCase()));
+
+        // ─── KAYNAK 1: ÜRÜN TABLOSU ───────────────────────
+        const products = await prisma.product.findMany({
+            where: { workspaceId, isActive: true },
+            select: { name: true, description: true, groupName: true },
+            orderBy: { name: 'asc' }
+        });
+
+        if (products.length > 0 && source !== 'ai') {
+            // Ürünleri groupName'e göre grupla
+            const groups = new Map(); // groupName → { products[], descriptions[] }
+            for (const p of products) {
+                const group = (p.groupName || '').trim() || p.name.trim();
+                if (!groups.has(group)) {
+                    groups.set(group, { products: [], descriptions: [] });
+                }
+                groups.get(group).products.push(p.name);
+                if (p.description) groups.get(group).descriptions.push(p.description);
+            }
+
+            console.log(`📦 [AutoGenerate] ${workspaceId}: ${products.length} üründen ${groups.size} kategori oluşturuluyor...`);
+
+            const created = [];
+            let order = existingCategories.length;
+            for (const [groupName, data] of groups) {
+                if (existingNames.has(groupName.toLowerCase())) continue;
+
+                // Ürün isimlerini keyword olarak kullan
+                const keywords = data.products
+                    .map(name => name.toLowerCase().trim())
+                    .filter((v, i, a) => a.indexOf(v) === i); // unique
+
+                const description = data.descriptions.length > 0
+                    ? data.descriptions[0]
+                    : `${data.products.slice(0, 3).join(', ')}${data.products.length > 3 ? ` ve ${data.products.length - 3} ürün daha` : ''}`;
+
+                try {
+                    const newCat = await prisma.topicCategory.create({
+                        data: {
+                            workspaceId,
+                            name: groupName,
+                            description,
+                            icon: getCategoryIcon(groupName),
+                            color: getColorForIndex(order),
+                            keywords: JSON.stringify(keywords),
+                            order: order++,
+                        }
+                    });
+                    created.push(newCat);
+                } catch (err) {
+                    console.error(`Category create error for "${groupName}":`, err.message);
+                }
+            }
+
+            console.log(`✅ [AutoGenerate] ${created.length} kategori ürünlerden oluşturuldu`);
+
+            return res.json({
+                success: true,
+                source: 'products',
+                totalProducts: products.length,
+                totalGroups: groups.size,
+                created: created.length,
+                skipped: groups.size - created.length,
+                categories: created
+            });
+        }
+
+        // ─── KAYNAK 2: AI (Bilgi Bankası + Mevcut Topicler) ───────
+        // Ürün yoksa veya source='ai' ise
 
         // 1. Bilgi bankasını çek
         const kbEntries = await prisma.knowledgeBase.findMany({
@@ -133,7 +210,7 @@ export const autoGenerateCategories = async (req, res) => {
             }
         });
 
-        // 4. AI'a gönder — zaman limitsiz batch
+        // 4. AI'a gönder
         const apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
         if (!apiKey) {
             return res.status(400).json({ error: 'AI API key bulunamadı' });
@@ -142,12 +219,17 @@ export const autoGenerateCategories = async (req, res) => {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+        // Ürün bilgisini de prompt'a ekle (varsa ama az ise)
+        const productInfo = products.length > 0
+            ? `\n## Ürünler/Hizmetler (${products.length} adet)\n${products.map(p => `- ${p.name}${p.groupName ? ` (${p.groupName})` : ''}`).join('\n')}\n`
+            : '';
+
         const prompt = `Sen bir CRM uzmanısın. Aşağıdaki bilgileri kullanarak bu işletme için KONU KATEGORİLERİ oluştur.
 
 ## İşletme Bilgisi
 Firma: ${workspace?.companyName || 'Bilinmiyor'}
 Açıklama: ${workspace?.companyDescription || ''}
-
+${productInfo}
 ## Bilgi Bankası İçeriği
 ${kbText || '(Bilgi bankası boş)'}
 
@@ -169,12 +251,6 @@ ${topicsWithCounts.length > 300 ? `\n... ve ${topicsWithCounts.length - 300} kon
     "description": "Obezite ameliyatı, tüp mide, sleeve gastrektomi talepleri",
     "icon": "🏥",
     "keywords": ["obezite", "mide küçültme", "sleeve", "tüp mide", "bariatrik"]
-  },
-  {
-    "name": "Fiyat Bilgisi",
-    "description": "Fiyat, ücret ve maliyet sorgulamaları",
-    "icon": "💰",
-    "keywords": ["fiyat", "ücret", "maliyet", "ne kadar", "paket"]
   }
 ]
 
@@ -188,7 +264,6 @@ SADECE JSON dizisi döndür, başka metin ekleme.`;
         // JSON parse
         let categories;
         try {
-            // Extract JSON from potential markdown code block
             const jsonMatch = responseText.match(/\[[\s\S]*\]/);
             if (!jsonMatch) throw new Error('JSON dizisi bulunamadı');
             categories = JSON.parse(jsonMatch[0]);
@@ -205,20 +280,12 @@ SADECE JSON dizisi döndür, başka metin ekleme.`;
             return res.status(400).json({ error: 'AI kategori oluşturamadı' });
         }
 
-        // 5. Mevcut kategorileri temizle (opsiyonel — kullanıcı onaylarsa)
-        // Şimdilik yeni ekle, eskileri silme
-        const existingCategories = await prisma.topicCategory.findMany({
-            where: { workspaceId },
-            select: { name: true }
-        });
-        const existingNames = new Set(existingCategories.map(c => c.name.toLowerCase()));
-
-        // 6. Yeni kategorileri oluştur
+        // Yeni kategorileri oluştur
         const created = [];
         for (let i = 0; i < categories.length; i++) {
             const cat = categories[i];
             if (!cat.name) continue;
-            if (existingNames.has(cat.name.toLowerCase())) continue; // Duplicate skip
+            if (existingNames.has(cat.name.toLowerCase())) continue;
 
             try {
                 const newCat = await prisma.topicCategory.create({
@@ -238,7 +305,9 @@ SADECE JSON dizisi döndür, başka metin ekleme.`;
             }
         }
 
-        console.log(`✅ [AutoGenerate] ${created.length} kategori oluşturuldu (${categories.length} önerilmişti)`);
+        console.log(`✅ [AutoGenerate] ${created.length} kategori AI ile oluşturuldu`);
+
+
 
         res.json({
             success: true,
@@ -366,4 +435,26 @@ const CATEGORY_COLORS = [
 
 function getColorForIndex(i) {
     return CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+}
+
+function getCategoryIcon(name) {
+    const n = (name || '').toLowerCase();
+    const iconMap = [
+        [['proje', 'konut', 'daire', 'villa', 'residence', 'site'], '🏗️'],
+        [['obezite', 'ameliyat', 'cerrahi', 'operasyon'], '🏥'],
+        [['diş', 'dental', 'implant'], '🦷'],
+        [['göz', 'laser', 'lasik'], '👁️'],
+        [['estetik', 'botoks', 'dolgu'], '💉'],
+        [['saç', 'ekimi', 'saç ekimi'], '💇'],
+        [['araba', 'araç', 'otomobil'], '🚗'],
+        [['eğitim', 'kurs', 'öğren'], '📚'],
+        [['hukuk', 'avukat', 'dava'], '⚖️'],
+        [['sigorta', 'poliçe'], '🛡️'],
+        [['otel', 'konaklama', 'tatil'], '🏨'],
+        [['restoran', 'yemek', 'cafe'], '🍽️'],
+    ];
+    for (const [keywords, icon] of iconMap) {
+        if (keywords.some(k => n.includes(k))) return icon;
+    }
+    return '📋';
 }

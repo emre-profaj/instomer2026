@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI } from '../../services/api';
+import { getTopicCategories } from '../../services/topicCategory.api';
 import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
@@ -33,6 +34,7 @@ const Funnels = () => {
     const [members, setMembers] = useState([]);
     const [bots, setBots] = useState([]);
     const [templates, setTemplates] = useState([]);
+    const [topicCategories, setTopicCategories] = useState([]);
 
     // Stage counts
     const [stageCounts, setStageCounts] = useState({});
@@ -80,6 +82,11 @@ const Funnels = () => {
             setMembers(membersRes.data?.members?.map(m => m.user) || membersRes.data || []);
             setBots(botsRes.data?.bots || []);
             setTemplates(tplRes.data?.templates || tplRes.data || []);
+            // Topic Categories yükle
+            try {
+                const catRes = await getTopicCategories(currentWorkspace.id);
+                setTopicCategories(catRes.data || []);
+            } catch { /* Kategori yoksa sorun değil */ }
         } catch (err) { console.error(err); }
     };
 
@@ -138,6 +145,7 @@ const Funnels = () => {
                 assignedUserId: funnelPanel.assignedUserId || null,
                 qualifiedLeadStageId: funnelPanel.qualifiedLeadStageId || null,
                 classificationCriteria: funnelPanel.classificationCriteria || null,
+                categoryIds: funnelPanel.categoryIds || [],
                 parentId: funnelPanel.parentId || null
             });
             setFunnels(prev => prev.map(f => f.id === funnelPanel.id ? res.data.funnel : f));
@@ -306,6 +314,12 @@ const Funnels = () => {
             assignedTeamId: funnel.assignedTeamId || '',
             assignedUserId: funnel.assignedUserId || '',
             classificationCriteria: funnel.classificationCriteria || '',
+            categoryIds: (() => {
+                try {
+                    const c = funnel.classificationCriteria ? JSON.parse(funnel.classificationCriteria) : {};
+                    return c.categoryIds || [];
+                } catch { return []; }
+            })(),
             color: funnel.color || nextColor(),
             icon: funnel.icon || '📁',
             parentId: funnel.parentId || '',
@@ -1078,6 +1092,48 @@ const Funnels = () => {
                                         onChange={e => setFunnelPanel(p => ({ ...p, classificationCriteria: e.target.value }))}
                                         rows={3}
                                     />
+                                </div>
+                                {/* Sorumlu Kategoriler */}
+                                <div className="settings-field">
+                                    <label>Sorumlu Kategoriler</label>
+                                    <p className="settings-hint" style={{margin: '0 0 8px', fontSize: '0.75rem', color: '#64748b'}}>Bu akışa hangi konu kategorileri yönlendirilsin?</p>
+                                    <div style={{display: 'flex', flexWrap: 'wrap', gap: '6px'}}>
+                                        {topicCategories.map(cat => {
+                                            const selected = (funnelPanel.categoryIds || []).includes(cat.id);
+                                            return (
+                                                <button
+                                                    key={cat.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setFunnelPanel(p => ({
+                                                            ...p,
+                                                            categoryIds: selected
+                                                                ? (p.categoryIds || []).filter(id => id !== cat.id)
+                                                                : [...(p.categoryIds || []), cat.id]
+                                                        }));
+                                                    }}
+                                                    style={{
+                                                        padding: '4px 12px',
+                                                        borderRadius: '16px',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: 500,
+                                                        border: selected ? '2px solid #3b82f6' : '1px solid #d1d5db',
+                                                        background: selected ? '#eff6ff' : '#fff',
+                                                        color: selected ? '#1d4ed8' : '#475569',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    {cat.icon && <span style={{marginRight: 4}}>{cat.icon}</span>}
+                                                    {cat.name}
+                                                    {selected && ' ✓'}
+                                                </button>
+                                            );
+                                        })}
+                                        {topicCategories.length === 0 && (
+                                            <span style={{color: '#94a3b8', fontSize: '0.8rem'}}>Henüz kategori yok. Ayarlar → Konu Kategorileri'nden oluşturun.</span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 

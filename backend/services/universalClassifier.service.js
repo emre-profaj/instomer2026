@@ -53,6 +53,16 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
             }
         });
 
+        // Konu kategorilerini yükle
+        let topicCategories = [];
+        try {
+            topicCategories = await prisma.topicCategory.findMany({
+                where: { workspaceId, isActive: true },
+                select: { id: true, name: true, keywords: true }
+            });
+        } catch { /* Tablo yoksa veya hata varsa atla */ }
+        const categoryMap = new Map(topicCategories.map(c => [c.id, c]));
+
         // Özel akış kriterlerini hazırla
         let customFunnelContext = '';
         if (funnels.length > 0) {
@@ -65,6 +75,29 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
                         const criteria = JSON.parse(f.classificationCriteria);
                         if (criteria.keywords) customFunnelContext += `\n  Anahtar kelimeler: ${criteria.keywords}`;
                         if (criteria.aiDescription) customFunnelContext += `\n  Açıklama: ${criteria.aiDescription}`;
+                        // Sorumlu kategoriler — kategori isimlerini ve keywordlerini ekle
+                        if (criteria.categoryIds && criteria.categoryIds.length > 0) {
+                            const catNames = [];
+                            const catKeywords = [];
+                            for (const catId of criteria.categoryIds) {
+                                const cat = categoryMap.get(catId);
+                                if (cat) {
+                                    catNames.push(cat.name);
+                                    if (cat.keywords) {
+                                        try {
+                                            const kws = JSON.parse(cat.keywords);
+                                            catKeywords.push(...kws);
+                                        } catch {}
+                                    }
+                                }
+                            }
+                            if (catNames.length > 0) {
+                                customFunnelContext += `\n  Sorumlu kategoriler: ${catNames.join(', ')}`;
+                            }
+                            if (catKeywords.length > 0) {
+                                customFunnelContext += `\n  Kategori anahtar kelimeleri: ${catKeywords.slice(0, 30).join(', ')}`;
+                            }
+                        }
                     } catch (e) {
                         customFunnelContext += `\n  Giriş kriterleri: ${f.classificationCriteria}`;
                     }
@@ -72,6 +105,7 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
                 customFunnelContext += '\n';
             }
         }
+
 
         // Son 10 mesajı hazırla
         const recentMessages = (messages || []).slice(-10);
@@ -106,6 +140,11 @@ ${contactInfo}
 ### KONUŞMA ###
 ${chatLog}
 ${customFunnelContext}
+${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ ###\nAşağıdaki kategorilerden en uygun olanını seç:\n${topicCategories.map(c => {
+    let kws = '';
+    try { kws = c.keywords ? JSON.parse(c.keywords).join(', ') : ''; } catch {}
+    return `- "${c.name}" (ID: ${c.id})${kws ? ' → ' + kws : ''}`;
+}).join('\n')}\n` : ''}
 
 ### GÖREV ###
 1. Konuşmayı sınıflandır:
@@ -129,6 +168,7 @@ ${customFunnelContext}
 
 3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz. Hiçbirine uymuyorsa null yaz ama emin değilsen en yakın olanı seç.
 
+4. topicCategoryId: Yukarıdaki KONU KATEGORİLERİ bölümünden konuşmaya en uygun kategorinin ID'sini yaz. Yoksa null.
 SADECE JSON döndür, başka bir şey yazma:
 {
   "classification": "FIRSAT",
@@ -143,6 +183,7 @@ SADECE JSON döndür, başka bir şey yazma:
     "branchInfo": null
   },
   "matchedFunnelId": null,
+  "topicCategoryId": null,
   "reasoning": "Müşteri konut tipini belirterek bilgi talep ediyor, aranma zamanı vermiş - satış fırsatı"
 }`;
 
@@ -173,7 +214,22 @@ SADECE JSON döndür, başka bir şey yazma:
             ed.name = contact.name;
         }
 
-        console.log(`🎯 [Classifier] ${conversationId}: ${parsed.classification} (${(parsed.confidence * 100).toFixed(0)}%) | Lead: ${parsed.isQualifiedLead} | Konu: ${ed.topic || '-'}`);
+        console.log(`🎯 [Classifier] ${conversationId}: ${parsed.classification} (${(parsed.confidence * 100).toFixed(0)}%) | Lead: ${parsed.isQualifiedLead} | Konu: ${ed.topic || '-'} | Kategori: ${parsed.topicCategoryId || '-'}`);
+
+        // topicCategoryId yoksa ama topic varsa, keyword eşleştirme ile bul
+        if (!parsed.topicCategoryId && ed.topic && topicCategories.length > 0) {
+            const topicLower = (ed.topic || '').toLowerCase();
+            for (const cat of topicCategories) {
+                let kws = [];
+                try { kws = cat.keywords ? JSON.parse(cat.keywords) : []; } catch {}
+                const nameMatch = topicLower.includes(cat.name.toLowerCase());
+                const kwMatch = kws.some(kw => topicLower.includes(kw.toLowerCase()));
+                if (nameMatch || kwMatch) {
+                    parsed.topicCategoryId = cat.id;
+                    break;
+                }
+            }
+        }
 
         return parsed;
     } catch (error) {

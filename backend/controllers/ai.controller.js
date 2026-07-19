@@ -1314,13 +1314,15 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
 
                     // Sonucu kaydet
                     const extractedTopic = classResult.extractedData?.topic || null;
+                    const topicCategoryId = classResult.topicCategoryId || null;
                     await prisma.conversation.update({
                         where: { id: conversationId },
                         data: {
                             classificationData: JSON.stringify(classResult),
                             classifiedAt: new Date(),
                             isQualifiedLead: classResult.isQualifiedLead,
-                            ...(extractedTopic && { aiTopic: extractedTopic })
+                            ...(extractedTopic && { aiTopic: extractedTopic }),
+                            ...(topicCategoryId && { topicCategoryId })
                         }
                     });
 

@@ -590,9 +590,19 @@ export const createFunnel = async (req, res) => {
 export const updateFunnel = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color, icon, order, assignedUserId, assignedTeamId, qualifiedLeadStageId, classificationCriteria } = req.body;
+        const { name, color, icon, order, assignedUserId, assignedTeamId, qualifiedLeadStageId, classificationCriteria, categoryIds } = req.body;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
+
+        // categoryIds geliyorsa classificationCriteria JSON'ına ekle
+        let finalClassCriteria = classificationCriteria;
+        if (categoryIds !== undefined) {
+            const existingCriteria = existing.classificationCriteria
+                ? JSON.parse(existing.classificationCriteria)
+                : {};
+            existingCriteria.categoryIds = categoryIds; // ["cat_id_1", "cat_id_2"]
+            finalClassCriteria = JSON.stringify(existingCriteria);
+        }
 
         const updateData = {
             ...(name && { name: name.trim() }),
@@ -602,7 +612,7 @@ export const updateFunnel = async (req, res) => {
             ...(assignedUserId !== undefined && { assignedUserId }),
             ...(assignedTeamId !== undefined && { assignedTeamId }),
             ...(qualifiedLeadStageId !== undefined && { qualifiedLeadStageId: qualifiedLeadStageId || null }),
-            ...(classificationCriteria !== undefined && { classificationCriteria })
+            ...(finalClassCriteria !== undefined && { classificationCriteria: finalClassCriteria })
         };
 
         let funnel;
