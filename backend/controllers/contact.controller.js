@@ -5074,19 +5074,34 @@ export const getSalesReport = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        // Her deal'a topicCategory ekle — önce kendi conversation'ından, yoksa contact'ın conversation'ından
+        // Her deal'a topicCategory ekle — önce kendi conversation'ından, yoksa deal zamanına en yakın conversation'dan
         const salesList = await Promise.all(deals.map(async (d) => {
             // 1. Deal'ın kendi conversation'ının topicCategory'si
             let topicCat = d.conversation?.topicCategory || null;
 
-            // 2. Conversation yoksa veya topic yoksa, contact'ın conversation'larından bul
+            // 2. Fallback: Contact'ın deal oluşturulma tarihine en yakın conversation'ını bul
             if (!topicCat && d.contactId) {
+                // Deal tarihinden ÖNCE veya aynı zamanda olan en son konuşma
                 const contactConv = await prisma.conversation.findFirst({
-                    where: { contactId: d.contactId, topicCategoryId: { not: null } },
+                    where: {
+                        contactId: d.contactId,
+                        topicCategoryId: { not: null },
+                        lastMessageAt: { lte: new Date(new Date(d.createdAt).getTime() + 24 * 60 * 60 * 1000) }
+                    },
                     select: { topicCategory: { select: { id: true, name: true, icon: true, color: true } } },
                     orderBy: { lastMessageAt: 'desc' }
                 });
                 topicCat = contactConv?.topicCategory || null;
+
+                // 3. Hâlâ bulunamadıysa, herhangi birini al
+                if (!topicCat) {
+                    const anyConv = await prisma.conversation.findFirst({
+                        where: { contactId: d.contactId, topicCategoryId: { not: null } },
+                        select: { topicCategory: { select: { id: true, name: true, icon: true, color: true } } },
+                        orderBy: { lastMessageAt: 'desc' }
+                    });
+                    topicCat = anyConv?.topicCategory || null;
+                }
             }
 
             return {
