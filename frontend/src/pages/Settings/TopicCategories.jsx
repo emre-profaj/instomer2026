@@ -44,10 +44,14 @@ const TopicCategories = () => {
             setGenerating(true);
             setStatusMessage({ type: 'info', text: '🤖 AI kategorileri oluşturuyor... Bu birkaç dakika sürebilir.' });
             const res = await autoGenerateCategories(workspaceId);
-            setStatusMessage({
-                type: 'success',
-                text: `✅ ${res.data.created} yeni kategori oluşturuldu! (${res.data.skipped} mevcut atlandı)`
-            });
+            const errCount = res.data.errors?.length || 0;
+            if (res.data.created > 0) {
+                setStatusMessage({ type: 'success', text: `✅ ${res.data.created} yeni kategori oluşturuldu!` });
+            } else if (errCount > 0) {
+                setStatusMessage({ type: 'error', text: `❌ Kategoriler oluşturulamadı: ${res.data.errors[0]?.error || 'Bilinmeyen hata'}` });
+            } else {
+                setStatusMessage({ type: 'success', text: `✅ ${res.data.created} yeni kategori oluşturuldu! (${res.data.skipped} mevcut atlandı)` });
+            }
             await fetchCategories();
         } catch (err) {
             setStatusMessage({ type: 'error', text: `❌ Hata: ${err.response?.data?.error || err.message}` });

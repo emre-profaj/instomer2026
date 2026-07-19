@@ -132,6 +132,7 @@ export const autoGenerateCategories = async (req, res) => {
             console.log(`📦 [AutoGenerate] ${workspaceId}: ${products.length} üründen ${groups.size} kategori oluşturuluyor...`);
 
             const created = [];
+            const errors = [];
             let order = existingCategories.length;
             for (const [groupName, data] of groups) {
                 if (existingNames.has(groupName.toLowerCase())) continue;
@@ -160,10 +161,11 @@ export const autoGenerateCategories = async (req, res) => {
                     created.push(newCat);
                 } catch (err) {
                     console.error(`Category create error for "${groupName}":`, err.message);
+                    errors.push({ name: groupName, error: err.message });
                 }
             }
 
-            console.log(`✅ [AutoGenerate] ${created.length} kategori ürünlerden oluşturuldu`);
+            console.log(`✅ [AutoGenerate] ${created.length} kategori ürünlerden oluşturuldu, ${errors.length} hata`);
 
             return res.json({
                 success: true,
@@ -172,7 +174,8 @@ export const autoGenerateCategories = async (req, res) => {
                 totalGroups: groups.size,
                 created: created.length,
                 skipped: groups.size - created.length,
-                categories: created
+                categories: created,
+                errors
             });
         }
 
@@ -282,6 +285,7 @@ SADECE JSON dizisi döndür, başka metin ekleme.`;
 
         // Yeni kategorileri oluştur
         const created = [];
+        const errors = [];
         for (let i = 0; i < categories.length; i++) {
             const cat = categories[i];
             if (!cat.name) continue;
@@ -302,10 +306,11 @@ SADECE JSON dizisi döndür, başka metin ekleme.`;
                 created.push(newCat);
             } catch (err) {
                 console.error(`Category create error for "${cat.name}":`, err.message);
+                errors.push({ name: cat.name, error: err.message });
             }
         }
 
-        console.log(`✅ [AutoGenerate] ${created.length} kategori AI ile oluşturuldu`);
+        console.log(`✅ [AutoGenerate] ${created.length} kategori AI ile oluşturuldu, ${errors.length} hata`);
 
 
 
@@ -314,7 +319,8 @@ SADECE JSON dizisi döndür, başka metin ekleme.`;
             totalSuggested: categories.length,
             created: created.length,
             skipped: categories.length - created.length,
-            categories: created
+            categories: created,
+            errors
         });
     } catch (error) {
         console.error('autoGenerateCategories error:', error);
