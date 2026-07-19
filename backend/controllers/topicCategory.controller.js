@@ -3,6 +3,20 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const prisma = new PrismaClient();
 
+// AI API key alma (workspace key > global key > env key)
+const getEffectiveAiApiKey = async (workspaceId) => {
+    const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { aiApiKey: true }
+    });
+    if (workspace?.aiApiKey) return workspace.aiApiKey;
+
+    const globalSettings = await prisma.globalSettings.findUnique({
+        where: { id: 'singleton' }
+    });
+    return globalSettings?.globalAiApiKey || process.env.GEMINI_API_KEY || null;
+};
+
 // ─── CRUD ─────────────────────────────────────────────────
 
 export const getCategories = async (req, res) => {
@@ -485,7 +499,7 @@ export const importFromExcel = async (req, res) => {
         });
 
         // AI ile yapılandır
-        const aiApiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
         if (!aiApiKey) {
             return res.status(500).json({ error: 'AI API anahtarı yapılandırılmamış' });
         }
