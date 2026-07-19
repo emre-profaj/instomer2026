@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productAPI } from '../../services/api';
 import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown } from 'lucide-react';
+import TopicCategories from '../Settings/TopicCategories';
+import { importFromExcel } from '../../services/topicCategory.api';
 import './Sales.css';
 
 const TAX_OPTIONS = [
@@ -20,6 +22,8 @@ const UNIT_OPTIONS = ['Adet', 'Kg', 'Lt', 'Metre', 'M²', 'M³', 'Paket', 'Kutu'
 
 const Products = () => {
     const { currentWorkspace } = useAuth();
+    const [activeTab, setActiveTab] = useState('products');
+    const fileInputRef = useRef(null);
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -217,6 +221,29 @@ const Products = () => {
         URL.revokeObjectURL(url);
     };
 
+    const handleExcelImport = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            setLoading(true);
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('workspaceId', currentWorkspace.id);
+
+            await importFromExcel(formData);
+            showToast('Excel başarıyla içe aktarıldı.');
+            fetchProducts();
+            fetchGroups();
+        } catch (error) {
+            console.error('Excel import error:', error);
+            showToast('Excel içe aktarılırken bir hata oluştu.', 'error');
+        } finally {
+            setLoading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     if (!currentWorkspace) {
         return <div className="empty-state"><p>Lütfen bir workspace seçin</p></div>;
     }
@@ -263,6 +290,25 @@ const Products = () => {
                     >
                         <Download size={15} /> Dışa Aktar
                     </button>
+                    <input
+                        type="file"
+                        accept=".xlsx, .xls"
+                        style={{ display: 'none' }}
+                        ref={fileInputRef}
+                        onChange={handleExcelImport}
+                    />
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '8px 14px', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', background: '#fff',
+                            fontSize: '0.8rem', fontWeight: 600, color: '#475569',
+                            cursor: 'pointer', transition: 'all 0.2s'
+                        }}
+                    >
+                        <Upload size={15} /> İçe Aktar
+                    </button>
                     <button
                         onClick={openAddModal}
                         style={{
@@ -279,6 +325,36 @@ const Products = () => {
                 </div>
             </div>
 
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '20px', padding: '0 24px', borderBottom: '1px solid #e2e8f0', background: '#fff' }}>
+                <button
+                    onClick={() => setActiveTab('products')}
+                    style={{
+                        padding: '12px 0', border: 'none', background: 'none',
+                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                        color: activeTab === 'products' ? '#6366f1' : '#64748b',
+                        borderBottom: activeTab === 'products' ? '2px solid #6366f1' : '2px solid transparent',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Ürünler
+                </button>
+                <button
+                    onClick={() => setActiveTab('categories')}
+                    style={{
+                        padding: '12px 0', border: 'none', background: 'none',
+                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                        color: activeTab === 'categories' ? '#6366f1' : '#64748b',
+                        borderBottom: activeTab === 'categories' ? '2px solid #6366f1' : '2px solid transparent',
+                        transition: 'all 0.2s'
+                    }}
+                >
+                    Kategoriler
+                </button>
+            </div>
+
+            {activeTab === 'products' && (
+                <>
             {/* Filters Bar */}
             <div style={{
                 display: 'flex', alignItems: 'center', gap: '10px',
@@ -480,6 +556,12 @@ const Products = () => {
                         </button>
                     ))}
                 </div>
+            )}
+                </>
+            )}
+
+            {activeTab === 'categories' && (
+                <TopicCategories />
             )}
 
             {/* Delete Confirm */}
