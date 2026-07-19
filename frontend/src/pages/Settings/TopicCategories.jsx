@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import {
     getTopicCategories,
     createTopicCategory,
@@ -11,7 +11,8 @@ import {
 import './TopicCategories.css';
 
 const TopicCategories = () => {
-    const { workspaceId } = useParams();
+    const { currentWorkspace } = useAuth();
+    const workspaceId = currentWorkspace?.id;
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [generating, setGenerating] = useState(false);
