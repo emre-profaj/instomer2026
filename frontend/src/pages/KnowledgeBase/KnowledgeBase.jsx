@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, knowledgeBaseAPI, retellAPI, productAPI } from '../../services/api';
-import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, Package, Check } from 'lucide-react';
+import { workspaceAPI, knowledgeBaseAPI, retellAPI, productAPI, appointmentConfigAPI } from '../../services/api';
+import { Trash2, Database, FileText, Upload, Plus, File, Building2, Image, Pencil, X, Globe, RefreshCw, Link, Phone, ClipboardList, CheckCircle2, AlertTriangle, FileCheck, Package, Check, MapPin, Tag } from 'lucide-react';
+import TopicCategories from '../Settings/TopicCategories';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
@@ -57,12 +58,24 @@ const KnowledgeBase = () => {
     const [productKbSaving, setProductKbSaving] = useState(false);
     const [productKbSynced, setProductKbSynced] = useState(false);
 
+    // Branches States
+    const [branches, setBranches] = useState([]);
+    const [branchesLoading, setBranchesLoading] = useState(false);
+    const [newBranchName, setNewBranchName] = useState('');
+    const [newBranchAddress, setNewBranchAddress] = useState('');
+    const [newBranchPhone, setNewBranchPhone] = useState('');
+    const [editingBranch, setEditingBranch] = useState(null);
+    const [editBranchName, setEditBranchName] = useState('');
+    const [editBranchAddress, setEditBranchAddress] = useState('');
+    const [editBranchPhone, setEditBranchPhone] = useState('');
+
     useEffect(() => {
         if (currentWorkspace) {
             loadKnowledgeBase();
             loadCompanyInfo();
             loadProductKbSettings();
             loadProductGroups();
+            loadBranches();
         }
     }, [currentWorkspace]);
 
@@ -72,6 +85,60 @@ const KnowledgeBase = () => {
             setProductKbGroups((res.data.groups || []).map(g => g.groupName).filter(Boolean));
         } catch (err) {
             console.error('Error loading product groups:', err);
+        }
+    };
+
+    const loadBranches = async () => {
+        setBranchesLoading(true);
+        try {
+            const res = await appointmentConfigAPI.getBranches(currentWorkspace.id);
+            setBranches(res.data.branches || []);
+        } catch (err) {
+            console.error('Load branches error:', err);
+        } finally {
+            setBranchesLoading(false);
+        }
+    };
+
+    const handleCreateBranch = async () => {
+        if (!newBranchName.trim()) return;
+        try {
+            await appointmentConfigAPI.createBranch(currentWorkspace.id, {
+                name: newBranchName.trim(),
+                address: newBranchAddress.trim(),
+                phone: newBranchPhone.trim()
+            });
+            setNewBranchName('');
+            setNewBranchAddress('');
+            setNewBranchPhone('');
+            loadBranches();
+        } catch (err) {
+            alert('Hata: ' + err.message);
+        }
+    };
+
+    const handleUpdateBranch = async (id) => {
+        if (!editBranchName.trim()) return;
+        try {
+            await appointmentConfigAPI.updateBranch(currentWorkspace.id, id, {
+                name: editBranchName.trim(),
+                address: editBranchAddress.trim(),
+                phone: editBranchPhone.trim()
+            });
+            setEditingBranch(null);
+            loadBranches();
+        } catch (err) {
+            alert('Hata: ' + err.message);
+        }
+    };
+
+    const handleDeleteBranch = async (id, name) => {
+        if (!confirm(`"${name}" şubesini silmek istediğinize emin misiniz?`)) return;
+        try {
+            await appointmentConfigAPI.deleteBranch(currentWorkspace.id, id);
+            loadBranches();
+        } catch (err) {
+            alert('Hata: ' + err.message);
         }
     };
 
@@ -490,6 +557,20 @@ const KnowledgeBase = () => {
                 >
                     <Package size={16} />
                     Ürünler
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'categories' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('categories')}
+                >
+                    <Tag size={16} />
+                    Kategoriler
+                </button>
+                <button
+                    className={`kb-tab ${activeTab === 'branches' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('branches')}
+                >
+                    <MapPin size={16} />
+                    Şubeler
                 </button>
             </div>
 

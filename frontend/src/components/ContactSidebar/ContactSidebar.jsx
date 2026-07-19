@@ -2000,9 +2000,28 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             {activeConv && (
                                 <div className="customer-journey-timeline">
                                     <div className="journey-header">
-                                        {/* ── Satır 1: Case ID sağda minik ── */}
+                                        {/* ── Satır 1: Case ID + Kategori etiketi ── */}
                                         {activeCaseInfo?.caseNumber && (
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 2 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                                {/* Kategori etiketi */}
+                                                {activeConv?.topicCategory?.name && (
+                                                    <span style={{
+                                                        background: (activeConv.topicCategory.color || '#6366f1') + '18',
+                                                        color: activeConv.topicCategory.color || '#6366f1',
+                                                        border: `1px solid ${(activeConv.topicCategory.color || '#6366f1')}40`,
+                                                        borderRadius: 4,
+                                                        padding: '1px 6px',
+                                                        fontSize: '0.55rem',
+                                                        fontWeight: 600,
+                                                        whiteSpace: 'nowrap',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 3
+                                                    }}>
+                                                        {activeConv.topicCategory.icon && <span style={{ fontSize: '0.6rem' }}>{activeConv.topicCategory.icon}</span>}
+                                                        {activeConv.topicCategory.name}
+                                                    </span>
+                                                )}
                                                 <div style={{ position: 'relative' }}>
                                                     <button
                                                         onClick={() => { setCaseIdDropdownOpen(v => !v); setShowNewCaseInline(false); }}

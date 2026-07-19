@@ -253,6 +253,14 @@ export const getConversations = async (req, res) => {
                         funnelStageId: true,
                         assignedTo: { select: { id: true, name: true } }
                     }
+                },
+                topicCategory: {
+                    select: {
+                        id: true,
+                        name: true,
+                        icon: true,
+                        color: true
+                    }
                 }
             },
             orderBy: { lastMessageAt: 'desc' },
@@ -508,6 +516,14 @@ export const getConversation = async (req, res) => {
                         funnelType: true,
                         funnelStageId: true,
                         assignedTo: { select: { id: true, name: true } }
+                    }
+                },
+                topicCategory: {
+                    select: {
+                        id: true,
+                        name: true,
+                        icon: true,
+                        color: true
                     }
                 }
             }
