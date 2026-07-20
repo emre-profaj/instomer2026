@@ -218,6 +218,7 @@ const SalesReport = () => {
                                                                         <Hash size={10} style={{ color: '#cbd5e1' }} />
                                                                         <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
                                                                         <span>{s.title}</span>
+                                                                        {s.source && <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4 }}>{s.source}</span>}
                                                                         <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
                                                                         <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
                                                                     </div>
@@ -312,6 +313,7 @@ const SalesReport = () => {
                                                                         <Hash size={10} style={{ color: '#cbd5e1' }} />
                                                                         <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
                                                                         <span>{s.title}</span>
+                                                                        {s.source && <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '1px 6px', borderRadius: 4 }}>{s.source}</span>}
                                                                         <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
                                                                         <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
                                                                     </div>

@@ -5092,7 +5092,8 @@ export const getSalesReport = async (req, res) => {
                         id: true,
                         name: true,
                         phone: true,
-                        email: true
+                        email: true,
+                        source: true
                     }
                 },
                 conversationId: true,
@@ -5172,6 +5173,7 @@ export const getSalesReport = async (req, res) => {
                 contactName: d.contact?.name || 'Bilinmeyen',
                 contactPhone: d.contact?.phone || '',
                 contactEmail: d.contact?.email || '',
+                source: d.contact?.source || null,
                 categoryId: topicCat?.id || null,
                 categoryName: topicCat?.name || 'Kategorisiz',
                 categoryIcon: topicCat?.icon || null,
@@ -5278,7 +5280,7 @@ export const getRequestReport = async (req, res) => {
                 id: true, title: true, status: true, funnelType: true, funnelStageId: true,
                 assignedToId: true, assignedTo: { select: { id: true, name: true } },
                 contactId: true,
-                contact: { select: { id: true, phone: true } },
+                contact: { select: { id: true, phone: true, source: true } },
                 conversations: {
                     select: {
                         topicCategoryId: true,
@@ -5299,7 +5301,7 @@ export const getRequestReport = async (req, res) => {
                 id: true, title: true, status: true, stage: true, amount: true,
                 assignedToId: true, assignedTo: { select: { id: true, name: true } },
                 contactId: true,
-                contact: { select: { id: true, phone: true } },
+                contact: { select: { id: true, phone: true, source: true } },
                 conversationId: true,
                 conversation: {
                     select: {
@@ -5504,18 +5506,25 @@ export const getRequestReport = async (req, res) => {
                     icon: conv?.topicCategory?.icon || null,
                     color: conv?.topicCategory?.color || null,
                     count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0,
-                    wonCount: 0, wonAmount: 0
+                    wonCount: 0, wonAmount: 0,
+                    sources: {}
                 };
             }
             const g = byTopic[catName];
             g.count++;
+            const contactSource = c.contact?.source || 'Bilinmeyen';
+            if (!g.sources[contactSource]) g.sources[contactSource] = { name: contactSource, count: 0, wonCount: 0, wonAmount: 0 };
+            g.sources[contactSource].count++;
             for (const act of (c.activities || [])) {
                 if (act.type === 'CALL') g.calls++;
                 else if (act.type === 'MEETING') g.meetings++;
                 else if (act.type === 'PROPOSAL') g.proposals++;
                 else if (act.type === 'ORDER') g.orders++;
             }
-            if (c.status === 'WON') g.wonCount++;
+            if (c.status === 'WON') {
+                g.wonCount++;
+                if (g.sources[contactSource]) g.sources[contactSource].wonCount++;
+            }
         }
         // Deal'lerden — doğru konu kategorisine yaz, eşleşmezse 'Manuel Satış'
         for (const d of deals) {
@@ -5527,12 +5536,19 @@ export const getRequestReport = async (req, res) => {
                     icon: dealCat?.icon || null,
                     color: dealCat?.color || null,
                     count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0,
-                    wonCount: 0, wonAmount: 0
+                    wonCount: 0, wonAmount: 0,
+                    sources: {}
                 };
             }
             const g = byTopic[catName];
             g.count++;
-            if (d.status === 'WON') { g.wonCount++; g.wonAmount += (d.amount || 0); }
+            const dealSource = d.contact?.source || 'Bilinmeyen';
+            if (!g.sources[dealSource]) g.sources[dealSource] = { name: dealSource, count: 0, wonCount: 0, wonAmount: 0 };
+            g.sources[dealSource].count++;
+            if (d.status === 'WON') {
+                g.wonCount++; g.wonAmount += (d.amount || 0);
+                if (g.sources[dealSource]) { g.sources[dealSource].wonCount++; g.sources[dealSource].wonAmount += (d.amount || 0); }
+            }
             if (d.stage === 'ORDER') g.orders++;
         }
         // Randevuları konulara dağıt (contact → topic eşleştirmesi ile)
@@ -5547,7 +5563,7 @@ export const getRequestReport = async (req, res) => {
             }
             byTopic[topicName].appointments++;
         }
-        const topicGroups = Object.values(byTopic).sort((a, b) => b.count - a.count);
+        const topicGroups = Object.values(byTopic).map(g => ({ ...g, sources: Object.values(g.sources).sort((a, b) => b.count - a.count) })).sort((a, b) => b.count - a.count);
 
         // Akış Bazlı (sadece case'ler)
         const byFunnel = {};
@@ -5568,6 +5584,35 @@ export const getRequestReport = async (req, res) => {
             .map(g => ({ ...g, stages: Object.values(g.stages).sort((a, b) => b.count - a.count) }))
             .sort((a, b) => b.count - a.count);
 
+        // Kaynak Bazlı Talep Analizi
+        const bySource = {};
+        for (const c of cases) {
+            const src = c.contact?.source || 'Bilinmeyen';
+            if (!bySource[src]) {
+                bySource[src] = { name: src, count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0, wonCount: 0, wonAmount: 0 };
+            }
+            const sg = bySource[src];
+            sg.count++;
+            for (const act of (c.activities || [])) {
+                if (act.type === 'CALL') sg.calls++;
+                else if (act.type === 'MEETING') sg.meetings++;
+                else if (act.type === 'PROPOSAL') sg.proposals++;
+                else if (act.type === 'ORDER') sg.orders++;
+            }
+            if (c.status === 'WON') sg.wonCount++;
+        }
+        for (const d of deals) {
+            const src = d.contact?.source || 'Bilinmeyen';
+            if (!bySource[src]) {
+                bySource[src] = { name: src, count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0, wonCount: 0, wonAmount: 0 };
+            }
+            const sg = bySource[src];
+            sg.count++;
+            if (d.status === 'WON') { sg.wonCount++; sg.wonAmount += (d.amount || 0); }
+            if (d.stage === 'ORDER') sg.orders++;
+        }
+        const sourceGroups = Object.values(bySource).sort((a, b) => b.count - a.count);
+
         res.json({
             totalCount, totalCases, totalDeals,
             withPhoneCount,
@@ -5575,7 +5620,8 @@ export const getRequestReport = async (req, res) => {
             totalCalls, totalMeetings, totalAppointments, totalProposals, totalOrders,
             agentTable,
             topicGroups,
-            funnelGroups
+            funnelGroups,
+            sourceGroups
         });
     } catch (error) {
         console.error('Request report error:', error);

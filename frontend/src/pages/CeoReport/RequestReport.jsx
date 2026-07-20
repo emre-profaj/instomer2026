@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     ClipboardList, RefreshCw, Filter, ArrowLeft, Phone, DollarSign,
     Users, ShoppingCart, TrendingUp, ChevronRight, Hash, Layers,
-    UserCheck, PhoneCall, MessageSquare, Calendar, FileText, Package
+    UserCheck, PhoneCall, MessageSquare, Calendar, FileText, Package, Globe
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -74,7 +74,7 @@ const RequestReport = () => {
         totalWonCount = 0, totalWonAmount = 0,
         totalCalls = 0, totalMeetings = 0, totalAppointments = 0,
         totalProposals = 0, totalOrders = 0,
-        agentTable = [], topicGroups = [], funnelGroups = []
+        agentTable = [], topicGroups = [], funnelGroups = [], sourceGroups = []
     } = data || {};
 
     return (
@@ -336,24 +336,47 @@ const RequestReport = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {topicGroups.map((group, gi) => (
-                                    <tr key={gi} style={{ borderBottom: gi < topicGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                                        <td>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <span style={{ fontSize: '0.9rem' }}>{group.icon || '📁'}</span>
-                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: group.color || '#0f172a' }}>{group.name}</span>
-                                            </div>
-                                        </td>
-                                        <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{group.count}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.calls > 0 ? '#059669' : '#d1d5db' }}>{group.calls}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{group.meetings}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.appointments > 0 ? '#f97316' : '#d1d5db' }}>{group.appointments}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{group.proposals}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{group.orders}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonCount}</span></td>
-                                        <td><span style={{ fontWeight: 700, color: group.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonAmount ? formatCurrency(group.wonAmount) : '—'}</span></td>
-                                    </tr>
-                                ))}
+                                {topicGroups.map((group, gi) => {
+                                    const isTopicExpanded = expandedTopics[group.name];
+                                    return (
+                                        <React.Fragment key={gi}>
+                                            <tr
+                                                style={{ borderBottom: (!isTopicExpanded && gi < topicGroups.length - 1) ? '1px solid #f1f5f9' : 'none', cursor: group.sources?.length > 0 ? 'pointer' : 'default' }}
+                                                onClick={() => group.sources?.length > 0 && setExpandedTopics(p => ({ ...p, [group.name]: !p[group.name] }))}
+                                            >
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                        {group.sources?.length > 0 && <ChevronRight size={12} style={{ color: '#94a3b8', transition: 'transform 0.2s', transform: isTopicExpanded ? 'rotate(90deg)' : 'none' }} />}
+                                                        <span style={{ fontSize: '0.9rem' }}>{group.icon || '📁'}</span>
+                                                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: group.color || '#0f172a' }}>{group.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{group.count}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.calls > 0 ? '#059669' : '#d1d5db' }}>{group.calls}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{group.meetings}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.appointments > 0 ? '#f97316' : '#d1d5db' }}>{group.appointments}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{group.proposals}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{group.orders}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonCount}</span></td>
+                                                <td><span style={{ fontWeight: 700, color: group.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonAmount ? formatCurrency(group.wonAmount) : '—'}</span></td>
+                                            </tr>
+                                            {isTopicExpanded && group.sources?.map((src, si) => (
+                                                <tr key={`${gi}-src-${si}`} style={{ background: '#f8fafc', borderBottom: si < group.sources.length - 1 ? '1px solid #f1f5f9' : (gi < topicGroups.length - 1 ? '1px solid #e2e8f0' : 'none') }}>
+                                                    <td style={{ paddingLeft: 48 }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            <Globe size={11} style={{ color: '#8b5cf6' }} />
+                                                            <span style={{ fontWeight: 600, fontSize: '0.78rem', color: '#64748b' }}>{src.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td><span style={{ fontWeight: 600, fontSize: '0.78rem', color: '#6366f1' }}>{src.count}</span></td>
+                                                    <td colSpan={5}></td>
+                                                    <td><span style={{ fontWeight: 600, fontSize: '0.78rem', color: src.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{src.wonCount}</span></td>
+                                                    <td><span style={{ fontWeight: 600, fontSize: '0.78rem', color: src.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{src.wonAmount ? formatCurrency(src.wonAmount) : '—'}</span></td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
                                 <tr style={{ background: '#f0fdf4', fontWeight: 800 }}>
                                     <td style={{ color: '#059669' }}>Toplam</td>
                                     <td><span style={{ color: '#6366f1' }}>{topicGroups.reduce((s, g) => s + g.count, 0)}</span></td>
@@ -422,6 +445,70 @@ const RequestReport = () => {
                             </div>
                         );
                     })}
+                </div>
+        </div>
+
+            {/* ═══ KAYNAK BAZLI TALEP ANALİZİ ═══ */}
+            <div className="ceo-section" style={{ marginBottom: 24, overflow: 'visible' }}>
+                <div className="ceo-section-header">
+                    <div className="ceo-section-icon" style={{ background: '#faf5ff', color: '#8b5cf6' }}><Globe size={18} /></div>
+                    <h2>Kaynak Bazlı Talep Analizi</h2>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{sourceGroups.length} kaynak</span>
+                </div>
+                <div className="ceo-section-body" style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    {sourceGroups.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '32px 20px', color: '#94a3b8' }}>
+                            <Globe size={28} style={{ opacity: 0.3, marginBottom: 8 }} />
+                            <p style={{ fontSize: '0.85rem', fontWeight: 600 }}>Kaynak verisi bulunamadı</p>
+                        </div>
+                    ) : (
+                        <table className="ceo-league-table" style={{ minWidth: 800 }}>
+                            <thead>
+                                <tr>
+                                    <th>Kaynak</th>
+                                    <th>Talep</th>
+                                    <th>Arama</th>
+                                    <th>Görüşme</th>
+                                    <th>Randevu</th>
+                                    <th>Teklif</th>
+                                    <th>Sipariş</th>
+                                    <th>Satış</th>
+                                    <th>Ciro</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sourceGroups.map((group, gi) => (
+                                    <tr key={gi} style={{ borderBottom: gi < sourceGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                        <td>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <Globe size={14} style={{ color: '#8b5cf6' }} />
+                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{group.name}</span>
+                                            </div>
+                                        </td>
+                                        <td><span style={{ fontWeight: 700, color: '#6366f1' }}>{group.count}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.calls > 0 ? '#059669' : '#d1d5db' }}>{group.calls}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.meetings > 0 ? '#0ea5e9' : '#d1d5db' }}>{group.meetings}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.appointments > 0 ? '#f97316' : '#d1d5db' }}>{group.appointments}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.proposals > 0 ? '#8b5cf6' : '#d1d5db' }}>{group.proposals}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.orders > 0 ? '#f59e0b' : '#d1d5db' }}>{group.orders}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.wonCount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonCount}</span></td>
+                                        <td><span style={{ fontWeight: 700, color: group.wonAmount > 0 ? '#10b981' : '#d1d5db' }}>{group.wonAmount ? formatCurrency(group.wonAmount) : '—'}</span></td>
+                                    </tr>
+                                ))}
+                                <tr style={{ background: '#faf5ff', fontWeight: 800 }}>
+                                    <td style={{ color: '#8b5cf6' }}>Toplam</td>
+                                    <td><span style={{ color: '#6366f1' }}>{sourceGroups.reduce((s, g) => s + g.count, 0)}</span></td>
+                                    <td><span style={{ color: '#059669' }}>{sourceGroups.reduce((s, g) => s + g.calls, 0)}</span></td>
+                                    <td><span style={{ color: '#0ea5e9' }}>{sourceGroups.reduce((s, g) => s + g.meetings, 0)}</span></td>
+                                    <td><span style={{ color: '#f97316' }}>{sourceGroups.reduce((s, g) => s + g.appointments, 0)}</span></td>
+                                    <td><span style={{ color: '#8b5cf6' }}>{sourceGroups.reduce((s, g) => s + g.proposals, 0)}</span></td>
+                                    <td><span style={{ color: '#f59e0b' }}>{sourceGroups.reduce((s, g) => s + g.orders, 0)}</span></td>
+                                    <td><span style={{ color: '#10b981' }}>{sourceGroups.reduce((s, g) => s + g.wonCount, 0)}</span></td>
+                                    <td><span style={{ color: '#10b981' }}>{formatCurrency(sourceGroups.reduce((s, g) => s + g.wonAmount, 0))}</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
         </div>
