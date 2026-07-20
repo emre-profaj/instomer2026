@@ -1890,7 +1890,7 @@ const Customers = () => {
                             { key: 'AGENT_CALLS', label: 'Aramalar', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
                             { key: 'NO_ACTIVITY', label: 'Aranmayanlar', icon: CircleOff, count: quickStats.noActivityCount, colorClass: 'no-activity' },
                             { key: 'AI_CALLS', label: 'AI Aramaları', icon: Bot, count: quickStats.aiCalledCount, colorClass: 'ai' },
-                            { key: 'SALES', label: 'Satışlar', icon: ShoppingCart, count: quickStats.salesCount || 0, colorClass: 'called' },
+                            { key: 'SALES', label: 'Müşteriler', icon: UserCheck, count: quickStats.salesCount || 0, colorClass: 'called' },
                         ].map(btn => {
                             const isActive = quickFilterMode === btn.key;
                             const IconComp = btn.icon;
