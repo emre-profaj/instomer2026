@@ -1522,8 +1522,16 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 }}
                                                 onBlur={async () => {
                                                     setIsEditingName(false);
-                                                    if (profile.id && profile.name?.trim()) {
-                                                        try { await contactAPI.update(currentWorkspace.id, profile.id, { name: profile.name.trim() }); } catch (err) { }
+                                                    if (profile.id && profile.name !== undefined) {
+                                                        const trimmed = (profile.name || '').trim();
+                                                        if (trimmed) {
+                                                            try {
+                                                                await contactAPI.update(currentWorkspace.id, profile.id, { name: trimmed });
+                                                                setProfile(prev => ({ ...prev, name: trimmed }));
+                                                                // Kişiler listesini güncelle
+                                                                window.dispatchEvent(new CustomEvent('websocket:contact_updated', { detail: { contactId: profile.id } }));
+                                                            } catch (err) { }
+                                                        }
                                                     }
                                                 }}
                                                 autoFocus
