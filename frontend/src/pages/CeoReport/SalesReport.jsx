@@ -355,6 +355,7 @@ const SalesReport = () => {
                                     <th>Kategori</th>
                                     <th>Temsilci</th>
                                     <th>Başlık</th>
+                                    <th>Kaynak</th>
                                     <th>Tutar</th>
                                     <th>Tarih</th>
                                 </tr>
@@ -383,6 +384,13 @@ const SalesReport = () => {
                                         </td>
                                         <td><span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151' }}>{s.agentName}</span></td>
                                         <td><span style={{ fontSize: '0.78rem', color: '#64748b' }}>{s.title}</span></td>
+                                        <td>
+                                            {s.source ? (
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#8b5cf6', background: '#f5f3ff', padding: '2px 8px', borderRadius: 6 }}>{s.source}</span>
+                                            ) : (
+                                                <span style={{ fontSize: '0.68rem', color: '#d1d5db' }}>—</span>
+                                            )}
+                                        </td>
                                         <td><span style={{ fontWeight: 800, color: '#059669', fontSize: '0.88rem' }}>{formatCurrency(s.amount)}</span></td>
                                         <td><span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span></td>
                                     </tr>
