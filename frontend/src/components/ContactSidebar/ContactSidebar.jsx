@@ -182,6 +182,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
     const [availableCategories, setAvailableCategories] = useState([]);
     const [categorySearch, setCategorySearch] = useState('');
+    const categoryBtnRef = useRef(null);
+    const [categoryDropdownPos, setCategoryDropdownPos] = useState({ top: 0, right: 0 });
     const [creatingCase, setCreatingCase] = useState(false);
     const [showExtraFields, setShowExtraFields] = useState(false);
     const [caseStatusDropdownOpen, setCaseStatusDropdownOpen] = useState(false);
@@ -2011,15 +2013,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <div style={{ position: 'relative' }}>
                                                     <button
                                                         onClick={async () => {
-                                                            if (!categoryDropdownOpen && availableCategories.length === 0) {
-                                                                try {
-                                                                    const res = await getTopicCategories(currentWorkspace.id);
-                                                                    setAvailableCategories(res.data.categories || []);
-                                                                } catch (e) { console.error(e); }
-                                                            }
-                                                            setCategoryDropdownOpen(v => !v);
-                                                            setCategorySearch('');
-                                                        }}
+                                                             if (!categoryDropdownOpen && availableCategories.length === 0) {
+                                                                 try {
+                                                                     const res = await getTopicCategories(currentWorkspace.id);
+                                                                     setAvailableCategories(res.data || []);
+                                                                 } catch (e) { console.error(e); }
+                                                             }
+                                                             if (categoryBtnRef.current) {
+                                                                 const rect = categoryBtnRef.current.getBoundingClientRect();
+                                                                 setCategoryDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                                             }
+                                                             setCategoryDropdownOpen(v => !v);
+                                                             setCategorySearch('');
+                                                         }}
+                                                        ref={categoryBtnRef}
                                                         style={{
                                                             background: activeConv?.topicCategory?.name
                                                                 ? (activeConv.topicCategory.color || '#6366f1') + '18'
@@ -2047,11 +2054,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <>
                                                         <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryDropdownOpen(false)} />
                                                         <div style={{
-                                                            position: 'absolute', top: '100%', right: 0, zIndex: 9999,
+                                                            position: 'fixed',
+                                                            top: categoryDropdownPos.top,
+                                                            right: categoryDropdownPos.right,
+                                                            zIndex: 9999,
                                                             background: '#fff', border: '1px solid #e5e7eb',
                                                             borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
                                                             minWidth: 220, maxHeight: 280, overflow: 'hidden',
-                                                            marginTop: 4
                                                         }}>
                                                             <div style={{ padding: '6px 8px', borderBottom: '1px solid #f1f5f9' }}>
                                                                 <input

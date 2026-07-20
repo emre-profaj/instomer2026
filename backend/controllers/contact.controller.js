@@ -5067,41 +5067,64 @@ export const getSalesReport = async (req, res) => {
                 conversation: {
                     select: {
                         topicCategoryId: true,
-                        topicCategory: { select: { id: true, name: true, icon: true, color: true } }
+                        topicCategory: { select: { id: true, name: true, icon: true, color: true } },
+                        aiTopic: true // AI tarafından atanan serbest metin konu (fallback için)
                     }
                 }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        // Her deal'a topicCategory ekle — önce kendi conversation'ından, yoksa deal zamanına en yakın conversation'dan
+        // Workspace'in tüm TopicCategory'lerini keywords dahil önceden çek
+        const allTopicCategories = await prisma.topicCategory.findMany({
+            where: { workspaceId },
+            select: { id: true, name: true, icon: true, color: true, keywords: true }
+        });
+
+        // Her kategorinin keywords dizisini parse et
+        const categoriesWithKeywords = allTopicCategories.map(tc => {
+            let kw = [];
+            try { kw = tc.keywords ? JSON.parse(tc.keywords) : []; } catch { kw = []; }
+            return { ...tc, kwList: kw.map(k => k.toLocaleLowerCase('tr-TR').trim()) };
+        });
+
+        // Metin → TopicCategory eşleştirici
+        // Öncelik sırası: tam isim → isim içerme → keywords eşleşmesi
+        const matchTopicByText = (text) => {
+            if (!text) return null;
+            const lower = text.toLocaleLowerCase('tr-TR').trim();
+            // 1) Tam isim eşleşmesi
+            let match = categoriesWithKeywords.find(tc => tc.name.toLocaleLowerCase('tr-TR') === lower);
+            if (match) return match;
+            // 2) Metin, kategori adını içeriyor mu?
+            match = categoriesWithKeywords.find(tc => lower.includes(tc.name.toLocaleLowerCase('tr-TR')));
+            if (match) return match;
+            // 3) Kategori adı, metni içeriyor mu?
+            match = categoriesWithKeywords.find(tc => tc.name.toLocaleLowerCase('tr-TR').includes(lower));
+            if (match) return match;
+            // 4) Keywords eşleşmesi — en geniş kapsam
+            match = categoriesWithKeywords.find(tc =>
+                tc.kwList.some(kw => kw && (lower.includes(kw) || kw.includes(lower)))
+            );
+            return match || null;
+        };
+
+        // Her deal'a topicCategory ekle
         const salesList = await Promise.all(deals.map(async (d) => {
-            // 1. Deal'ın kendi conversation'ının topicCategory'si
+            // 1. Deal'ın kendi conversation'ının yapılandırılmış topicCategory'si (en doğru kaynak)
             let topicCat = d.conversation?.topicCategory || null;
 
-            // 2. Fallback: Contact'ın deal oluşturulma tarihine en yakın conversation'ını bul
-            if (!topicCat && d.contactId) {
-                // Deal tarihinden ÖNCE veya aynı zamanda olan en son konuşma
-                const contactConv = await prisma.conversation.findFirst({
-                    where: {
-                        contactId: d.contactId,
-                        topicCategoryId: { not: null },
-                        lastMessageAt: { lte: new Date(new Date(d.createdAt).getTime() + 24 * 60 * 60 * 1000) }
-                    },
-                    select: { topicCategory: { select: { id: true, name: true, icon: true, color: true } } },
-                    orderBy: { lastMessageAt: 'desc' }
-                });
-                topicCat = contactConv?.topicCategory || null;
+            // 2. Conversation'da topicCategoryId yoksa, aiTopic metnini mevcut kategorilerle eşleştir.
+            //    Bu, kategoriler eklenmeden ÖNCE oluşturulmuş konuşmaları doğru şekilde sınıflandırır.
+            //    Başka bir contact'ın veya agent'ın verisine başvurulmaz.
+            if (!topicCat && d.conversation?.aiTopic) {
+                topicCat = matchTopicByText(d.conversation.aiTopic);
+            }
 
-                // 3. Hâlâ bulunamadıysa, herhangi birini al
-                if (!topicCat) {
-                    const anyConv = await prisma.conversation.findFirst({
-                        where: { contactId: d.contactId, topicCategoryId: { not: null } },
-                        select: { topicCategory: { select: { id: true, name: true, icon: true, color: true } } },
-                        orderBy: { lastMessageAt: 'desc' }
-                    });
-                    topicCat = anyConv?.topicCategory || null;
-                }
+            // 3. Deal'ın hiç conversation'ı yoksa ya da conversation'da aiTopic de yoksa,
+            //    deal başlığını kategori isimleriyle eşleştirmeyi dene.
+            if (!topicCat && d.title) {
+                topicCat = matchTopicByText(d.title);
             }
 
             return {
@@ -5237,16 +5260,52 @@ export const getRequestReport = async (req, res) => {
             }
         });
 
-        // 2. Deal'lar (manuel satışlar dahil)
+        // 2. Deal'lar — conversation ve aiTopic dahil (konu eşleştirmesi için)
         const deals = await prisma.deal.findMany({
             where: { workspaceId, ...dateFilter },
             select: {
                 id: true, title: true, status: true, stage: true, amount: true,
                 assignedToId: true, assignedTo: { select: { id: true, name: true } },
                 contactId: true,
-                contact: { select: { id: true, phone: true } }
+                contact: { select: { id: true, phone: true } },
+                conversationId: true,
+                conversation: {
+                    select: {
+                        topicCategoryId: true,
+                        topicCategory: { select: { id: true, name: true, icon: true, color: true } },
+                        aiTopic: true
+                    }
+                }
             }
         });
+
+        // Konu eşleştirme için tüm kategori + keywords'leri önceden çek
+        const reqReportCategories = await prisma.topicCategory.findMany({
+            where: { workspaceId },
+            select: { id: true, name: true, icon: true, color: true, keywords: true }
+        });
+        const reqReportCatsWithKw = reqReportCategories.map(tc => {
+            let kw = [];
+            try { kw = tc.keywords ? JSON.parse(tc.keywords) : []; } catch { kw = []; }
+            return { ...tc, kwList: kw.map(k => k.toLocaleLowerCase('tr-TR').trim()) };
+        });
+        const matchDealTopic = (text) => {
+            if (!text) return null;
+            const lower = text.toLocaleLowerCase('tr-TR').trim();
+            return reqReportCatsWithKw.find(tc => tc.name.toLocaleLowerCase('tr-TR') === lower)
+                || reqReportCatsWithKw.find(tc => lower.includes(tc.name.toLocaleLowerCase('tr-TR')))
+                || reqReportCatsWithKw.find(tc => tc.name.toLocaleLowerCase('tr-TR').includes(lower))
+                || reqReportCatsWithKw.find(tc => tc.kwList.some(kw => kw && (lower.includes(kw) || kw.includes(lower))))
+                || null;
+        };
+        // Her deal için topicCategory belirle
+        const dealTopicMap = new Map();
+        for (const d of deals) {
+            let topicCat = d.conversation?.topicCategory || null;
+            if (!topicCat && d.conversation?.aiTopic) topicCat = matchDealTopic(d.conversation.aiTopic);
+            if (!topicCat && d.title) topicCat = matchDealTopic(d.title);
+            dealTopicMap.set(d.id, topicCat);
+        }
 
         // 3. FunnelStage lookup
         const allFunnels = await prisma.funnel.findMany({
@@ -5341,7 +5400,8 @@ export const getRequestReport = async (req, res) => {
             else if (d.stage === 'ORDER') ag.dealOrders++;
             else if (d.stage === 'INVOICE') ag.dealInvoices++;
 
-            const catName = 'Manuel Satış';
+            const dealCat = dealTopicMap.get(d.id);
+            const catName = dealCat?.name || 'Manuel Satış';
             if (!ag.topicBreakdown[catName]) {
                 ag.topicBreakdown[catName] = { count: 0, wonCount: 0, wonAmount: 0 };
             }
@@ -5425,12 +5485,15 @@ export const getRequestReport = async (req, res) => {
             }
             if (c.status === 'WON') g.wonCount++;
         }
-        // Deal'lerden — hepsi 'Manuel Satış' kategorisi
+        // Deal'lerden — doğru konu kategorisine yaz, eşleşmezse 'Manuel Satış'
         for (const d of deals) {
-            const catName = 'Manuel Satış';
+            const dealCat = dealTopicMap.get(d.id);
+            const catName = dealCat?.name || 'Manuel Satış';
             if (!byTopic[catName]) {
                 byTopic[catName] = {
-                    name: catName, icon: null, color: null,
+                    name: catName,
+                    icon: dealCat?.icon || null,
+                    color: dealCat?.color || null,
                     count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0,
                     wonCount: 0, wonAmount: 0
                 };

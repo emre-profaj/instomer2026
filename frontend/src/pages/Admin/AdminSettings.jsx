@@ -145,13 +145,13 @@ const AdminSettings = () => {
                         type="password"
                         value={globalAiApiKey}
                         onChange={(e) => setGlobalAiApiKey(e.target.value)}
-                        placeholder="AIza..."
+                        placeholder="AQ.Ab..."
                         className="settings-input"
                     />
                     <div className="input-hint">
                         {globalSettings?.hasGlobalAiApiKey
                             ? 'Yeni bir anahtar girerek mevcut olanı güncelleyebilirsiniz. Alanı boş bırakıp kaydederseniz anahtar silinir.'
-                            : 'Google AI Studio üzerinden aldığınız API anahtarını buraya girin. Bu anahtar, bireysel anahtarı bulunmayan tüm workspace\'lerin AI özelliklerini besleyecektir.'}
+                            : 'AI platformu üzerinden aldığınız API anahtarını buraya girin. Bu anahtar, bireysel anahtarı bulunmayan tüm workspace\'lerin AI özelliklerini besleyecektir.'}
                     </div>
                 </div>
 

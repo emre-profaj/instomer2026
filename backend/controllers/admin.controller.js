@@ -1196,7 +1196,13 @@ export const getGlobalSettings = async (req, res) => {
         const settings = await prisma.globalSettings.findUnique({
             where: { id: 'singleton' }
         });
-        res.json({ settings: settings || {} });
+        const result = settings || {};
+        res.json({
+            settings: {
+                ...result,
+                hasGlobalAiApiKey: !!(result.globalAiApiKey && result.globalAiApiKey.length > 0)
+            }
+        });
     } catch (error) {
         console.error('Get global settings error:', error);
         res.status(500).json({ error: 'Failed to get global settings' });
