@@ -393,7 +393,7 @@ async function migrateStatusToFunnelStage(workspaceId) {
 export const getContacts = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases, tzOffset } = req.query;
+        const { search, status, source, category, tag, contactInfo, importGroup, callStatus, showArchived, funnelType, funnelTypes, funnelStageId, assignmentFilter, sortField = 'createdAt', sortDir = 'desc', limit = 50, offset = 0, dateFilter, dateFrom, dateTo, onlyOpenCases, tzOffset, topicCategoryId, hasSales } = req.query;
         const { role } = req.workspaceMember;
 
         // Auto-migrate legacy status → funnel stage (runs once per workspace)
@@ -500,6 +500,30 @@ export const getContacts = async (req, res) => {
                 AND: [
                     where,
                     { importGroup: importGroup }
+                ]
+            };
+        }
+
+        // Add topicCategory filter — filter contacts that have a conversation with this topicCategoryId
+        if (topicCategoryId && topicCategoryId !== 'ALL') {
+            where = {
+                AND: [
+                    where,
+                    {
+                        conversations: {
+                            some: { topicCategoryId: topicCategoryId }
+                        }
+                    }
+                ]
+            };
+        }
+
+        // Add hasSales filter — filter contacts that have at least one WON deal
+        if (hasSales === 'true') {
+            where = {
+                AND: [
+                    where,
+                    { deals: { some: { status: 'WON' } } }
                 ]
             };
         }
@@ -1595,7 +1619,15 @@ export const getContacts = async (req, res) => {
 
 
 
-        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, noPhoneCount } });
+        // Sales count — contacts with at least one WON deal
+        const salesCount = await prisma.contact.count({
+            where: {
+                ...statsWhere,
+                deals: { some: { status: 'WON' } }
+            }
+        });
+
+        res.json({ contacts: finalContacts, total: totalCount, allImportGroups, allTags: Array.from(allTags).sort(), quickStats: { periodCount, withPhoneCount, agentCalledCount, aiCalledCount, noActivityCount, totalAllTime, funnelCounts, funnelStageCounts, noPhoneCount, salesCount } });
     } catch (error) {
         console.error('Get contacts error:', error?.message || error);
         console.error('Get contacts error stack:', error?.stack);

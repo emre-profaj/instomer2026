@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI } from '../../services/api';
+import { getTopicCategories } from '../../services/topicCategory.api';
 import * as XLSX from 'xlsx';
 import {
     User,
@@ -51,7 +52,8 @@ import {
     CircleOff,
     KanbanSquare,
     List,
-    FileText
+    FileText,
+    ShoppingCart
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -250,6 +252,10 @@ const Customers = () => {
     const [tagFilter, setTagFilter] = useState(sf.tagFilter || 'ALL');
     const [availableTags, setAvailableTags] = useState([]);
 
+    // Topic category filter state
+    const [topicCategoryFilter, setTopicCategoryFilter] = useState(sf.topicCategoryFilter || 'ALL');
+    const [availableTopicCategories, setAvailableTopicCategories] = useState([]);
+
     // Contact info filter state (phone/email)
     const [contactInfoFilter, setContactInfoFilter] = useState(sf.contactInfoFilter || 'ALL');
 
@@ -267,7 +273,7 @@ const Customers = () => {
         const filtersToSave = {
             assignmentFilter, quickFilterMode, search, statusFilter,
             funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
-            sourceFilter, categoryFilter, callStatusFilter, tagFilter,
+            sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
             contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
             onlyOpenCases, sortField, sortDir, limit
         };
@@ -276,7 +282,7 @@ const Customers = () => {
         } catch { /* storage full — ignore */ }
     }, [assignmentFilter, quickFilterMode, search, statusFilter,
         funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
-        sourceFilter, categoryFilter, callStatusFilter, tagFilter,
+        sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
         contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
         onlyOpenCases, sortField, sortDir, limit]);
 
@@ -327,6 +333,14 @@ const Customers = () => {
             .catch(() => {});
     }, [currentWorkspace]);
 
+    // Load topic categories for category filter dropdown
+    useEffect(() => {
+        if (!currentWorkspace) return;
+        getTopicCategories(currentWorkspace.id)
+            .then(res => setAvailableTopicCategories(res.data || []))
+            .catch(() => {});
+    }, [currentWorkspace]);
+
     // Load teams and members for assignment sidebar
     useEffect(() => {
         if (!currentWorkspace) return;
@@ -359,7 +373,7 @@ const Customers = () => {
                 silentReloadContacts();
             }
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -412,6 +426,8 @@ const Customers = () => {
                 dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
                 dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
                 tzOffset: new Date().getTimezoneOffset(),
+                topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
+                hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);
@@ -434,7 +450,7 @@ const Customers = () => {
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
-    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter]);
+    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, topicCategoryFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter, quickFilterMode]);
 
     useEffect(() => {
         const handleContactUpdate = (event) => {
@@ -553,6 +569,8 @@ const Customers = () => {
                 dateFrom: dateFilter === 'CUSTOM' && dateFrom ? dateFrom : undefined,
                 dateTo: dateFilter === 'CUSTOM' && dateTo ? dateTo : undefined,
                 tzOffset: new Date().getTimezoneOffset(),
+                topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
+                hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
             });
             setContacts(response.data.contacts);
             setTotal(response.data.total);
@@ -1359,7 +1377,7 @@ const Customers = () => {
                             <div className="contacts-filter-popover-wrapper" ref={filtersDropdownRef} style={{ position: 'relative' }}>
                                 <button
                                     className={`btn-filters-toggle ${filtersDropdownOpen ? 'active' : ''} ${
-                                        (funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL') ? 'has-active' : ''
+                                        (funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL' || topicCategoryFilter !== 'ALL') ? 'has-active' : ''
                                     }`}
                                     onClick={() => setFiltersDropdownOpen(o => !o)}
                                     style={{
@@ -1386,6 +1404,7 @@ const Customers = () => {
                                         if (assignmentFilter !== 'all') activeCount++;
                                         if (sourceFilter !== 'ALL') activeCount++;
                                         if (tagFilter !== 'ALL') activeCount++;
+                                        if (topicCategoryFilter !== 'ALL') activeCount++;
                                         return activeCount > 0 ? (
                                             <span className="filters-badge-count" style={{
                                                 background: '#ef4444',
@@ -1423,7 +1442,7 @@ const Customers = () => {
                                     }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '6px', marginBottom: '2px' }}>
                                             <span style={{ fontSize: '12px', fontWeight: 700, color: '#1e293b' }}>Filtreler</span>
-                                            {(funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL') && (
+                                            {(funnelFilter !== 'ALL' || funnelStageFilter !== 'ALL' || mergedFunnelIds || assignmentFilter !== 'all' || sourceFilter !== 'ALL' || tagFilter !== 'ALL' || topicCategoryFilter !== 'ALL') && (
                                                 <button
                                                     onClick={() => {
                                                         setFunnelFilter('ALL');
@@ -1432,6 +1451,7 @@ const Customers = () => {
                                                         setAssignmentFilter('all');
                                                         setSourceFilter('ALL');
                                                         setTagFilter('ALL');
+                                                        setTopicCategoryFilter('ALL');
                                                         setPage(1);
                                                         setFiltersDropdownOpen(false);
                                                     }}
@@ -1655,6 +1675,35 @@ const Customers = () => {
                                                 ))}
                                             </select>
                                         </div>
+
+                                        {/* Kategori (Topic) Filtresi */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                            <label style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kategori</label>
+                                            <select
+                                                value={topicCategoryFilter}
+                                                onChange={(e) => {
+                                                    setTopicCategoryFilter(e.target.value);
+                                                    setPage(1);
+                                                }}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '6px 8px',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '6px',
+                                                    fontSize: '11px',
+                                                    color: '#334155',
+                                                    background: '#ffffff',
+                                                    outline: 'none'
+                                                }}
+                                            >
+                                                <option value="ALL">Tüm Kategoriler</option>
+                                                {availableTopicCategories.map(cat => (
+                                                    <option key={cat.id} value={cat.id}>
+                                                        {cat.icon ? `${cat.icon} ` : ''}{cat.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1841,6 +1890,7 @@ const Customers = () => {
                             { key: 'AGENT_CALLS', label: 'Aramalar', icon: PhoneCall, count: quickStats.agentCalledCount, colorClass: 'called' },
                             { key: 'NO_ACTIVITY', label: 'Aranmayanlar', icon: CircleOff, count: quickStats.noActivityCount, colorClass: 'no-activity' },
                             { key: 'AI_CALLS', label: 'AI Aramaları', icon: Bot, count: quickStats.aiCalledCount, colorClass: 'ai' },
+                            { key: 'SALES', label: 'Satışlar', icon: ShoppingCart, count: quickStats.salesCount || 0, colorClass: 'called' },
                         ].map(btn => {
                             const isActive = quickFilterMode === btn.key;
                             const IconComp = btn.icon;
@@ -1869,10 +1919,15 @@ const Customers = () => {
                                         } else if (newMode === 'NO_PHONE') {
                                             setContactInfoFilter('NO_PHONE');
                                             setCallStatusFilter('ALL');
+                                        } else if (newMode === 'SALES') {
+                                            // Filter contacts with WON deals
+                                            setContactInfoFilter('ALL');
+                                            setCallStatusFilter('ALL');
                                         } else {
                                             // ALL — only reset quick-filter-specific states
                                             setContactInfoFilter('ALL');
                                             setCallStatusFilter('ALL');
+                                            setStatusFilter('ALL');
                                         }
                                     }}
                                     style={{ cursor: 'pointer', userSelect: 'none' }}
@@ -2738,6 +2793,8 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 ))}
                                                             </select>
                                                         </div>
+
+
                                                         {bulkWASending && (
                                                             <div className="customers-bulk-progress">
                                                                 <div className="customers-bulk-progress-bar">
