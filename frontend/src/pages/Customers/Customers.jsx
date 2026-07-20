@@ -72,7 +72,7 @@ const Customers = () => {
     const [viewMode, setViewMode] = useState('list'); // 'list' | 'pipeline'
 
     // Filtre state'leri (sayfa yenilendiğinde sessionStorage'dan okunur) ---
-    const FILTER_STORAGE_KEY = 'customers_filters';
+    const FILTER_STORAGE_KEY = `customers_filters_${currentWorkspace?.id || 'default'}`;
 
     const getSavedFilters = () => {
         try {
