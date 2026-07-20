@@ -5057,6 +5057,23 @@ export const getAnalysisReport = async (req, res) => {
     }
 };
 
+// ── Kaynak ismi formatlama ──
+const SOURCE_LABELS = {
+    'FACEBOOK': 'Facebook',
+    'FACEBOOK_LEAD': 'Facebook Lead Form',
+    'INSTAGRAM': 'Instagram',
+    'WHATSAPP': 'WhatsApp',
+    'WIDGET': 'Web Widget',
+    'EMAIL': 'E-posta',
+    'WEB_FORM': 'Web Form',
+    'FORM': 'Form',
+    'LEAD': 'Lead',
+    'MANUAL': 'Manuel',
+    'API': 'API',
+    'IMPORT': 'İçe Aktarma',
+};
+const formatSourceName = (raw) => SOURCE_LABELS[raw] || raw || 'Bilinmeyen';
+
 // ── Satış Raporu (Yeni — topicCategory bazlı) ──
 export const getSalesReport = async (req, res) => {
     try {
@@ -5173,7 +5190,7 @@ export const getSalesReport = async (req, res) => {
                 contactName: d.contact?.name || 'Bilinmeyen',
                 contactPhone: d.contact?.phone || '',
                 contactEmail: d.contact?.email || '',
-                source: d.contact?.source || null,
+                source: d.contact?.source ? formatSourceName(d.contact.source) : null,
                 categoryId: topicCat?.id || null,
                 categoryName: topicCat?.name || 'Kategorisiz',
                 categoryIcon: topicCat?.icon || null,
@@ -5512,7 +5529,7 @@ export const getRequestReport = async (req, res) => {
             }
             const g = byTopic[catName];
             g.count++;
-            const contactSource = c.contact?.source || 'Bilinmeyen';
+            const contactSource = formatSourceName(c.contact?.source);
             if (!g.sources[contactSource]) g.sources[contactSource] = { name: contactSource, count: 0, wonCount: 0, wonAmount: 0 };
             g.sources[contactSource].count++;
             for (const act of (c.activities || [])) {
@@ -5542,7 +5559,7 @@ export const getRequestReport = async (req, res) => {
             }
             const g = byTopic[catName];
             g.count++;
-            const dealSource = d.contact?.source || 'Bilinmeyen';
+            const dealSource = formatSourceName(d.contact?.source);
             if (!g.sources[dealSource]) g.sources[dealSource] = { name: dealSource, count: 0, wonCount: 0, wonAmount: 0 };
             g.sources[dealSource].count++;
             if (d.status === 'WON') {
@@ -5587,7 +5604,7 @@ export const getRequestReport = async (req, res) => {
         // Kaynak Bazlı Talep Analizi
         const bySource = {};
         for (const c of cases) {
-            const src = c.contact?.source || 'Bilinmeyen';
+            const src = formatSourceName(c.contact?.source);
             if (!bySource[src]) {
                 bySource[src] = { name: src, count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0, wonCount: 0, wonAmount: 0 };
             }
@@ -5602,7 +5619,7 @@ export const getRequestReport = async (req, res) => {
             if (c.status === 'WON') sg.wonCount++;
         }
         for (const d of deals) {
-            const src = d.contact?.source || 'Bilinmeyen';
+            const src = formatSourceName(d.contact?.source);
             if (!bySource[src]) {
                 bySource[src] = { name: src, count: 0, calls: 0, meetings: 0, appointments: 0, proposals: 0, orders: 0, wonCount: 0, wonAmount: 0 };
             }
