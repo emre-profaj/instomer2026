@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     DollarSign, ShoppingCart, RefreshCw, Filter, ArrowLeft,
-    TrendingUp, ChevronDown, ChevronRight, Users, UserCheck, Hash
+    TrendingUp, ChevronDown, ChevronRight, Users, UserCheck, Hash, Globe
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -27,6 +27,8 @@ const SalesReport = () => {
     const [expandedAgents, setExpandedAgents] = useState({});
     const [expandedTopicSales, setExpandedTopicSales] = useState({});
     const [expandedAgentSales, setExpandedAgentSales] = useState({});
+    const [expandedSources, setExpandedSources] = useState({});
+    const [expandedSourceSales, setExpandedSourceSales] = useState({});
 
     useEffect(() => {
         sessionStorage.setItem('reportDateFilter', dateFilter);
@@ -63,7 +65,7 @@ const SalesReport = () => {
         );
     }
 
-    const { totalCount = 0, totalAmount = 0, topicGroups = [], agentGroups = [], salesList = [] } = data || {};
+    const { totalCount = 0, totalAmount = 0, topicGroups = [], agentGroups = [], sourceGroups = [], salesList = [] } = data || {};
     const maxTopicAmount = topicGroups.length > 0 ? topicGroups[0].amount : 1;
     const maxAgentAmount = agentGroups.length > 0 ? agentGroups[0].amount : 1;
 
@@ -71,6 +73,8 @@ const SalesReport = () => {
     const toggleAgent = (name) => setExpandedAgents(p => ({ ...p, [name]: !p[name] }));
     const toggleTopicSales = (key) => setExpandedTopicSales(p => ({ ...p, [key]: !p[key] }));
     const toggleAgentSales = (key) => setExpandedAgentSales(p => ({ ...p, [key]: !p[key] }));
+    const toggleSource = (name) => setExpandedSources(p => ({ ...p, [name]: !p[name] }));
+    const toggleSourceSales = (key) => setExpandedSourceSales(p => ({ ...p, [key]: !p[key] }));
 
     // Get sales for a specific topic+agent combination
     const getSalesFor = (categoryName, agentName) => {
@@ -385,6 +389,90 @@ const SalesReport = () => {
                                 ))}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ 4. KAYNAĞA GÖRE SATIŞ ═══ */}
+            {sourceGroups.length > 0 && (
+                <div className="ceo-section" style={{ marginBottom: 24 }}>
+                    <div className="ceo-section-header">
+                        <div className="ceo-section-icon" style={{ background: '#faf5ff', color: '#8b5cf6' }}><Globe size={18} /></div>
+                        <h2>Kaynağa Göre Satış</h2>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#94a3b8', marginLeft: 'auto' }}>{sourceGroups.length} kaynak</span>
+                    </div>
+                    <div className="ceo-section-body" style={{ padding: 0 }}>
+                        {sourceGroups.map((group, gi) => {
+                            const pct = ((group.amount / (sourceGroups[0]?.amount || 1)) * 100).toFixed(0);
+                            const isExpanded = expandedSources[group.name];
+                            return (
+                                <div key={gi} style={{ borderBottom: gi < sourceGroups.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    <div
+                                        onClick={() => toggleSource(group.name)}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+                                            cursor: 'pointer', transition: 'background 0.15s'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                    >
+                                        <div style={{ transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'none' }}>
+                                            <ChevronRight size={14} style={{ color: '#94a3b8' }} />
+                                        </div>
+                                        <Globe size={16} style={{ color: '#8b5cf6' }} />
+                                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', flex: 1 }}>{group.name}</span>
+                                        <div style={{ flex: 2, height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden', maxWidth: 200 }}>
+                                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)', borderRadius: 6, transition: 'width 0.6s' }} />
+                                        </div>
+                                        <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#8b5cf6', minWidth: 50, textAlign: 'right' }}>{group.count} adet</span>
+                                        <span style={{ fontWeight: 900, fontSize: '0.92rem', color: '#0f172a', minWidth: 100, textAlign: 'right' }}>{formatCurrency(group.amount)}</span>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div style={{ background: '#fafbfc', padding: '0 16px 8px 46px' }}>
+                                            {group.agents.map((agent, ai) => {
+                                                const agentKey = `src__${group.name}__${agent.name}`;
+                                                const showSales = expandedSourceSales[agentKey];
+                                                const agentSales = salesList.filter(s => (s.source || 'Bilinmeyen') === group.name && s.agentName === agent.name);
+                                                return (
+                                                    <div key={ai}>
+                                                        <div
+                                                            onClick={() => toggleSourceSales(agentKey)}
+                                                            style={{
+                                                                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                                                                borderRadius: 8, cursor: 'pointer', marginBottom: 2,
+                                                                transition: 'background 0.15s'
+                                                            }}
+                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                        >
+                                                            <ChevronRight size={11} style={{ color: '#cbd5e1', transition: 'transform 0.2s', transform: showSales ? 'rotate(90deg)' : 'none' }} />
+                                                            <UserCheck size={13} style={{ color: '#6366f1' }} />
+                                                            <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#374151', flex: 1 }}>{agent.name}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: '#6366f1' }}>{agent.count}</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#0f172a', minWidth: 80, textAlign: 'right' }}>{formatCurrency(agent.amount)}</span>
+                                                        </div>
+                                                        {showSales && agentSales.length > 0 && (
+                                                            <div style={{ marginLeft: 20, marginBottom: 6, borderLeft: '2px solid #e2e8f0', paddingLeft: 12 }}>
+                                                                {agentSales.map((s, si) => (
+                                                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontSize: '0.72rem', color: '#64748b' }}>
+                                                                        <Hash size={10} style={{ color: '#cbd5e1' }} />
+                                                                        <span style={{ flex: 1, fontWeight: 600, color: '#374151' }}>{s.contactName}</span>
+                                                                        <span>{s.title}</span>
+                                                                        <span style={{ fontWeight: 700, color: '#059669' }}>{formatCurrency(s.amount)}</span>
+                                                                        <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>{new Date(s.createdAt).toLocaleDateString('tr-TR')}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}

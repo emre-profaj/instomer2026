@@ -5263,12 +5263,36 @@ export const getSalesReport = async (req, res) => {
                 topics: Object.values(g.topics).sort((a, b) => b.amount - a.amount)
             }))
             .sort((a, b) => b.amount - a.amount);
+        // Kaynağa göre gruplama
+        const bySource = {};
+        for (const s of salesList) {
+            const key = s.source || 'Bilinmeyen';
+            if (!bySource[key]) {
+                bySource[key] = { name: key, count: 0, amount: 0, agents: {} };
+            }
+            bySource[key].count++;
+            bySource[key].amount += s.amount;
+            // Agent alt grubu
+            const aKey = s.agentName;
+            if (!bySource[key].agents[aKey]) {
+                bySource[key].agents[aKey] = { name: aKey, count: 0, amount: 0 };
+            }
+            bySource[key].agents[aKey].count++;
+            bySource[key].agents[aKey].amount += s.amount;
+        }
+        const sourceGroups = Object.values(bySource)
+            .map(g => ({
+                ...g,
+                agents: Object.values(g.agents).sort((a, b) => b.amount - a.amount)
+            }))
+            .sort((a, b) => b.amount - a.amount);
 
         res.json({
             totalCount,
             totalAmount,
             topicGroups,
             agentGroups,
+            sourceGroups,
             salesList
         });
     } catch (error) {
