@@ -1366,8 +1366,8 @@ export const webhookHandler = async (req, res) => {
                     // Run for ALL message types with text content (text, image captions, doc captions, etc.)
                     if (msg_body && msg_body.trim()) {
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
-                            // Phone capture MUST run first and be awaited (auto-call checks contact.phone)
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
+                            // Phone capture MUST run first and be awaited
                             await executePhoneCaptureRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:PHONE_CAPTURE] error:', e.message)
                             );
@@ -1375,14 +1375,14 @@ export const webhookHandler = async (req, res) => {
                             executeHotKeywordRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:HOT_KEYWORD] async error:', e.message)
                             );
+                            // executeSalesPhoneCallRule: Arama niyeti + numara kontrolü yapar
+                            // Sadece müşteri "beni arayın" vb. dediğinde görev oluşturur
                             executeSalesPhoneCallRule(waNumber.workspaceId, conversation.id, msg_body).catch(e =>
                                 console.error('❌ [RULE:SALES_PHONE_CALL] async error:', e.message)
                             );
-                            // Auto call planning runs AFTER phone capture to avoid race condition
-                            // IMPORTANT: await so it runs AFTER phone capture has saved the phone number
-                            await executeAutoCallPlanning(waNumber.workspaceId, contact.id, 'WHATSAPP').catch(e =>
-                                console.error('❌ [RULE:AUTO_CALL] WA async error:', e.message)
-                            );
+                            // executeAutoCallPlanning burada ÇAĞRILMAZ
+                            // Her mesajda arama planlamak çok agresif — müşteri aranma istememiş olabilir
+                            // Auto-call sadece: manuel kişi ekleme, form, lead form için çalışır
                         } catch (ruleErr) {
                             console.error('❌ [RULES] Import error:', ruleErr.message);
                         }

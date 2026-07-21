@@ -1823,34 +1823,25 @@ async function processWebhookAsync(body) {
                         continue;
                     }
 
-                    // --- AUTOMATION RULES + AUTO-CALL (run before AI reply to avoid being skipped by continue) ---
+                    // --- AUTOMATION RULES (run before AI reply to avoid being skipped by continue) ---
                     if (!isOutgoingMessage && message?.text) {
-                        // Automation rules: phone capture (awaited so status is updated before auto-call)
                         try {
-                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
-                            // IMPORTANT: await phone capture so contact.status is updated before auto-call status check
+                            const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
                             await executePhoneCaptureRule(facebookPage.workspaceId, conversation.id, message.text);
                             executeHotKeywordRule(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [RULE:HOT_KEYWORD] FB/IG async error:', e.message)
                             );
+                            // executeSalesPhoneCallRule: Arama niyeti kontrolü yapar
                             executeSalesPhoneCallRule(facebookPage.workspaceId, conversation.id, message.text).catch(e =>
                                 console.error('❌ [RULE:SALES_PHONE_CALL] FB/IG async error:', e.message)
                             );
-                            // Also trigger simplified auto call planning (no intent check needed)
-                            // IMPORTANT: await so it runs AFTER phone capture has saved the phone number
-                            await executeAutoCallPlanning(facebookPage.workspaceId, contact.id, isInstagram ? 'INSTAGRAM' : 'FACEBOOK').catch(e =>
-                                console.error('❌ [RULE:AUTO_CALL] FB/IG async error:', e.message)
-                            );
+                            // executeAutoCallPlanning burada ÇAĞRILMAZ
+                            // Her mesajda arama planlamak çok agresif
                         } catch (ruleErr) {
                             console.error('❌ [RULES] FB/IG error:', ruleErr.message);
                         }
-
-                        // --- CHAT CALL DETECTION — Robot direkt araması KALDIRILDI ---
-                        // Robot araması Retell agent scheduler tarafından yönetilir (30 dk gecikme)
-                        // Görev oluşturma executeSalesPhoneCallRule + executeAutoCallPlanning ile yapılır (yukarıda)
-
                     }
-                    // --- AUTOMATION RULES + AUTO-CALL END ---
+                    // --- AUTOMATION RULES END ---
 
                     // --- AI AUTO REPLY START ---
                     // ONLY for incoming messages (from contact)

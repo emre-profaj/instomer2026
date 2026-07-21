@@ -548,7 +548,7 @@ export const syncEmailsInternal = async (channelId) => {
             try {
                 const cleanBody = cleanEmailBody(emailBody.text || body || '');
                 if (cleanBody) {
-                    const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+                    const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
                     await executePhoneCaptureRule(channel.workspaceId, conversation.id, cleanBody);
                     executeHotKeywordRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
                         console.error('❌ [RULE:HOT_KEYWORD] Email async error:', e.message)
@@ -557,7 +557,7 @@ export const syncEmailsInternal = async (channelId) => {
                         console.error('❌ [RULE:SALES_PHONE_CALL] Email async error:', e.message)
                     );
                     if (contact?.id) {
-                        await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                        // DEVRE DIŞI:                         await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
                             console.error('❌ [RULE:AUTO_CALL] Email async error:', e.message)
                         );
                     }
@@ -1030,7 +1030,7 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                 try {
                     const cleanBody = cleanEmailBody(body || '');
                     if (cleanBody && conversation?.id) {
-                        const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+                        const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
                         await executePhoneCaptureRule(channel.workspaceId, conversation.id, cleanBody);
                         executeHotKeywordRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
                             console.error('❌ [RULE:HOT_KEYWORD] Email history error:', e.message)
@@ -1039,7 +1039,7 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                             console.error('❌ [RULE:SALES_PHONE_CALL] Email history error:', e.message)
                         );
                         if (contact?.id) {
-                            await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                        // DEVRE DIŞI:                             await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
                                 console.error('❌ [RULE:AUTO_CALL] Email history error:', e.message)
                             );
                         }
@@ -1505,7 +1505,7 @@ export const syncEmailsImap = async (channelId) => {
                                         try {
                                             const cleanBody = cleanEmailBody(body || '');
                                             if (cleanBody && conversation?.id) {
-                                                const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule, executeAutoCallPlanning } = await import('./rules.controller.js');
+                                                const { executePhoneCaptureRule, executeHotKeywordRule, executeSalesPhoneCallRule } = await import('./rules.controller.js');
                                                 await executePhoneCaptureRule(channel.workspaceId, conversation.id, cleanBody);
                                                 executeHotKeywordRule(channel.workspaceId, conversation.id, cleanBody).catch(e =>
                                                     console.error('❌ [RULE:HOT_KEYWORD] IMAP error:', e.message)
@@ -1514,7 +1514,7 @@ export const syncEmailsImap = async (channelId) => {
                                                     console.error('❌ [RULE:SALES_PHONE_CALL] IMAP error:', e.message)
                                                 );
                                                 if (contact?.id) {
-                                                    await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
+                        // DEVRE DIŞI:                                                     await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
                                                         console.error('❌ [RULE:AUTO_CALL] IMAP error:', e.message)
                                                     );
                                                 }
