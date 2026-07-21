@@ -1042,24 +1042,6 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             );
         }
 
-        // 10. Robot yedek arama: Satış ekibi aramazsa, gecikme süresi sonra robot arasın
-        // triggerAutoCall kendi içinde agent config'deki gecikme süresini (30 dk vb.) uygular
-        try {
-            const { triggerAutoCall } = await import('./retell.controller.js');
-            triggerAutoCall(
-                workspaceId,
-                contact.phone,
-                contactId,
-                contact.name || contact.fullName || contact.phone,
-                source,
-                null, // messageContent — görev zaten oluşturuldu
-                dueDate // baseDate olarak görev tarihini kullan
-            ).catch(e => console.log(`ℹ️ [RULE:AUTO_CALL] Robot yedek arama planlanamadı (non-fatal): ${e.message}`));
-        } catch (retellErr) {
-            // Non-fatal — robot yoksa bile görev oluşmuş olur
-            console.log(`ℹ️ [RULE:AUTO_CALL] Retell not available (non-fatal): ${retellErr.message}`);
-        }
-
     } catch (error) {
         console.error('❌ [RULE:AUTO_CALL] Error:', error.message);
     }

@@ -1845,43 +1845,9 @@ async function processWebhookAsync(body) {
                             console.error('❌ [RULES] FB/IG error:', ruleErr.message);
                         }
 
-                        // --- CHAT CALL DETECTION (beni ara / saat X'de ara) ---
-                        try {
-                            const { detectCallRequestInMessage, triggerAutoCall } = await import('./retell.controller.js');
-                            const callIntent = detectCallRequestInMessage(message.text);
-                            if (callIntent && contact?.phone) {
-                                if (callIntent.type === 'immediate') {
-                                    console.log(`📞 [FB] Chat call request (immediate) for ${contact.phone}`);
-                                    triggerAutoCall(facebookPage.workspaceId, contact.phone, contact?.id, contact?.name || 'Müşteri', 'CHAT_REQUEST', message.text).catch(e =>
-                                        console.error('⚠️ [FB] Chat immediate call error:', e.message)
-                                    );
-                                } else if (callIntent.type === 'scheduled') {
-                                    const nearby = await prisma.scheduledCall.count({
-                                        where: { workspaceId: facebookPage.workspaceId, status: 'PENDING', scheduledAt: { gte: callIntent.scheduledAt, lt: new Date(callIntent.scheduledAt.getTime() + 60 * 60 * 1000) } }
-                                    });
-                                    const finalAt = new Date(callIntent.scheduledAt.getTime() + nearby * 60 * 1000);
-                                    await prisma.scheduledCall.create({
-                                        data: { workspaceId: facebookPage.workspaceId, toNumber: contact.phone, contactId: contact.id, contactName: contact.name, scheduledAt: finalAt, status: 'PENDING' }
-                                    });
-                                    console.log(`📅 [FB] Scheduled call created at ${finalAt.toLocaleString('tr-TR')}`);
-                                }
-                            } else {
-                                // Fallback: original phone-number extraction based auto-call
-                                const phoneRegex = /(?:\+90|0090|90)?[\s\-\.(]?(?:5\d{2})[\s\-\.\)]{0,2}\d{3}[\s\-\.]{0,2}\d{2}[\s\-\.]{0,2}\d{2}/g;
-                                const matches = message.text.match(phoneRegex);
-                                if (matches && matches.length > 0) {
-                                    const rawPhone = matches[0];
-                                    const digits = rawPhone.replace(/\D/g, '');
-                                    const normalizedPhone = digits.startsWith('90') ? '+' + digits :
-                                        digits.startsWith('0') ? '+90' + digits.slice(1) : '+90' + digits;
-                                    const triggerChan = isInstagram ? 'INSTAGRAM' : 'FACEBOOK';
-                                    triggerAutoCall(facebookPage.workspaceId, normalizedPhone, contact?.id, contact?.name || 'Müşteri', triggerChan, message.text)
-                                        .catch(e => console.error('❌ [AutoCall] FB/IG phone trigger error:', e.message));
-                                }
-                            }
-                        } catch (acErr) {
-                            console.error('❌ [AutoCall] FB/IG detection error:', acErr.message);
-                        }
+                        // --- CHAT CALL DETECTION — Robot direkt araması KALDIRILDI ---
+                        // Robot araması Retell agent scheduler tarafından yönetilir (30 dk gecikme)
+                        // Görev oluşturma executeSalesPhoneCallRule + executeAutoCallPlanning ile yapılır (yukarıda)
 
                     }
                     // --- AUTOMATION RULES + AUTO-CALL END ---
