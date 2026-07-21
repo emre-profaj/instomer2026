@@ -489,24 +489,6 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         const simplePhoneRegex2 = /(?:\+?90|0)5\d{8,9}/gi;
         if (!phoneRegex.test(messageContent) && !simplePhoneRegex2.test(messageContent)) return;
 
-        // 2b. CRITICAL: Check if detected phone number is a workspace business number
-        // This prevents triggering when the template message contains the company phone
-        const detectedNumbers = messageContent.match(/(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi) || [];
-        const cleanNumber = (n) => n.replace(/[\s\-\.]/g, '').replace(/^\+?90/, '').replace(/^0/, '');
-        const workspacePhones = await prisma.whatsappPhoneNumber.findMany({
-            where: { workspaceId },
-            select: { phoneNumber: true, displayPhoneNumber: true }
-        });
-        const businessNumbers = workspacePhones.map(p => cleanNumber(p.phoneNumber || p.displayPhoneNumber || ''));
-        const isBusinessNumber = detectedNumbers.every(num => {
-            const cleaned = cleanNumber(num);
-            return businessNumbers.some(bn => bn.includes(cleaned) || cleaned.includes(bn));
-        });
-        if (isBusinessNumber && detectedNumbers.length > 0) {
-            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Detected phone is a business number, skipping`);
-            return;
-        }
-
         // 3. Get conversation + contact EARLY (needed for status check)
         const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
@@ -531,11 +513,11 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             take: 10,
             select: { content: true, messageType: true, isFromContact: true }
         });
-        // IMPORTANT: Only check call intent in OUTGOING messages (from agent/bot),
-        // and only consider phone numbers in INCOMING messages (from customer)
+        // Check call intent in BOTH customer AND agent messages, but NEVER in template messages
+        // Template messages contain marketing copy like "iletişime geçin" which is NOT real call intent
         const hasCallIntent = recentMessages.some(msg => {
-            if (msg.isFromContact) return false; // Call intent comes from OUR side
             if (msg.messageType === 'TEMPLATE') return false; // Skip template messages
+            if ((msg.content || '').startsWith('[Şablon:')) return false; // Skip template prefix
             const lower = (msg.content || '').toLowerCase();
             return CALL_INTENT_KEYWORDS.some(kw => lower.includes(kw));
         });
