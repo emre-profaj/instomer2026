@@ -1932,11 +1932,10 @@ export const updateContact = async (req, res) => {
                 }).catch(e => console.error('❌ [FLOW:HAS_PHONE] error:', e.message));
                 console.log(`📞 [FLOW:HAS_PHONE] Triggered for contact ${id}`);
 
-                // Auto call planning when phone is newly added
-                const { executeAutoCallPlanning } = await import('./rules.controller.js');
-                executeAutoCallPlanning(contactWorkspaceId, id, 'TELEFON_EKLENDI').catch(e =>
-                    console.error('❌ [RULE:AUTO_CALL] Phone added error:', e.message)
-                );
+                // Auto call planning disabled for manual phone additions
+                // Calls are only auto-planned for lead form submissions
+                // const { executeAutoCallPlanning } = await import('./rules.controller.js');
+                // executeAutoCallPlanning(contactWorkspaceId, id, 'TELEFON_EKLENDI')...
 
                 // Koşullu dağıtım tetikle — telefon eklendi
                 try {
@@ -2090,17 +2089,9 @@ export const createContact = async (req, res) => {
             action: 'created'
         });
 
-        // --- AUTO CALL PLANNING (Manuel Ekleme) ---
-        if (phone && phone.trim()) {
-            try {
-                const { executeAutoCallPlanning } = await import('./rules.controller.js');
-                executeAutoCallPlanning(workspaceId, contact.id, 'MANUEL').catch(e =>
-                    console.error('❌ [RULE:AUTO_CALL] Manual create error:', e.message)
-                );
-            } catch (ruleErr) {
-                console.error('❌ [RULES] Manual create error:', ruleErr.message);
-            }
-        }
+        // --- AUTO CALL PLANNING (Manuel Ekleme) — DEVRE DIŞI ---
+        // Manuel eklenen kişilere otomatik arama planlanmaz.
+        // Arama sadece lead form veya müşteri talebiyle planlanır.
         // --- AUTO CALL PLANNING END ---
 
         res.status(201).json({ contact });

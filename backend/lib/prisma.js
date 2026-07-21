@@ -47,8 +47,8 @@ prisma.$use(async (params, next) => {
 
 // ─── UNIVERSAL AUTO-CALL PLANNING ──────────────────────────────
 // Contact'a telefon numarası eklendiğinde (create veya update) otomatik arama planla.
-// Bu middleware sayesinde hangi kanaldan gelirse gelsin (Facebook, WhatsApp, Widget,
-// Email, Lead Form, Manuel, vs.) tek bir noktadan arama planlanır.
+// Bu middleware SADECE lead form'dan gelen kişiler için arama planlar.
+// Manuel oluşturulan, toplu mesaj gönderilen vb. kişiler için arama PLANLANMAZ.
 prisma.$use(async (params, next) => {
     const result = await next(params);
 
@@ -61,9 +61,14 @@ prisma.$use(async (params, next) => {
 
         // UPDATE ise: eski telefon var mıydı kontrol et (sadece yeni eklenen numaralar için tetikle)
         if (params.action === 'update') {
-            // Prisma update args'ta `where` ile contact id gelir
-            // Eğer phone alanı değişmediyse (args.data.phone yoksa) skip
             if (!params.args?.data?.phone) return result;
+        }
+
+        // SADECE lead form kaynaklı kişiler için otomatik arama planla
+        // Manuel, toplu mesaj, WhatsApp vb. kaynaklar için arama PLANLANMAZ
+        const LEAD_SOURCES = ['FACEBOOK_LEAD', 'LEAD', 'FORM', 'WEB_FORM'];
+        if (!LEAD_SOURCES.includes(result.source)) {
+            return result;
         }
 
         const contactId = result.id;
@@ -74,16 +79,13 @@ prisma.$use(async (params, next) => {
         setImmediate(async () => {
             try {
                 const { executeAutoCallPlanning } = await import('../controllers/rules.controller.js');
-                // Contact source'una göre doğru source geç (lead form pencere parse'ı için önemli)
-                const hookSource = result.source === 'FACEBOOK_LEAD' ? 'LEAD_FORM' : 'AUTO_HOOK';
+                const hookSource = 'LEAD_FORM';
                 await executeAutoCallPlanning(workspaceId, contactId, hookSource);
             } catch (err) {
-                // Non-fatal — don't block contact operations
                 console.error('⚠️ [AutoCallHook] Error:', err.message);
             }
         });
     } catch (err) {
-        // Non-fatal
         console.error('⚠️ [AutoCallHook] Middleware error:', err.message);
     }
 
