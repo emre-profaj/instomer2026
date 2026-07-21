@@ -500,12 +500,21 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         //    OR if contact is already an OPPORTUNITY → phone number alone is enough
         const isOpportunity = ['OPPORTUNITY', 'HOT_OPPORTUNITY'].includes(conversation.contact.status);
         const CALL_INTENT_KEYWORDS = [
+            // Agent/bot side
             'arayalım', 'arayacağız', 'sizi arayalım', 'sizi arayacağız',
-            'numaranızı', 'aranacaksınız', 'beni arayın', 'arar mısınız',
-            'arar misin', 'arayabilir misiniz', 'iletişime geçelim',
-            'arayıp', 'iletişime geçecektir', 'iletişime geçeceğiz',
-            'sizinle iletişime', 'sizi arayıp', 'geri arayacağız',
+            'aranacaksınız', 'arayıp', 'sizi arayıp', 'geri arayacağız',
             'geri dönüş yapacağız', 'ekibimiz arayacak', 'uzman ekibimiz',
+            // Customer side — natural speech patterns
+            'beni arayın', 'beni arasın', 'beni ara', 'bana ulaşın', 'bana ulaşsın',
+            'arar mısınız', 'arar misin', 'arayabilir mi', // covers "arayabilirmi", "arayabilir misiniz", "arayabilir mi"
+            'numaranızı', 'numaramı', 'bu numaradan',
+            'görüşmek için', 'görüşmek istiyorum', 'konuşmak istiyorum', 'konuşmak için',
+            // Both sides (broad stems — covers geçsin, geçelim, geçecektir, geçeceğiz, geçebilir)
+            'iletişime geç', 'irtibata geç',
+            // Customer requesting contact
+            'bana dönün', 'bana dönsün', 'geri dönün', 'geri dönsün',
+            'bilgi verin', 'bilgi versin', 'bilgi alabilir miyim',
+            'yetkili biri', 'yetkiliniz', 'danışman',
         ];
         const recentMessages = await prisma.message.findMany({
             where: { conversationId },
