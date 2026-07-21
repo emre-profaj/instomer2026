@@ -2273,11 +2273,12 @@ export const createManualConversation = async (req, res) => {
 
         // --- AUTOMATION RULES: Treat as lead capture ---
         try {
-            const { executePhoneCaptureRule } = await import('./rules.controller.js');
+            const { executePhoneCaptureRule, executeAutoCallPlanning } = await import('./rules.controller.js');
             if (contactPhone) {
                 await executePhoneCaptureRule(workspaceId, conversation.id, structuredContent);
-                // Auto call planning devre dışı — manuel görüşmelerde arama planlanmaz
-                // Arama sadece lead form veya müşteri talebiyle planlanır
+                executeAutoCallPlanning(workspaceId, contact.id, 'MANUEL').catch(e =>
+                    console.error('❌ [RULE:AUTO_CALL] Manual error:', e.message)
+                );
             }
         } catch (ruleErr) {
             console.error('❌ [RULES] Manual conversation error:', ruleErr.message);

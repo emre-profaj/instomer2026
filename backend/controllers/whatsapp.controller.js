@@ -1282,38 +1282,10 @@ export const webhookHandler = async (req, res) => {
                         return res.sendStatus(200);
                     }
 
-                    // --- CHAT CALL DETECTION (beni ara / saat X'de ara) ---
-                    if (msg_body && message.type === 'text') {
-                        try {
-                            const { detectCallRequestInMessage, triggerAutoCall } = await import('./retell.controller.js');
-                            const callIntent = detectCallRequestInMessage(msg_body);
-                            if (callIntent) {
-                                if (callIntent.type === 'immediate') {
-                                    console.log(`📞 [WA] Chat call request detected (immediate) for ${from}`);
-                                    triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'CHAT_REQUEST', msg_body).catch(e =>
-                                        console.error('⚠️ [WA] Chat immediate call error:', e.message)
-                                    );
-                                } else if (callIntent.type === 'scheduled') {
-                                    console.log(`📞 [WA] Chat call request detected (scheduled at ${callIntent.scheduledAt}) for ${from}`);
-                                    // Stagger within workspace
-                                    const nearby = await prisma.scheduledCall.count({
-                                        where: { workspaceId: waNumber.workspaceId, status: 'PENDING', scheduledAt: { gte: callIntent.scheduledAt, lt: new Date(callIntent.scheduledAt.getTime() + 60 * 60 * 1000) } }
-                                    });
-                                    const finalAt = new Date(callIntent.scheduledAt.getTime() + nearby * 60 * 1000);
-                                    await prisma.scheduledCall.create({
-                                        data: { workspaceId: waNumber.workspaceId, toNumber: from, contactId: contact?.id || null, contactName: contact?.name || from, scheduledAt: finalAt, status: 'PENDING' }
-                                    });
-                                    console.log(`📅 [WA] Scheduled call created at ${finalAt.toLocaleString('tr-TR')}`);
-                                }
-                            } else {
-                                // Fallback: original auto-call trigger (form-based, dedup handled inside)
-                                const { triggerAutoCall } = await import('./retell.controller.js');
-                                triggerAutoCall(waNumber.workspaceId, from, contact?.id, contact?.name || name || from, 'WHATSAPP', msg_body);
-                            }
-                        } catch (autoCallErr) {
-                            console.error('⚠️ [WA] Call trigger error:', autoCallErr.message);
-                        }
-                    }
+                    // --- CHAT CALL DETECTION — Satış ekibine görev aç (direkt robot araması DEĞİL) ---
+                    // Robot araması için: satış ekibi görevi tamamlamazsa, planlanan arama üzerinden robot arar
+                    // Burada sadece executeSalesPhoneCallRule + executeAutoCallPlanning çalışır (aşağıda zaten var)
+                    // triggerAutoCall KALDIRILDI — direkt robot araması yapılmaz
 
 
                     // --- AI AUTO REPLY START ---

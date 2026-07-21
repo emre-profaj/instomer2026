@@ -739,21 +739,22 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         });
         if (!contact || !contact.phone || !contact.phone.trim()) return;
 
-        // 2b. CRITICAL: Skip if the customer has never sent a message (only outgoing messages exist)
-        // This prevents auto-call when bulk templates are sent to contacts who never responded
+        // 2b. CRITICAL: Skip ONLY if last message is an outgoing TEMPLATE (bulk send protection)
+        // Normal bot replies, agent messages etc. should NOT block auto-call
         const latestMsg = await prisma.message.findFirst({
             where: { conversation: { workspaceId, contactId } },
             orderBy: { createdAt: 'desc' },
             select: { isFromContact: true, messageType: true, content: true }
         });
-        // If last message exists and is outgoing → skip (template, bot reply, etc.)
-        if (latestMsg && !latestMsg.isFromContact) {
-            console.log(`ℹ️ [RULE:AUTO_CALL] Last message is outgoing for contact ${contactId}, skipping`);
+        // Only block if last message is a template (toplu mesaj koruması)
+        if (latestMsg && !latestMsg.isFromContact && 
+            (latestMsg.messageType === 'TEMPLATE' || (latestMsg.content || '').startsWith('[Şablon:'))) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Last message is outgoing TEMPLATE for contact ${contactId}, skipping`);
             return;
         }
-        // If NO messages at all but contact was just created → only allow for form/lead sources
-        const FORM_SOURCES = ['LEAD_FORM', 'WEB_FORM', 'FORM', 'FACEBOOK_LEAD'];
-        if (!latestMsg && !FORM_SOURCES.includes(source)) {
+        // Allow MANUEL, TELEFON_EKLENDI sources even without messages (yeni eklenen kişi)
+        const MANUAL_SOURCES = ['MANUEL', 'TELEFON_EKLENDI', 'LEAD_FORM', 'WEB_FORM', 'FORM', 'FACEBOOK_LEAD', 'LEAD'];
+        if (!latestMsg && !MANUAL_SOURCES.includes(source)) {
             console.log(`ℹ️ [RULE:AUTO_CALL] No messages and source=${source} for contact ${contactId}, skipping`);
             return;
         }
@@ -1039,6 +1040,24 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
                 `${contact.name || contact.phone || 'Müşteri'} için ${dueDateTR} tarihinde arama planlandı.`,
                 { contactId, dueDate: dueDate.toISOString() }
             );
+        }
+
+        // 10. Robot yedek arama: Satış ekibi aramazsa, gecikme süresi sonra robot arasın
+        // triggerAutoCall kendi içinde agent config'deki gecikme süresini (30 dk vb.) uygular
+        try {
+            const { triggerAutoCall } = await import('./retell.controller.js');
+            triggerAutoCall(
+                workspaceId,
+                contact.phone,
+                contactId,
+                contact.name || contact.fullName || contact.phone,
+                source,
+                null, // messageContent — görev zaten oluşturuldu
+                dueDate // baseDate olarak görev tarihini kullan
+            ).catch(e => console.log(`ℹ️ [RULE:AUTO_CALL] Robot yedek arama planlanamadı (non-fatal): ${e.message}`));
+        } catch (retellErr) {
+            // Non-fatal — robot yoksa bile görev oluşmuş olur
+            console.log(`ℹ️ [RULE:AUTO_CALL] Retell not available (non-fatal): ${retellErr.message}`);
         }
 
     } catch (error) {
