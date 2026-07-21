@@ -739,14 +739,22 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
         });
         if (!contact || !contact.phone || !contact.phone.trim()) return;
 
-        // 2b. CRITICAL: Skip if last message is outgoing/template (bulk message protection)
+        // 2b. CRITICAL: Skip if the customer has never sent a message (only outgoing messages exist)
+        // This prevents auto-call when bulk templates are sent to contacts who never responded
         const latestMsg = await prisma.message.findFirst({
             where: { conversation: { workspaceId, contactId } },
             orderBy: { createdAt: 'desc' },
-            select: { isFromContact: true, messageType: true }
+            select: { isFromContact: true, messageType: true, content: true }
         });
-        if (latestMsg && !latestMsg.isFromContact && latestMsg.messageType === 'TEMPLATE') {
-            console.log(`ℹ️ [RULE:AUTO_CALL] Last message is outgoing TEMPLATE for contact ${contactId}, skipping`);
+        // If last message exists and is outgoing → skip (template, bot reply, etc.)
+        if (latestMsg && !latestMsg.isFromContact) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Last message is outgoing for contact ${contactId}, skipping`);
+            return;
+        }
+        // If NO messages at all but contact was just created → only allow for form/lead sources
+        const FORM_SOURCES = ['LEAD_FORM', 'WEB_FORM', 'FORM', 'FACEBOOK_LEAD'];
+        if (!latestMsg && !FORM_SOURCES.includes(source)) {
+            console.log(`ℹ️ [RULE:AUTO_CALL] No messages and source=${source} for contact ${contactId}, skipping`);
             return;
         }
 
