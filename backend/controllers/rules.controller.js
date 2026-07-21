@@ -461,11 +461,51 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
         const config = safeParseJSON(rule.config, {});
         const salesFunnelName = config.funnelName || 'Satış Akışı';
 
+        // 1b. CRITICAL: Verify the LAST message is from the CUSTOMER, not outgoing/template
+        // This prevents triggering on bulk/template messages that contain business phone numbers
+        const lastMessage = await prisma.message.findFirst({
+            where: { conversationId },
+            orderBy: { createdAt: 'desc' },
+            select: { isFromContact: true, messageType: true, content: true }
+        });
+        if (!lastMessage || !lastMessage.isFromContact) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Last message is NOT from contact (outgoing/system), skipping`);
+            return;
+        }
+        // Skip if last message is a template message
+        if (lastMessage.messageType === 'TEMPLATE') {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Last message is a TEMPLATE, skipping`);
+            return;
+        }
+        // Skip if message starts with [Şablon: — template prefix
+        if (messageContent.startsWith('[Şablon:') || messageContent.startsWith('[Sablon:')) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Message is a template (prefix), skipping`);
+            return;
+        }
+
         // 2. Detect phone number in incoming message
         // Supports: 05XX XXX XX XX, 05XXXXXXXXX, 0XXXXXXXXX (10-11 digits), +90...
         const phoneRegex = /(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi;
         const simplePhoneRegex2 = /(?:\+?90|0)5\d{8,9}/gi;
         if (!phoneRegex.test(messageContent) && !simplePhoneRegex2.test(messageContent)) return;
+
+        // 2b. CRITICAL: Check if detected phone number is a workspace business number
+        // This prevents triggering when the template message contains the company phone
+        const detectedNumbers = messageContent.match(/(?:\+?90|0)?[\s\-\.]?5\d{2}[\s\-\.]?\d{3}[\s\-\.]?\d{2}[\s\-\.]?\d{2}/gi) || [];
+        const cleanNumber = (n) => n.replace(/[\s\-\.]/g, '').replace(/^\+?90/, '').replace(/^0/, '');
+        const workspacePhones = await prisma.whatsappPhoneNumber.findMany({
+            where: { workspaceId },
+            select: { phoneNumber: true, displayPhoneNumber: true }
+        });
+        const businessNumbers = workspacePhones.map(p => cleanNumber(p.phoneNumber || p.displayPhoneNumber || ''));
+        const isBusinessNumber = detectedNumbers.every(num => {
+            const cleaned = cleanNumber(num);
+            return businessNumbers.some(bn => bn.includes(cleaned) || cleaned.includes(bn));
+        });
+        if (isBusinessNumber && detectedNumbers.length > 0) {
+            console.log(`ℹ️ [RULE:SALES_PHONE_CALL] Detected phone is a business number, skipping`);
+            return;
+        }
 
         // 3. Get conversation + contact EARLY (needed for status check)
         const conversation = await prisma.conversation.findUnique({
@@ -489,9 +529,13 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
             where: { conversationId },
             orderBy: { createdAt: 'desc' },
             take: 10,
-            select: { content: true, messageType: true }
+            select: { content: true, messageType: true, isFromContact: true }
         });
+        // IMPORTANT: Only check call intent in OUTGOING messages (from agent/bot),
+        // and only consider phone numbers in INCOMING messages (from customer)
         const hasCallIntent = recentMessages.some(msg => {
+            if (msg.isFromContact) return false; // Call intent comes from OUR side
+            if (msg.messageType === 'TEMPLATE') return false; // Skip template messages
             const lower = (msg.content || '').toLowerCase();
             return CALL_INTENT_KEYWORDS.some(kw => lower.includes(kw));
         });
@@ -703,6 +747,17 @@ export const executeAutoCallPlanning = async (workspaceId, contactId, source = '
             where: { id: contactId }
         });
         if (!contact || !contact.phone || !contact.phone.trim()) return;
+
+        // 2b. CRITICAL: Skip if last message is outgoing/template (bulk message protection)
+        const latestMsg = await prisma.message.findFirst({
+            where: { conversation: { workspaceId, contactId } },
+            orderBy: { createdAt: 'desc' },
+            select: { isFromContact: true, messageType: true }
+        });
+        if (latestMsg && !latestMsg.isFromContact && latestMsg.messageType === 'TEMPLATE') {
+            console.log(`ℹ️ [RULE:AUTO_CALL] Last message is outgoing TEMPLATE for contact ${contactId}, skipping`);
+            return;
+        }
 
         // Get latest conversation for topic/channel info + atama mirası için assignedToId/caseId
         const latestConversation = await prisma.conversation.findFirst({
