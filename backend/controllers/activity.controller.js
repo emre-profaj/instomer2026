@@ -814,16 +814,25 @@ export const getWorkspaceActivities = async (req, res) => {
             where.type = type;
         }
 
-        // Status filter
+        // Status filter (supports comma-separated: 'PLANNED,IN_PROGRESS')
         if (status && status !== 'ALL') {
-            where.status = status;
+            if (status.includes(',')) {
+                where.status = { in: status.split(',').map(s => s.trim()) };
+            } else {
+                where.status = status;
+            }
         }
 
         // View filter: mine = assigned to me, team = my team, all = everyone
         if (view === 'mine' && req.user?.id) {
             where.assignedToId = req.user.id;
         } else if (assignedToId) {
-            where.assignedToId = assignedToId;
+            // Support comma-separated agent IDs (for multi-agent calendar filter)
+            if (assignedToId.includes(',')) {
+                where.assignedToId = { in: assignedToId.split(',').map(id => id.trim()) };
+            } else {
+                where.assignedToId = assignedToId;
+            }
         }
 
         // Source filter: AI_CALL, MANUAL, AUTO, AGENT (= NOT AI_CALL)

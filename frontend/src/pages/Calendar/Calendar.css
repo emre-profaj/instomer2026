@@ -2628,3 +2628,140 @@
     transition: all 0.15s;
 }
 .contact-picker-skip:hover { background: #f8fafc; color: #475569; }
+
+/* ═══════ ACTIVITY PILLS ═══════ */
+.activity-pill {
+    opacity: 0.9;
+}
+.activity-pill:hover {
+    opacity: 1;
+    transform: scale(1.02);
+}
+
+/* ═══════ TO-DO SIDEBAR ═══════ */
+.todo-section {
+    margin-bottom: 16px;
+}
+
+.todo-section-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.todo-section-header.overdue {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+
+.todo-section-header.upcoming {
+    background: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #bbf7d0;
+}
+
+.todo-section-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.todo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 1px solid #f3f4f6;
+}
+
+.todo-item:hover {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+}
+
+.todo-section-header.overdue + .todo-section-list .todo-item {
+    border-left: 3px solid #ef4444;
+}
+
+.todo-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    color: white;
+}
+
+.todo-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.todo-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: #1f2937;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.todo-contact {
+    font-size: 11px;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.todo-agent {
+    font-size: 10px;
+    color: #9ca3af;
+}
+
+.todo-time {
+    font-size: 11px;
+    font-weight: 500;
+    color: #6b7280;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.todo-date-group {
+    margin-bottom: 8px;
+}
+
+.todo-date-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+}
+
+.todo-more {
+    text-align: center;
+    font-size: 11px;
+    color: #9ca3af;
+    padding: 4px;
+    cursor: pointer;
+}
+
+.todo-more:hover {
+    color: #6b7280;
+}
