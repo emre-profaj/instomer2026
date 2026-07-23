@@ -451,7 +451,14 @@ export const getWorkspaceAgents = async (req, res) => {
             where: { workspaceId },
             include: {
                 user: {
-                    select: { id: true, name: true, avatar: true, email: true }
+                    select: {
+                        id: true, name: true, avatar: true, email: true,
+                        teamMemberships: {
+                            include: {
+                                team: { select: { id: true, name: true } }
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -461,7 +468,9 @@ export const getWorkspaceAgents = async (req, res) => {
             name: m.user.name,
             avatar: m.user.avatar,
             email: m.user.email,
-            role: m.role
+            role: m.role,
+            teamName: m.user.teamMemberships?.[0]?.team?.name || null,
+            teamId: m.user.teamMemberships?.[0]?.team?.id || null
         }));
 
         res.json({ agents });

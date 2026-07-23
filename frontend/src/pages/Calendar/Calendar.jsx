@@ -896,7 +896,7 @@ const Calendar = () => {
                 <div className="cal-header-row cal-filters-main-row">
                     {/* Sol: Agent + Kaynak */}
                     <div className="cal-selects-group">
-                        {/* Agent Multi-Select Dropdown */}
+                        {/* Agent Multi-Select Dropdown — Takım bazlı */}
                         <div className="agent-multi-select" style={{ position: 'relative' }}>
                             <button
                                 className="agent-filter"
@@ -914,41 +914,143 @@ const Calendar = () => {
                                     <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                             </button>
-                            {agentDropdownOpen && (
-                                <>
-                                    <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setAgentDropdownOpen(false)} />
-                                    <div className="agent-multi-dropdown">
-                                        <div
-                                            className={`agent-multi-item ${selectedAgents.size === 0 ? 'selected' : ''}`}
-                                            onClick={() => { setSelectedAgents(new Set()); setAgentDropdownOpen(false); }}
-                                        >
-                                            <span className="agent-multi-check">{selectedAgents.size === 0 ? '✓' : ''}</span>
-                                            Tümü Agents
+                            {agentDropdownOpen && (() => {
+                                // Takım bazlı gruplama
+                                const teamGroups = {};
+                                const noTeam = [];
+                                agents.forEach(agent => {
+                                    if (agent.teamName) {
+                                        if (!teamGroups[agent.teamName]) teamGroups[agent.teamName] = [];
+                                        teamGroups[agent.teamName].push(agent);
+                                    } else {
+                                        noTeam.push(agent);
+                                    }
+                                });
+                                const allChecked = selectedAgents.size === 0; // Tümü = hiçbir filtre yok = hepsi görünür
+
+                                return (
+                                    <>
+                                        <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setAgentDropdownOpen(false)} />
+                                        <div className="agent-multi-dropdown" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                            {/* Tümü */}
+                                            <div
+                                                className={`agent-multi-item ${allChecked ? 'selected' : ''}`}
+                                                onClick={() => { setSelectedAgents(new Set()); }}
+                                            >
+                                                <span className="agent-multi-check">{allChecked ? '☑' : '☐'}</span>
+                                                <strong>Tümü Agents</strong>
+                                            </div>
+                                            <div className="agent-multi-divider" />
+
+                                            {/* Takım grupları */}
+                                            {Object.entries(teamGroups).map(([teamName, teamAgents]) => {
+                                                const teamAgentIds = teamAgents.map(a => String(a.id));
+                                                const allTeamSelected = allChecked || teamAgentIds.every(id => selectedAgents.has(id));
+                                                const someTeamSelected = !allTeamSelected && teamAgentIds.some(id => selectedAgents.has(id));
+
+                                                return (
+                                                    <div key={teamName}>
+                                                        {/* Takım başlığı — tıklanabilir */}
+                                                        <div
+                                                            className={`agent-multi-item agent-team-header ${allTeamSelected ? 'selected' : ''}`}
+                                                            onClick={() => {
+                                                                setSelectedAgents(prev => {
+                                                                    const next = new Set(prev);
+                                                                    if (allTeamSelected && !allChecked) {
+                                                                        teamAgentIds.forEach(id => next.delete(id));
+                                                                    } else {
+                                                                        teamAgentIds.forEach(id => next.add(id));
+                                                                    }
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                        >
+                                                            <span className="agent-multi-check">
+                                                                {allTeamSelected ? '☑' : someTeamSelected ? '▣' : '☐'}
+                                                            </span>
+                                                            <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                                👥 {teamName}
+                                                            </span>
+                                                        </div>
+                                                        {/* Takım üyeleri */}
+                                                        {teamAgents.map(agent => {
+                                                            const isChecked = allChecked || selectedAgents.has(String(agent.id));
+                                                            return (
+                                                                <div
+                                                                    key={agent.id}
+                                                                    className={`agent-multi-item agent-team-member ${isChecked ? 'selected' : ''}`}
+                                                                    onClick={() => {
+                                                                        setSelectedAgents(prev => {
+                                                                            const next = new Set(prev);
+                                                                            if (allChecked) {
+                                                                                // Tümü'den bireysel seçime geç: herkesi ekle, sonra bunu çıkar
+                                                                                agents.forEach(a => next.add(String(a.id)));
+                                                                                next.delete(String(agent.id));
+                                                                            } else if (next.has(String(agent.id))) {
+                                                                                next.delete(String(agent.id));
+                                                                                if (next.size === 0) return new Set(); // Tümü'ye dön
+                                                                            } else {
+                                                                                next.add(String(agent.id));
+                                                                                // Hepsi seçiliyse → Tümü'ye dön
+                                                                                if (next.size === agents.length) return new Set();
+                                                                            }
+                                                                            return next;
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    <span className="agent-multi-check">{isChecked ? '☑' : '☐'}</span>
+                                                                    <span style={{ paddingLeft: 12 }}>{agent.name}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {/* Takımsız agentlar */}
+                                            {noTeam.length > 0 && (
+                                                <>
+                                                    {Object.keys(teamGroups).length > 0 && <div className="agent-multi-divider" />}
+                                                    <div className="agent-multi-item agent-team-header" style={{ opacity: 0.6 }}>
+                                                        <span className="agent-multi-check" />
+                                                        <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>
+                                                            Takımsız
+                                                        </span>
+                                                    </div>
+                                                    {noTeam.map(agent => {
+                                                        const isChecked = allChecked || selectedAgents.has(String(agent.id));
+                                                        return (
+                                                            <div
+                                                                key={agent.id}
+                                                                className={`agent-multi-item agent-team-member ${isChecked ? 'selected' : ''}`}
+                                                                onClick={() => {
+                                                                    setSelectedAgents(prev => {
+                                                                        const next = new Set(prev);
+                                                                        if (allChecked) {
+                                                                            agents.forEach(a => next.add(String(a.id)));
+                                                                            next.delete(String(agent.id));
+                                                                        } else if (next.has(String(agent.id))) {
+                                                                            next.delete(String(agent.id));
+                                                                            if (next.size === 0) return new Set();
+                                                                        } else {
+                                                                            next.add(String(agent.id));
+                                                                            if (next.size === agents.length) return new Set();
+                                                                        }
+                                                                        return next;
+                                                                    });
+                                                                }}
+                                                            >
+                                                                <span className="agent-multi-check">{isChecked ? '☑' : '☐'}</span>
+                                                                <span style={{ paddingLeft: 12 }}>{agent.name}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </>
+                                            )}
                                         </div>
-                                        <div className="agent-multi-divider" />
-                                        {agents.map(agent => {
-                                            const isChecked = selectedAgents.has(String(agent.id));
-                                            return (
-                                                <div
-                                                    key={agent.id}
-                                                    className={`agent-multi-item ${isChecked ? 'selected' : ''}`}
-                                                    onClick={() => {
-                                                        setSelectedAgents(prev => {
-                                                            const next = new Set(prev);
-                                                            if (next.has(String(agent.id))) next.delete(String(agent.id));
-                                                            else next.add(String(agent.id));
-                                                            return next;
-                                                        });
-                                                    }}
-                                                >
-                                                    <span className="agent-multi-check">{isChecked ? '✓' : ''}</span>
-                                                    {agent.name}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </>
-                            )}
+                                    </>
+                                );
+                            })()}
                         </div>
 
                         {/* Kaynak seçimi */}
