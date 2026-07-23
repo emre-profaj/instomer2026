@@ -352,6 +352,7 @@ const Calendar = () => {
                 filters.assignedToId = [...selectedAgents].join(',');
             }
             const response = await activityAPI.getWorkspaceActivities(currentWorkspace.id, filters);
+            console.log('📋 [Calendar] Activities loaded:', response.activities?.length, 'items', response.summary);
             setCalendarActivities(response.activities || []);
         } catch (error) {
             console.error('Load calendar activities error:', error);
