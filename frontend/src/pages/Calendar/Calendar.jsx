@@ -348,9 +348,8 @@ const Calendar = () => {
                 status: 'PLANNED,IN_PROGRESS',
                 limit: 500
             };
-            if (selectedAgents.size > 0) {
-                filters.assignedToId = [...selectedAgents].join(',');
-            }
+            // Agent filtresi burada UYGULANMIYOR — tüm workspace aktiviteleri çekilir.
+            // Grid'de selectedAgents ile filtrelenir, sidebar'da user.id ile filtrelenir.
             const response = await activityAPI.getWorkspaceActivities(currentWorkspace.id, filters);
             console.log('📋 [Calendar] Activities loaded:', response.activities?.length, 'items', response.summary);
             setCalendarActivities(response.activities || []);
@@ -592,7 +591,10 @@ const Calendar = () => {
         return calendarActivities.filter(act => {
             if (!act.dueDate) return false;
             const actDate = new Date(act.dueDate);
-            return actDate.toDateString() === date.toDateString();
+            if (actDate.toDateString() !== date.toDateString()) return false;
+            // Agent filtresi: grid için selectedAgents uygulanır
+            if (selectedAgents.size > 0 && act.assignedToId && !selectedAgents.has(act.assignedToId)) return false;
+            return true;
         });
     };
 
@@ -1069,7 +1071,11 @@ const Calendar = () => {
 
                     {(() => {
                         const now = new Date();
-                        const overdueActivities = calendarActivities.filter(act => {
+                        // Sidebar: sadece giriş yapan kullanıcının görevleri
+                        const myActivities = calendarActivities.filter(act => 
+                            act.assignedToId === user?.id || act.createdBy === user?.id
+                        );
+                        const overdueActivities = myActivities.filter(act => {
                             if (!act.dueDate) return false;
                             return new Date(act.dueDate) < now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
                         }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
@@ -1084,7 +1090,7 @@ const Calendar = () => {
                             ...overdueAppointments.map(a => ({ itemType: 'appointment', data: a }))
                         ];
 
-                        const futureActivities = calendarActivities.filter(act => {
+                        const futureActivities = myActivities.filter(act => {
                             if (!act.dueDate) return false;
                             return new Date(act.dueDate) >= now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
                         }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
