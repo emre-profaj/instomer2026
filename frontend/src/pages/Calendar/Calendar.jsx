@@ -163,18 +163,25 @@ const Calendar = () => {
 
     const toggleActivityFilter = (key) => {
         setActiveFilters(prev => {
-            const next = new Set(prev);
+            const allKeys = ['calls', 'appointments', 'meetings', 'tasks'];
+            const allActive = allKeys.every(k => prev.has(k));
+
             if (key === 'all') {
-                // Toggle all
-                const allKeys = ['calls', 'appointments', 'meetings', 'tasks'];
-                if (allKeys.every(k => prev.has(k))) {
-                    return new Set();
-                } else {
-                    return new Set(allKeys);
-                }
+                // "Tümü" tıklandı → hepsini seç
+                return new Set(allKeys);
             }
+
+            // Tümü aktifken bireysel butona tıklayınca → sadece o tipi seç
+            if (allActive) {
+                return new Set([key]);
+            }
+
+            // Bireysel modda toggle
+            const next = new Set(prev);
             if (next.has(key)) {
                 next.delete(key);
+                // Hiçbiri kalmadıysa → Tümü'ye dön
+                if (next.size === 0) return new Set(allKeys);
             } else {
                 next.add(key);
             }
@@ -1065,9 +1072,10 @@ const Calendar = () => {
 
                     {(() => {
                         const now = new Date();
-                        // Sidebar: sadece bana atanmış görevler (kişisel ajanda)
+                        // Sidebar: bana atanmış VEYA benim oluşturup başkasına atamadığım görevler
                         const myActivities = calendarActivities.filter(act => 
-                            act.assignedToId === user?.id
+                            act.assignedToId === user?.id || 
+                            (!act.assignedToId && act.createdBy === user?.id)
                         );
                         const overdueActivities = myActivities.filter(act => {
                             if (!act.dueDate) return false;
