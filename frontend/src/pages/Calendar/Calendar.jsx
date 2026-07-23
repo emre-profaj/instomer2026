@@ -113,8 +113,6 @@ const Calendar = () => {
     // Conflict state
     const [conflict, setConflict] = useState(null);
 
-    // Toggle for completed appointments
-    const [showCompleted, setShowCompleted] = useState(true);
 
     // Sidebar pagination
     const [sidebarPage, setSidebarPage] = useState(1);
@@ -127,8 +125,8 @@ const Calendar = () => {
             return saved ? new Set(JSON.parse(saved)) : new Set(['calls', 'appointments', 'meetings', 'tasks']);
         } catch { return new Set(['calls', 'appointments', 'meetings', 'tasks']); }
     });
-    const [statusFilter, setStatusFilter] = useState(() => {
-        try { return localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_status`) || 'all'; } catch { return 'all'; }
+    const [showCompleted, setShowCompleted] = useState(() => {
+        try { return localStorage.getItem(`cal_filter_${currentWorkspace?.id || 'default'}_${user?.id || 'u'}_showCompleted`) === 'true'; } catch { return false; }
     });
 
     // localStorage'a filtre kaydet
@@ -142,24 +140,24 @@ const Calendar = () => {
         try { localStorage.setItem(lsKey('activity'), JSON.stringify([...activeFilters])); } catch {}
     }, [activeFilters]);
     useEffect(() => {
-        try { localStorage.setItem(lsKey('status'), statusFilter); } catch {}
-    }, [statusFilter]);
+        try { localStorage.setItem(lsKey('showCompleted'), showCompleted); } catch {}
+    }, [showCompleted]);
 
     // Tüm filtreleri sıfırla
     const clearAllFilters = () => {
         setSelectedAgents(new Set());
         setSelectedResource('');
         setActiveFilters(new Set(['calls', 'appointments', 'meetings', 'tasks']));
-        setStatusFilter('all');
+        setShowCompleted(false);
         try {
             localStorage.removeItem(lsKey('agents'));
             localStorage.removeItem(lsKey('resource'));
             localStorage.removeItem(lsKey('activity'));
-            localStorage.removeItem(lsKey('status'));
+            localStorage.removeItem(lsKey('showCompleted'));
         } catch {}
     };
 
-    const hasActiveFilters = selectedAgents.size > 0 || selectedResource !== '' || statusFilter !== 'all';
+    const hasActiveFilters = selectedAgents.size > 0 || selectedResource !== '';
 
     const toggleActivityFilter = (key) => {
         setActiveFilters(prev => {
@@ -167,27 +165,22 @@ const Calendar = () => {
             const allActive = allKeys.every(k => prev.has(k));
 
             if (key === 'all') {
-                // "Tümü" tıklandı → hepsini seç
                 return new Set(allKeys);
             }
 
-            // Tümü aktifken bireysel butona tıklayınca → sadece o tipi seç
             if (allActive) {
                 return new Set([key]);
             }
 
-            // Bireysel modda toggle
             const next = new Set(prev);
             if (next.has(key)) {
                 next.delete(key);
-                // Hiçbiri kalmadıysa → Tümü'ye dön
                 if (next.size === 0) return new Set(allKeys);
             } else {
                 next.add(key);
             }
             return next;
         });
-        setStatusFilter('all');
     };
 
     // Helper: check if a type is active in multi-select
@@ -353,7 +346,7 @@ const Calendar = () => {
                 dateTo: dateTo.toISOString(),
                 // Grid'de tamamlananlar dahil tüm aktiviteler görünecek
                 // Sidebar'da PLANNED/IN_PROGRESS filtrelenecek (frontend'de)
-                limit: 500
+                limit: 2000
             };
             // Agent filtresi burada UYGULANMIYOR — tüm workspace aktiviteleri çekilir.
             // Grid'de selectedAgents ile filtrelenir, sidebar'da user.id ile filtrelenir.
@@ -568,25 +561,16 @@ const Calendar = () => {
     const getAppointmentsForDay = (date) => {
         return appointments.filter(apt => {
             const aptDate = new Date(apt.startTime);
-            const aptEndDate = new Date(apt.endTime);
-            const now = new Date();
             if (aptDate.toDateString() !== date.toDateString()) return false;
-            // Activity type filter
             if (!activeFilters.has('appointments')) return false;
-            // Status filter
-            const isCompleted = apt.status === 'COMPLETED';
-            const isOverdue = aptEndDate < now && apt.status === 'SCHEDULED';
-            if (statusFilter === 'pending' && (isCompleted || isOverdue)) return false;
-            if (statusFilter === 'completed' && !isCompleted) return false;
-            if (statusFilter === 'overdue' && !isOverdue) return false;
+            // Tamamlanan filtresi
+            if (apt.status === 'COMPLETED' && !showCompleted) return false;
             return true;
         });
     };
 
     const getScheduledCallsForDay = (date) => {
         if (!activeFilters.has('calls')) return [];
-        // Status filter for calls: only 'pending' calls exist (scheduled calls are always pending)
-        if (statusFilter === 'completed' || statusFilter === 'overdue') return [];
         return scheduledCalls.filter(sc => {
             return new Date(sc.scheduledAt).toDateString() === date.toDateString();
         });
@@ -594,7 +578,7 @@ const Calendar = () => {
 
     const getActivitiesForDay = (date) => {
         // Activity type → filter key mapping
-        const typeToFilterKey = { 'CALL': 'calls', 'MEETING': 'meetings', 'TASK': 'tasks', 'REMINDER': 'tasks', 'NOTE': 'tasks' };
+        const typeToFilterKey = { 'CALL': 'calls', 'NOTE': 'calls', 'MEETING': 'meetings', 'TASK': 'tasks', 'REMINDER': 'tasks' };
 
         return calendarActivities.filter(act => {
             // Tarih: dueDate yoksa createdAt kullan
@@ -603,7 +587,9 @@ const Calendar = () => {
             // Aktivite tipi filtresi
             const filterKey = typeToFilterKey[act.type] || 'tasks';
             if (!activeFilters.has(filterKey)) return false;
-            // Agent filtresi: grid için selectedAgents uygulanır
+            // Tamamlanan filtresi
+            if ((act.status === 'COMPLETED' || act.status === 'DONE') && !showCompleted) return false;
+            // Agent filtresi
             if (selectedAgents.size > 0 && act.assignedToId && !selectedAgents.has(act.assignedToId)) return false;
             return true;
         });
@@ -1100,25 +1086,26 @@ const Calendar = () => {
                             ))}
                         </div>
 
-                        {/* Status filtreleri */}
-                        <div className="status-sub-filters">
-                            {[
-                                { key: 'all',       label: 'Tümü',       color: '#64748b' },
-                                { key: 'pending',   label: 'Bekleyen',   color: '#f59e0b' },
-                                { key: 'completed', label: 'Tamamlanan', color: '#10b981' },
-                                { key: 'overdue',   label: 'Geciken',    color: '#ef4444' },
-                            ].map(s => (
-                                <button
-                                    key={s.key}
-                                    className={`status-filter-btn ${statusFilter === s.key ? 'active' : ''}`}
-                                    onClick={() => setStatusFilter(s.key)}
-                                    style={statusFilter === s.key ? { '--status-color': s.color } : {}}
-                                >
-                                    <span className="status-dot" style={{ backgroundColor: s.color }} />
-                                    {s.label}
-                                </button>
-                            ))}
-                        </div>
+                        {/* Tamamlananları göster toggle */}
+                        <label className="show-completed-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#64748b', userSelect: 'none' }}>
+                            <div
+                                className={`toggle-switch ${showCompleted ? 'active' : ''}`}
+                                onClick={() => setShowCompleted(p => !p)}
+                                style={{
+                                    width: 36, height: 20, borderRadius: 10,
+                                    background: showCompleted ? '#10b981' : '#cbd5e1',
+                                    position: 'relative', transition: 'background 0.2s', flexShrink: 0
+                                }}
+                            >
+                                <div style={{
+                                    width: 16, height: 16, borderRadius: '50%', background: 'white',
+                                    position: 'absolute', top: 2,
+                                    left: showCompleted ? 18 : 2,
+                                    transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                }} />
+                            </div>
+                            <span>Tamamlananları göster</span>
+                        </label>
                     </div>
                 </div>
 
@@ -1199,7 +1186,7 @@ const Calendar = () => {
                                 const act = item.data;
                                 const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
                                 return (
-                                    <div key={act.id} className="todo-item" onClick={() => { if (act.contactId) setSelectedContactId(act.contactId); }}>
+                                    <div key={act.id} className="todo-item" onClick={() => { const cId = act.contactId || act.contact?.id; if (cId) setSelectedContactId(cId); }}>
                                         <div className="todo-icon" style={{ backgroundColor: cfg.color }}>{cfg.icon}</div>
                                         <div className="todo-content">
                                             <span className="todo-title">{act.title || cfg.label}</span>
@@ -1427,17 +1414,31 @@ const Calendar = () => {
                                                 key={apt.id}
                                                 className="appointment-pill-wrapper"
                                             >
-                                                <div
-                                                    className="appointment-pill"
-                                                    style={{ backgroundColor: aptResource?.color || apt.color }}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        openEditModal(apt);
-                                                    }}
-                                                >
-                                                    <span className="apt-time">{formatTime(apt.startTime)}</span>
-                                                    <span className="apt-title">{apt.title}</span>
-                                                </div>
+                                                {(() => {
+                                                    const now = new Date();
+                                                    const aptEnd = new Date(apt.endTime || apt.startTime);
+                                                    const isOverdue = aptEnd < now && apt.status === 'SCHEDULED';
+                                                    const isCompleted = apt.status === 'COMPLETED';
+                                                    return (
+                                                        <div
+                                                            className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
+                                                            style={{ backgroundColor: aptResource?.color || apt.color, position: 'relative' }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (apt.contactId) {
+                                                                    setSelectedContactId(apt.contactId);
+                                                                } else {
+                                                                    openEditModal(apt);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
+                                                            {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
+                                                            <span className="apt-time">{formatTime(apt.startTime)}</span>
+                                                            <span className="apt-title">{apt.title}</span>
+                                                        </div>
+                                                    );
+                                                })()}
                                                 <div className="appointment-tooltip">
                                                     <div className="tooltip-header" style={{ borderLeftColor: apt.color }}>
                                                         <h4>{apt.title}</h4>
@@ -1518,17 +1519,24 @@ const Calendar = () => {
                                     {/* ContactActivity pills */}
                                     {getActivitiesForDay(day.date).slice(0, 2).map(act => {
                                         const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                                        const now = new Date();
+                                        const actDate = new Date(act.dueDate || act.createdAt);
+                                        const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
+                                        const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
                                         return (
                                             <div
                                                 key={act.id}
-                                                className="appointment-pill activity-pill"
+                                                className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
                                                 style={{ backgroundColor: cfg.color, cursor: 'pointer' }}
-                                                title={`${cfg.label}: ${act.title || act.contact?.name || ''}\n${act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}`}
+                                                title={`${cfg.label}: ${act.title || act.contact?.name || ''}\n${act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}${isOverdue ? '\n⚠️ Gecikmiş' : ''}${isCompleted ? '\n✓ Tamamlandı' : ''}`}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    if (act.contactId) setSelectedContactId(act.contactId);
+                                                    const cId = act.contactId || act.contact?.id;
+                                                    if (cId) setSelectedContactId(cId);
                                                 }}
                                             >
+                                                {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
+                                                {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
                                                 <span className="apt-time">{cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                                                 <span className="apt-title">{act.title || act.contact?.name || cfg.label}</span>
                                             </div>

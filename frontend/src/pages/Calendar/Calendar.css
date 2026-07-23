@@ -989,6 +989,24 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
+/* Overdue pill — kırmızı border + hafif pulse */
+.appointment-pill.pill-overdue {
+    border: 2px solid #ef4444 !important;
+    animation: overduePulse 2s ease-in-out infinite;
+}
+
+@keyframes overduePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3); }
+    50% { box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15); }
+}
+
+/* Completed pill — soluk + üstü çizili */
+.appointment-pill.pill-completed {
+    opacity: 0.55;
+    text-decoration: line-through;
+    filter: grayscale(0.4);
+}
+
 /* Appointment Tooltip */
 .appointment-tooltip {
     position: absolute;
