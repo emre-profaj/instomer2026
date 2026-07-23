@@ -559,12 +559,10 @@ const Calendar = () => {
     };
 
     const getAppointmentsForDay = (date) => {
-        const now = new Date();
         return appointments.filter(apt => {
             const aptDate = new Date(apt.startTime);
             const aptEndDate = new Date(apt.endTime);
-            // Hide past appointments (end time has passed)
-            if (aptEndDate < now) return false;
+            const now = new Date();
             if (aptDate.toDateString() !== date.toDateString()) return false;
             // Activity type filter
             if (!activeFilters.has('appointments')) return false;
@@ -976,11 +974,7 @@ const Calendar = () => {
                             ].map(f => (
                                 <div
                                     key={f.key}
-                                    className={`quick-stat-card ${
-                                        f.key === 'all'
-                                            ? isFilterActive('all') ? 'quick-stat-active' : ''
-                                            : isFilterActive(f.key) && !isFilterActive('all') ? 'quick-stat-active' : ''
-                                    }`}
+                                    className={`quick-stat-card ${isFilterActive(f.key) ? 'quick-stat-active' : ''}`}
                                     onClick={() => toggleActivityFilter(f.key)}
                                     style={{ cursor: 'pointer', userSelect: 'none' }}
                                 >
@@ -1071,9 +1065,9 @@ const Calendar = () => {
 
                     {(() => {
                         const now = new Date();
-                        // Sidebar: sadece giriş yapan kullanıcının görevleri
+                        // Sidebar: sadece bana atanmış görevler (kişisel ajanda)
                         const myActivities = calendarActivities.filter(act => 
-                            act.assignedToId === user?.id || act.createdBy === user?.id
+                            act.assignedToId === user?.id
                         );
                         const overdueActivities = myActivities.filter(act => {
                             if (!act.dueDate) return false;
@@ -1082,7 +1076,7 @@ const Calendar = () => {
 
                         const overdueAppointments = upcomingAppointments.filter(apt => {
                             const endTime = new Date(apt.endTime || apt.startTime);
-                            return endTime < now && apt.status === 'SCHEDULED';
+                            return endTime < now && apt.status === 'SCHEDULED' && apt.assignedTo?.id === user?.id;
                         });
 
                         const allOverdue = [
@@ -1097,7 +1091,7 @@ const Calendar = () => {
 
                         const futureAppointments = upcomingAppointments.filter(apt => {
                             const startTime = new Date(apt.startTime);
-                            return startTime >= now && apt.status === 'SCHEDULED';
+                            return startTime >= now && apt.status === 'SCHEDULED' && apt.assignedTo?.id === user?.id;
                         });
 
                         const allFuture = [
@@ -1169,9 +1163,8 @@ const Calendar = () => {
                                             <AlertCircle size={14} />
                                             <span>Geciken Görevler ({allOverdue.length})</span>
                                         </div>
-                                        <div className="todo-section-list">
-                                            {allOverdue.slice(0, 5).map(renderTodoItem)}
-                                            {allOverdue.length > 5 && <div className="todo-more">+{allOverdue.length - 5} daha</div>}
+                                        <div className="todo-section-list todo-scrollable">
+                                            {allOverdue.map(renderTodoItem)}
                                         </div>
                                     </div>
                                 )}
@@ -1181,7 +1174,7 @@ const Calendar = () => {
                                         <CalendarClock size={14} />
                                         <span>Gelecek Görevler</span>
                                     </div>
-                                    <div className="todo-section-list">
+                                    <div className="todo-section-list todo-scrollable">
                                         {Object.keys(futureGroups).length === 0 && allOverdue.length === 0 && (
                                             <div className="upcoming-empty">
                                                 <CalendarIcon size={32} />

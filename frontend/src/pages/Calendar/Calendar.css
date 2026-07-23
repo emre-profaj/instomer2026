@@ -2754,14 +2754,23 @@
     margin-bottom: 4px;
 }
 
-.todo-more {
-    text-align: center;
-    font-size: 11px;
-    color: #9ca3af;
-    padding: 4px;
-    cursor: pointer;
+.todo-scrollable {
+    max-height: 40vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
 }
 
-.todo-more:hover {
-    color: #6b7280;
+.todo-scrollable::-webkit-scrollbar {
+    width: 4px;
+}
+.todo-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+.todo-scrollable::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+.todo-scrollable::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
