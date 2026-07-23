@@ -593,10 +593,16 @@ const Calendar = () => {
     };
 
     const getActivitiesForDay = (date) => {
+        // Activity type → filter key mapping
+        const typeToFilterKey = { 'CALL': 'calls', 'MEETING': 'meetings', 'TASK': 'tasks', 'REMINDER': 'tasks', 'NOTE': 'tasks' };
+
         return calendarActivities.filter(act => {
-            if (!act.dueDate) return false;
-            const actDate = new Date(act.dueDate);
+            // Tarih: dueDate yoksa createdAt kullan
+            const actDate = new Date(act.dueDate || act.createdAt);
             if (actDate.toDateString() !== date.toDateString()) return false;
+            // Aktivite tipi filtresi
+            const filterKey = typeToFilterKey[act.type] || 'tasks';
+            if (!activeFilters.has(filterKey)) return false;
             // Agent filtresi: grid için selectedAgents uygulanır
             if (selectedAgents.size > 0 && act.assignedToId && !selectedAgents.has(act.assignedToId)) return false;
             return true;
@@ -1078,9 +1084,9 @@ const Calendar = () => {
                             (!act.assignedToId && act.createdBy === user?.id)
                         );
                         const overdueActivities = myActivities.filter(act => {
-                            if (!act.dueDate) return false;
-                            return new Date(act.dueDate) < now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
-                        }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+                            const actDate = new Date(act.dueDate || act.createdAt);
+                            return actDate < now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
+                        }).sort((a, b) => new Date(a.dueDate || a.createdAt) - new Date(b.dueDate || b.createdAt));
 
                         const overdueAppointments = upcomingAppointments.filter(apt => {
                             const endTime = new Date(apt.endTime || apt.startTime);
@@ -1093,9 +1099,9 @@ const Calendar = () => {
                         ];
 
                         const futureActivities = myActivities.filter(act => {
-                            if (!act.dueDate) return false;
-                            return new Date(act.dueDate) >= now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
-                        }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+                            const actDate = new Date(act.dueDate || act.createdAt);
+                            return actDate >= now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
+                        }).sort((a, b) => new Date(a.dueDate || a.createdAt) - new Date(b.dueDate || b.createdAt));
 
                         const futureAppointments = upcomingAppointments.filter(apt => {
                             const startTime = new Date(apt.startTime);
@@ -1143,7 +1149,14 @@ const Calendar = () => {
                                             {act.assignee?.name && <span className="todo-agent">👤 {act.assignee.name}</span>}
                                         </div>
                                         <div className="todo-time">
-                                            {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                            {(() => {
+                                                const d = new Date(act.dueDate || act.createdAt);
+                                                const today = new Date();
+                                                if (d.toDateString() === today.toDateString()) {
+                                                    return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                                                }
+                                                return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                                            })()}
                                         </div>
                                     </div>
                                 );
