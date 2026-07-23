@@ -1007,6 +1007,121 @@
     filter: grayscale(0.4);
 }
 
+/* Day Popup — "+X daha" tıklanınca açılan panel */
+.day-popup-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.15);
+    z-index: 999;
+}
+
+.day-popup-panel {
+    width: 320px;
+    max-height: 380px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.day-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.day-popup-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    text-transform: capitalize;
+}
+
+.day-popup-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #94a3b8;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+}
+
+.day-popup-close:hover {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.day-popup-items {
+    overflow-y: auto;
+    padding: 8px;
+    flex: 1;
+}
+
+.day-popup-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-left: 3px solid #3b82f6;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 13px;
+    background: #f8fafc;
+}
+
+.day-popup-item:hover {
+    background: #e2e8f0;
+}
+
+.day-popup-item.popup-overdue {
+    border-left-color: #ef4444 !important;
+    background: #fef2f2;
+}
+
+.day-popup-item.popup-completed {
+    opacity: 0.6;
+    text-decoration: line-through;
+}
+
+.popup-badge {
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.popup-time {
+    color: #64748b;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.popup-title {
+    font-weight: 500;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.popup-contact {
+    color: #94a3b8;
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 /* Appointment Tooltip */
 .appointment-tooltip {
     position: absolute;

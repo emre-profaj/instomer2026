@@ -113,6 +113,8 @@ const Calendar = () => {
     // Conflict state
     const [conflict, setConflict] = useState(null);
 
+    // Day popup — hücrede sığmayan öğeleri gösterir
+    const [dayPopup, setDayPopup] = useState(null); // { date, x, y }
 
     // Sidebar pagination
     const [sidebarPage, setSidebarPage] = useState(1);
@@ -344,9 +346,7 @@ const Calendar = () => {
             const filters = {
                 dateFrom: ninetyDaysAgo.toISOString(),
                 dateTo: dateTo.toISOString(),
-                // Grid'de tamamlananlar dahil tüm aktiviteler görünecek
-                // Sidebar'da PLANNED/IN_PROGRESS filtrelenecek (frontend'de)
-                limit: 2000
+                // Limit yok — tüm aktiviteleri çek
             };
             // Agent filtresi burada UYGULANMIYOR — tüm workspace aktiviteleri çekilir.
             // Grid'de selectedAgents ile filtrelenir, sidebar'da user.id ile filtrelenir.
@@ -405,15 +405,9 @@ const Calendar = () => {
         }
     };
 
-    // Filter upcoming appointments based on showCompleted toggle
     const filteredUpcomingAppointments = upcomingAppointments.filter(apt => {
         if (!showCompleted && apt.isCompleted) return false;
-        // Activity type filter — hide appointments if not selected
         if (!activeFilters.has('appointments')) return false;
-        // Status filter
-        if (statusFilter === 'pending' && (apt.isCompleted || apt.isOverdue)) return false;
-        if (statusFilter === 'completed' && !apt.isCompleted) return false;
-        if (statusFilter === 'overdue' && !apt.isOverdue) return false;
         return true;
     });
 
@@ -1406,142 +1400,112 @@ const Calendar = () => {
                             >
                                 <span className="day-number">{day.date.getDate()}</span>
                                 <div className="day-appointments">
-                                    {getAppointmentsForDay(day.date).slice(0, 3).map(apt => {
-                                        const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
-                                        const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
-                                        return (
-                                            <div
-                                                key={apt.id}
-                                                className="appointment-pill-wrapper"
-                                            >
-                                                {(() => {
-                                                    const now = new Date();
-                                                    const aptEnd = new Date(apt.endTime || apt.startTime);
-                                                    const isOverdue = aptEnd < now && apt.status === 'SCHEDULED';
-                                                    const isCompleted = apt.status === 'COMPLETED';
-                                                    return (
+                                    {(() => {
+                                        const MAX_VISIBLE = viewMode === 'month' ? 3 : viewMode === 'week' ? 5 : 10;
+                                        const now = new Date();
+                                        const allItems = [];
+
+                                        // 1. Randevular
+                                        getAppointmentsForDay(day.date).forEach(apt => {
+                                            const status = APPOINTMENT_STATUSES.find(s => s.value === apt.status);
+                                            const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
+                                            const aptEnd = new Date(apt.endTime || apt.startTime);
+                                            const isOverdue = aptEnd < now && apt.status === 'SCHEDULED';
+                                            const isCompleted = apt.status === 'COMPLETED';
+                                            allItems.push({
+                                                id: `apt-${apt.id}`, sortTime: new Date(apt.startTime),
+                                                render: (
+                                                    <div key={`apt-${apt.id}`} className="appointment-pill-wrapper">
                                                         <div
                                                             className={`appointment-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
-                                                            style={{ backgroundColor: aptResource?.color || apt.color, position: 'relative' }}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (apt.contactId) {
-                                                                    setSelectedContactId(apt.contactId);
-                                                                } else {
-                                                                    openEditModal(apt);
-                                                                }
-                                                            }}
+                                                            style={{ backgroundColor: aptResource?.color || apt.color }}
+                                                            onClick={(e) => { e.stopPropagation(); apt.contactId ? setSelectedContactId(apt.contactId) : openEditModal(apt); }}
                                                         >
                                                             {isOverdue && <span style={{ marginRight: 2 }}>⚠️</span>}
                                                             {isCompleted && <span style={{ marginRight: 2 }}>✓</span>}
                                                             <span className="apt-time">{formatTime(apt.startTime)}</span>
                                                             <span className="apt-title">{apt.title}</span>
                                                         </div>
-                                                    );
-                                                })()}
-                                                <div className="appointment-tooltip">
-                                                    <div className="tooltip-header" style={{ borderLeftColor: apt.color }}>
-                                                        <h4>{apt.title}</h4>
-                                                        <span className="tooltip-status" style={{ backgroundColor: status?.color || '#3b82f6' }}>
-                                                            {status?.label || t('calendar.save')}
-                                                        </span>
-                                                    </div>
-                                                    <div className="tooltip-body">
-                                                        <div className="tooltip-row">
-                                                            <Clock size={14} />
-                                                            <span>{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span>
+                                                        <div className="appointment-tooltip">
+                                                            <div className="tooltip-header" style={{ borderLeftColor: apt.color }}>
+                                                                <h4>{apt.title}</h4>
+                                                                <span className="tooltip-status" style={{ backgroundColor: status?.color || '#3b82f6' }}>{status?.label || 'Kayıtlı'}</span>
+                                                            </div>
+                                                            <div className="tooltip-body">
+                                                                <div className="tooltip-row"><Clock size={14} /><span>{formatTime(apt.startTime)} - {formatTime(apt.endTime)}</span></div>
+                                                                {apt.contactName && <div className="tooltip-row"><User size={14} /><span>{apt.contactName}</span></div>}
+                                                                {apt.contactPhone && <div className="tooltip-row"><Phone size={14} /><span>{apt.contactPhone}</span></div>}
+                                                                {apt.assignedTo && <div className="tooltip-row tooltip-agent"><User size={14} /><span>Temsilci: {apt.assignedTo.name}</span></div>}
+                                                                {apt.createdBy && <div className="tooltip-row" style={{ color: '#8b5cf6' }}><User size={14} /><span>Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span></div>}
+                                                                {apt.doctorName && <div className="tooltip-row" style={{ color: '#059669' }}><User size={14} /><span>🩺 Dr. {apt.doctorName}</span></div>}
+                                                                {aptResource && <div className="tooltip-row"><Building2 size={14} /><span>{aptResource.name}</span></div>}
+                                                                {apt.notes && <div className="tooltip-notes"><FileText size={14} /><span>{apt.notes}</span></div>}
+                                                            </div>
                                                         </div>
-                                                        {apt.contactName && (
-                                                            <div className="tooltip-row">
-                                                                <User size={14} />
-                                                                <span>{apt.contactName}</span>
-                                                            </div>
-                                                        )}
-                                                        {apt.contactPhone && (
-                                                            <div className="tooltip-row">
-                                                                <Phone size={14} />
-                                                                <span>{apt.contactPhone}</span>
-                                                            </div>
-                                                        )}
-                                                        {apt.assignedTo && (
-                                                            <div className="tooltip-row tooltip-agent">
-                                                                <User size={14} />
-                                                                <span>Temsilci: {apt.assignedTo.name}</span>
-                                                            </div>
-                                                        )}
-                                                        {apt.createdBy && (
-                                                            <div className="tooltip-row" style={{ color: '#8b5cf6' }}>
-                                                                <User size={14} />
-                                                                <span>Atayan: {apt.createdByBotId ? 'AI Bot' : apt.createdBy.name}</span>
-                                                            </div>
-                                                        )}
-                                                        {apt.doctorName && (
-                                                            <div className="tooltip-row" style={{ color: '#059669' }}>
-                                                                <User size={14} />
-                                                                <span>🩺 Dr. {apt.doctorName}</span>
-                                                            </div>
-                                                        )}
-                                                        {aptResource && (
-                                                            <div className="tooltip-row">
-                                                                <Building2 size={14} />
-                                                                <span>{aptResource.name}</span>
-                                                            </div>
-                                                        )}
-                                                        {apt.notes && (
-                                                            <div className="tooltip-notes">
-                                                                <FileText size={14} />
-                                                                <span>{apt.notes}</span>
-                                                            </div>
-                                                        )}
                                                     </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    {getAppointmentsForDay(day.date).length > 3 && (
-                                        <div className="more-appointments">
-                                            +{getAppointmentsForDay(day.date).length - 3} daha
-                                        </div>
-                                    )}
-                                    {/* Scheduled Auto-Calls - hide when resource filter is active */}
-                                    {!selectedResource && getScheduledCallsForDay(day.date).map(sc => (
-                                        <div
-                                            key={sc.id}
-                                            className="appointment-pill"
-                                            style={{ backgroundColor: '#f97316', cursor: 'pointer' }}
-                                            title={`Planlanmış Arama: ${sc.contactName || sc.toNumber}\nSaat: ${new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}\nDüzenle / İptal et`}
-                                            onClick={(e) => { e.stopPropagation(); openScheduledCallModal(sc); }}
-                                        >
-                                            <span className="apt-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                            <span className="apt-title">{sc.contactName || sc.toNumber}</span>
-                                        </div>
-                                    ))}
-                                    {/* ContactActivity pills */}
-                                    {getActivitiesForDay(day.date).slice(0, 2).map(act => {
-                                        const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
-                                        const now = new Date();
-                                        const actDate = new Date(act.dueDate || act.createdAt);
-                                        const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
-                                        const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
+                                                )
+                                            });
+                                        });
+
+                                        // 2. Planlanmış aramalar
+                                        if (!selectedResource) {
+                                            getScheduledCallsForDay(day.date).forEach(sc => {
+                                                allItems.push({
+                                                    id: `sc-${sc.id}`, sortTime: new Date(sc.scheduledAt),
+                                                    render: (
+                                                        <div key={`sc-${sc.id}`} className="appointment-pill" style={{ backgroundColor: '#f97316', cursor: 'pointer' }}
+                                                            onClick={(e) => { e.stopPropagation(); openScheduledCallModal(sc); }}
+                                                        >
+                                                            <span className="apt-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            <span className="apt-title">{sc.contactName || sc.toNumber}</span>
+                                                        </div>
+                                                    )
+                                                });
+                                            });
+                                        }
+
+                                        // 3. Aktiviteler
+                                        getActivitiesForDay(day.date).forEach(act => {
+                                            const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                                            const actDate = new Date(act.dueDate || act.createdAt);
+                                            const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
+                                            const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
+                                            allItems.push({
+                                                id: `act-${act.id}`, sortTime: actDate,
+                                                render: (
+                                                    <div key={`act-${act.id}`}
+                                                        className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
+                                                        style={{ backgroundColor: cfg.color, cursor: 'pointer' }}
+                                                        onClick={(e) => { e.stopPropagation(); const cId = act.contactId || act.contact?.id; if (cId) setSelectedContactId(cId); }}
+                                                    >
+                                                        {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
+                                                        {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
+                                                        <span className="apt-time">{cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                        <span className="apt-title">{act.title || act.contact?.name || cfg.label}</span>
+                                                    </div>
+                                                )
+                                            });
+                                        });
+
+                                        allItems.sort((a, b) => a.sortTime - b.sortTime);
+                                        const visible = allItems.slice(0, MAX_VISIBLE);
+                                        const hiddenCount = allItems.length - MAX_VISIBLE;
+
                                         return (
-                                            <div
-                                                key={act.id}
-                                                className={`appointment-pill activity-pill ${isOverdue ? 'pill-overdue' : ''} ${isCompleted ? 'pill-completed' : ''}`}
-                                                style={{ backgroundColor: cfg.color, cursor: 'pointer' }}
-                                                title={`${cfg.label}: ${act.title || act.contact?.name || ''}\n${act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}${isOverdue ? '\n⚠️ Gecikmiş' : ''}${isCompleted ? '\n✓ Tamamlandı' : ''}`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const cId = act.contactId || act.contact?.id;
-                                                    if (cId) setSelectedContactId(cId);
-                                                }}
-                                            >
-                                                {isOverdue && <span style={{ marginRight: 2, fontSize: 10 }}>⚠️</span>}
-                                                {isCompleted && <span style={{ marginRight: 2, fontSize: 10 }}>✓</span>}
-                                                <span className="apt-time">{cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                                <span className="apt-title">{act.title || act.contact?.name || cfg.label}</span>
-                                            </div>
+                                            <>
+                                                {visible.map(item => item.render)}
+                                                {hiddenCount > 0 && (
+                                                    <div className="more-appointments" onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const rect = e.currentTarget.closest('.calendar-day').getBoundingClientRect();
+                                                        setDayPopup({ date: day.date, x: rect.left, y: rect.bottom });
+                                                    }}>
+                                                        +{hiddenCount} daha
+                                                    </div>
+                                                )}
+                                            </>
                                         );
-                                    })}
+                                    })()}
                                 </div>
                             </div>
                         ))}
@@ -2136,6 +2100,89 @@ const Calendar = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Day Popup — hücrede sığmayan öğeleri gösterir */}
+            {dayPopup && (
+                <>
+                    <div className="day-popup-backdrop" onClick={() => setDayPopup(null)} />
+                    <div className="day-popup-panel" style={{
+                        position: 'fixed',
+                        left: Math.min(dayPopup.x, window.innerWidth - 340),
+                        top: Math.min(dayPopup.y, window.innerHeight - 400),
+                        zIndex: 1000
+                    }}>
+                        <div className="day-popup-header">
+                            <h4>{dayPopup.date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' })}</h4>
+                            <button className="day-popup-close" onClick={() => setDayPopup(null)}><X size={16} /></button>
+                        </div>
+                        <div className="day-popup-items">
+                            {(() => {
+                                const now = new Date();
+                                const allItems = [];
+                                getAppointmentsForDay(dayPopup.date).forEach(apt => {
+                                    const aptResource = apt.resourceId ? resources.find(r => r.id === apt.resourceId) : null;
+                                    const aptEnd = new Date(apt.endTime || apt.startTime);
+                                    const isOverdue = aptEnd < now && apt.status === 'SCHEDULED';
+                                    const isCompleted = apt.status === 'COMPLETED';
+                                    allItems.push({
+                                        sortTime: new Date(apt.startTime),
+                                        render: (
+                                            <div key={`dp-apt-${apt.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
+                                                style={{ borderLeftColor: aptResource?.color || apt.color }}
+                                                onClick={() => { apt.contactId ? setSelectedContactId(apt.contactId) : openEditModal(apt); setDayPopup(null); }}
+                                            >
+                                                {isOverdue && <span className="popup-badge overdue">⚠️</span>}
+                                                {isCompleted && <span className="popup-badge completed">✓</span>}
+                                                <span className="popup-time">{formatTime(apt.startTime)}</span>
+                                                <span className="popup-title">{apt.title}</span>
+                                                {apt.contactName && <span className="popup-contact">{apt.contactName}</span>}
+                                            </div>
+                                        )
+                                    });
+                                });
+                                if (!selectedResource) {
+                                    getScheduledCallsForDay(dayPopup.date).forEach(sc => {
+                                        allItems.push({
+                                            sortTime: new Date(sc.scheduledAt),
+                                            render: (
+                                                <div key={`dp-sc-${sc.id}`} className="day-popup-item" style={{ borderLeftColor: '#f97316' }}
+                                                    onClick={() => { openScheduledCallModal(sc); setDayPopup(null); }}
+                                                >
+                                                    <span className="popup-time">📞 {new Date(sc.scheduledAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    <span className="popup-title">{sc.contactName || sc.toNumber}</span>
+                                                </div>
+                                            )
+                                        });
+                                    });
+                                }
+                                getActivitiesForDay(dayPopup.date).forEach(act => {
+                                    const cfg = ACTIVITY_TYPE_CONFIG[act.type] || { icon: '📋', color: '#6b7280', label: act.type };
+                                    const actDate = new Date(act.dueDate || act.createdAt);
+                                    const isOverdue = actDate < now && act.status !== 'COMPLETED' && act.status !== 'DONE';
+                                    const isCompleted = act.status === 'COMPLETED' || act.status === 'DONE';
+                                    allItems.push({
+                                        sortTime: actDate,
+                                        render: (
+                                            <div key={`dp-act-${act.id}`} className={`day-popup-item ${isOverdue ? 'popup-overdue' : ''} ${isCompleted ? 'popup-completed' : ''}`}
+                                                style={{ borderLeftColor: cfg.color }}
+                                                onClick={() => { const cId = act.contactId || act.contact?.id; if (cId) { setSelectedContactId(cId); setDayPopup(null); } }}
+                                            >
+                                                {isOverdue && <span className="popup-badge overdue">⚠️</span>}
+                                                {isCompleted && <span className="popup-badge completed">✓</span>}
+                                                <span className="popup-time">{cfg.icon} {act.dueDate ? new Date(act.dueDate).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                <span className="popup-title">{act.title || act.contact?.name || cfg.label}</span>
+                                                {act.contact?.name && <span className="popup-contact">{act.contact.name}</span>}
+                                            </div>
+                                        )
+                                    });
+                                });
+                                allItems.sort((a, b) => a.sortTime - b.sortTime);
+                                return allItems.map(item => item.render);
+                            })()}
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* ContactSidebar — opens from list view */}
