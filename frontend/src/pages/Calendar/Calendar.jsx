@@ -332,11 +332,19 @@ const Calendar = () => {
 
     const loadCalendarActivities = async () => {
         try {
-            const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+            // Geciken görevler için 90 gün geriye, gelecek görevler için ay sonuna kadar çek
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            ninetyDaysAgo.setHours(0, 0, 0, 0);
             const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59);
+            // En az 14 gün sonrasına kadar çek (gelecek görevler sidebar için)
+            const twoWeeksLater = new Date();
+            twoWeeksLater.setDate(twoWeeksLater.getDate() + 14);
+            const dateTo = endOfMonth > twoWeeksLater ? endOfMonth : twoWeeksLater;
+
             const filters = {
-                dateFrom: startOfMonth.toISOString(),
-                dateTo: endOfMonth.toISOString(),
+                dateFrom: ninetyDaysAgo.toISOString(),
+                dateTo: dateTo.toISOString(),
                 status: 'PLANNED,IN_PROGRESS',
                 limit: 500
             };

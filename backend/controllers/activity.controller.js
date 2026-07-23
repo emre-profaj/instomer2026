@@ -848,12 +848,22 @@ export const getWorkspaceActivities = async (req, res) => {
             where.teamId = teamId;
         }
 
-        // Date range filter
+        // Date range filter — also include items where dueDate is null (use createdAt as fallback)
         if (dateFrom || dateTo) {
-            const field = req.query.dateField || 'dueDate'; // e.g. 'createdAt', 'completedAt', 'dueDate'
-            where[field] = {};
-            if (dateFrom) where[field].gte = parseDateStartTR(dateFrom);
-            if (dateTo) where[field].lte = parseDateEndTR(dateTo);
+            const field = req.query.dateField || 'dueDate';
+            const dateRange = {};
+            if (dateFrom) dateRange.gte = parseDateStartTR(dateFrom);
+            if (dateTo) dateRange.lte = parseDateEndTR(dateTo);
+
+            if (field === 'dueDate') {
+                // OR: dueDate in range OR (dueDate is null AND createdAt in range)
+                where.OR = [
+                    { dueDate: dateRange },
+                    { dueDate: null, createdAt: dateRange }
+                ];
+            } else {
+                where[field] = dateRange;
+            }
         }
 
         // AGENT RBAC: Sadece kendi + takım havuzu
