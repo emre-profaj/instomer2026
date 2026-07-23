@@ -557,9 +557,7 @@ export const syncEmailsInternal = async (channelId) => {
                         console.error('❌ [RULE:SALES_PHONE_CALL] Email async error:', e.message)
                     );
                     if (contact?.id) {
-                        // DEVRE DIŞI:                         await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
-                            console.error('❌ [RULE:AUTO_CALL] Email async error:', e.message)
-                        );
+                        // executeAutoCallPlanning devre dışı — mesaj handler'da çalışmamalı
                     }
                 }
             } catch (ruleErr) {
@@ -1039,9 +1037,7 @@ const syncEmailsFromHistory = async (channelId, newHistoryId) => {
                             console.error('❌ [RULE:SALES_PHONE_CALL] Email history error:', e.message)
                         );
                         if (contact?.id) {
-                        // DEVRE DIŞI:                             await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
-                                console.error('❌ [RULE:AUTO_CALL] Email history error:', e.message)
-                            );
+                            // executeAutoCallPlanning devre dışı — mesaj handler'da çalışmamalı
                         }
                     }
                 } catch (ruleErr) {
@@ -1514,9 +1510,7 @@ export const syncEmailsImap = async (channelId) => {
                                                     console.error('❌ [RULE:SALES_PHONE_CALL] IMAP error:', e.message)
                                                 );
                                                 if (contact?.id) {
-                        // DEVRE DIŞI:                                                     await executeAutoCallPlanning(channel.workspaceId, contact.id, 'EMAIL').catch(e =>
-                                                        console.error('❌ [RULE:AUTO_CALL] IMAP error:', e.message)
-                                                    );
+                                                    // executeAutoCallPlanning devre dışı — mesaj handler'da çalışmamalı
                                                 }
                                             }
                                         } catch (ruleErr) {
