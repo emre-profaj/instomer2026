@@ -422,6 +422,15 @@
     gap: 10px;
 }
 
+.cal-grid-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    margin-bottom: 4px;
+}
+
 /* ESKİ: aşağıda kalan eski class'lar için fallback */
 .calendar-header-top {
     display: flex;

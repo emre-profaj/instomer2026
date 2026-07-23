@@ -260,9 +260,8 @@ const Calendar = () => {
             }
 
             const response = await appointmentAPI.getAll(currentWorkspace.id, params);
-            // Filter out completed appointments
-            const activeAppointments = (response.data.appointments || []).filter(apt => apt.status !== 'COMPLETED');
-            setAppointments(activeAppointments);
+            // Tüm randevuları göster (completed dahil — takvimde ne yapıldığı görülsün)
+            setAppointments(response.data.appointments || []);
         } catch (error) {
             console.error('Load appointments error:', error);
         } finally {
@@ -352,7 +351,8 @@ const Calendar = () => {
             const filters = {
                 dateFrom: ninetyDaysAgo.toISOString(),
                 dateTo: dateTo.toISOString(),
-                status: 'PLANNED,IN_PROGRESS',
+                // Grid'de tamamlananlar dahil tüm aktiviteler görünecek
+                // Sidebar'da PLANNED/IN_PROGRESS filtrelenecek (frontend'de)
                 limit: 500
             };
             // Agent filtresi burada UYGULANMIYOR — tüm workspace aktiviteleri çekilir.
@@ -1020,51 +1020,6 @@ const Calendar = () => {
                     </div>
                 </div>
 
-                {/* SATIR 3: View switcher (solda/takvim hizası) + Tarih nav (sağda) */}
-                <div className="cal-header-row cal-actions-row">
-                    {/* View switcher */}
-                    <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
-                        {[
-                            { key: 'month', label: 'Takvim' },
-                            { key: 'week',  label: 'Haftalık' },
-                            { key: 'day',   label: 'Günlük' },
-                        ].map(v => (
-                            <button
-                                key={v.key}
-                                onClick={() => { setViewMode(v.key); setLayoutMode('grid'); }}
-                                style={{
-                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                    background: layoutMode === 'grid' && viewMode === v.key ? 'white' : 'transparent',
-                                    color: layoutMode === 'grid' && viewMode === v.key ? '#3b82f6' : '#64748b',
-                                    boxShadow: layoutMode === 'grid' && viewMode === v.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                    cursor: 'pointer', transition: 'all 0.2s'
-                                }}
-                            >{v.label}</button>
-                        ))}
-                        <button
-                            onClick={() => setLayoutMode('list')}
-                            style={{
-                                padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
-                                background: layoutMode === 'list' ? 'white' : 'transparent',
-                                color: layoutMode === 'list' ? '#3b82f6' : '#64748b',
-                                boxShadow: layoutMode === 'list' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                                cursor: 'pointer', transition: 'all 0.2s'
-                            }}
-                        >Liste</button>
-                    </div>
-
-
-                    {/* Tarih navigasyonu */}
-                    <div className="calendar-header-nav">
-                        <div className="nav-buttons">
-                            <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
-                            <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
-                            <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
-                        </div>
-                        <span className="current-month">{getHeaderLabel()}</span>
-                    </div>
-                </div>
-
             </div>{/* /calendar-header */}
 
             {/* Content: Sidebar + Calendar */}
@@ -1080,12 +1035,13 @@ const Calendar = () => {
                         const now = new Date();
                         // Sidebar: bana atanmış VEYA benim oluşturup başkasına atamadığım görevler
                         const myActivities = calendarActivities.filter(act => 
-                            act.assignedToId === user?.id || 
-                            (!act.assignedToId && act.createdBy === user?.id)
+                            (act.assignedToId === user?.id || 
+                            (!act.assignedToId && act.createdBy === user?.id)) &&
+                            (act.status === 'PLANNED' || act.status === 'IN_PROGRESS')
                         );
                         const overdueActivities = myActivities.filter(act => {
                             const actDate = new Date(act.dueDate || act.createdAt);
-                            return actDate < now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
+                            return actDate < now;
                         }).sort((a, b) => new Date(a.dueDate || a.createdAt) - new Date(b.dueDate || b.createdAt));
 
                         const overdueAppointments = upcomingAppointments.filter(apt => {
@@ -1100,7 +1056,7 @@ const Calendar = () => {
 
                         const futureActivities = myActivities.filter(act => {
                             const actDate = new Date(act.dueDate || act.createdAt);
-                            return actDate >= now && (act.status === 'PLANNED' || act.status === 'IN_PROGRESS');
+                            return actDate >= now;
                         }).sort((a, b) => new Date(a.dueDate || a.createdAt) - new Date(b.dueDate || b.createdAt));
 
                         const futureAppointments = upcomingAppointments.filter(apt => {
@@ -1112,8 +1068,8 @@ const Calendar = () => {
                             ...futureActivities.map(a => ({ itemType: 'activity', data: a })),
                             ...futureAppointments.map(a => ({ itemType: 'appointment', data: a }))
                         ].sort((a, b) => {
-                            const dateA = a.itemType === 'activity' ? new Date(a.data.dueDate) : new Date(a.data.startTime);
-                            const dateB = b.itemType === 'activity' ? new Date(b.data.dueDate) : new Date(b.data.startTime);
+                            const dateA = a.itemType === 'activity' ? new Date(a.data.dueDate || a.data.createdAt) : new Date(a.data.startTime);
+                            const dateB = b.itemType === 'activity' ? new Date(b.data.dueDate || b.data.createdAt) : new Date(b.data.startTime);
                             return dateA - dateB;
                         });
 
@@ -1123,7 +1079,7 @@ const Calendar = () => {
                             const tomorrow = new Date(today);
                             tomorrow.setDate(tomorrow.getDate() + 1);
                             items.forEach(item => {
-                                const itemDate = item.itemType === 'activity' ? new Date(item.data.dueDate) : new Date(item.data.startTime);
+                                const itemDate = item.itemType === 'activity' ? new Date(item.data.dueDate || item.data.createdAt) : new Date(item.data.startTime);
                                 let label;
                                 if (itemDate.toDateString() === today.toDateString()) label = 'Bugün';
                                 else if (itemDate.toDateString() === tomorrow.toDateString()) label = 'Yarın';
@@ -1217,6 +1173,46 @@ const Calendar = () => {
 
                 {/* Main Calendar */}
                 <div className="calendar-main">
+                    {/* View tabs + Date nav — grid alanının üstünde */}
+                    <div className="cal-grid-topbar">
+                        <div className="view-mode-toggle" style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                            {[
+                                { key: 'month', label: 'Takvim' },
+                                { key: 'week',  label: 'Haftalık' },
+                                { key: 'day',   label: 'Günlük' },
+                            ].map(v => (
+                                <button
+                                    key={v.key}
+                                    onClick={() => { setViewMode(v.key); setLayoutMode('grid'); }}
+                                    style={{
+                                        padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                        background: layoutMode === 'grid' && viewMode === v.key ? 'white' : 'transparent',
+                                        color: layoutMode === 'grid' && viewMode === v.key ? '#3b82f6' : '#64748b',
+                                        boxShadow: layoutMode === 'grid' && viewMode === v.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                        cursor: 'pointer', transition: 'all 0.2s'
+                                    }}
+                                >{v.label}</button>
+                            ))}
+                            <button
+                                onClick={() => setLayoutMode('list')}
+                                style={{
+                                    padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '13px', fontWeight: 500,
+                                    background: layoutMode === 'list' ? 'white' : 'transparent',
+                                    color: layoutMode === 'list' ? '#3b82f6' : '#64748b',
+                                    boxShadow: layoutMode === 'list' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                                    cursor: 'pointer', transition: 'all 0.2s'
+                                }}
+                            >Liste</button>
+                        </div>
+                        <div className="calendar-header-nav">
+                            <div className="nav-buttons">
+                                <button onClick={handlePrevMonth}><ChevronLeft size={20} /></button>
+                                <button className="today-btn" onClick={handleToday}>{t('calendar.today')}</button>
+                                <button onClick={handleNextMonth}><ChevronRight size={20} /></button>
+                            </div>
+                            <span className="current-month">{getHeaderLabel()}</span>
+                        </div>
+                    </div>
 
                 {layoutMode === 'grid' && viewMode === 'week' ? (
                 /* ═══════ WEEKLY VIEW ═══════ */
