@@ -37,6 +37,21 @@ const FunnelReport = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
+    const fetchData = async () => {
+        if (!currentWorkspace?.id) return;
+        setLoading(true);
+        try {
+            const dateParams = getDateRangeLogic(dateFilter, startDate, endDate);
+            const params = { ...dateParams, comparePrevious: true };
+            const analyticsRes = await contactAPI.getAnalytics(currentWorkspace.id, params);
+            setAnalytics(analyticsRes.data);
+        } catch (error) {
+            console.error('Error fetching funnel report:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate, funnelFilter]);
 
     const funnels = analytics?.funnelSummary || [];

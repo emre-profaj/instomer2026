@@ -56,7 +56,7 @@ const AramaAnalizi = () => {
         if (currentWorkspace?.id) {
             loadAllData();
         }
-    }, [currentWorkspace?.id, dateFilter]);
+    }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
 
     const getDateRange = () => {
         const range = getDateRangeLogic(dateFilter, startDate, endDate);

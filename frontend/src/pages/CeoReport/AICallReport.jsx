@@ -34,6 +34,25 @@ const AICallReport = () => {
         return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
+    const fetchData = async () => {
+        if (!currentWorkspace?.id) return;
+        setLoading(true);
+        try {
+            const dateParams = getDateRangeLogic(dateFilter, startDate, endDate);
+            const params = { ...dateParams, comparePrevious: true };
+            const [analyticsRes, performanceRes] = await Promise.all([
+                contactAPI.getAnalytics(currentWorkspace.id, params),
+                contactAPI.getAgentPerformance(currentWorkspace.id, params)
+            ]);
+            setAnalytics(analyticsRes.data);
+            setAgentPerformance(performanceRes.data);
+        } catch (error) {
+            console.error('Error fetching AI call report:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => { fetchData(); }, [currentWorkspace?.id, dateFilter, startDate, endDate]);
 
     // Check if AI calls exist

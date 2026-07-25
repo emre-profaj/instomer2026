@@ -216,7 +216,11 @@ const GeneralReport = () => {
                     </div>
                     <div className="ceo-section-body">
                         <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
-                            {dateFilterOptions.map(l => (
+                            {[
+                                { label: 'Toplam', color: '#6366f1' },
+                                { label: 'Telefonlu', color: '#10b981' },
+                                { label: 'Telefonsuz', color: '#ef4444' }
+                            ].map(l => (
                                 <span key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <span style={{ width: 10, height: 3, background: l.color, borderRadius: 2 }}></span>
                                     <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{l.label}</span>
