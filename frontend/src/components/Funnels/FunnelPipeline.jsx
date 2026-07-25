@@ -6,6 +6,7 @@ const FunnelPipeline = ({
     funnel,
     stageCounts = {},
     selectedStage,
+    connectedChannels = [],
     onStageClick,
     onStageSettingsClick,
     onFunnelSettingsClick,
@@ -23,6 +24,17 @@ const FunnelPipeline = ({
     const totalCount = stages.reduce((sum, s) => sum + (stageCounts[s.id] || 0), 0);
 
     const INDENT = 32;
+
+    const channelIconMap = {
+        WHATSAPP: { icon: '📱', label: 'WhatsApp', color: '#25D366' },
+        INSTAGRAM: { icon: '📸', label: 'Instagram', color: '#E4405F' },
+        FACEBOOK: { icon: '📘', label: 'Facebook', color: '#1877F2' },
+        EMAIL: { icon: '✉️', label: 'Email', color: '#EA4335' },
+        WEB_WIDGET: { icon: '🌐', label: 'Web Widget', color: '#3B82F6' },
+        FORM: { icon: '📝', label: 'Form', color: '#8B5CF6' },
+        LEAD: { icon: '📋', label: 'Lead', color: '#f59e0b' },
+        RETELL: { icon: '📞', label: 'AI Call', color: '#0d9488' }
+    };
 
     return (
         <div className="funnel-tree-node" style={{ position: 'relative' }}>
@@ -100,6 +112,18 @@ const FunnelPipeline = ({
                     <span style={{ fontSize: 18 }}>{funnel.icon || '📁'}</span>
                     <span className="funnel-name">{funnel.name}</span>
                     {funnel.funnelType === 'MAIN' && <span className="funnel-badge">ANA AKIŞ</span>}
+                    {connectedChannels.length > 0 && (
+                        <div className="funnel-channel-badges">
+                            {connectedChannels.map(ch => {
+                                const info = channelIconMap[ch.channel] || { icon: '📡', label: ch.channel, color: '#94a3b8' };
+                                return (
+                                    <span key={ch.id || ch.channel} className="funnel-channel-badge" title={`${info.label}${ch.accountName ? ' — ' + ch.accountName : ''}`} style={{ background: info.color + '18', color: info.color, borderColor: info.color + '40' }}>
+                                        {info.icon}
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    )}
                     <div className="funnel-header-right">
                         <span className="funnel-stage-count">
                             {totalCount} kişi · {stages.length} aşama

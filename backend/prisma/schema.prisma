@@ -674,8 +674,9 @@ model ChannelRouting {
   id          String   @id @default(uuid())
   workspaceId String
   channel     String // INSTAGRAM, FACEBOOK, WHATSAPP, EMAIL, WEB_WIDGET, FORM, LEAD
-  teamId      String
+  teamId      String?
   funnelId    String?  // Hangi akışa yönlendirilecek
+  stageId     String?
   pageId      String?  // Spesifik Facebook/Instagram sayfa ID veya WhatsApp numara ID
   accountName String?  // Hesap adı (görüntüleme amaçlı)
   botDelay    Int      @default(30) // Bot devreye girmeden önce bekleme süresi (saniye)
@@ -684,13 +685,15 @@ model ChannelRouting {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team        Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   funnel      Funnel?  @relation("FunnelChannelRoutings", fields: [funnelId], references: [id], onDelete: SetNull)
+  stage       FunnelStage? @relation("ChannelRoutingStage", fields: [stageId], references: [id], onDelete: SetNull)
 
   @@unique([workspaceId, channel, pageId]) // Her kanal+sayfa için tek yönlendirme
   @@index([workspaceId])
   @@index([teamId])
   @@index([funnelId])
+  @@index([stageId])
   @@map("channel_routings")
 }
 
@@ -1322,6 +1325,7 @@ model FunnelStage {
   requiredFields String?  @db.Text // JSON: Zorunlu alanlar/kayıtlar (not, teklif vb.)
   createdAt      DateTime @default(now())
   funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  channelRoutings ChannelRouting[] @relation("ChannelRoutingStage")
 
   @@index([funnelId])
   @@map("funnel_stages")

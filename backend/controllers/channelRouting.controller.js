@@ -22,7 +22,13 @@ export const getChannelRoutings = async (req, res) => {
                         }
                     }
                 },
-                funnel: true
+                funnel: true,
+                stage: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
             },
             orderBy: { channel: 'asc' }
         });
@@ -54,19 +60,22 @@ export const getChannelRoutings = async (req, res) => {
 export const upsertChannelRouting = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { channel, teamId, botDelay, botEnabled, isActive, funnelId, pageId, accountName } = req.body;
+        const { channel, teamId, botDelay, botEnabled, isActive, funnelId, pageId, accountName, stageId } = req.body;
 
-        if (!channel || !teamId) {
-            return res.status(400).json({ error: 'Kanal ve ekip gereklidir' });
+        if (!channel) {
+            return res.status(400).json({ error: 'Kanal gereklidir' });
         }
 
         // Ekibin var olduğunu kontrol et
-        const team = await prisma.team.findFirst({
-            where: { id: teamId, workspaceId }
-        });
+        let team = null;
+        if (teamId) {
+            team = await prisma.team.findFirst({
+                where: { id: teamId, workspaceId }
+            });
 
-        if (!team) {
-            return res.status(404).json({ error: 'Ekip bulunamadı' });
+            if (!team) {
+                return res.status(404).json({ error: 'Ekip bulunamadı' });
+            }
         }
 
         const routing = await prisma.channelRouting.upsert({
@@ -79,20 +88,22 @@ export const upsertChannelRouting = async (req, res) => {
             create: {
                 workspaceId,
                 channel,
-                teamId,
+                teamId: teamId || null,
                 botDelay: botDelay ?? 30,
                 botEnabled: botEnabled ?? true,
                 isActive: isActive ?? true,
                 funnelId: funnelId || null,
+                stageId: stageId || null,
                 pageId: pageId || null,
                 accountName: accountName || null
             },
             update: {
-                teamId,
+                teamId: teamId || null,
                 botDelay: botDelay ?? 30,
                 botEnabled: botEnabled ?? true,
                 isActive: isActive ?? true,
                 funnelId: funnelId || null,
+                stageId: stageId || null,
                 pageId: pageId || null,
                 accountName: accountName || null
             },
@@ -107,7 +118,7 @@ export const upsertChannelRouting = async (req, res) => {
             }
         });
 
-        console.log(`📡 [ChannelRouting] ${channel} → ${team.name} (delay: ${routing.botDelay}s)`);
+        console.log(`📡 [ChannelRouting] ${channel} → ${team ? team.name : 'No Team'} (delay: ${routing.botDelay}s)`);
 
         res.json({ routing });
     } catch (error) {
@@ -181,7 +192,7 @@ export const getRoutingsByFunnel = async (req, res) => {
         const { workspaceId, funnelId } = req.params;
         const routings = await prisma.channelRouting.findMany({
             where: { workspaceId, funnelId },
-            include: { team: true },
+            include: { team: true, stage: true },
             orderBy: { priority: 'desc' }
         });
         res.json({ routings });

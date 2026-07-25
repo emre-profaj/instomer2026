@@ -918,3 +918,28 @@ select.action-param {
         grid-template-columns: 1fr;
     }
 }
+
+/* ── Funnel Channel Badges ── */
+.funnel-channel-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+}
+
+.funnel-channel-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid;
+    cursor: default;
+    transition: transform 0.15s ease;
+}
+
+.funnel-channel-badge:hover {
+    transform: scale(1.15);
+}

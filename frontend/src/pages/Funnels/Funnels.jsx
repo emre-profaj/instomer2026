@@ -42,6 +42,7 @@ const Funnels = () => {
     // Settings panels
     const [stagePanel, setStagePanel] = useState(null);   // { stage, funnelId }
     const [funnelPanel, setFunnelPanel] = useState(null);  // funnel object being edited
+    const [allChannelRoutings, setAllChannelRoutings] = useState([]);
 
     // Add new funnel form
     const [showAddForm, setShowAddForm] = useState(false);
@@ -95,6 +96,11 @@ const Funnels = () => {
             setLoading(true);
             const res = await funnelAPI.getAll(currentWorkspace.id);
             setFunnels(res.data.funnels || []);
+            
+            try {
+                const routingsRes = await channelRoutingAPI.getAll(currentWorkspace.id);
+                setAllChannelRoutings(routingsRes.data?.routings || []);
+            } catch (e) { console.log('Channel routings load error:', e); }
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
@@ -405,6 +411,7 @@ const Funnels = () => {
                 funnel={funnel}
                 stageCounts={stageCounts}
                 selectedStage={selectedStage}
+                connectedChannels={allChannelRoutings.filter(r => r.funnelId === funnel.id)}
                 onStageClick={(stage) => setSelectedStage(stage.id === selectedStage ? null : stage.id)}
                 onStageSettingsClick={(stage) => openStagePanel(stage, funnel.id)}
                 onFunnelSettingsClick={openFunnelPanel}

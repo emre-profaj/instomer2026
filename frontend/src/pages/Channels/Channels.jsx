@@ -2,10 +2,10 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
 import './Channels.css';
 
@@ -49,6 +49,7 @@ const Channels = () => {
     const [channelRoutings, setChannelRoutings] = useState([]);
     const [teams, setTeams] = useState([]);
     const [savingRouting, setSavingRouting] = useState(null);
+    const [funnels, setFunnels] = useState([]);
 
     // Chat History Sync states
     const [syncPeriods, setSyncPeriods] = useState({});
@@ -109,7 +110,7 @@ const Channels = () => {
     const loadAllChannels = async () => {
         setLoading(true);
         try {
-            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes] = await Promise.all([
+            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes] = await Promise.all([
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
@@ -119,7 +120,8 @@ const Channels = () => {
                 whatsappAPI.getPhoneNumbers(currentWorkspace.id).catch(() => ({ data: { phoneNumbers: [] } })),
                 webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } })),
                 retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } })),
-                healthSystemAPI.getStatus(currentWorkspace.id).catch(() => ({ data: { connected: false } }))
+                healthSystemAPI.getStatus(currentWorkspace.id).catch(() => ({ data: { connected: false } })),
+                funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: [] }))
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -139,6 +141,7 @@ const Channels = () => {
             setWebWidgets(widgetsRes.data.widgets || []);
             setRetellSettings(retellRes.data.isConfigured ? retellRes.data : null);
             setHealthConnection(healthRes.data.connected ? healthRes.data.integration : null);
+            setFunnels(funnelsRes.data?.funnels || funnelsRes.data || []);
         } catch (error) {
             console.error('Error loading channels:', error);
         } finally {
@@ -146,37 +149,29 @@ const Channels = () => {
         }
     };
 
-    // Routing functions - sadece ekip ataması için
-    const handleSaveRouting = async (channel, teamId) => {
+    // Routing functions - akış, aşama, takım, bot ataması
+    const handleSaveRouting = async (routingChannel, field, value) => {
         try {
-            setSavingRouting(channel);
-
-            if (!teamId) {
-                // Eğer takım seçilmemişse, routing'i sil
-                try {
-                    await channelRoutingAPI.delete(currentWorkspace.id, channel);
-                } catch (deleteError) {
-                    // Routing zaten yoksa hata verme
-                    console.log('No existing routing to delete');
-                }
+            setSavingRouting(routingChannel);
+            const existingRouting = channelRoutings.find(r => r.channel === routingChannel);
+            const data = {
+                channel: routingChannel,
+                teamId: existingRouting?.teamId || null,
+                funnelId: existingRouting?.funnelId || null,
+                stageId: existingRouting?.stageId || null,
+                botDelay: existingRouting?.botDelay ?? 0,
+                botEnabled: existingRouting?.botEnabled ?? true,
+                [field]: value === '' ? null : value
+            };
+            if (field === 'funnelId') data.stageId = null;
+            if (!data.teamId && !data.funnelId) {
+                try { await channelRoutingAPI.delete(currentWorkspace.id, routingChannel); } catch (e) { console.log('No existing routing'); }
             } else {
-                // Takım seçilmişse, upsert yap
-                await channelRoutingAPI.upsert(currentWorkspace.id, {
-                    channel,
-                    teamId,
-                    botDelay: 0,
-                    botEnabled: true
-                });
+                await channelRoutingAPI.upsert(currentWorkspace.id, data);
             }
-
             const response = await channelRoutingAPI.getAll(currentWorkspace.id);
             setChannelRoutings(response.data.routings || []);
-        } catch (error) {
-            console.error('Error saving routing:', error);
-            alert('Routing could not be saved');
-        } finally {
-            setSavingRouting(null);
-        }
+        } catch (error) { console.error('Error saving routing:', error); } finally { setSavingRouting(null); }
     };
 
     const handleDeleteRouting = async (channel) => {
@@ -1022,43 +1017,51 @@ const Channels = () => {
                                         </div>
                                     )}
 
-                                    {/* Routing Settings - Her kanal kartının altında */}
-                                    {channel.hasRouting && teams.length > 0 && (
+                                    {/* Routing Settings - Akış + Aşama + Takım + Bot */}
+                                    {channel.hasRouting && (
                                         <div className="channel-routing-section">
                                             <div className="routing-section-header">
                                                 <GitBranch size={12} />
-                                                <span>{t('channels.redirectSettings')}</span>
+                                                <span>Yönlendirme</span>
                                             </div>
                                             {(() => {
                                                 const existingRouting = channelRoutings.find(r => r.channel === channel.routingChannel);
+                                                const selectedFunnel = funnels.find(f => f.id === existingRouting?.funnelId);
+                                                const funnelStages = selectedFunnel?.stages || [];
                                                 return (
                                                     <div className="routing-section-body">
                                                         <div className="routing-row">
-                                                            <label>
-                                                                <Users size={12} />
-                                                                Ekip
-                                                            </label>
-                                                            <select
-                                                                value={existingRouting?.teamId || ''}
-                                                                onChange={(e) => {
-                                                                    handleSaveRouting(
-                                                                        channel.routingChannel,
-                                                                        e.target.value || null
-                                                                    );
-                                                                }}
-                                                                className="routing-select-inline"
-                                                            >
-                                                                <option value="">{t("channels.selectOption")}</option>
-                                                                {teams.map(team => (
-                                                                    <option key={team.id} value={team.id}>{team.name}</option>
-                                                                ))}
+                                                            <label><GitBranch size={12} /> Akış</label>
+                                                            <select value={existingRouting?.funnelId || ''} onChange={(e) => handleSaveRouting(channel.routingChannel, 'funnelId', e.target.value)} className="routing-select-inline">
+                                                                <option value="">Akış seçin</option>
+                                                                {funnels.map(f => (<option key={f.id} value={f.id}>{f.icon || '📁'} {f.name}</option>))}
                                                             </select>
                                                         </div>
-
-
-                                                        {savingRouting === channel.routingChannel && (
-                                                            <div className="routing-saving-inline">Kaydediliyor...</div>
+                                                        {existingRouting?.funnelId && funnelStages.length > 0 && (
+                                                            <div className="routing-row">
+                                                                <label><ChevronRight size={12} /> Aşama</label>
+                                                                <select value={existingRouting?.stageId || ''} onChange={(e) => handleSaveRouting(channel.routingChannel, 'stageId', e.target.value)} className="routing-select-inline">
+                                                                    <option value="">İlk aşama (varsayılan)</option>
+                                                                    {funnelStages.sort((a, b) => a.order - b.order).map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                                                </select>
+                                                            </div>
                                                         )}
+                                                        {teams.length > 0 && (
+                                                            <div className="routing-row">
+                                                                <label><Users size={12} /> Ekip</label>
+                                                                <select value={existingRouting?.teamId || ''} onChange={(e) => handleSaveRouting(channel.routingChannel, 'teamId', e.target.value)} className="routing-select-inline">
+                                                                    <option value="">Ekip seçin</option>
+                                                                    {teams.map(team => (<option key={team.id} value={team.id}>{team.name}</option>))}
+                                                                </select>
+                                                            </div>
+                                                        )}
+                                                        <div className="routing-row routing-row-toggle">
+                                                            <label><Bot size={12} /> Bot</label>
+                                                            <button className={`routing-bot-toggle ${existingRouting?.botEnabled !== false ? 'active' : ''}`} onClick={() => handleSaveRouting(channel.routingChannel, 'botEnabled', existingRouting?.botEnabled === false)}>
+                                                                {existingRouting?.botEnabled !== false ? '🟢 Aktif' : '🔴 Kapalı'}
+                                                            </button>
+                                                        </div>
+                                                        {savingRouting === channel.routingChannel && (<div className="routing-saving-inline">Kaydediliyor...</div>)}
                                                     </div>
                                                 );
                                             })()}

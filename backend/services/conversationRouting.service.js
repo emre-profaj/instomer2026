@@ -258,17 +258,19 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
                     include: { stages: { orderBy: { order: 'asc' } } }
                 });
                 if (funnel && funnel.stages.length > 0) {
-                    const firstStage = funnel.stages[0];
+                    const targetStage = routing.stageId 
+                        ? funnel.stages.find(s => s.id === routing.stageId) || funnel.stages[0]
+                        : funnel.stages[0];
                     await prisma.conversation.update({
                         where: { id: conversationId },
-                        data: { funnelType: funnel.id, funnelStageId: firstStage.id }
+                        data: { funnelType: funnel.id, funnelStageId: targetStage.id }
                     });
                     // Contact'ı da güncelle
                     const conv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { contactId: true } });
                     if (conv?.contactId) {
                         await prisma.contact.update({
                             where: { id: conv.contactId },
-                            data: { funnelType: funnel.id, funnelStageId: firstStage.id }
+                            data: { funnelType: funnel.id, funnelStageId: targetStage.id }
                         });
                     }
                 }

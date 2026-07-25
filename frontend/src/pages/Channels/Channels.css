@@ -1743,3 +1743,35 @@
     color: #ef4444 !important;
     stroke: #ef4444 !important;
 }
+
+/* ── Routing Bot Toggle ── */
+.routing-row-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.routing-bot-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #ef4444;
+}
+
+.routing-bot-toggle.active {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #059669;
+}
+
+.routing-bot-toggle:hover {
+    transform: scale(1.03);
+}
