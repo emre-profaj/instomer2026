@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { appointmentAPI, retellAPI, resourceAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
@@ -191,13 +191,40 @@ const Calendar = () => {
         return activeFilters.has(key);
     };
 
-    // Counts per activity type
-    const activityCounts = {
-        calls: scheduledCalls.length + calendarActivities.filter(a => a.type === 'CALL').length,
-        appointments: upcomingAppointments.filter(a => !a.isCompleted).length,
-        meetings: calendarActivities.filter(a => a.type === 'MEETING').length,
-        tasks: calendarActivities.filter(a => a.type === 'TASK' || a.type === 'REMINDER').length
-    };
+    // Counts per activity type - ekranda görüntülenen takvim günlerine göre HESAPLANIR (Reel Sayılar)
+    const activityCounts = useMemo(() => {
+        const days = getDaysInMonth();
+        let calls = 0;
+        let appointmentsCount = 0;
+        let meetings = 0;
+        let tasks = 0;
+
+        days.forEach(day => {
+            // 1. Calls count
+            const scForDay = getScheduledCallsForDay(day.date, true);
+            const actCallsForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'CALL' || a.type === 'NOTE');
+            calls += scForDay.length + actCallsForDay.length;
+
+            // 2. Appointments count
+            const aptForDay = getAppointmentsForDay(day.date, true);
+            appointmentsCount += aptForDay.length;
+
+            // 3. Meetings count
+            const meetForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'MEETING');
+            meetings += meetForDay.length;
+
+            // 4. Tasks count
+            const taskForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'TASK' || a.type === 'REMINDER');
+            tasks += taskForDay.length;
+        });
+
+        return {
+            calls,
+            appointments: appointmentsCount,
+            meetings,
+            tasks
+        };
+    }, [appointments, calendarActivities, scheduledCalls, currentDate, showCompleted, selectedAgents, selectedResource]);
 
     // List view states
     const [listFilter, setListFilter] = useState('all'); // 'all', 'appointments', 'calls'
@@ -237,13 +264,14 @@ const Calendar = () => {
     const loadAppointments = async () => {
         try {
             setLoading(true);
-            const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-            // End of month should be the last day at 23:59:59
-            const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59);
+            const days = getDaysInMonth();
+            const startOfGrid = days[0].date;
+            const endOfGrid = new Date(days[days.length - 1].date);
+            endOfGrid.setHours(23, 59, 59, 999);
 
             const params = {
-                startDate: startOfMonth.toISOString(),
-                endDate: endOfMonth.toISOString()
+                startDate: startOfGrid.toISOString(),
+                endDate: endOfGrid.toISOString()
             };
 
             if (selectedAgents.size > 0) {
@@ -552,25 +580,25 @@ const Calendar = () => {
         return days;
     };
 
-    const getAppointmentsForDay = (date) => {
+    const getAppointmentsForDay = (date, ignoreTypeFilter = false) => {
         return appointments.filter(apt => {
             const aptDate = new Date(apt.startTime);
             if (aptDate.toDateString() !== date.toDateString()) return false;
-            if (!activeFilters.has('appointments')) return false;
+            if (!ignoreTypeFilter && !activeFilters.has('appointments')) return false;
             // Tamamlanan filtresi
             if (apt.status === 'COMPLETED' && !showCompleted) return false;
             return true;
         });
     };
 
-    const getScheduledCallsForDay = (date) => {
-        if (!activeFilters.has('calls')) return [];
+    const getScheduledCallsForDay = (date, ignoreTypeFilter = false) => {
+        if (!ignoreTypeFilter && !activeFilters.has('calls')) return [];
         return scheduledCalls.filter(sc => {
             return new Date(sc.scheduledAt).toDateString() === date.toDateString();
         });
     };
 
-    const getActivitiesForDay = (date) => {
+    const getActivitiesForDay = (date, ignoreTypeFilter = false) => {
         // Activity type → filter key mapping
         const typeToFilterKey = { 'CALL': 'calls', 'NOTE': 'calls', 'MEETING': 'meetings', 'TASK': 'tasks', 'REMINDER': 'tasks' };
 
@@ -580,7 +608,7 @@ const Calendar = () => {
             if (actDate.toDateString() !== date.toDateString()) return false;
             // Aktivite tipi filtresi
             const filterKey = typeToFilterKey[act.type] || 'tasks';
-            if (!activeFilters.has(filterKey)) return false;
+            if (!ignoreTypeFilter && !activeFilters.has(filterKey)) return false;
             // Tamamlanan filtresi
             if ((act.status === 'COMPLETED' || act.status === 'DONE') && !showCompleted) return false;
             // Agent filtresi
@@ -1116,20 +1144,29 @@ const Calendar = () => {
 
                     {(() => {
                         const now = new Date();
-                        // Sidebar: bana atanmış VEYA benim oluşturup başkasına atamadığım görevler
-                        const myActivities = calendarActivities.filter(act => 
-                            (act.assignedToId === user?.id || 
-                            (!act.assignedToId && act.createdBy === user?.id)) &&
-                            (act.status === 'PLANNED' || act.status === 'IN_PROGRESS')
-                        );
-                        const overdueActivities = myActivities.filter(act => {
+                        // Sidebar: seçili agent'lar varsa onların, yoksa tüm takımın işlerini göster
+                        const targetActivities = calendarActivities.filter(act => {
+                            if (selectedAgents.size > 0) {
+                                if (act.assignedToId && !selectedAgents.has(act.assignedToId)) return false;
+                            }
+                            return act.status === 'PLANNED' || act.status === 'IN_PROGRESS';
+                        });
+
+                        const overdueActivities = targetActivities.filter(act => {
                             const actDate = new Date(act.dueDate || act.createdAt);
                             return actDate < now;
                         }).sort((a, b) => new Date(a.dueDate || a.createdAt) - new Date(b.dueDate || b.createdAt));
 
-                        const overdueAppointments = upcomingAppointments.filter(apt => {
+                        const targetAppointments = appointments.filter(apt => {
+                            if (selectedAgents.size > 0) {
+                                if (apt.assignedToId && !selectedAgents.has(apt.assignedToId)) return false;
+                            }
+                            return apt.status === 'SCHEDULED';
+                        });
+
+                        const overdueAppointments = targetAppointments.filter(apt => {
                             const endTime = new Date(apt.endTime || apt.startTime);
-                            return endTime < now && apt.status === 'SCHEDULED' && apt.assignedTo?.id === user?.id;
+                            return endTime < now;
                         });
 
                         const allOverdue = [
@@ -1137,14 +1174,14 @@ const Calendar = () => {
                             ...overdueAppointments.map(a => ({ itemType: 'appointment', data: a }))
                         ];
 
-                        const futureActivities = myActivities.filter(act => {
+                        const futureActivities = targetActivities.filter(act => {
                             const actDate = new Date(act.dueDate || act.createdAt);
                             return actDate >= now;
                         }).sort((a, b) => new Date(a.dueDate || a.createdAt) - new Date(b.dueDate || b.createdAt));
 
-                        const futureAppointments = upcomingAppointments.filter(apt => {
+                        const futureAppointments = targetAppointments.filter(apt => {
                             const startTime = new Date(apt.startTime);
-                            return startTime >= now && apt.status === 'SCHEDULED' && apt.assignedTo?.id === user?.id;
+                            return startTime >= now;
                         });
 
                         const allFuture = [
