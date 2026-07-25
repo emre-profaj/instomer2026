@@ -114,6 +114,12 @@ export const upsertChannelRouting = async (req, res) => {
                         name: true,
                         color: true
                     }
+                },
+                funnel: {
+                    select: { id: true, name: true, icon: true, color: true }
+                },
+                stage: {
+                    select: { id: true, name: true, color: true }
                 }
             }
         });

@@ -164,9 +164,13 @@ const Channels = () => {
                 [field]: value === '' ? null : value
             };
             if (field === 'funnelId') data.stageId = null;
-            if (!data.teamId && !data.funnelId) {
+            
+            // Sadece akış veya takım alanı değiştiriliyorsa ve ikisi de boşsa sil
+            // botEnabled gibi toggle değişikliklerinde silme
+            const isRoutingField = ['funnelId', 'teamId', 'stageId'].includes(field);
+            if (isRoutingField && !data.teamId && !data.funnelId) {
                 try { await channelRoutingAPI.delete(currentWorkspace.id, routingChannel); } catch (e) { console.log('No existing routing'); }
-            } else {
+            } else if (data.teamId || data.funnelId || existingRouting) {
                 await channelRoutingAPI.upsert(currentWorkspace.id, data);
             }
             const response = await channelRoutingAPI.getAll(currentWorkspace.id);
