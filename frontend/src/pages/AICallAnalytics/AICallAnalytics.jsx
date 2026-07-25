@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import './AICallAnalytics.css';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../CeoReport/CeoReport.css';
+import '../CeoReport/CeoDetailReport.css';
 
 const AICallAnalytics = () => {
     const { t } = useTranslation();
@@ -19,9 +22,9 @@ const AICallAnalytics = () => {
     const [calls, setCalls] = useState([]);
     const [totalCalls, setTotalCalls] = useState(0);
     const [page, setPage] = useState(0);
-    const [dateRange, setDateRange] = useState('30');
-    const [customStartDate, setCustomStartDate] = useState('');
-    const [customEndDate, setCustomEndDate] = useState('');
+    const [dateFilter, setDateFilter] = useState('thisMonth');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [expandedCall, setExpandedCall] = useState(null);
     const [search, setSearch] = useState('');
     const [searchInput, setSearchInput] = useState('');
@@ -39,34 +42,25 @@ const AICallAnalytics = () => {
         if (currentWorkspace) {
             loadData();
         }
-    }, [currentWorkspace, dateRange, page, search, statusFilter, sentimentFilter, customStartDate, customEndDate]);
+    }, [currentWorkspace, dateFilter, page, search, statusFilter, sentimentFilter, startDate, endDate]);
 
     // Clear selection on filter change
     useEffect(() => {
         setSelectedCalls(new Set());
-    }, [statusFilter, sentimentFilter, page, search, dateRange]);
+    }, [statusFilter, sentimentFilter, page, search, dateFilter, startDate, endDate]);
 
     const getDateParams = () => {
-        // Custom date range takes priority over preset dropdown
-        if (customStartDate || customEndDate) {
-            const params = {};
-            if (customStartDate) params.startDate = new Date(customStartDate).toISOString();
-            if (customEndDate) {
-                const end = new Date(customEndDate);
-                end.setHours(23, 59, 59, 999);
-                params.endDate = end.toISOString();
-            }
-            return params;
+        const { startDate: sd, endDate: ed } = getDateRangeLogic(dateFilter, startDate, endDate);
+        const params = {};
+        if (sd) {
+            params.startDate = new Date(sd).toISOString();
         }
-        const now = new Date();
-        const days = parseInt(dateRange);
-        if (!days) return {};
-        const start = new Date(now);
-        start.setDate(start.getDate() - days);
-        return {
-            startDate: start.toISOString(),
-            endDate: now.toISOString()
-        };
+        if (ed) {
+            const end = new Date(ed);
+            end.setHours(23, 59, 59, 999);
+            params.endDate = end.toISOString();
+        }
+        return params;
     };
 
     const loadData = async () => {
@@ -222,44 +216,29 @@ const AICallAnalytics = () => {
                         <h1><PhoneCall size={28} /> AI Call Raporlama</h1>
                         <p className="aicall-subtitle">{t('aiCallAnalytics.subtitle')}</p>
                     </div>
-                    <div className="aicall-filters">
-                        <div className="date-filter">
-                            <Calendar size={16} />
-                            <select value={customStartDate || customEndDate ? '' : dateRange} onChange={(e) => {
-                                setPage(0);
-                                setDateRange(e.target.value);
-                                setCustomStartDate('');
-                                setCustomEndDate('');
-                            }}>
-                                <option value="7">{t('analytics.last7Days')}</option>
-                                <option value="30">{t("aiCallAnalytics.last30Days")}</option>
-                                <option value="90">{t("aiCallAnalytics.last90Days")}</option>
-                                <option value="">All</option>
-                            </select>
+                    <div className="aicall-filters" style={{ flexWrap: 'wrap' }}>
+                        <button className="btn-refresh" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+                            <FileText size={15} />
+                            PDF İndir
+                        </button>
+                    </div>
+                </div>
+
+                <div className="ceo-filter-bar" style={{ marginBottom: '1.5rem', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px 20px', marginTop: '-10px' }}>
+                    <div className="ceo-filter-left">
+                        <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
+                        <div className="ceo-pill-group">
+                            {dateFilterOptions.map(item => (
+                                <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => { setDateFilter(item.key); setPage(0); }}>{item.label}</button>
+                            ))}
                         </div>
-                        <div className="date-filter" style={{ gap: 6 }}>
-                            <input
-                                type="date"
-                                value={customStartDate}
-                                onChange={(e) => { setCustomStartDate(e.target.value); setPage(0); }}
-                                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: '0.82rem', cursor: 'pointer' }}
-                                title="Başlangıç tarihi"
-                            />
-                            <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>—</span>
-                            <input
-                                type="date"
-                                value={customEndDate}
-                                onChange={(e) => { setCustomEndDate(e.target.value); setPage(0); }}
-                                style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: '0.82rem', cursor: 'pointer' }}
-                                title="Bitiş tarihi"
-                            />
-                            {(customStartDate || customEndDate) && (
-                                <button onClick={() => { setCustomStartDate(''); setCustomEndDate(''); setPage(0); }}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '0.9rem', padding: '0 2px' }}
-                                    title="Tarihi temizle"
-                                >×</button>
-                            )}
-                        </div>
+                        {dateFilter === 'custom' && (
+                            <div className="ceo-custom-dates">
+                                <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="ceo-date-input" />
+                                <span style={{ color: '#9ca3af' }}>—</span>
+                                <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="ceo-date-input" />
+                            </div>
+                        )}
                     </div>
                 </div>
 

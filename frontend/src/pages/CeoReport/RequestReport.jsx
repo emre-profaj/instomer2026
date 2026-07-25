@@ -86,7 +86,10 @@ const RequestReport = () => {
                     <h1><ClipboardList size={24} style={{ color: '#6366f1' }} /> Talep Raporu</h1>
                     <p>Kategori, temsilci ve akış bazlı talep analizi</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}

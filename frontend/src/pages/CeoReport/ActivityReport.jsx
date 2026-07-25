@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Phone, PhoneCall, PhoneOff, Users, RefreshCw, Filter, ArrowLeft,
     TrendingUp, Handshake, Calendar, ListChecks, MessageSquare,
-    UserCheck, CheckCircle2
+    UserCheck, CheckCircle2, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -98,7 +98,10 @@ const ActivityReport = () => {
                     <h1><Phone size={24} style={{ color: '#059669' }} /> Aktivite & Arama Raporu</h1>
                     <p>Arama, görüşme, randevu ve aktivite detayları</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}

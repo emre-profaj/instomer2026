@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Users, UserCheck, RefreshCw, Filter, ArrowLeft,
     PhoneCall, Handshake, Calendar, MessageSquare, ListChecks,
-    ShoppingCart, DollarSign, Bot, ChevronDown, ChevronRight, ClipboardList
+    ShoppingCart, DollarSign, Bot, ChevronDown, ChevronRight, ClipboardList, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -329,7 +329,10 @@ const TeamReport = () => {
                     <h1><UserCheck size={24} style={{ color: '#3b82f6' }} /> Takım Performansı</h1>
                     <p>Temsilci ve yapay zeka performans lig tablosu</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}

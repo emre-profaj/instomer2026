@@ -520,3 +520,98 @@
         padding: 10px 8px;
     }
 }
+
+/* ═══════════════════════════════════════════════════════ */
+/* Print Styles for Detail Report Pages (PDF Export)      */
+/* ═══════════════════════════════════════════════════════ */
+@media print {
+    /* Hide interactive elements */
+    .ceo-back-btn,
+    .ceo-filter-bar,
+    .ceo-refresh-btn,
+    .ceo-detail-header .ceo-refresh-btn,
+    .btn-refresh,
+    .date-presets,
+    .custom-date-inputs,
+    .arama-analizi-actions,
+    .aicall-filters,
+    .aicall-date-filter,
+    .bulk-action-bar,
+    .btn-apply-dates,
+    .sidebar,
+    .admin-sidebar,
+    .admin-header,
+    .mobile-bottom-nav,
+    .workspace-selector,
+    .workspace-dropdown,
+    .insto-bot-fab,
+    .insto-bot-window,
+    .notification-banner {
+        display: none !important;
+    }
+
+    /* Force color printing */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* Full-width layout */
+    .ceo-report,
+    .arama-analizi-container,
+    .aicall-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Clean header for print */
+    .ceo-detail-header {
+        margin-bottom: 16px !important;
+        border-bottom: 2px solid #e2e8f0 !important;
+        padding-bottom: 12px !important;
+    }
+
+    /* KPI grids — maintain desktop layout */
+    .ceo-detail-kpi-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 10px !important;
+    }
+
+    .stats-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 10px !important;
+    }
+
+    /* Cards — clean for print */
+    .ceo-detail-kpi-card,
+    .ceo-detail-card,
+    .stat-card,
+    .call-notes-report > div {
+        box-shadow: none !important;
+        border: 1px solid #e2e8f0 !important;
+        break-inside: avoid !important;
+    }
+
+    /* Tables — clean borders */
+    .ceo-league-table,
+    .call-notes-report table {
+        border: 1px solid #e2e8f0 !important;
+    }
+
+    .ceo-league-table th,
+    .ceo-league-table td,
+    .call-notes-report table th,
+    .call-notes-report table td {
+        border-bottom: 1px solid #e2e8f0 !important;
+    }
+
+    /* Page breaks */
+    .ceo-detail-card,
+    .call-notes-report {
+        page-break-inside: avoid !important;
+    }
+}

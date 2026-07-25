@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     BarChart3, RefreshCw, Filter, ArrowLeft, Users, Phone,
-    Sparkles, ChevronDown, ChevronRight, Search, X, Download, ShoppingCart
+    Sparkles, ChevronDown, ChevronRight, Search, X, Download, ShoppingCart, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -158,7 +158,10 @@ const AnalysisReport = () => {
                     <h1><BarChart3 size={24} style={{ color: '#8b5cf6' }} /> Analiz</h1>
                     <p>Temsilci × Konu × Aşama kırılımlı detaylı analiz</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}

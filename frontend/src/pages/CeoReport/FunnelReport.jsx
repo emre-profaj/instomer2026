@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Activity, RefreshCw, Filter, ArrowLeft, ChevronDown, ChevronRight,
-    ClipboardList, Calendar, Briefcase, Headphones, Truck, Building2, DollarSign
+    ClipboardList, Calendar, Briefcase, Headphones, Truck, Building2, DollarSign, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, funnelAPI } from '../../services/api';
@@ -73,7 +73,10 @@ const FunnelReport = () => {
                     <h1><Activity size={24} style={{ color: '#a855f7' }} /> Akış Raporu</h1>
                     <p>Akış bazlı müşteri dağılımı ve aşama kırılımları</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}

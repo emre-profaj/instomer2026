@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
     Calendar, Users, CheckCircle2, Clock, 
-    RefreshCw, Search, X, MessageSquare, Phone
+    RefreshCw, Search, X, MessageSquare, Phone,
+    FileText, Filter
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
 import { activityAPI } from '../../services/activity.api';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
 import './AramaAnalizi.css'; // Reuse styles
+import '../CeoReport/CeoReport.css';
+import '../CeoReport/CeoDetailReport.css';
 
 const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
     const { currentWorkspace } = useAuth();
@@ -18,7 +22,7 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
     const [summary, setSummary] = useState({ planned: 0, completed: 0, cancelled: 0, inProgress: 0 });
     
     // Date filter states
-    const [dateFilter, setDateFilter] = useState('7d'); // 24h | 7d | 30d | custom
+    const [dateFilter, setDateFilter] = useState('thisMonth');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     
@@ -29,36 +33,23 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
         if (currentWorkspace?.id) {
             loadData();
         }
-    }, [currentWorkspace?.id, dateFilter, type]);
-
-    const getDateRange = () => {
-        const now = new Date();
-        const start = new Date();
-        if (dateFilter === '24h') {
-            start.setHours(now.getHours() - 24);
-        } else if (dateFilter === '7d') {
-            start.setDate(now.getDate() - 7);
-        } else if (dateFilter === '30d') {
-            start.setDate(now.getDate() - 30);
-        } else if (dateFilter === 'custom' && startDate) {
-            const customStart = new Date(startDate);
-            const customEnd = endDate ? new Date(endDate) : new Date();
-            return { 
-                dateFrom: customStart.toISOString(), 
-                dateTo: customEnd.toISOString() 
-            };
-        } else {
-            start.setDate(now.getDate() - 7);
-        }
-        return { dateFrom: start.toISOString(), dateTo: now.toISOString() };
-    };
+    }, [currentWorkspace?.id, dateFilter, startDate, endDate, type]);
 
     const loadData = async (isRefresh = false) => {
         try {
             if (isRefresh) setRefreshing(true);
             else setLoading(true);
 
-            const { dateFrom, dateTo } = getDateRange();
+            const { startDate: sd, endDate: ed } = getDateRangeLogic(dateFilter, startDate, endDate);
+            let dateFrom, dateTo;
+            if (sd) {
+                dateFrom = new Date(sd).toISOString();
+            }
+            if (ed) {
+                const end = new Date(ed);
+                end.setHours(23, 59, 59, 999);
+                dateTo = end.toISOString();
+            }
             
             const res = await activityAPI.getWorkspaceActivities(currentWorkspace.id, {
                 type,
@@ -77,14 +68,6 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
             setLoading(false);
             setRefreshing(false);
         }
-    };
-
-    const handleApplyCustomDates = () => {
-        if (!startDate || !endDate) {
-            showError('Lütfen başlangıç ve bitiş tarihlerini seçin.');
-            return;
-        }
-        loadData();
     };
 
     const formatDateTime = (dateStr) => {
@@ -130,24 +113,32 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
                 </div>
                 
                 <div className="arama-analizi-actions">
-                    <div className="date-presets">
-                        <button className={`preset-btn ${dateFilter === '24h' ? 'active' : ''}`} onClick={() => setDateFilter('24h')}>Son 24 Saat</button>
-                        <button className={`preset-btn ${dateFilter === '7d' ? 'active' : ''}`} onClick={() => setDateFilter('7d')}>Son 7 Gün</button>
-                        <button className={`preset-btn ${dateFilter === '30d' ? 'active' : ''}`} onClick={() => setDateFilter('30d')}>Son 30 Gün</button>
-                        <button className={`preset-btn ${dateFilter === 'custom' ? 'active' : ''}`} onClick={() => setDateFilter('custom')}>Özel Aralık</button>
-                    </div>
-                    {dateFilter === 'custom' && (
-                        <div className="custom-date-inputs">
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                            <span className="date-separator">—</span>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                            <button className="btn-apply-dates" onClick={handleApplyCustomDates}>Uygula</button>
-                        </div>
-                    )}
+                    <button className="btn-refresh" onClick={() => window.print()}>
+                        <FileText size={15} />
+                        PDF İndir
+                    </button>
                     <button className="btn-refresh" onClick={() => loadData(true)} disabled={refreshing}>
                         <RefreshCw className={refreshing ? 'spin' : ''} size={15} />
                         Güncelle
                     </button>
+                </div>
+            </div>
+
+            <div className="ceo-filter-bar" style={{ marginBottom: '1.5rem', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px 20px' }}>
+                <div className="ceo-filter-left">
+                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
+                    <div className="ceo-pill-group">
+                        {dateFilterOptions.map(item => (
+                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                        ))}
+                    </div>
+                    {dateFilter === 'custom' && (
+                        <div className="ceo-custom-dates">
+                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
+                            <span style={{ color: '#9ca3af' }}>—</span>
+                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
+                        </div>
+                    )}
                 </div>
             </div>
 

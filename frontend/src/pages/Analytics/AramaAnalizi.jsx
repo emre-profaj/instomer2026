@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
     Users, PhoneCall, CheckCircle2, PhoneOff, Phone, 
     TrendingUp, Calendar, Clock, RefreshCw, Trash2, 
-    Search, FileText, AlertCircle, X, ChevronRight, MessageSquare 
+    Search, FileText, AlertCircle, X, ChevronRight, MessageSquare, Filter 
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/Toast/Toast';
 import api, { contactAPI, retellAPI, funnelAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../CeoReport/CeoReport.css';
+import '../CeoReport/CeoDetailReport.css';
 import './AramaAnalizi.css';
 
 const AramaAnalizi = () => {
@@ -30,9 +33,15 @@ const AramaAnalizi = () => {
     const [noteSaving, setNoteSaving] = useState(false);
 
     // Date filter states
-    const [dateFilter, setDateFilter] = useState('7d'); // 24h | 7d | 30d | custom
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('aramaDateFilter') || 'thisMonth');
+    const [startDate, setStartDate] = useState(() => sessionStorage.getItem('aramaStartDate') || '');
+    const [endDate, setEndDate] = useState(() => sessionStorage.getItem('aramaEndDate') || '');
+
+    useEffect(() => {
+        sessionStorage.setItem('aramaDateFilter', dateFilter);
+        sessionStorage.setItem('aramaStartDate', startDate);
+        sessionStorage.setItem('aramaEndDate', endDate);
+    }, [dateFilter, startDate, endDate]);
 
     // Table filter & search states
     const [searchTerm, setSearchTerm] = useState('');
@@ -50,26 +59,8 @@ const AramaAnalizi = () => {
     }, [currentWorkspace?.id, dateFilter]);
 
     const getDateRange = () => {
-        const now = new Date();
-        const start = new Date();
-        if (dateFilter === '24h') {
-            start.setHours(now.getHours() - 24);
-        } else if (dateFilter === '7d') {
-            start.setDate(now.getDate() - 7);
-        } else if (dateFilter === '30d') {
-            start.setDate(now.getDate() - 30);
-        } else if (dateFilter === 'custom' && startDate) {
-            const customStart = new Date(startDate);
-            const customEnd = endDate ? new Date(endDate) : new Date();
-            return { 
-                startDate: customStart.toISOString(), 
-                endDate: customEnd.toISOString() 
-            };
-        } else {
-            // Default to 7 days
-            start.setDate(now.getDate() - 7);
-        }
-        return { startDate: start.toISOString(), endDate: now.toISOString() };
+        const range = getDateRangeLogic(dateFilter, startDate, endDate);
+        return { startDate: range.startDate, endDate: range.endDate };
     };
 
     const loadAllData = async (isRefresh = false) => {
@@ -97,13 +88,7 @@ const AramaAnalizi = () => {
         }
     };
 
-    const handleApplyCustomDates = () => {
-        if (!startDate || !endDate) {
-            showError('Lütfen başlangıç ve bitiş tarihlerini seçin.');
-            return;
-        }
-        loadAllData();
-    };
+
 
     const handleCancelScheduledCall = async (callId) => {
         if (!window.confirm('Bu gecikmiş/planlanmış aramayı iptal etmek istediğinize emin misiniz?')) {
@@ -234,69 +219,36 @@ const AramaAnalizi = () => {
     return (
         <div className="arama-analizi-container">
             {/* Header */}
-            <div className="arama-analizi-header">
-                <div className="arama-analizi-title">
-                    <h1>Arama Analizi</h1>
+            <div className="ceo-detail-header" style={{ marginBottom: 0 }}>
+                <div className="ceo-detail-header-left">
+                    <h1><PhoneCall size={24} style={{ color: '#6366f1' }} /> Arama Analizi</h1>
                     <p>Telefon aramaları, gecikmiş aramalar ve müşteri görüşme notları</p>
                 </div>
-                
-                <div className="arama-analizi-actions">
-                    {/* Presets */}
-                    <div className="date-presets">
-                        <button 
-                            className={`preset-btn ${dateFilter === '24h' ? 'active' : ''}`}
-                            onClick={() => setDateFilter('24h')}
-                        >
-                            Son 24 Saat
-                        </button>
-                        <button 
-                            className={`preset-btn ${dateFilter === '7d' ? 'active' : ''}`}
-                            onClick={() => setDateFilter('7d')}
-                        >
-                            Son 7 Gün
-                        </button>
-                        <button 
-                            className={`preset-btn ${dateFilter === '30d' ? 'active' : ''}`}
-                            onClick={() => setDateFilter('30d')}
-                        >
-                            Son 30 Gün
-                        </button>
-                        <button 
-                            className={`preset-btn ${dateFilter === 'custom' ? 'active' : ''}`}
-                            onClick={() => setDateFilter('custom')}
-                        >
-                            Özel Aralık
-                        </button>
-                    </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={() => loadAllData(true)} disabled={refreshing}>
+                        <RefreshCw className={refreshing ? 'spin' : ''} size={14} /> Güncelle
+                    </button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}>
+                        <FileText size={14} /> Raporu İndir
+                    </button>
+                </div>
+            </div>
 
-                    {/* Custom Date Inputs */}
+            <div className="ceo-filter-bar">
+                <div className="ceo-filter-left">
+                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
+                    <div className="ceo-pill-group">
+                        {dateFilterOptions.map(item => (
+                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                        ))}
+                    </div>
                     {dateFilter === 'custom' && (
-                        <div className="custom-date-inputs">
-                            <input 
-                                type="date" 
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                            />
-                            <span className="date-separator">—</span>
-                            <input 
-                                type="date" 
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                            />
-                            <button className="btn-apply-dates" onClick={handleApplyCustomDates}>
-                                Uygula
-                            </button>
+                        <div className="ceo-custom-dates">
+                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
+                            <span style={{ color: '#9ca3af' }}>—</span>
+                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
                         </div>
                     )}
-
-                    <button 
-                        className="btn-refresh" 
-                        onClick={() => loadAllData(true)}
-                        disabled={refreshing}
-                    >
-                        <RefreshCw className={refreshing ? 'spin' : ''} size={15} />
-                        Güncelle
-                    </button>
                 </div>
             </div>
 
@@ -837,6 +789,88 @@ const AramaAnalizi = () => {
             )}
 
             {/* Arama Notu Ekle Modal */}
+            {/* Arama Notları Raporu */}
+            {analytics?.callTrackingStats?.closureNotes?.length > 0 && (
+                <div className="call-notes-report" style={{ marginTop: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+                        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                            📝 Arama Notları
+                            <span style={{ background: '#6366f1', color: 'white', borderRadius: '12px', padding: '2px 10px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                {analytics.callTrackingStats.closureNotes.length}
+                            </span>
+                        </h2>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {(() => {
+                                const notes = analytics.callTrackingStats.closureNotes;
+                                const successful = notes.filter(n => n.callSuccessful === true).length;
+                                const failed = notes.filter(n => n.callSuccessful === false).length;
+                                const positive = notes.filter(n => n.callSentiment === 'Positive').length;
+                                const negative = notes.filter(n => n.callSentiment === 'Negative').length;
+                                const neutral = notes.filter(n => n.callSentiment === 'Neutral').length;
+                                return (
+                                    <>
+                                        <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>✅ Ulaşıldı: {successful}</span>
+                                        <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>❌ Ulaşılamadı: {failed}</span>
+                                        {positive > 0 && <span style={{ background: '#dbeafe', color: '#2563eb', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>😊 Olumlu: {positive}</span>}
+                                        {negative > 0 && <span style={{ background: '#fef3c7', color: '#d97706', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>😞 Olumsuz: {negative}</span>}
+                                        {neutral > 0 && <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: '8px', padding: '4px 10px', fontSize: '0.75rem', fontWeight: 600 }}>😐 Nötr: {neutral}</span>}
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    </div>
+
+                    <div style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Tarih</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Temsilci</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Müşteri</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Durum</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Duygu</th>
+                                    <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Not</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {analytics.callTrackingStats.closureNotes.map(note => (
+                                    <tr key={note.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#475569', whiteSpace: 'nowrap' }}>
+                                            {new Date(note.completedAt || note.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                            <br />
+                                            <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                {new Date(note.completedAt || note.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#1e293b', fontWeight: 500 }}>
+                                            {note.assignee?.name || note.creator?.name || '—'}
+                                        </td>
+                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#1e293b' }}>
+                                            {note.contact?.name || '—'}
+                                        </td>
+                                        <td style={{ padding: '10px 14px', textAlign: 'center' }}>
+                                            {note.callSuccessful ? (
+                                                <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600 }}>Ulaşıldı</span>
+                                            ) : (
+                                                <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600 }}>Ulaşılamadı</span>
+                                            )}
+                                        </td>
+                                        <td style={{ padding: '10px 14px', textAlign: 'center', fontSize: '1rem' }}>
+                                            {note.callSentiment === 'Positive' ? '😊' : note.callSentiment === 'Negative' ? '😞' : note.callSentiment === 'Neutral' ? '😐' : '—'}
+                                        </td>
+                                        <td style={{ padding: '10px 14px', fontSize: '0.82rem', color: '#475569', maxWidth: '300px' }}>
+                                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                                                {note.result || note.description || '—'}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
             {noteModalOpen && (
                 <div className="modal-overlay">
                     <div className="modal-backdrop" onClick={() => setNoteModalOpen(false)} />

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     DollarSign, ShoppingCart, RefreshCw, Filter, ArrowLeft,
-    TrendingUp, ChevronDown, ChevronRight, Users, UserCheck, Hash, Globe
+    TrendingUp, ChevronDown, ChevronRight, Users, UserCheck, Hash, Globe, FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI } from '../../services/api';
@@ -92,7 +92,10 @@ const SalesReport = () => {
                     <h1><DollarSign size={24} style={{ color: '#059669' }} /> Satış Raporu</h1>
                     <p>Kategori ve temsilci bazlı satış analizi</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}

@@ -128,7 +128,10 @@ const GeneralReport = () => {
                     <h1><BarChart3 size={24} style={{ color: '#6366f1' }} /> Genel Rapor</h1>
                     <p>Tüm metriklerin detaylı görünümü ve dönem karşılaştırması</p>
                 </div>
-                <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* Filters */}
