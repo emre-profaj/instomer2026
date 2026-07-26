@@ -191,40 +191,6 @@ const Calendar = () => {
         return activeFilters.has(key);
     };
 
-    // Counts per activity type - ekranda görüntülenen takvim günlerine göre HESAPLANIR (Reel Sayılar)
-    const activityCounts = useMemo(() => {
-        const days = getDaysInMonth();
-        let calls = 0;
-        let appointmentsCount = 0;
-        let meetings = 0;
-        let tasks = 0;
-
-        days.forEach(day => {
-            // 1. Calls count
-            const scForDay = getScheduledCallsForDay(day.date, true);
-            const actCallsForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'CALL' || a.type === 'NOTE');
-            calls += scForDay.length + actCallsForDay.length;
-
-            // 2. Appointments count
-            const aptForDay = getAppointmentsForDay(day.date, true);
-            appointmentsCount += aptForDay.length;
-
-            // 3. Meetings count
-            const meetForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'MEETING');
-            meetings += meetForDay.length;
-
-            // 4. Tasks count
-            const taskForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'TASK' || a.type === 'REMINDER');
-            tasks += taskForDay.length;
-        });
-
-        return {
-            calls,
-            appointments: appointmentsCount,
-            meetings,
-            tasks
-        };
-    }, [appointments, calendarActivities, scheduledCalls, currentDate, showCompleted, selectedAgents, selectedResource]);
 
     // List view states
     const [listFilter, setListFilter] = useState('all'); // 'all', 'appointments', 'calls'
@@ -616,6 +582,41 @@ const Calendar = () => {
             return true;
         });
     };
+
+    // Counts per activity type - ekranda görüntülenen takvim günlerine göre HESAPLANIR (Reel Sayılar)
+    const activityCounts = useMemo(() => {
+        const days = getDaysInMonth();
+        let calls = 0;
+        let appointmentsCount = 0;
+        let meetings = 0;
+        let tasks = 0;
+
+        days.forEach(day => {
+            // 1. Calls count
+            const scForDay = getScheduledCallsForDay(day.date, true);
+            const actCallsForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'CALL' || a.type === 'NOTE');
+            calls += scForDay.length + actCallsForDay.length;
+
+            // 2. Appointments count
+            const aptForDay = getAppointmentsForDay(day.date, true);
+            appointmentsCount += aptForDay.length;
+
+            // 3. Meetings count
+            const meetForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'MEETING');
+            meetings += meetForDay.length;
+
+            // 4. Tasks count
+            const taskForDay = getActivitiesForDay(day.date, true).filter(a => a.type === 'TASK' || a.type === 'REMINDER');
+            tasks += taskForDay.length;
+        });
+
+        return {
+            calls,
+            appointments: appointmentsCount,
+            meetings,
+            tasks
+        };
+    }, [appointments, calendarActivities, scheduledCalls, currentDate, showCompleted, selectedAgents, selectedResource]);
 
     const openCreateModal = (date = null, contact = null) => {
         const now = (date instanceof Date ? date : null) || new Date();
