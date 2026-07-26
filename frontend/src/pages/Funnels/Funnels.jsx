@@ -3,10 +3,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
-import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings } from 'lucide-react';
+import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Map } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import FunnelPipeline from '../../components/Funnels/FunnelPipeline';
+import FunnelFlowMap from '../../components/Funnels/FunnelFlowMap';
 import './Funnels.css';
 
 // Colors cycle automatically — no user selection needed
@@ -27,6 +28,7 @@ const Funnels = () => {
     const [funnels, setFunnels] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'flowmap'
     const [stageSaving, setStageSaving] = useState(false);
 
     // Teams and Members loaded for dropdowns
@@ -440,10 +442,24 @@ const Funnels = () => {
                     <Kanban size={22} />
                     {t('funnels.management')}
                 </h2>
-                <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)}>
-                    <Plus size={15} />
-                    Yeni Akış
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                        className={`flow-map-toggle${viewMode === 'pipeline' ? ' active' : ''}`}
+                        onClick={() => setViewMode('pipeline')}
+                    >
+                        <Kanban size={14} /> Pipeline
+                    </button>
+                    <button
+                        className={`flow-map-toggle${viewMode === 'flowmap' ? ' active' : ''}`}
+                        onClick={() => setViewMode('flowmap')}
+                    >
+                        <Map size={14} /> Harita
+                    </button>
+                    <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)}>
+                        <Plus size={15} />
+                        Yeni Akış
+                    </button>
+                </div>
             </div>
 
             {/* Add Funnel Form */}
@@ -516,6 +532,25 @@ const Funnels = () => {
                     <Kanban size={40} />
                     <p>{t('funnels.empty')}</p>
                 </div>
+            ) : viewMode === 'flowmap' ? (
+                <FunnelFlowMap
+                    funnels={funnels}
+                    channelRoutings={allChannelRoutings}
+                    stageCounts={stageCounts}
+                    templates={templates}
+                    onStageUpdate={async (funnelId, stageId, updates) => {
+                        try {
+                            const res = await funnelAPI.updateStage(currentWorkspace.id, funnelId, stageId, updates);
+                            setFunnels(prev => prev.map(f => {
+                                if (f.id !== funnelId) return f;
+                                return { ...f, stages: f.stages.map(s => s.id === stageId ? res.data.stage : s) };
+                            }));
+                        } catch (err) {
+                            console.error('Flow map stage update error:', err);
+                        }
+                    }}
+                    onStageSettingsClick={(stage, funnelId) => openStagePanel(stage, funnelId)}
+                />
             ) : (
                 mainFunnel ? renderFunnelTree(mainFunnel) : funnels.filter(f => !f.parentId).map(f => renderFunnelTree(f))
             )}
