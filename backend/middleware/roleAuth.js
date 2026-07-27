@@ -125,7 +125,6 @@ export const applyDataVisibility = async (req, res, next) => {
       next();
     }
   };
-}
 
 /**
  * Rol hiyerarşisi: Bir rolün diğerinden büyük olup olmadığını kontrol eder
