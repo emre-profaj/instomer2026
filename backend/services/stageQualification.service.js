@@ -46,8 +46,7 @@ export const checkStageRequirements = async (conversationId) => {
                 contact: {
                     select: {
                         name: true, phone: true, email: true,
-                        city: true, company: true, address: true,
-                        customFields: true
+                        city: true, company: true
                     }
                 }
             }
