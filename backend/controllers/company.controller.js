@@ -88,6 +88,30 @@ export const createCompany = async (req, res) => {
             }
         });
 
+        // Owner'ın firmaya atanmamış workspace'lerini bu firmaya bağla
+        // (maxWorkspaces sınırına kadar)
+        const ownerWorkspaces = await prisma.workspace.findMany({
+            where: {
+                companyId: null,
+                members: {
+                    some: {
+                        userId: ownerId,
+                        role: 'OWNER'
+                    }
+                }
+            },
+            take: maxWorkspaces || 3
+        });
+
+        if (ownerWorkspaces.length > 0) {
+            await prisma.workspace.updateMany({
+                where: {
+                    id: { in: ownerWorkspaces.map(w => w.id) }
+                },
+                data: { companyId: company.id }
+            });
+        }
+
         res.status(201).json({ company });
     } catch (error) {
         console.error('Create company error:', error);

@@ -20,7 +20,7 @@ export async function processTimedActions() {
             },
             include: {
                 contact: {
-                    select: { id: true, workspaceId: true, funnelStageId: true, firstName: true }
+                    select: { id: true, workspaceId: true, funnelStageId: true, name: true }
                 }
             },
             take: 100 // Process in batches
