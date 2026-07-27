@@ -30,6 +30,7 @@ import {
     toggleSalesModuleWS
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
+import { requireRole } from '../middleware/roleAuth.js';
 
 const router = express.Router();
 
@@ -52,16 +53,17 @@ router.get('/', getWorkspaces);
 // Get workspace details
 router.get('/:workspaceId', requireWorkspaceAccess, getWorkspace);
 
-// Delete workspace
-router.delete('/:workspaceId', requireWorkspaceAccess, deleteWorkspace);
+// Delete workspace (OWNER only)
+router.delete('/:workspaceId', requireWorkspaceAccess, requireRole('OWNER'), deleteWorkspace);
 
 // Get workspace members
 router.get('/:workspaceId/members', requireWorkspaceAccess, getWorkspaceMembers);
 
-// Add member to workspace
+// Add member to workspace (OWNER, ADMIN only)
 router.post(
     '/:workspaceId/members',
     requireWorkspaceAccess,
+    requireRole('OWNER', 'ADMIN'),
     [
         body('email').isEmail().withMessage('Valid email is required'),
         body('role').isIn(['OWNER', 'ADMIN', 'AGENT']).withMessage('Valid role is required'),
@@ -81,8 +83,8 @@ router.put(
     updateMemberRole
 );
 
-// Remove member
-router.delete('/:workspaceId/members/:userId', requireWorkspaceAccess, removeMember);
+// Remove member (OWNER, ADMIN only)
+router.delete('/:workspaceId/members/:userId', requireWorkspaceAccess, requireRole('OWNER', 'ADMIN'), removeMember);
 
 // Change member password
 router.put(

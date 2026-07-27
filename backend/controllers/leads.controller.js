@@ -173,6 +173,19 @@ export const syncLeads = async (req, res) => {
                                 }
                             });
                             totalSynced++;
+
+                            // Madde 10.5: Meta Lead Gen form attribution
+                            const contact = await prisma.contact.findFirst({
+                                where: { facebookId: `lead_${lead.id}` }
+                            });
+                            if (contact) {
+                                try {
+                                    const { saveLeadFormAttribution } = await import('../services/attribution.service.js');
+                                    await saveLeadFormAttribution(contact.id, workspaceId, lead, form.id, form.name);
+                                } catch (e) {
+                                    console.error('⚠️ [Attribution] saveLeadFormAttribution error:', e.message);
+                                }
+                            }
                         }
                     } catch (formError) {
                         console.error(`Error fetching leads for form ${form.id}:`, formError.response?.data || formError.message);

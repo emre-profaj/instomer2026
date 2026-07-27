@@ -25,7 +25,7 @@ const ActivityReport = () => {
     const [agentPerformance, setAgentPerformance] = useState(null);
     const [contactStats, setContactStats] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
 
@@ -98,10 +98,7 @@ const ActivityReport = () => {
                     <h1><Phone size={24} style={{ color: '#059669' }} /> Aktivite & Arama Raporu</h1>
                     <p>Arama, görüşme, randevu ve aktivite detayları</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
+
             </div>
 
             {/* Filters */}
@@ -120,6 +117,10 @@ const ActivityReport = () => {
                             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
                         </div>
                     )}
+                </div>
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
                 </div>
             </div>
 

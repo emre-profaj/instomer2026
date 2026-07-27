@@ -3020,6 +3020,12 @@ async function injectTranscriptToChat(callRecord, call, duration) {
         });
     }
 
+    // Madde 0: Pipeline post-processing
+    try {
+        const { runChannelPostProcessing } = await import('./inbox.controller.js');
+        runChannelPostProcessing(workspaceId, conversationId, contactId, call.transcript || '', 'RETELL').catch(() => {});
+    } catch (e) { /* pipeline opsiyonel */ }
+
     console.log(`📞 [Retell] Injected ${createdMessages.length} transcript messages into conversation ${conversationId}`);
 }
 

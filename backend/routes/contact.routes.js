@@ -1,5 +1,5 @@
 import express from 'express';
-import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary, getTopicContacts, getAnalysisReport, getSalesReport, getRequestReport } from '../controllers/contact.controller.js';
+import { getContacts, getContactById, createContact, updateContact, deleteContact, getContactAnalytics, getAgentPerformance, getDailyContactStats, getPeakHours, blockContact, unblockContact, archiveContact, unarchiveContact, addNoteToConversation, bulkImportContacts, getAiAnalyticsSummary, getTopicContacts, getAnalysisReport, getSalesReport, getRequestReport, recalculateContactScore, recalculateAllScores, getContactAttributions, getAttributionReport } from '../controllers/contact.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
@@ -64,5 +64,13 @@ router.post('/:workspaceId/:id/unarchive', requireWorkspaceAccess, unarchiveCont
 
 // Add note to conversation
 router.post('/:workspaceId/:id/note', requireWorkspaceAccess, addNoteToConversation);
+
+// Lead Score
+router.post('/:workspaceId/contacts/:contactId/recalculate-score', requireWorkspaceAccess, recalculateContactScore);
+router.post('/:workspaceId/contacts/recalculate-all-scores', requireWorkspaceAccess, recalculateAllScores);
+
+// Attribution route
+router.get('/:workspaceId/:contactId/attributions', requireWorkspaceAccess, getContactAttributions);
+router.get('/:workspaceId/attribution-report', requireWorkspaceAccess, getAttributionReport);
 
 export default router;

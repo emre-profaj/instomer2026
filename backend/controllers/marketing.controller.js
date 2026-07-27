@@ -905,3 +905,215 @@ export const updateCampaignRecipientStatus = async (messageId, status) => {
         console.warn(`⚠️ [Campaign] Could not update recipient status for ${messageId}:`, err.message);
     }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Madde 9: Pazarlama İyileştirmeleri
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /marketing/:workspaceId/campaigns/:id/retry
+// Başarısız (FAILED) alıcılara tekrar gönderim yap
+// ─────────────────────────────────────────────────────────────────────────────
+export const retryCampaignFailed = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+
+        const campaign = await prisma.marketingCampaign.findFirst({
+            where: { id, workspaceId },
+            include: { template: true }
+        });
+        if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
+
+        // Başarısız alıcıları bul
+        const failedRecipients = await prisma.marketingRecipient.findMany({
+            where: { campaignId: id, status: 'FAILED' }
+        });
+
+        if (failedRecipients.length === 0) {
+            return res.json({ success: true, retried: 0, message: 'Başarısız alıcı yok' });
+        }
+
+        const template = campaign.template;
+        const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({ where: { workspaceId } });
+        if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
+
+        // Kampanyayı tekrar RUNNING yap
+        await prisma.marketingCampaign.update({
+            where: { id },
+            data: { status: 'RUNNING' }
+        });
+
+        res.json({
+            success: true,
+            retrying: failedRecipients.length,
+            message: `${failedRecipients.length} başarısız alıcıya tekrar gönderiliyor...`
+        });
+
+        // Arka planda gönder
+        setImmediate(async () => {
+            let retried = 0, stillFailed = 0;
+
+            for (const recipient of failedRecipients) {
+                try {
+                    // Alıcıyı PENDING'e çevir
+                    await prisma.marketingRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: 'PENDING', failReason: null, failedAt: null }
+                    });
+
+                    const payload = {
+                        messaging_product: 'whatsapp',
+                        to: recipient.phone,
+                        type: 'template',
+                        template: {
+                            name: template.name,
+                            language: { code: template.language || 'tr' }
+                        }
+                    };
+
+                    const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v21.0';
+                    const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.phoneNumberId}/messages`;
+                    const response = await axios.post(apiUrl, payload, {
+                        headers: { Authorization: `Bearer ${whatsappPhone.accessToken}`, 'Content-Type': 'application/json' }
+                    });
+
+                    const messageId = response.data?.messages?.[0]?.id;
+                    await prisma.marketingRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: 'SENT', messageId, sentAt: new Date() }
+                    });
+                    retried++;
+
+                    await new Promise(r => setTimeout(r, 1500));
+                } catch (err) {
+                    console.error(`❌ [Campaign Retry] Failed again for ${recipient.phone}:`, err.response?.data?.error?.message || err.message);
+                    await prisma.marketingRecipient.update({
+                        where: { id: recipient.id },
+                        data: { status: 'FAILED', failedAt: new Date(), failReason: err.response?.data?.error?.message || err.message }
+                    });
+                    stillFailed++;
+                }
+            }
+
+            // Kampanya durumunu güncelle
+            const counts = await getCampaignCounts(id);
+            await prisma.marketingCampaign.update({
+                where: { id },
+                data: { status: 'COMPLETED', ...counts }
+            });
+
+            console.log(`🔄 [Campaign Retry] Done: ${retried} resent, ${stillFailed} still failed`);
+        });
+
+    } catch (error) {
+        console.error('❌ [retryCampaignFailed]', error);
+        res.status(500).json({ error: 'Tekrar gönderim başlatılamadı' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /marketing/:workspaceId/campaigns/:id/check-duplicates
+// Kampanya göndermeden önce duplikasyon kontrolü
+// Aynı kişiye aynı şablonun X saat içinde gönderilip gönderilmediğini kontrol eder
+// ─────────────────────────────────────────────────────────────────────────────
+export const checkCampaignDuplicates = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const { contactIds = [], windowHours = 24 } = req.body;
+
+        const campaign = await prisma.marketingCampaign.findFirst({
+            where: { id, workspaceId },
+            select: { templateId: true }
+        });
+        if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
+
+        // Son X saat içinde aynı şablonla gönderilmiş kişileri bul
+        const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+        const alreadySent = await prisma.marketingRecipient.findMany({
+            where: {
+                campaign: { templateId: campaign.templateId, workspaceId },
+                contactId: { in: contactIds },
+                status: { in: ['SENT', 'DELIVERED', 'READ'] },
+                sentAt: { gte: since }
+            },
+            select: { contactId: true, phone: true, sentAt: true }
+        });
+
+        const duplicateIds = [...new Set(alreadySent.map(r => r.contactId).filter(Boolean))];
+        const safeIds = contactIds.filter(id => !duplicateIds.includes(id));
+
+        res.json({
+            total: contactIds.length,
+            duplicates: duplicateIds.length,
+            safe: safeIds.length,
+            duplicateContactIds: duplicateIds,
+            safeContactIds: safeIds,
+            windowHours,
+            message: duplicateIds.length > 0
+                ? `${duplicateIds.length} kişiye son ${windowHours} saat içinde zaten gönderilmiş`
+                : 'Duplikasyon yok, güvenle gönderilebilir'
+        });
+
+    } catch (error) {
+        console.error('❌ [checkCampaignDuplicates]', error);
+        res.status(500).json({ error: 'Duplikasyon kontrolü yapılamadı' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /marketing/:workspaceId/campaigns/:id/recipients
+// Kampanya alıcılarının durumlarını detaylı göster
+// ─────────────────────────────────────────────────────────────────────────────
+export const getCampaignRecipients = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const { status, page = 1, limit = 50 } = req.query;
+
+        const where = { campaignId: id };
+        if (status) where.status = status;
+
+        const [recipients, total] = await Promise.all([
+            prisma.marketingRecipient.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                skip: (parseInt(page) - 1) * parseInt(limit),
+                take: parseInt(limit),
+                include: {
+                    contact: { select: { id: true, name: true, phone: true, avatar: true } }
+                }
+            }),
+            prisma.marketingRecipient.count({ where })
+        ]);
+
+        // Durum özeti
+        const statusCounts = await prisma.marketingRecipient.groupBy({
+            by: ['status'],
+            where: { campaignId: id },
+            _count: { id: true }
+        });
+
+        res.json({
+            recipients,
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            statusCounts: Object.fromEntries(statusCounts.map(s => [s.status, s._count.id]))
+        });
+
+    } catch (error) {
+        console.error('❌ [getCampaignRecipients]', error);
+        res.status(500).json({ error: 'Alıcılar yüklenemedi' });
+    }
+};
+
+// Yardımcı: Kampanya sayılarını güncelle
+async function getCampaignCounts(campaignId) {
+    const [sent, delivered, read, failed] = await Promise.all([
+        prisma.marketingRecipient.count({ where: { campaignId, status: 'SENT' } }),
+        prisma.marketingRecipient.count({ where: { campaignId, status: 'DELIVERED' } }),
+        prisma.marketingRecipient.count({ where: { campaignId, status: 'READ' } }),
+        prisma.marketingRecipient.count({ where: { campaignId, status: 'FAILED' } }),
+    ]);
+    return { sentCount: sent, deliveredCount: delivered, readCount: read, failedCount: failed };
+}

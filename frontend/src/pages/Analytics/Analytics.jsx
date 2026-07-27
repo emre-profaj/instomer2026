@@ -5,11 +5,14 @@ import {
     Instagram, Facebook, Mail, Globe, MessageCircle,
     UserCheck, Clock, CheckCircle2, ChevronRight, Zap,
     ClipboardList, Briefcase, Headphones, Truck, Building2, DollarSign, Wallet,
-    Phone, PhoneOff
+    Phone, PhoneOff, FileText, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { contactAPI, dealAPI, funnelAPI } from '../../services/api';
 import { useTranslation } from 'react-i18next';
+import { getDateRangeLogic, dateFilterOptions } from '../../utils/dateFilters';
+import '../CeoReport/CeoReport.css';
+import '../CeoReport/CeoDetailReport.css';
 import './Analytics.css';
 
 const Analytics = () => {
@@ -25,7 +28,7 @@ const Analytics = () => {
     const [contactStats, setContactStats] = useState(null);
 
     // Date filter states
-    const [dateFilter, setDateFilter] = useState('7d');
+    const [dateFilter, setDateFilter] = useState('thisMonth');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
@@ -54,15 +57,7 @@ const Analytics = () => {
     };
 
     const getDateRange = () => {
-        const now = new Date();
-        const start = new Date();
-        if (dateFilter === '24h') start.setHours(now.getHours() - 24);
-        else if (dateFilter === '7d') start.setDate(now.getDate() - 7);
-        else if (dateFilter === '30d') start.setDate(now.getDate() - 30);
-        else if (dateFilter === 'custom' && startDate) return { startDate, endDate };
-        else return { startDate: start.toISOString(), endDate: now.toISOString() };
-        
-        return { startDate: start.toISOString(), endDate: now.toISOString() };
+        return getDateRangeLogic(dateFilter, startDate, endDate);
     };
 
     const loadAnalytics = async () => {
@@ -147,60 +142,32 @@ const Analytics = () => {
     return (
         <div className="analytics-dashboard">
             {/* Header */}
-            <div className="analytics-header">
-                <div className="header-title-area">
-                    <h1>Operasyonel Analizler</h1>
+            <div className="ceo-detail-header">
+                <div className="ceo-detail-header-left">
+                    <h1><Activity size={24} style={{ color: '#6366f1' }} /> Operasyonel Analizler</h1>
                     <p>Yapay zeka ve ekip performansınızın anlık özeti</p>
                 </div>
-                <div className="header-actions">
-                    <select 
-                        value={dateFilter} 
-                        onChange={(e) => setDateFilter(e.target.value)}
-                        className="premium-select"
-                    >
-                        <option value="24h">Son 24 Saat</option>
-                        <option value="7d">Son 7 Gün</option>
-                        <option value="30d">Son 30 Gün</option>
-                        <option value="custom">Özel Aralık</option>
-                    </select>
+            </div>
 
+            <div className="ceo-filter-bar" style={{ marginBottom: '1.5rem' }}>
+                <div className="ceo-filter-left">
+                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
+                    <div className="ceo-pill-group">
+                        {dateFilterOptions.map(item => (
+                            <button key={item.key} className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`} onClick={() => setDateFilter(item.key)}>{item.label}</button>
+                        ))}
+                    </div>
                     {dateFilter === 'custom' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                style={{
-                                    padding: '8px 12px', borderRadius: 8,
-                                    border: '1px solid #e5e7eb', fontSize: '0.85rem',
-                                    background: '#fff', cursor: 'pointer'
-                                }}
-                            />
-                            <span style={{ color: '#9ca3af', fontWeight: 600 }}>—</span>
-                            <input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                style={{
-                                    padding: '8px 12px', borderRadius: 8,
-                                    border: '1px solid #e5e7eb', fontSize: '0.85rem',
-                                    background: '#fff', cursor: 'pointer'
-                                }}
-                            />
-                            <button
-                                className="btn-secondary"
-                                onClick={loadAnalytics}
-                                disabled={!startDate || !endDate}
-                                style={{ opacity: (!startDate || !endDate) ? 0.5 : 1 }}
-                            >
-                                <Calendar size={15} /> Uygula
-                            </button>
+                        <div className="ceo-custom-dates">
+                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="ceo-date-input" />
+                            <span>—</span>
+                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
                         </div>
                     )}
-
-                    <button className="btn-secondary" onClick={loadAnalytics}>
-                        <Clock size={16} /> Güncelle
-                    </button>
+                </div>
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={loadAnalytics}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
                 </div>
             </div>
 

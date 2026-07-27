@@ -1976,6 +1976,16 @@ export const updateContact = async (req, res) => {
                 console.error('⚠️ [UpdateContact] Entry rules hatası:', err.message)
             );
         }
+
+        // Madde 4: Not analizi — notes güncellendiğinde AI analiz tetikle
+        if (notes !== undefined && notes && evalWorkspaceId) {
+            try {
+                const { analyzeNote } = await import('../services/noteAnalyzer.service.js');
+                analyzeNote(evalWorkspaceId, id, notes).catch(err =>
+                    console.error('⚠️ [NoteAnalyzer] Analiz hatası:', err.message)
+                );
+            } catch (e) { /* opsiyonel — servis yoksa sessiz geç */ }
+        }
     } catch (error) {
         console.error('Update contact error:', error);
         res.status(500).json({ error: 'Failed to update contact' });
@@ -2104,6 +2114,22 @@ export const createContact = async (req, res) => {
         // --- AUTO CALL PLANNING END ---
 
         res.status(201).json({ contact });
+
+        // ── Madde 0+8: Manual entry → Inbox'a düşür ──────────
+        try {
+            const { normalizeManualEntry } = await import('../adapters/manual.adapter.js');
+            const { processIncoming } = await import('./inbox.controller.js');
+            const normalized = normalizeManualEntry(workspaceId, contact, {
+                note: notes,
+                createdByName: req.user?.name || req.user?.email || 'Sistem',
+            });
+            // Async çalışsın — response zaten döndü
+            processIncoming(normalized).catch(err =>
+                console.error('⚠️ [CreateContact] Inbox integration error:', err.message)
+            );
+        } catch (inboxErr) {
+            console.error('⚠️ [CreateContact] Inbox adapter error:', inboxErr.message);
+        }
 
         // Entry Rules: Yeni contact oluşturuldu → aşama kurallarını değerlendir
         evaluateAndApplyRules(contact.id, workspaceId).catch(err =>
@@ -5670,3 +5696,104 @@ export const getRequestReport = async (req, res) => {
     }
 };
 
+// ── Madde 3: Lead Puanlama API ──────────────────────────
+export const recalculateContactScore = async (req, res) => {
+    try {
+        const { contactId } = req.params;
+        const { updateLeadScore } = await import('../services/leadScoring.service.js');
+        const result = await updateLeadScore(contactId);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('❌ [recalculateContactScore]', error);
+        res.status(500).json({ error: 'Skor hesaplanamadı' });
+    }
+};
+
+export const recalculateAllScores = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { recalculateAllScores: recalcAll } = await import('../services/leadScoring.service.js');
+        // Non-blocking
+        recalcAll(workspaceId).catch(e => console.error('Recalc error:', e));
+        res.json({ success: true, message: 'Skor hesaplaması başlatıldı' });
+    } catch (error) {
+        console.error('❌ [recalculateAllScores]', error);
+        res.status(500).json({ error: 'Toplu skor hesaplanamadı' });
+    }
+};
+
+export const getContactAttributions = async (req, res) => {
+    try {
+        const { workspaceId, contactId } = req.params;
+        const attributions = await prisma.contactAttribution.findMany({
+            where: { contactId, workspaceId },
+            orderBy: { createdAt: 'desc' },
+            take: 10
+        });
+        res.json({ attributions });
+    } catch (error) {
+        console.error('❌ [getContactAttributions]', error);
+        res.json({ attributions: [] });
+    }
+};
+
+export const getAttributionReport = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        
+        // Kaynak bazlı lead sayıları
+        const attributions = await prisma.contactAttribution.groupBy({
+            by: ['channel', 'utm_source', 'utm_medium', 'utm_campaign'],
+            where: { workspaceId },
+            _count: { id: true },
+            orderBy: { _count: { id: 'desc' } }
+        });
+        
+        // Her kaynak için deal/sipariş dönüşümü
+        const report = [];
+        for (const attr of attributions) {
+            const contacts = await prisma.contactAttribution.findMany({
+                where: {
+                    workspaceId,
+                    channel: attr.channel,
+                    utm_source: attr.utm_source
+                },
+                select: { contactId: true }
+            });
+            const contactIds = contacts.map(c => c.contactId).filter(Boolean);
+            
+            const deals = contactIds.length > 0 ? await prisma.deal.count({
+                where: {
+                    workspaceId,
+                    contactId: { in: contactIds },
+                    stage: { in: ['ORDER', 'INVOICE'] }
+                }
+            }) : 0;
+            
+            const totalRevenue = contactIds.length > 0 ? await prisma.deal.aggregate({
+                where: {
+                    workspaceId,
+                    contactId: { in: contactIds },
+                    stage: { in: ['ORDER', 'INVOICE'] }
+                },
+                _sum: { amount: true }
+            }) : { _sum: { amount: 0 } };
+            
+            report.push({
+                channel: attr.channel,
+                utm_source: attr.utm_source,
+                utm_medium: attr.utm_medium,
+                utm_campaign: attr.utm_campaign,
+                leadCount: attr._count.id,
+                dealCount: deals,
+                totalRevenue: totalRevenue._sum?.amount || 0,
+                conversionRate: contactIds.length > 0 ? ((deals / contactIds.length) * 100).toFixed(1) : 0
+            });
+        }
+        
+        res.json({ report });
+    } catch (error) {
+        console.error('Attribution report error:', error);
+        res.status(500).json({ error: 'Rapor oluşturulamadı' });
+    }
+};

@@ -939,6 +939,12 @@ async function processWebhookAsync(body) {
                                     }
                                 });
 
+                                // Madde 0: Pipeline post-processing
+                                try {
+                                    const { runChannelPostProcessing } = await import('./inbox.controller.js');
+                                    runChannelPostProcessing(facebookPage.workspaceId, conversation.id, contact.id, processedCommentText, isInstagram ? 'INSTAGRAM' : 'FACEBOOK').catch(() => {});
+                                } catch (e) { /* pipeline opsiyonel */ }
+
                                 // Update conversation lastMessageAt
                                 await prisma.conversation.update({
                                     where: { id: conversation.id },
@@ -1549,6 +1555,15 @@ async function processWebhookAsync(body) {
                     } catch (tagErr) { console.error("❌ [AdTag] Organik error:", tagErr.message); }
                 }
 
+                // ── Madde 10: Attribution kaydet (yapısal veri) ──────
+                try {
+                    const referral = messagingEvent.referral || null;
+                    const { saveFacebookAttribution } = await import('../services/attribution.service.js');
+                    await saveFacebookAttribution(contact.id, facebookPage.workspaceId, referral, isInstagram);
+                } catch (attrErr) {
+                    console.error('❌ [Attribution] Facebook save error:', attrErr.message);
+                }
+
                 // Check if contact is blocked - skip processing if blocked
                 if (contact.isBlocked && !isOutgoingMessage) {
                     console.log(`🚫 [BLOCKED] Contact ${contact.id} (${contact.name}) is blocked. Ignoring incoming message.`);
@@ -1743,6 +1758,12 @@ async function processWebhookAsync(body) {
                             senderId: isOutgoingMessage ? null : undefined // Explicitly null for bot/echo messages
                         }
                     });
+
+                    // Madde 0: Pipeline post-processing
+                    try {
+                        const { runChannelPostProcessing } = await import('./inbox.controller.js');
+                        runChannelPostProcessing(facebookPage.workspaceId, conversation.id, contact.id, message.text, isInstagram ? 'INSTAGRAM' : 'FACEBOOK').catch(() => {});
+                    } catch (e) { /* pipeline opsiyonel */ }
 
                     // Update conversation last message time and unread count (only increment unread for incoming messages)
                     await prisma.conversation.update({

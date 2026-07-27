@@ -239,6 +239,10 @@ const WorkspaceSettings = () => {
     const [salesEnabled, setSalesEnabled] = useState(false);
     const [salesSaving, setSalesSaving] = useState(false);
 
+    // Temsilci Veri Görünürlüğü
+    const [agentDataVisibility, setAgentDataVisibility] = useState('ALL');
+    const [agentDataVisibilitySaving, setAgentDataVisibilitySaving] = useState(false);
+
     useEffect(() => {
         if (!currentWorkspace?.id) return;
         // Workspace
@@ -250,6 +254,7 @@ const WorkspaceSettings = () => {
                     if (ws?.appointmentSchedule && Array.isArray(ws.appointmentSchedule)) setApptSchedule(ws.appointmentSchedule);
                     if (ws?.realEstateEnabled !== undefined) setRealEstateEnabled(ws.realEstateEnabled);
                     if (ws?.salesEnabled !== undefined) setSalesEnabled(ws.salesEnabled);
+                    if (ws?.agentDataVisibility) setAgentDataVisibility(ws.agentDataVisibility);
                 })
                 .catch(() => {});
         });
@@ -531,6 +536,50 @@ const WorkspaceSettings = () => {
                                         ? <><ToggleRight size={20} /> Aktif</>
                                         : <><ToggleLeft size={20} /> Pasif</>}
                                 </button>
+                            </div>
+                        </div>
+
+                        {/* ══ Temsilci Veri Görünürlüğü ══ */}
+                        <div className="ws-settings-card card-on">
+                            <div className="ws-settings-card-left">
+                                <div className="ws-settings-card-icon icon-on">
+                                    <Bot size={22} />
+                                </div>
+                                <div className="ws-settings-card-info">
+                                    <div className="ws-settings-card-name">Temsilci Veri Görünürlüğü</div>
+                                    <div className="ws-settings-card-desc">
+                                        Temsilcilerin hangi müşteri verilerini görebileceğini seçin.
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="ws-card-actions">
+                                <select 
+                                    value={agentDataVisibility}
+                                    onChange={async (e) => {
+                                        const newVal = e.target.value;
+                                        setAgentDataVisibilitySaving(true);
+                                        try {
+                                            const { default: api } = await import('../../services/api');
+                                            await api.patch(`/workspaces/${currentWorkspace.id}`, { agentDataVisibility: newVal });
+                                            setAgentDataVisibility(newVal);
+                                        } catch (err) { console.error(err); }
+                                        finally { setAgentDataVisibilitySaving(false); }
+                                    }}
+                                    disabled={agentDataVisibilitySaving}
+                                    style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #e2e8f0',
+                                        outline: 'none',
+                                        cursor: 'pointer',
+                                        fontSize: '0.85rem',
+                                        background: '#fff'
+                                    }}
+                                >
+                                    <option value="ALL">Tümünü Görsün</option>
+                                    <option value="SELF">Sadece Kendi Verisi</option>
+                                    <option value="TEAM">Takım Verisi</option>
+                                </select>
                             </div>
                         </div>
 

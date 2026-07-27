@@ -341,6 +341,12 @@ export const handleWidgetChat = async (req, res) => {
             }
         });
 
+        // Madde 0: Pipeline post-processing
+        try {
+            const { runChannelPostProcessing } = await import('./inbox.controller.js');
+            runChannelPostProcessing(workspaceId, conversation.id, contact?.id, message, 'WIDGET').catch(() => {});
+        } catch (e) { /* pipeline opsiyonel */ }
+
         // Update conversation last message time and unread count
         const updatedConversation = await prisma.conversation.update({
             where: { id: conversation.id },

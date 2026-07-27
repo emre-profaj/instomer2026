@@ -211,20 +211,14 @@ const AICallAnalytics = () => {
     return (
         <>
             <div className="aicall-analytics-page">
-                <div className="aicall-header">
-                    <div className="aicall-title-row">
-                        <h1><PhoneCall size={28} /> AI Call Raporlama</h1>
-                        <p className="aicall-subtitle">{t('aiCallAnalytics.subtitle')}</p>
-                    </div>
-                    <div className="aicall-filters" style={{ flexWrap: 'wrap' }}>
-                        <button className="btn-refresh" onClick={() => window.print()} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
-                            <FileText size={15} />
-                            PDF İndir
-                        </button>
+                <div className="ceo-detail-header">
+                    <div className="ceo-detail-header-left">
+                        <h1><PhoneCall size={24} style={{ color: '#6366f1' }} /> AI Call Raporlama</h1>
+                        <p>{t('aiCallAnalytics.subtitle')}</p>
                     </div>
                 </div>
 
-                <div className="ceo-filter-bar" style={{ marginBottom: '1.5rem', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px 20px', marginTop: '-10px' }}>
+                <div className="ceo-filter-bar">
                     <div className="ceo-filter-left">
                         <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
                         <div className="ceo-pill-group">
@@ -235,10 +229,14 @@ const AICallAnalytics = () => {
                         {dateFilter === 'custom' && (
                             <div className="ceo-custom-dates">
                                 <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }} className="ceo-date-input" />
-                                <span style={{ color: '#9ca3af' }}>—</span>
+                                <span>—</span>
                                 <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }} className="ceo-date-input" />
                             </div>
                         )}
+                    </div>
+                    <div className="ceo-filter-right">
+                        <button className="ceo-refresh-btn" onClick={loadData}><RefreshCw size={14} /> Güncelle</button>
+                        <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
                     </div>
                 </div>
 

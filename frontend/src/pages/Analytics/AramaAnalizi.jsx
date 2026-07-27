@@ -219,18 +219,10 @@ const AramaAnalizi = () => {
     return (
         <div className="arama-analizi-container">
             {/* Header */}
-            <div className="ceo-detail-header" style={{ marginBottom: 0 }}>
+            <div className="ceo-detail-header">
                 <div className="ceo-detail-header-left">
                     <h1><PhoneCall size={24} style={{ color: '#6366f1' }} /> Arama Analizi</h1>
                     <p>Telefon aramaları, gecikmiş aramalar ve müşteri görüşme notları</p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button className="ceo-refresh-btn" onClick={() => loadAllData(true)} disabled={refreshing}>
-                        <RefreshCw className={refreshing ? 'spin' : ''} size={14} /> Güncelle
-                    </button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}>
-                        <FileText size={14} /> Raporu İndir
-                    </button>
                 </div>
             </div>
 
@@ -249,6 +241,14 @@ const AramaAnalizi = () => {
                             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
                         </div>
                     )}
+                </div>
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={() => loadAllData(true)} disabled={refreshing}>
+                        <RefreshCw className={refreshing ? 'spin' : ''} size={14} /> Güncelle
+                    </button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}>
+                        <FileText size={14} /> Raporu İndir
+                    </button>
                 </div>
             </div>
 

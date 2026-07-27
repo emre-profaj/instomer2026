@@ -556,3 +556,81 @@ export async function processPendingBotResponses() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Madde 5: Takım Bazlı Bot Çözümleme
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Aşama → Takım → Bot zincirini çözer.
+ * Öncelik sırası:
+ *   1. Aşamanın takımının botu (Stage → Team → Team.assignedBotId)
+ *   2. Akışın takımının botu (Funnel → Team → Team.assignedBotId)
+ *   3. Kanal yönlendirmesinin takımının botu
+ *   4. null (bot yok)
+ * 
+ * @param {string} workspaceId
+ * @param {string} conversationId
+ * @returns {Promise<{botId: string|null, teamId: string|null, source: string}>}
+ */
+export async function resolveTeamBot(workspaceId, conversationId) {
+    try {
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { funnelType: true, funnelStageId: true, assignedTeamId: true, channel: true }
+        });
+        if (!conversation) return { botId: null, teamId: null, source: 'none' };
+
+        // 1. Aşamanın takımı
+        if (conversation.funnelStageId) {
+            const stage = await prisma.funnelStage.findUnique({
+                where: { id: conversation.funnelStageId },
+                select: { assignedTeamId: true }
+            });
+            if (stage?.assignedTeamId) {
+                const team = await prisma.team.findUnique({
+                    where: { id: stage.assignedTeamId },
+                    select: { assignedBotId: true }
+                });
+                if (team?.assignedBotId) {
+                    console.log(`🤖 [TeamBot] Stage team bot resolved: ${team.assignedBotId}`);
+                    return { botId: team.assignedBotId, teamId: stage.assignedTeamId, source: 'stage_team' };
+                }
+            }
+        }
+
+        // 2. Akışın takımı
+        if (conversation.funnelType) {
+            const funnel = await prisma.funnel.findUnique({
+                where: { id: conversation.funnelType },
+                select: { assignedTeamId: true }
+            });
+            if (funnel?.assignedTeamId) {
+                const team = await prisma.team.findUnique({
+                    where: { id: funnel.assignedTeamId },
+                    select: { assignedBotId: true }
+                });
+                if (team?.assignedBotId) {
+                    console.log(`🤖 [TeamBot] Funnel team bot resolved: ${team.assignedBotId}`);
+                    return { botId: team.assignedBotId, teamId: funnel.assignedTeamId, source: 'funnel_team' };
+                }
+            }
+        }
+
+        // 3. Konuşmanın mevcut takımı
+        if (conversation.assignedTeamId) {
+            const team = await prisma.team.findUnique({
+                where: { id: conversation.assignedTeamId },
+                select: { assignedBotId: true }
+            });
+            if (team?.assignedBotId) {
+                console.log(`🤖 [TeamBot] Assigned team bot resolved: ${team.assignedBotId}`);
+                return { botId: team.assignedBotId, teamId: conversation.assignedTeamId, source: 'assigned_team' };
+            }
+        }
+
+        return { botId: null, teamId: null, source: 'none' };
+    } catch (error) {
+        console.error('❌ [TeamBot] Resolve error:', error.message);
+        return { botId: null, teamId: null, source: 'error' };
+    }
+}

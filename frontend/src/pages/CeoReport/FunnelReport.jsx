@@ -15,7 +15,7 @@ const FunnelReport = () => {
     const navigate = useNavigate();
     const [analytics, setAnalytics] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
 
@@ -88,10 +88,7 @@ const FunnelReport = () => {
                     <h1><Activity size={24} style={{ color: '#a855f7' }} /> Akış Raporu</h1>
                     <p>Akış bazlı müşteri dağılımı ve aşama kırılımları</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
+
             </div>
 
             {/* Filters */}
@@ -111,14 +108,16 @@ const FunnelReport = () => {
                         </div>
                     )}
                 </div>
-                {funnelList.length > 0 && (
-                    <div className="ceo-filter-right">
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                    {funnelList.length > 0 && (
                         <select value={funnelFilter} onChange={e => setFunnelFilter(e.target.value)} className="ceo-funnel-select">
                             <option value="">Tüm Akışlar</option>
                             {funnelList.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* Funnel Cards */}

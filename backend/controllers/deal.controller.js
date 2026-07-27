@@ -258,6 +258,23 @@ export const createDeal = async (req, res) => {
 
         console.log(`✅ [Deal] Created: ${deal.quoteNumber || deal.orderNumber || deal.invoiceNumber} (${stage}) for contact ${contactId}`);
 
+        try {
+            const { syncDealToCase } = await import('../services/categoryMatcher.service.js');
+            syncDealToCase(deal.id, workspaceId).catch(err => console.error('Kategori senkronizasyon hatası:', err.message));
+        } catch(e) { 
+            console.error('Kategori import hatası:', e.message); 
+        }
+
+        // Madde 4.2: Sipariş → Case kapatma önerisi
+        if (['ORDER', 'INVOICE'].includes(stage)) {
+            try {
+                const { suggestCaseCloseOnDeal } = await import('../services/noteAnalyzer.service.js');
+                suggestCaseCloseOnDeal(workspaceId, deal.contactId, deal.id).catch(err =>
+                    console.error('⚠️ [Deal] Case close suggestion error:', err.message)
+                );
+            } catch (e) { /* opsiyonel */ }
+        }
+
         res.status(201).json({
             deal: {
                 ...deal,
@@ -368,6 +385,23 @@ export const updateDeal = async (req, res) => {
                 }
             }
         });
+
+        try {
+            const { syncDealToCase } = await import('../services/categoryMatcher.service.js');
+            syncDealToCase(deal.id, workspaceId).catch(err => console.error('Kategori senkronizasyon hatası:', err.message));
+        } catch(e) { 
+            console.error('Kategori import hatası:', e.message); 
+        }
+
+        // Madde 4.2: Sipariş → Case kapatma önerisi
+        if (['ORDER', 'INVOICE'].includes(deal.stage)) {
+            try {
+                const { suggestCaseCloseOnDeal } = await import('../services/noteAnalyzer.service.js');
+                suggestCaseCloseOnDeal(workspaceId, deal.contactId, deal.id).catch(err =>
+                    console.error('⚠️ [Deal] Case close suggestion error:', err.message)
+                );
+            } catch (e) { /* opsiyonel */ }
+        }
 
         res.json({
             deal: {
@@ -513,6 +547,16 @@ export const convertDeal = async (req, res) => {
         });
 
         console.log(`🔄 [Deal] Converted ${dealId}: ${existing.stage} → ${targetStage}`);
+
+        // Madde 4.2: Sipariş → Case kapatma önerisi
+        if (['ORDER', 'INVOICE'].includes(deal.stage)) {
+            try {
+                const { suggestCaseCloseOnDeal } = await import('../services/noteAnalyzer.service.js');
+                suggestCaseCloseOnDeal(workspaceId, deal.contactId, deal.id).catch(err =>
+                    console.error('⚠️ [Deal] Case close suggestion error:', err.message)
+                );
+            } catch (e) { /* opsiyonel */ }
+        }
 
         res.json({
             deal: {

@@ -523,6 +523,12 @@ export const syncEmailsInternal = async (channelId) => {
                 }
             });
 
+            // Madde 0: Pipeline post-processing
+            try {
+                const { runChannelPostProcessing } = await import('./inbox.controller.js');
+                runChannelPostProcessing(channel.workspaceId, conversation.id, contact?.id, body, 'EMAIL').catch(() => {});
+            } catch (e) { /* pipeline opsiyonel */ }
+
             // Update conversation
             await prisma.conversation.update({
                 where: { id: conversation.id },

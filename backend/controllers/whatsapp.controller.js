@@ -1063,6 +1063,14 @@ export const webhookHandler = async (req, res) => {
                         } catch (tagErr) { console.error("❌ [AdTag] Organik error:", tagErr.message); }
                     }
 
+                    // ── Madde 10: Attribution kaydet (yapısal veri) ──────
+                    try {
+                        const { saveWhatsAppAttribution } = await import('../services/attribution.service.js');
+                        await saveWhatsAppAttribution(contact.id, waNumber.workspaceId, waReferral);
+                    } catch (attrErr) {
+                        console.error('❌ [Attribution] WhatsApp save error:', attrErr.message);
+                    }
+
                     // Check if contact is blocked - skip processing if blocked
                     if (contact.isBlocked) {
                         console.log(`🚫 [BLOCKED] WhatsApp contact ${contact.id} (${contact.name}) is blocked. Ignoring incoming message.`);
@@ -1209,6 +1217,12 @@ export const webhookHandler = async (req, res) => {
                             mediaType: mediaType || null
                         }
                     });
+
+                    // Madde 0: Pipeline post-processing (niyet→aşama, lead puanlama, auto case, takım bot)
+                    try {
+                        const { runChannelPostProcessing } = await import('./inbox.controller.js');
+                        runChannelPostProcessing(waNumber.workspaceId, conversation.id, contact.id, msg_body, 'WHATSAPP').catch(() => {});
+                    } catch (e) { /* pipeline opsiyonel */ }
 
                     // Update conversation last message time and unread count
                     await prisma.conversation.update({

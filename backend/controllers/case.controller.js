@@ -902,3 +902,93 @@ export const syncClosingStages = async (req, res) => {
         res.status(500).json({ error: 'Senkronizasyon hatası' });
     }
 };
+
+// Case birleştirme
+export const mergeCases = async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const { sourceCaseId, targetCaseId } = req.body;
+    
+    // Source case'in conversation ve activity'lerini target'a taşı
+    await prisma.conversation.updateMany({
+      where: { caseId: sourceCaseId },
+      data: { caseId: targetCaseId }
+    });
+    
+    await prisma.contactActivity.updateMany({
+      where: { caseId: sourceCaseId },
+      data: { caseId: targetCaseId }
+    });
+    
+    // Source case'i kapat
+    await prisma.case.update({
+      where: { id: sourceCaseId },
+      data: { status: 'CLOSED', description: `Birleştirildi → Case ${targetCaseId}` }
+    });
+    
+    const targetCase = await prisma.case.findUnique({
+      where: { id: targetCaseId },
+      include: { conversations: true, activities: true }
+    });
+    
+    res.json({ success: true, case: targetCase });
+  } catch (error) {
+    console.error('Case merge error:', error);
+    res.status(500).json({ error: 'Case birleştirme hatası' });
+  }
+};
+
+// Case ayrıştırma
+export const splitCase = async (req, res) => {
+  try {
+    const { workspaceId } = req.params;
+    const { caseId, conversationIds } = req.body;
+    
+    const sourceCase = await prisma.case.findUnique({ where: { id: caseId } });
+    if (!sourceCase) return res.status(404).json({ error: 'Case bulunamadı' });
+    
+    const nextNumber = await getNextCaseNumber(workspaceId);
+    
+    const newCase = await prisma.case.create({
+      data: {
+        workspaceId,
+        contactId: sourceCase.contactId,
+        caseNumber: String(nextNumber), // Ensuring string if caseNumber is string
+        title: `Talep #${nextNumber} (ayrıştırıldı)`,
+        status: 'ACTIVE',
+        priority: sourceCase.priority,
+        assignedToId: sourceCase.assignedToId,
+        assignedTeamId: sourceCase.assignedTeamId,
+      }
+    });
+    
+    await prisma.conversation.updateMany({
+      where: { id: { in: conversationIds } },
+      data: { caseId: newCase.id }
+    });
+    
+    res.json({ success: true, case: newCase });
+  } catch (error) {
+    console.error('Case split error:', error);
+    res.status(500).json({ error: 'Case ayrıştırma hatası' });
+  }
+};
+
+async function getNextCaseNumber(workspaceId) {
+  const lastCase = await prisma.case.findFirst({
+    where: { workspaceId },
+    orderBy: { caseNumber: 'desc' }
+  });
+  // Safely parse caseNumber if it's a string, or just use 0 if not parsable
+  let currentNum = 0;
+  if (lastCase?.caseNumber) {
+    const parsed = parseInt(lastCase.caseNumber, 10);
+    if (!isNaN(parsed)) currentNum = parsed;
+    else if (lastCase.caseNumber.includes('-')) {
+        const parts = lastCase.caseNumber.split('-');
+        const lastPart = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(lastPart)) currentNum = lastPart;
+    }
+  }
+  return currentNum + 1;
+}

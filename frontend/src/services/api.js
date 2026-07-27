@@ -779,5 +779,11 @@ export const caseAPI = {
         api.delete(`/contact-cases/${workspaceId}/cases/${caseId}`),
     // Kapanış aşaması senkronizasyonu
     syncClosingStages: (workspaceId, dryRun = false) =>
-        api.post(`/contact-cases/${workspaceId}/sync-closing-stages${dryRun ? '?dryRun=true' : ''}`)
+        api.post(`/contact-cases/${workspaceId}/sync-closing-stages${dryRun ? '?dryRun=true' : ''}`),
+    // Case birleştirme
+    merge: (workspaceId, data) =>
+        api.post(`/cases/${workspaceId}/merge`, data),
+    // Case ayırma
+    split: (workspaceId, data) =>
+        api.post(`/cases/${workspaceId}/split`, data)
 };

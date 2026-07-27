@@ -376,6 +376,34 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     // Compute displayCase for inline mode (needed for the useEffect below)
     const displayCase = inline ? (currentConvCase || activeCases[0] || cases[0]) : null;
 
+    const handleMergeCases = async () => {
+        const allActiveCaseIds = activeCases.map(c => c.id);
+        if (allActiveCaseIds.length < 2) return;
+        if (!window.confirm(`${allActiveCaseIds.length} case birleştirilsin mi?`)) return;
+        try {
+            await caseAPI.merge(workspaceId, { caseIds: allActiveCaseIds, contactId });
+            fetchCases();
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+        } catch (err) {
+            console.error('Merge error:', err);
+            alert('Case birleştirme başarısız oldu.');
+        }
+    };
+
+    const handleSplitCase = async (caseIdToSplit = null) => {
+        const targetCaseId = typeof caseIdToSplit === 'string' ? caseIdToSplit : displayCase?.id;
+        if (!targetCaseId || !conversationId) return;
+        if (!window.confirm("Bu konuşmayı ayrı case'e çıkar?")) return;
+        try {
+            await caseAPI.split(workspaceId, { caseId: targetCaseId, conversationIds: [conversationId] });
+            fetchCases();
+            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+        } catch (err) {
+            console.error('Split error:', err);
+            alert('Case ayırma başarısız oldu.');
+        }
+    };
+
     // Notify parent about the active case info (for header display) — MUST be at top level, not inside conditional
     useEffect(() => {
         if (inline && displayCase && onCaseInfo) {
@@ -586,6 +614,30 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     ↔ Değiştir
                                 </button>
                             )}
+                            {activeCases.length > 1 && (
+                                <button
+                                    onClick={handleMergeCases}
+                                    style={{
+                                        padding: '5px 10px', fontSize: '11px', fontWeight: 600,
+                                        backgroundColor: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd',
+                                        borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                                    }}
+                                >
+                                    🔗 Birleştir
+                                </button>
+                            )}
+                            {displayCase && displayCase.conversations?.length > 1 && (
+                                <button
+                                    onClick={() => handleSplitCase()}
+                                    style={{
+                                        padding: '5px 10px', fontSize: '11px', fontWeight: 600,
+                                        backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3',
+                                        borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                                    }}
+                                >
+                                    ✂️ Böl
+                                </button>
+                            )}
                         </div>
 
                         {/* Yeni Case Form */}
@@ -756,6 +808,20 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                     )}
 
                     {/* Case Cards */}
+                    {activeCases.length > 1 && (
+                        <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'flex-end', paddingRight: '4px' }}>
+                            <button
+                                onClick={handleMergeCases}
+                                style={{
+                                    padding: '5px 10px', fontSize: '11px', fontWeight: 600,
+                                    backgroundColor: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd',
+                                    borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                                }}
+                            >
+                                🔗 Birleştir
+                            </button>
+                        </div>
+                    )}
                     {activeCases.map(c => {
                         const stageInfo = getFunnelStageLabel(c);
                         const statusInfo = STATUS_LABELS[c.status] || STATUS_LABELS.ACTIVE;
@@ -800,6 +866,25 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 6 }}>
                                     {c.title}
                                 </div>
+                                {c.categoryId && (
+                                    <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500, display: 'inline-block', marginBottom: '4px' }}>
+                                        📁 {c.category?.name || c.categoryId}
+                                    </span>
+                                )}
+                                {c.products && (() => {
+                                    try {
+                                        const parsed = typeof c.products === 'string' ? JSON.parse(c.products) : c.products;
+                                        return parsed.length > 0 ? (
+                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                                {parsed.map((p, i) => (
+                                                    <span key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '8px', fontSize: '10px' }}>
+                                                        🏷️ {p.name} {p.quantity > 1 ? `×${p.quantity}` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : null;
+                                    } catch (e) { return null; }
+                                })()}
 
                                 {/* Pipeline Stage */}
                                 <div style={{ marginBottom: 6 }}>
@@ -900,6 +985,21 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         <Plus size={12} /> Bu yazışmayı bağla
                                     </button>
                                 )}
+                                {/* Split conversation */}
+                                {conversationId && isCurrentConv && c.conversations?.length > 1 && (
+                                    <button
+                                        onClick={() => handleSplitCase(c.id)}
+                                        style={{
+                                            marginTop: 4, width: '100%', padding: '4px 0',
+                                            fontSize: '11px', fontWeight: 600,
+                                            backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3',
+                                            borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                            justifyContent: 'center', gap: 4
+                                        }}
+                                    >
+                                        ✂️ Böl
+                                    </button>
+                                )}
                             </div>
                         );
                     })}
@@ -946,6 +1046,25 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 6 }}>
                                         {c.title}
                                     </div>
+                                    {c.categoryId && (
+                                        <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500, display: 'inline-block', marginBottom: '4px' }}>
+                                            📁 {c.category?.name || c.categoryId}
+                                        </span>
+                                    )}
+                                    {c.products && (() => {
+                                        try {
+                                            const parsed = typeof c.products === 'string' ? JSON.parse(c.products) : c.products;
+                                            return parsed.length > 0 ? (
+                                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                                                    {parsed.map((p, i) => (
+                                                        <span key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '8px', fontSize: '10px' }}>
+                                                            🏷️ {p.name} {p.quantity > 1 ? `×${p.quantity}` : ''}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : null;
+                                        } catch (e) { return null; }
+                                    })()}
                                     <div style={{ display: 'flex', gap: 8, fontSize: '0.7rem', color: '#9ca3af' }}>
                                         <span>💬 {c._conversationCount || 0}</span>
                                         <span>📋 {c._totalActivityCount || 0}</span>
@@ -1003,6 +1122,25 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
                                             {c.title}
                                         </div>
+                                        {c.categoryId && (
+                                            <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 500, display: 'inline-block', marginTop: '2px', marginBottom: '2px' }}>
+                                                📁 {c.category?.name || c.categoryId}
+                                            </span>
+                                        )}
+                                        {c.products && (() => {
+                                            try {
+                                                const parsed = typeof c.products === 'string' ? JSON.parse(c.products) : c.products;
+                                                return parsed.length > 0 ? (
+                                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '2px', marginBottom: '4px' }}>
+                                                        {parsed.map((p, i) => (
+                                                            <span key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '8px', fontSize: '9px' }}>
+                                                                🏷️ {p.name} {p.quantity > 1 ? `×${p.quantity}` : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : null;
+                                            } catch (e) { return null; }
+                                        })()}
                                     </div>
                                 );
                             })}

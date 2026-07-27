@@ -317,6 +317,19 @@ export const handleFormSubmission = async (req, res) => {
             }
         });
 
+        // ── Madde 10: Form Attribution kaydet ──────────────────
+        try {
+            const { saveFormAttribution } = await import('../services/attribution.service.js');
+            await saveFormAttribution(contact?.id, webhook.workspaceId, formData, webhook, {
+                ip: ipAddress,
+                userAgent,
+                referer: req.headers?.referer,
+                originalUrl: formData._page_url || formData.page_url || req.headers?.origin,
+            });
+        } catch (attrErr) {
+            console.error('❌ [Attribution] Form save error:', attrErr.message);
+        }
+
         // 24 saat birleştirme: Aynı contact için herhangi bir kanaldan son 24 saatte açık konuşma ara
         const mergeWindow = new Date(Date.now() - 24 * 60 * 60 * 1000);
         let conversation = await prisma.conversation.findFirst({
@@ -503,6 +516,12 @@ export const handleFormSubmission = async (req, res) => {
                 messageType: 'TEXT'
             }
         });
+
+        // Madde 0: Pipeline post-processing
+        try {
+            const { runChannelPostProcessing } = await import('./inbox.controller.js');
+            runChannelPostProcessing(webhook.workspaceId, conversation.id, contact?.id, messageContent, 'FORM').catch(() => {});
+        } catch (e) { /* pipeline opsiyonel */ }
 
         // Emit WebSocket events (workspace-specific)
         try {

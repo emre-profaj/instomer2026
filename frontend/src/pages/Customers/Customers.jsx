@@ -259,6 +259,9 @@ const Customers = () => {
     // Contact info filter state (phone/email)
     const [contactInfoFilter, setContactInfoFilter] = useState(sf.contactInfoFilter || 'ALL');
 
+    // Score filter state
+    const [scoreFilter, setScoreFilter] = useState(sf.scoreFilter || 'ALL');
+
     // Import group filter state
     const [importGroupFilter, setImportGroupFilter] = useState(sf.importGroupFilter || 'ALL');
     const [availableImportGroups, setAvailableImportGroups] = useState([]);
@@ -275,7 +278,7 @@ const Customers = () => {
             funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
             sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
             contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
-            onlyOpenCases, sortField, sortDir, limit
+            onlyOpenCases, sortField, sortDir, limit, scoreFilter
         };
         try {
             sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filtersToSave));
@@ -284,7 +287,7 @@ const Customers = () => {
         funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds,
         sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter,
         contactInfoFilter, importGroupFilter, dateFilter, dateFrom, dateTo,
-        onlyOpenCases, sortField, sortDir, limit]);
+        onlyOpenCases, sortField, sortDir, limit, scoreFilter]);
 
     // Inline stage change dropdown
     const [stageDropdownContactId, setStageDropdownContactId] = useState(null);
@@ -373,7 +376,7 @@ const Customers = () => {
                 silentReloadContacts();
             }
         }
-    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode]);
+    }, [currentWorkspace, page, search, statusFilter, sourceFilter, categoryFilter, callStatusFilter, tagFilter, topicCategoryFilter, contactInfoFilter, importGroupFilter, showArchived, onlyOpenCases, funnelFilter, funnelStageFilter, mergedFunnelIds, selectedFunnelIds, limit, dateFilter, dateFrom, dateTo, assignmentFilter, sortField, sortDir, quickFilterMode, scoreFilter]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -429,7 +432,13 @@ const Customers = () => {
                 topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
                 hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
             });
-            setContacts(response.data.contacts);
+            let filtered = response.data.contacts;
+            if (scoreFilter !== 'ALL') {
+                const ranges = { COLD: [0,20], COOL: [21,40], WARM: [41,60], HOT: [61,80], FIRE: [81,100] };
+                const [min, max] = ranges[scoreFilter];
+                filtered = filtered.filter(c => (c.leadScore || 0) >= min && (c.leadScore || 0) <= max);
+            }
+            setContacts(filtered);
             setTotal(response.data.total);
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
 
@@ -450,7 +459,7 @@ const Customers = () => {
         } catch (error) {
             console.error('Error silently reloading contacts:', error);
         }
-    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, topicCategoryFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter, quickFilterMode]);
+    }, [currentWorkspace, search, statusFilter, sourceFilter, categoryFilter, tagFilter, topicCategoryFilter, contactInfoFilter, callStatusFilter, importGroupFilter, funnelFilter, mergedFunnelIds, selectedFunnelIds, funnelStageFilter, showArchived, onlyOpenCases, limit, page, dateFilter, dateFrom, dateTo, assignmentFilter, quickFilterMode, scoreFilter]);
 
     useEffect(() => {
         const handleContactUpdate = (event) => {
@@ -572,7 +581,13 @@ const Customers = () => {
                 topicCategoryId: topicCategoryFilter !== 'ALL' ? topicCategoryFilter : undefined,
                 hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
             });
-            setContacts(response.data.contacts);
+            let filtered = response.data.contacts;
+            if (scoreFilter !== 'ALL') {
+                const ranges = { COLD: [0,20], COOL: [21,40], WARM: [41,60], HOT: [61,80], FIRE: [81,100] };
+                const [min, max] = ranges[scoreFilter];
+                filtered = filtered.filter(c => (c.leadScore || 0) >= min && (c.leadScore || 0) <= max);
+            }
+            setContacts(filtered);
             setTotal(response.data.total);
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
 
@@ -1623,6 +1638,35 @@ const Customers = () => {
 
                                         {/* Kaynak Filtresi */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                            <label style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Skor</label>
+                                            <select
+                                                value={scoreFilter}
+                                                onChange={(e) => {
+                                                    setScoreFilter(e.target.value);
+                                                    setPage(1);
+                                                }}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '6px 8px',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '6px',
+                                                    fontSize: '11px',
+                                                    color: '#334155',
+                                                    background: '#ffffff',
+                                                    outline: 'none'
+                                                }}
+                                            >
+                                                <option value="ALL">Tümü</option>
+                                                <option value="COLD">🔵 Soğuk (0-20)</option>
+                                                <option value="COOL">🟢 Ilık (21-40)</option>
+                                                <option value="WARM">🟡 Sıcak (41-60)</option>
+                                                <option value="HOT">🟠 Çok Sıcak (61-80)</option>
+                                                <option value="FIRE">🔴 Yanıyor (81-100)</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Kaynak Filtresi */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                             <label style={{ fontSize: '9px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kaynak</label>
                                             <select
                                                 value={sourceFilter}
@@ -2134,6 +2178,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                         {[
                                             { key: 'name', label: 'KİŞİ', style: { minWidth: '140px', maxWidth: '180px' } },
                                             { key: null, label: 'KONU', style: { minWidth: '70px', maxWidth: '120px' } },
+                                            { key: 'leadScore', label: 'SKOR', style: { minWidth: '50px', maxWidth: '70px' } },
                                             { key: 'status', label: 'DURUM', style: { minWidth: '80px', maxWidth: '120px' } },
                                             { key: null, label: 'ATANAN', style: { minWidth: '70px', maxWidth: '120px' } },
                                             { key: null, label: 'AKTİVİTELER', style: { minWidth: '100px', maxWidth: '140px' } },
@@ -2226,6 +2271,28 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             <span className="contact-phone-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', fontSize: '10px', color: '#6b7280' }}>{contact.phone || '---'}</span>
                                                         </div>
                                                     </div>
+                                                </td>
+                                                {/* SKOR */}
+                                                <td style={{ maxWidth: '80px', textAlign: 'center' }}>
+                                                    {(() => {
+                                                        if (contact.leadScore == null) return <span style={{ color: '#94a3b8' }}>---</span>;
+                                                        let bgColor = '#f3f4f6';
+                                                        let textColor = '#374151';
+                                                        let emoji = '⚪';
+                                                        switch (contact.leadTemperature) {
+                                                            case 'COLD': bgColor = '#eff6ff'; textColor = '#1d4ed8'; emoji = '🔵'; break;
+                                                            case 'COOL': bgColor = '#dcfce7'; textColor = '#15803d'; emoji = '🟢'; break;
+                                                            case 'WARM': bgColor = '#fef9c3'; textColor = '#a16207'; emoji = '🟡'; break;
+                                                            case 'HOT': bgColor = '#ffedd5'; textColor = '#c2410c'; emoji = '🟠'; break;
+                                                            case 'FIRE': bgColor = '#fee2e2'; textColor = '#b91c1c'; emoji = '🔴'; break;
+                                                        }
+                                                        return (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: bgColor, color: textColor, padding: '2px 6px', borderRadius: '999px', fontSize: '11px', fontWeight: '600' }}>
+                                                                <span>{emoji}</span>
+                                                                <span>{contact.leadScore}</span>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                                 {/* KONU */}
                                                 <td className="contact-topic" title={(() => { const c = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0]; return c?.title || contact.aiTopic || ''; })()} style={{ maxWidth: '140px' }}>

@@ -9,7 +9,9 @@ import {
     linkConversation,
     unlinkConversation,
     deleteCase,
-    syncClosingStages
+    syncClosingStages,
+    mergeCases,
+    splitCase
 } from '../controllers/case.controller.js';
 
 const router = express.Router();
@@ -41,5 +43,9 @@ router.delete('/:workspaceId/cases/:caseId', requireWorkspaceAccess, deleteCase)
 
 // Kapanış aşaması senkronizasyonu (eski verileri düzeltir)
 router.post('/:workspaceId/sync-closing-stages', requireWorkspaceAccess, syncClosingStages);
+
+// Case merge ve split
+router.post('/:workspaceId/merge', authenticateJWT, requireWorkspaceAccess, mergeCases);
+router.post('/:workspaceId/split', authenticateJWT, requireWorkspaceAccess, splitCase);
 
 export default router;

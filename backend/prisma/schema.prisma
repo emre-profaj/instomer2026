@@ -80,6 +80,7 @@ model Workspace {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
   aiApiKey            String?
+  stageAutoMode       Boolean  @default(false)
   // Company Info (workspace'e özel şirket bilgileri)
   companyName         String?
   companyDescription  String?
@@ -134,6 +135,7 @@ model Workspace {
   calendarResources    CalendarResource[]
   flows                Flow[]
   contactActivities    ContactActivity[]
+  contactAttributions  ContactAttribution[]
   appointmentBranches  AppointmentBranch[]
   botTools             AIBotTool[]
   retellActions        RetellAction[]
@@ -166,14 +168,16 @@ model Workspace {
   salesEnabled Boolean @default(false)
 
   // Randevu Modülü (false = workspace'de randevu botu devre dışı)
-  appointmentEnabled   Boolean @default(true)
+  appointmentEnabled  Boolean @default(true)
   // Randevu saatleri: [{ day: 0-6, enabled: bool, start: "09:00", end: "18:00" }]
-  appointmentSchedule  Json?
+  appointmentSchedule Json?
 
   // Varsayılan Dil (agent'ta boşsa buradan alınır)
   defaultLanguage String @default("tr-TR") // tr-TR, en-US, en-GB, de-DE, fr-FR, ar-SA, multi
 
-  defaultFunnelId    String? // Varsayılan satış akışı ID'si
+  defaultFunnelId String? // Varsayılan satış akışı ID'si
+
+  agentDataVisibility String @default("ALL") // SELF, TEAM, ALL
 
   @@index([companyId])
   @@map("workspaces")
@@ -292,10 +296,12 @@ model WorkspaceMember {
   role        String    @default("AGENT")
   userId      String
   workspaceId String
+  teamId      String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team        Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@unique([userId, workspaceId])
   @@map("workspace_members")
@@ -330,37 +336,37 @@ model FacebookPage {
 }
 
 model Contact {
-  id                String            @id @default(uuid())
+  id                String               @id @default(uuid())
   workspaceId       String?
-  workspace         Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace         Workspace?           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name              String?
   fullName          String?
   email             String?
   phone             String?
-  emails            String            @default("[]")
-  phones            String            @default("[]")
+  emails            String               @default("[]")
+  phones            String               @default("[]")
   avatar            String?
-  facebookId        String?           @unique
-  instagramId       String?           @unique
+  facebookId        String?              @unique
+  instagramId       String?              @unique
   instagramUsername String?
-  whatsappId        String?           @unique
-  tags              String            @default("[]")
-  status            String            @default("NEW")
-  source            String            @default("MANUAL")
-  category          String            @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
+  whatsappId        String?              @unique
+  tags              String               @default("[]")
+  status            String               @default("NEW")
+  source            String               @default("MANUAL")
+  category          String               @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
   funnelType        String? // Global stage category (e.g. Fırsat)
   funnelStageId     String? // Exact stage ID (e.g. Sıcak Fırsat)
-  stageManuallySet  Boolean           @default(false) // Manuel aşama değişikliği yapıldı mı
+  stageManuallySet  Boolean              @default(false) // Manuel aşama değişikliği yapıldı mı
   lastContactedAt   DateTime?
-  isBlocked         Boolean           @default(false)
+  isBlocked         Boolean              @default(false)
   blockedAt         DateTime?
   blockedReason     String?
-  isArchived        Boolean           @default(false)
+  isArchived        Boolean              @default(false)
   archivedAt        DateTime?
-  isDeleted         Boolean           @default(false)
+  isDeleted         Boolean              @default(false)
   deletedAt         DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
   conversations     Conversation[]
   formSubmissions   FormSubmission[]
   deals             Deal[]
@@ -372,6 +378,9 @@ model Contact {
   city              String?
   importGroup       String?
   activities        ContactActivity[]
+  leadScore         Int                  @default(0)
+  leadTemperature   String               @default("COLD") // COLD, COOL, WARM, HOT, FIRE
+  attributions      ContactAttribution[]
 
   @@index([workspaceId])
   @@index([instagramId])
@@ -380,24 +389,24 @@ model Contact {
 }
 
 model Conversation {
-  id                    String    @id @default(uuid())
-  status                String    @default("OPEN")
+  id                    String         @id @default(uuid())
+  status                String         @default("OPEN")
   contactId             String
   workspaceId           String
   facebookPageId        String?
   assignedToId          String?
   assignedBotId         String?
-  assignedBot           AIBot?    @relation(fields: [assignedBotId], references: [id])
+  assignedBot           AIBot?         @relation(fields: [assignedBotId], references: [id])
   whatsappPhoneNumberId String?
   instagramBusinessId   String?
   emailChannelId        String?
-  channel               String    @default("UNKNOWN")
-  teamIds               String    @default("[]")
-  unreadCount           Int       @default(0)
-  lastMessageAt         DateTime  @default(now())
+  channel               String         @default("UNKNOWN")
+  teamIds               String         @default("[]")
+  unreadCount           Int            @default(0)
+  lastMessageAt         DateTime       @default(now())
   resolvedAt            DateTime? // When conversation was marked as RESOLVED
   resolvedById          String? // Who resolved the conversation
-  botEnabled            Boolean   @default(true) // Bot enabled for this conversation (false = kalıcı kapatma)
+  botEnabled            Boolean        @default(true) // Bot enabled for this conversation (false = kalıcı kapatma)
   botDelayedUntil       DateTime? // Bot will not respond until this time (for 30sec delay)
   botPausedUntil        DateTime? // Agent yazdığında geçici duraklama — süre dolunca bot devam eder
   assignedTeamId        String? // Team assigned to this conversation
@@ -409,7 +418,7 @@ model Conversation {
   sentimentScore        Int? // AI-generated sentiment score (0-100)
   funnelType            String? // Funnel category (e.g., SATIS, DESTEK, SIKAYET)
   funnelStageId         String? // Current stage within the funnel
-  handoffPending        Boolean   @default(false) // Bot awaiting user confirmation for handoff
+  handoffPending        Boolean        @default(false) // Bot awaiting user confirmation for handoff
 
   // Atama Takibi
   assignedById   String? // Son atamayı yapan kişi
@@ -455,7 +464,6 @@ model Conversation {
   events                ConversationEvent[]
   formSubmissions       FormSubmission[]
   deals                 Deal[]
-
 
   // Performance indexes for high-frequency cron queries
   @@index([workspaceId])
@@ -645,24 +653,25 @@ model Team {
   roundRobinIndex Int     @default(0)
 
   // Havuz Dağıtım Kuralları
-  distributionMode      String  @default("POOL")        // POOL | DISTRIBUTE | CONDITIONAL
-  distributionMethod    String  @default("ROUND_ROBIN")  // ROUND_ROBIN | LEAST_BUSY | ONLINE_ONLY
+  distributionMode      String  @default("POOL") // POOL | DISTRIBUTE | CONDITIONAL
+  distributionMethod    String  @default("ROUND_ROBIN") // ROUND_ROBIN | LEAST_BUSY | ONLINE_ONLY
   triggerOnPhone        Boolean @default(false)
   triggerOnEmail        Boolean @default(false)
   triggerOnAppointment  Boolean @default(false)
-  triggerTimeoutMinutes Int?                              // null = süre yok
+  triggerTimeoutMinutes Int? // null = süre yok
 
   // AI Devralma Ayarları (takım seviyesi — workspace'i override eder)
   aiFallbackEnabled      Boolean? // null = workspace ayarını kullan, true/false = override
   aiFallbackDelayMinutes Int? // null = workspace ayarını kullan
 
-  createdAt       DateTime               @default(now())
-  transfers       ConversationTransfer[]
-  members         TeamMember[]
-  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  channelRoutings ChannelRouting[]
-  activities      ContactActivity[]
-  cases           Case[]
+  createdAt        DateTime               @default(now())
+  transfers        ConversationTransfer[]
+  members          TeamMember[]
+  workspaceMembers WorkspaceMember[]
+  workspace        Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channelRoutings  ChannelRouting[]
+  activities       ContactActivity[]
+  cases            Case[]
 
   @@index([workspaceId])
   @@index([parentId])
@@ -671,22 +680,22 @@ model Team {
 
 // Kanal → Ekip + Akış Yönlendirme
 model ChannelRouting {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   workspaceId String
   channel     String // INSTAGRAM, FACEBOOK, WHATSAPP, EMAIL, WEB_WIDGET, FORM, LEAD
   teamId      String?
-  funnelId    String?  // Hangi akışa yönlendirilecek
+  funnelId    String? // Hangi akışa yönlendirilecek
   stageId     String?
-  pageId      String?  // Spesifik Facebook/Instagram sayfa ID veya WhatsApp numara ID
-  accountName String?  // Hesap adı (görüntüleme amaçlı)
-  botDelay    Int      @default(30) // Bot devreye girmeden önce bekleme süresi (saniye)
-  botEnabled  Boolean  @default(true) // Bu kanal için bot aktif mi
-  priority    Int      @default(0) // Birden fazla kural varsa öncelik
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  team        Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  funnel      Funnel?  @relation("FunnelChannelRoutings", fields: [funnelId], references: [id], onDelete: SetNull)
+  pageId      String? // Spesifik Facebook/Instagram sayfa ID veya WhatsApp numara ID
+  accountName String? // Hesap adı (görüntüleme amaçlı)
+  botDelay    Int          @default(30) // Bot devreye girmeden önce bekleme süresi (saniye)
+  botEnabled  Boolean      @default(true) // Bu kanal için bot aktif mi
+  priority    Int          @default(0) // Birden fazla kural varsa öncelik
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  team        Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  funnel      Funnel?      @relation("FunnelChannelRoutings", fields: [funnelId], references: [id], onDelete: SetNull)
   stage       FunnelStage? @relation("ChannelRoutingStage", fields: [stageId], references: [id], onDelete: SetNull)
 
   @@unique([workspaceId, channel, pageId]) // Her kanal+sayfa için tek yönlendirme
@@ -1173,14 +1182,14 @@ model RetellCall {
   endedReason    String?
   metadata       String?   @db.Text
   createdById    String    @default("")
-  bulkBatchId    String?   // FK to BulkCallBatch
+  bulkBatchId    String? // FK to BulkCallBatch
   // Case (talep akışı) bağlantısı
   caseId         String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  workspace  Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  bulkBatch  BulkCallBatch? @relation(fields: [bulkBatchId], references: [id], onDelete: SetNull)
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bulkBatch BulkCallBatch? @relation(fields: [bulkBatchId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([contactId])
@@ -1260,9 +1269,9 @@ model ScheduledCall {
 model TopicCategory {
   id          String   @id @default(cuid())
   workspaceId String
-  name        String           // "Obezite Cerrahisi"
+  name        String // "Obezite Cerrahisi"
   description String?  @db.Text // AI eşleştirme açıklaması
-  icon        String?          // Emoji ikonu
+  icon        String? // Emoji ikonu
   color       String   @default("#6b7280")
   keywords    String?  @db.Text // JSON: ["obezite", "mide küçültme", "sleeve"]
   order       Int      @default(0)
@@ -1272,6 +1281,7 @@ model TopicCategory {
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  cases         Case[]
 
   @@index([workspaceId])
   @@map("topic_categories")
@@ -1279,23 +1289,23 @@ model TopicCategory {
 
 // Funnel: User-defined pipeline categories
 model Funnel {
-  id                     String        @id @default(cuid())
+  id                     String           @id @default(cuid())
   workspaceId            String
   name                   String
-  color                  String        @default("#3b82f6")
-  icon                   String        @default("📁")
-  order                  Int           @default(0)
-  funnelType             String        @default("SUB") // MAIN = Ana (Triyaj), SUB = Alt akış
+  color                  String           @default("#3b82f6")
+  icon                   String           @default("📁")
+  order                  Int              @default(0)
+  funnelType             String           @default("SUB") // MAIN = Ana (Triyaj), SUB = Alt akış
   parentId               String?
-  parent                 Funnel?       @relation("FunnelHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children               Funnel[]      @relation("FunnelHierarchy")
+  parent                 Funnel?          @relation("FunnelHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children               Funnel[]         @relation("FunnelHierarchy")
   assignedUserId         String?
   assignedTeamId         String?
-  qualifiedLeadStageId   String?       // Nitelikli talepler (telefonu olan lead'ler) bu aşamaya düşer
-  classificationCriteria String?       @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
-  isDefault              Boolean       @default(false) // true = silinemez varsayılan akış
-  createdAt              DateTime      @default(now())
-  workspace              Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  qualifiedLeadStageId   String? // Nitelikli talepler (telefonu olan lead'ler) bu aşamaya düşer
+  classificationCriteria String?          @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
+  isDefault              Boolean          @default(false) // true = silinemez varsayılan akış
+  createdAt              DateTime         @default(now())
+  workspace              Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages                 FunnelStage[]
   channelRoutings        ChannelRouting[] @relation("FunnelChannelRoutings")
 
@@ -1306,25 +1316,25 @@ model Funnel {
 
 // FunnelStage: Stages within a funnel (e.g., Yeni, İşlemde, Kapandı)
 model FunnelStage {
-  id             String   @id @default(cuid())
-  funnelId       String
-  name           String
-  color          String   @default("#6b7280")
-  order          Int      @default(0)
-  assignedUserId String?
-  assignedTeamId String?
-  assignedBotId  String?
-  assignedBot    AIBot?   @relation("FunnelStageBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
-  isClosing      Boolean  @default(false) // true = kapanış aşaması (Satış, Kayıp, Kapandı vb.)
-  statusType     String?  // WON, LOST, CLOSED — null = ACTIVE (açık aşama). Case durumunu otomatik günceller.
-  entryRules     String?  @db.Text // JSON: { matchType: 'ALL'|'ANY', rules: [{ type, field, values, ... }] }
-  entryPriority  Int      @default(0) // Yüksek = önce kontrol edilir
-  entryActions   String?  @db.Text // JSON: Aşamaya girişte yapılacak aksiyonlar
-  timedActions   String?  @db.Text // JSON: Zamanlı aksiyonlar (X gün sonra hatırlat vb.)
-  exitActions    String?  @db.Text // JSON: Aşamadan çıkışta yapılacak aksiyonlar
-  requiredFields String?  @db.Text // JSON: Zorunlu alanlar/kayıtlar (not, teklif vb.)
-  createdAt      DateTime @default(now())
-  funnel         Funnel   @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  id              String           @id @default(cuid())
+  funnelId        String
+  name            String
+  color           String           @default("#6b7280")
+  order           Int              @default(0)
+  assignedUserId  String?
+  assignedTeamId  String?
+  assignedBotId   String?
+  assignedBot     AIBot?           @relation("FunnelStageBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
+  isClosing       Boolean          @default(false) // true = kapanış aşaması (Satış, Kayıp, Kapandı vb.)
+  statusType      String? // WON, LOST, CLOSED — null = ACTIVE (açık aşama). Case durumunu otomatik günceller.
+  entryRules      String?          @db.Text // JSON: { matchType: 'ALL'|'ANY', rules: [{ type, field, values, ... }] }
+  entryPriority   Int              @default(0) // Yüksek = önce kontrol edilir
+  entryActions    String?          @db.Text // JSON: Aşamaya girişte yapılacak aksiyonlar
+  timedActions    String?          @db.Text // JSON: Zamanlı aksiyonlar (X gün sonra hatırlat vb.)
+  exitActions     String?          @db.Text // JSON: Aşamadan çıkışta yapılacak aksiyonlar
+  requiredFields  String?          @db.Text // JSON: Zorunlu alanlar/kayıtlar (not, teklif vb.)
+  createdAt       DateTime         @default(now())
+  funnel          Funnel           @relation(fields: [funnelId], references: [id], onDelete: Cascade)
   channelRoutings ChannelRouting[] @relation("ChannelRoutingStage")
 
   @@index([funnelId])
@@ -1583,12 +1593,12 @@ model ContactActivity {
 
   // ─── İnsan Araması Sonuç Bilgileri ────────────────────────
   callSuccessful Boolean? // true = ulaşıldı/konuşuldu, false = açmadı/kapattı
-  callSentiment  String?  // "Positive", "Neutral", "Negative"
+  callSentiment  String? // "Positive", "Neutral", "Negative"
   // ──────────────────────────────────────────────────────────
 
   // Case (talep akışı) bağlantısı
-  caseId       String?
-  case         Case?     @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  caseId String?
+  case   Case?   @relation(fields: [caseId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1605,6 +1615,69 @@ model ContactActivity {
   @@index([type, status, dueDate]) // Overdue call query optimization
   @@index([caseId])
   @@map("contact_activities")
+}
+
+// ─── Kaynak Takibi (Attribution) ──────────────────────────────
+// Her lead'in nereden geldiğini takip eder:
+// Google Ads (gclid), Meta Ads (fbclid, ad_id), UTM parametreleri,
+// Form ID'leri, WhatsApp reklam referansları, landing page bilgisi
+model ContactAttribution {
+  id          String @id @default(uuid())
+  contactId   String
+  workspaceId String
+
+  // ─── Google ────────────────────────────────────────────────
+  gclid        String? // Google Ads Click ID
+  utm_source   String? // google, facebook, instagram, email
+  utm_medium   String? // cpc, social, email, organic
+  utm_campaign String? // yaz_kampanyasi_2026
+  utm_content  String? // banner_v2, video_ad
+  utm_term     String? // diş implant fiyat
+
+  // ─── Meta (Facebook/Instagram) ─────────────────────────────
+  fbclid           String? // Facebook Click ID
+  fb_ad_id         String? // Reklam ID
+  fb_adset_id      String? // AdSet ID
+  fb_campaign_id   String? // Kampanya ID
+  fb_ad_name       String? // Reklam adı
+  fb_campaign_name String? // Kampanya adı
+
+  // ─── WhatsApp Reklam ───────────────────────────────────────
+  wa_referral_headline    String? // Click-to-WhatsApp reklam başlığı
+  wa_referral_body        String? // Reklam gövdesi
+  wa_referral_source_id   String? // Kaynak ID (ad_id)
+  wa_referral_source_type String? // ad, post, organic
+  wa_ctwa_clid            String? // Click-to-WhatsApp Click ID
+
+  // ─── Meta Lead Gen Form ────────────────────────────────────
+  meta_lead_form_id   String? // Meta Lead Ads form ID
+  meta_lead_form_name String? // Form adı
+
+  // ─── Web Form ──────────────────────────────────────────────
+  form_id         String? // Elementor/WordPress form ID
+  form_name       String? // Form adı
+  form_webhook_id String? // FormWebhook kaydı ID
+
+  // ─── Genel ─────────────────────────────────────────────────
+  landing_page String? // İlk giriş sayfası URL'si
+  referrer     String? // Yönlendiren site (google.com, instagram.com)
+  channel      String? // WHATSAPP, FACEBOOK, INSTAGRAM, FORM, EMAIL, WEB_WIDGET
+  ip_address   String? // Ziyaretçi IP adresi
+  user_agent   String? // Tarayıcı bilgisi
+  raw_data     String? @db.Text // Tüm ham kaynak verisi (JSON)
+
+  createdAt DateTime @default(now())
+
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
+  @@index([workspaceId])
+  @@index([channel])
+  @@index([utm_source])
+  @@index([fb_campaign_id])
+  @@index([gclid])
+  @@map("contact_attributions")
 }
 
 // Global Flow Templates for Super Admin
@@ -1666,38 +1739,43 @@ model RetellAction {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Case {
-  id             String    @id @default(uuid())
-  workspaceId    String
-  contactId      String
-  caseNumber     String?   // CSE-2026-0001 (otomatik)
-  title          String    // "Gastroenteroloji Randevu", "2+1 Daire"
-  description    String?
-  status         String    @default("ACTIVE") // ACTIVE, WON, LOST, CLOSED
-  priority       String    @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  id          String  @id @default(uuid())
+  workspaceId String
+  contactId   String
+  caseNumber  String? // CSE-2026-0001 (otomatik)
+  title       String // "Gastroenteroloji Randevu", "2+1 Daire"
+  description String?
+  status      String  @default("ACTIVE") // ACTIVE, WON, LOST, CLOSED
+  priority    String  @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
 
   // Pipeline aşaması
-  funnelType     String?   // Pipeline ID (Funnel)
-  funnelStageId  String?   // Stage ID (FunnelStage)
+  funnelType    String? // Pipeline ID (Funnel)
+  funnelStageId String? // Stage ID (FunnelStage)
 
   // Atama
-  assignedToId   String?   // Atanan kişi
-  assignedTeamId String?   // Atanan takım
+  assignedToId   String? // Atanan kişi
+  assignedTeamId String? // Atanan takım
 
   // Zaman
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  closedAt       DateTime?
-  wonAt          DateTime?
-  lostAt         DateTime?
-  lostReason     String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  closedAt   DateTime?
+  wonAt      DateTime?
+  lostAt     DateTime?
+  lostReason String?
 
   // İlişkiler
-  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contact        Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  assignedTo     User?            @relation("CaseAssignee", fields: [assignedToId], references: [id])
-  team           Team?            @relation(fields: [assignedTeamId], references: [id])
-  conversations  Conversation[]
-  activities     ContactActivity[]
+  workspace     Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact       Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedTo    User?             @relation("CaseAssignee", fields: [assignedToId], references: [id])
+  team          Team?             @relation(fields: [assignedTeamId], references: [id])
+  conversations Conversation[]
+  activities    ContactActivity[]
+
+  // Ürün / Kategori
+  categoryId String?
+  category   TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  products   String         @default("[]") // JSON array [{productId, name, quantity, unitPrice}]
 
   @@index([workspaceId])
   @@index([contactId])
@@ -1735,23 +1813,23 @@ model Product {
 }
 
 model MarketingCampaign {
-  id             String                    @id @default(uuid())
+  id             String               @id @default(uuid())
   workspaceId    String
   name           String
   description    String?
   templateId     String
-  status         String                    @default("DRAFT") // DRAFT, SCHEDULED, RUNNING, COMPLETED, FAILED
+  status         String               @default("DRAFT") // DRAFT, SCHEDULED, RUNNING, COMPLETED, FAILED
   scheduledAt    DateTime?
   sentAt         DateTime?
-  totalCount     Int                       @default(0)
-  sentCount      Int                       @default(0)
-  deliveredCount Int                       @default(0)
-  readCount      Int                       @default(0)
-  failedCount    Int                       @default(0)
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
-  workspace      Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  template       WhatsappTemplate          @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  totalCount     Int                  @default(0)
+  sentCount      Int                  @default(0)
+  deliveredCount Int                  @default(0)
+  readCount      Int                  @default(0)
+  failedCount    Int                  @default(0)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template       WhatsappTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
   recipients     MarketingRecipient[]
 
   @@index([workspaceId])

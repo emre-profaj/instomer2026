@@ -106,25 +106,14 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
     return (
         <div className="arama-analizi-container">
             {/* Header */}
-            <div className="arama-analizi-header">
-                <div className="arama-analizi-title">
+            <div className="ceo-detail-header">
+                <div className="ceo-detail-header-left">
                     <h1>{title}</h1>
                     <p>{subtitle}</p>
                 </div>
-                
-                <div className="arama-analizi-actions">
-                    <button className="btn-refresh" onClick={() => window.print()}>
-                        <FileText size={15} />
-                        PDF İndir
-                    </button>
-                    <button className="btn-refresh" onClick={() => loadData(true)} disabled={refreshing}>
-                        <RefreshCw className={refreshing ? 'spin' : ''} size={15} />
-                        Güncelle
-                    </button>
-                </div>
             </div>
 
-            <div className="ceo-filter-bar" style={{ marginBottom: '1.5rem', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '12px 20px' }}>
+            <div className="ceo-filter-bar">
                 <div className="ceo-filter-left">
                     <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
                     <div className="ceo-pill-group">
@@ -139,6 +128,14 @@ const ActivityListAnalytics = ({ type, title, subtitle, icon: Icon }) => {
                             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
                         </div>
                     )}
+                </div>
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={() => loadData(true)} disabled={refreshing}>
+                        <RefreshCw className={refreshing ? 'spin' : ''} size={14} /> Güncelle
+                    </button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}>
+                        <FileText size={14} /> Raporu İndir
+                    </button>
                 </div>
             </div>
 

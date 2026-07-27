@@ -501,7 +501,7 @@ const CeoReport = () => {
     const [contactStats, setContactStats] = useState(null);
     const [leadsByForm, setLeadsByForm] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
 
@@ -684,55 +684,46 @@ const CeoReport = () => {
                 </span>
             </div>
 
-            {/* ═══════ SINGLE-ROW HEADER ═══════ */}
-            <div className="dash-topbar">
-                <h1 className="dash-topbar-title">Dashboard</h1>
-                <div className="dash-topbar-pills">
-                    {dateFilterOptions.map(item => (
-                        <button
-                            key={item.key}
-                            className={`dash-pill${dateFilter === item.key ? ' active' : ''}`}
-                            onClick={() => setDateFilter(item.key)}
-                        >
-                            {item.label}
-                        </button>
-                    ))}
+            {/* ═══════ HEADER ═══════ */}
+            <div className="ceo-detail-header">
+                <div className="ceo-detail-header-left">
+                    <h1>Dashboard</h1>
+                    <p>Genel iş performansı ve analiz özeti</p>
                 </div>
-                {dateFilter === 'custom' && (
-                    <div className="dash-topbar-dates">
-                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="dash-date-input" />
-                        <span>—</span>
-                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="dash-date-input" />
+            </div>
+
+            <div className="ceo-filter-bar">
+                <div className="ceo-filter-left">
+                    <div className="ceo-filter-label"><Filter size={14} /><span>Filtreler</span></div>
+                    <div className="ceo-pill-group">
+                        {dateFilterOptions.map(item => (
+                            <button
+                                key={item.key}
+                                className={`ceo-pill${dateFilter === item.key ? ' active' : ''}`}
+                                onClick={() => setDateFilter(item.key)}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
                     </div>
-                )}
-                {funnels.length > 0 && (
-                    <select value={funnelFilter} onChange={(e) => setFunnelFilter(e.target.value)} className="dash-funnel-select">
-                        <option value="">Tüm Akışlar</option>
-                        {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
-                )}
-                <button className="dash-refresh-btn" onClick={fetchData} title="Güncelle">
-                    <RefreshCw size={14} />
-                </button>
-                <button className="dash-download-btn" onClick={handleDownload} title="PDF Olarak İndir" style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    background: '#6366f1',
-                    border: 'none',
-                    color: '#fff',
-                    fontSize: '0.78rem',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    marginLeft: '12px'
-                }}>
-                    <FileText size={14} />
-                    <span>Raporu İndir</span>
-                </button>
+                    {dateFilter === 'custom' && (
+                        <div className="ceo-custom-dates">
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="ceo-date-input" />
+                            <span style={{ color: '#9ca3af' }}>—</span>
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="ceo-date-input" />
+                        </div>
+                    )}
+                    {funnels.length > 0 && (
+                        <select value={funnelFilter} onChange={(e) => setFunnelFilter(e.target.value)} className="dash-funnel-select">
+                            <option value="">Tüm Akışlar</option>
+                            {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                    )}
+                </div>
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={handleDownload} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
+                </div>
             </div>
 
             {/* ═══════ KPI SUMMARY ROW ═══════ */}

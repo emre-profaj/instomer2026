@@ -20,7 +20,7 @@ const AICallReport = () => {
     const [analytics, setAnalytics] = useState(null);
     const [agentPerformance, setAgentPerformance] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || '30d');
+    const [dateFilter, setDateFilter] = useState(() => sessionStorage.getItem('reportDateFilter') || 'thisMonth');
     const [startDate, setStartDate] = useState(() => sessionStorage.getItem('reportStartDate') || '');
     const [endDate, setEndDate] = useState(() => sessionStorage.getItem('reportEndDate') || '');
 
@@ -81,10 +81,7 @@ const AICallReport = () => {
                     <h1><Bot size={24} style={{ color: '#8b5cf6' }} /> AI Arama Analizi</h1>
                     <p>Yapay zeka destekli otomatik arama performansı</p>
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
-                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
-                </div>
+
             </div>
 
             {/* Filters */}
@@ -103,6 +100,10 @@ const AICallReport = () => {
                             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="ceo-date-input" />
                         </div>
                     )}
+                </div>
+                <div className="ceo-filter-right">
+                    <button className="ceo-refresh-btn" onClick={fetchData}><RefreshCw size={14} /> Güncelle</button>
+                    <button className="ceo-refresh-btn" onClick={() => window.print()} style={{ background: '#6366f1', color: 'white' }}><FileText size={14} /> Raporu İndir</button>
                 </div>
             </div>
 

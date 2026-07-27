@@ -777,6 +777,8 @@ function AnalyticsTab({ wsId }) {
     const [clearing, setClearing] = useState(false);
     const [statusFilter, setStatusFilter] = useState('');
     const [search, setSearch] = useState('');
+    const [retrying, setRetrying] = useState(false);
+    const [campaignRecipients, setCampaignRecipients] = useState([]);
     const [inputSearch, setInputSearch] = useState('');
     const [sortCol, setSortCol] = useState('sentAt');
     const [sortDir, setSortDir] = useState('desc');
@@ -824,15 +826,47 @@ function AnalyticsTab({ wsId }) {
         setClearing(false);
     };
 
+    const fetchRecipients = useCallback(async (campaignId) => {
+        if (!wsId || !campaignId) return;
+        try {
+            const res = await api.get(`/marketing/${wsId}/campaigns/${campaignId}/recipients`);
+            setCampaignRecipients(res.data.recipients || res.data || []);
+        } catch (e) { console.error(e); }
+    }, [wsId]);
+
+    const handleRetry = async (campaignId) => {
+        if (!campaignId) return alert('Kampanya ID bulunamadı.');
+        setRetrying(true);
+        try {
+            await api.post(`/marketing/${wsId}/campaigns/${campaignId}/retry`);
+            alert('Başarısız mesajlar için yeniden gönderim başlatıldı!');
+            fetchAnalytics();
+            fetchRecipients(campaignId);
+        } catch (e) {
+            alert('Hata: ' + (e.response?.data?.error || e.message));
+        }
+        setRetrying(false);
+    };
+
     const overall = data?.overall || {};
     const templates = data?.templates || [];
     const sel = selectedTemplate ? templates.find(t => t.templateName === selectedTemplate) : null;
+
+    useEffect(() => {
+        const cId = sel?.id || sel?.campaignId;
+        if (cId) {
+            fetchRecipients(cId);
+        } else {
+            setCampaignRecipients([]);
+        }
+    }, [sel, fetchRecipients]);
 
     const readRate = overall.totalSent > 0 ? Math.round((overall.totalRead / overall.totalSent) * 100) : 0;
     const deliveryRate = overall.totalSent > 0 ? Math.round((overall.totalDelivered / overall.totalSent) * 100) : 0;
     const failedCount = sel ? (sel.recipients || []).filter(r => r.status === 'FAILED').length : 0;
 
-    const filteredRecipients = (sel?.recipients || [])
+    const baseRecipients = campaignRecipients.length > 0 ? campaignRecipients : (sel?.recipients || []);
+    const filteredRecipients = baseRecipients
         .filter(r => {
             if (statusFilter && r.status !== statusFilter) return false;
             if (dateFrom) {
@@ -945,7 +979,17 @@ function AnalyticsTab({ wsId }) {
                                 <div className="mkt-detail-header">
                                     <div className="mkt-detail-title-row">
                                         <span className="mkt-detail-tpl-name">📄 {sel.templateName}</span>
-                                        <div style={{ display: 'flex', gap: 6 }}>
+                                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                            {(sel.failed > 0 || sel.failedCount > 0) && (
+                                                <button 
+                                                    className="mkt-btn-primary" 
+                                                    style={{ background: '#3b82f6', borderColor: '#2563eb' }}
+                                                    onClick={() => handleRetry(sel.id || sel.campaignId)}
+                                                    disabled={retrying}
+                                                >
+                                                    {retrying ? '⏳ Bekleyin...' : '🔄 Tekrar Gönder'}
+                                                </button>
+                                            )}
                                             <button className="mkt-clear-tpl-btn" onClick={() => handleClearTemplate(sel.templateName)} disabled={clearing}>🗑️ Geçmişi Temizle</button>
                                             <button className="mkt-close-btn" onClick={() => setSelectedTemplate(null)}>✕</button>
                                         </div>
@@ -957,6 +1001,36 @@ function AnalyticsTab({ wsId }) {
                                         <div className="mkt-rate-item"><div className="mkt-rate-label">Bekliyor</div><div className="mkt-rate-val" style={{ color: '#2563eb' }}>{sel.sent}</div></div>
                                         <div className="mkt-rate-item"><div className="mkt-rate-label">Başarısız</div><div className="mkt-rate-val" style={{ color: '#dc2626' }}>{sel.failed} <small>%{sel.failRate}</small></div></div>
                                     </div>
+                                    
+                                    {(() => {
+                                        const cRecs = campaignRecipients.length > 0 ? campaignRecipients : (sel.recipients || []);
+                                        const tot = cRecs.length;
+                                        if (tot === 0) return null;
+                                        const stats = { PENDING: 0, SENT: 0, DELIVERED: 0, READ: 0, FAILED: 0 };
+                                        cRecs.forEach(r => {
+                                            const st = (r.status || '').toUpperCase();
+                                            if (stats[st] !== undefined) stats[st]++;
+                                        });
+                                        return (
+                                            <div style={{ marginTop: '16px', padding: '0 4px' }}>
+                                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>Alıcı Durumu</div>
+                                                <div style={{ display: 'flex', height: '10px', borderRadius: '5px', overflow: 'hidden', background: '#e5e7eb' }}>
+                                                    <div style={{ width: `${(stats.READ / tot) * 100}%`, background: '#3b82f6' }} title={`Okundu: ${stats.READ}`} />
+                                                    <div style={{ width: `${(stats.DELIVERED / tot) * 100}%`, background: '#22c55e' }} title={`Teslim Edildi: ${stats.DELIVERED}`} />
+                                                    <div style={{ width: `${(stats.SENT / tot) * 100}%`, background: '#eab308' }} title={`Gönderildi: ${stats.SENT}`} />
+                                                    <div style={{ width: `${(stats.PENDING / tot) * 100}%`, background: '#9ca3af' }} title={`Bekliyor: ${stats.PENDING}`} />
+                                                    <div style={{ width: `${(stats.FAILED / tot) * 100}%`, background: '#ef4444' }} title={`Başarısız: ${stats.FAILED}`} />
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '12px', color: '#4b5563', flexWrap: 'wrap' }}>
+                                                    {stats.READ > 0 && <span>🔵 Okundu: %{Math.round((stats.READ / tot) * 100)}</span>}
+                                                    {stats.DELIVERED > 0 && <span>🟢 Teslim: %{Math.round((stats.DELIVERED / tot) * 100)}</span>}
+                                                    {stats.SENT > 0 && <span>🟡 Gönderildi: %{Math.round((stats.SENT / tot) * 100)}</span>}
+                                                    {stats.PENDING > 0 && <span>⬜ Bekliyor: %{Math.round((stats.PENDING / tot) * 100)}</span>}
+                                                    {stats.FAILED > 0 && <span>🔴 Başarısız: %{Math.round((stats.FAILED / tot) * 100)}</span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 <div className="mkt-filters">
