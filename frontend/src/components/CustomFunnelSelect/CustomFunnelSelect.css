@@ -1,0 +1,132 @@
+.custom-funnel-select-container {
+    width: 100%;
+    flex: 1;
+    max-width: 160px;
+    font-family: inherit;
+    font-size: 13px;
+}
+
+.custom-funnel-select-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s;
+    min-height: 34px;
+}
+
+.custom-funnel-select-trigger:hover {
+    border-color: #94a3b8;
+}
+
+.trigger-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #334155;
+    font-weight: 500;
+}
+
+.trigger-icon {
+    color: #64748b;
+    transition: transform 0.2s;
+}
+
+.trigger-icon.open {
+    transform: rotate(180deg);
+}
+
+.custom-funnel-select-menu {
+    position: absolute;
+    background-color: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 999999;
+    font-family: inherit;
+    font-size: 13px;
+}
+
+.menu-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    color: #334155;
+    transition: background-color 0.15s;
+    font-size: 13px;
+}
+
+.menu-item:hover {
+    background-color: #f1f5f9;
+}
+
+.menu-item.selected {
+    background-color: #e0f2fe;
+    color: #0284c7;
+    font-weight: 500;
+}
+
+.clear-item {
+    font-style: italic;
+    color: #64748b;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.funnel-group {
+    position: relative;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.funnel-group:last-child {
+    border-bottom: none;
+}
+
+.funnel-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    cursor: pointer;
+    background-color: #fff;
+    font-weight: 500;
+    color: #334155;
+    transition: background-color 0.15s;
+}
+
+.funnel-group-header:hover, .funnel-group:hover > .funnel-group-header {
+    background-color: #f1f5f9;
+}
+
+.expand-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+}
+
+/* Flyout Submenu */
+.funnel-submenu {
+    position: absolute;
+    top: -1px;
+    left: 100%; /* Show on the right side */
+    width: 200px;
+    background-color: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000000;
+    display: none;
+    padding: 4px 0;
+}
+
+.funnel-group:hover .funnel-submenu {
+    display: block;
+}
+
+.stage-item {
+    padding: 8px 12px;
+}

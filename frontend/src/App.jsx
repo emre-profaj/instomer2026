@@ -11,7 +11,6 @@ import Conversations from './pages/Conversations/Conversations';
 import Settings from './pages/Settings/Settings';
 import WorkspaceSettings from './pages/Settings/WorkspaceSettings';
 // TopicCategories moved to Products page as tab
-import Assistants from './pages/Assistants/Assistants';
 import Comments from './pages/Comments/Comments';
 import Channels from './pages/Channels/Channels';
 
@@ -100,7 +99,6 @@ function App() {
               <Route path="emails" element={<Navigate to="/inbox" replace />} />
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
-              <Route path="assistants" element={<Assistants />} />
               <Route path="channels" element={<Channels />} />
 
               <Route path="teams" element={<Users />} />

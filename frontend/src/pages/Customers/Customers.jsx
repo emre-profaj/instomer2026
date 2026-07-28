@@ -2572,11 +2572,11 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             || cases[0]
                                                             || null;
 
-                                                        if (liveActiveCase && (liveActiveCase.assignedTeamId || liveActiveCase.assignedToId)) {
-                                                            teamId = liveActiveCase.assignedTeamId;
+                                                        if (liveActiveCase && (liveActiveCase?.assignedTeamId || liveActiveCase?.assignedToId)) {
+                                                            teamId = liveActiveCase?.assignedTeamId;
                                                             agentName = liveActiveCase.assignedTo?.name
                                                                 || liveActiveCase.assignedToName
-                                                                || members.find(m => m.userId === liveActiveCase.assignedToId)?.user?.name
+                                                                || members.find(m => m.userId === liveActiveCase?.assignedToId)?.user?.name
                                                                 || null;
                                                         } else {
                                                             // 2. Case yoksa veya case'de atama yoksa → konuşmadan çek
@@ -2589,8 +2589,8 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                             }
                                                             if (!conv) return '---';
                                                             
-                                                            teamId = conv.assignedTeamId || (() => {
-                                                                try { return JSON.parse(conv.teamIds || '[]')[0]; } catch { return null; }
+                                                            teamId = conv?.assignedTeamId || (() => {
+                                                                try { return JSON.parse(conv?.teamIds || '[]')[0]; } catch { return null; }
                                                             })();
                                                             agentName = conv.assignedTo?.name || null;
                                                         }

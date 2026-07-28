@@ -1132,6 +1132,8 @@ model Deal {
   // Relations
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contact      Contact       @relation(fields: [contactId], references: [id])
+  caseId       String?
+  case         Case?         @relation(fields: [caseId], references: [id], onDelete: SetNull)
   assignedTo   User?         @relation("DealAssignee", fields: [assignedToId], references: [id])
   conversation Conversation? @relation(fields: [conversationId], references: [id])
 
@@ -1772,6 +1774,7 @@ model Case {
   team          Team?             @relation(fields: [assignedTeamId], references: [id])
   conversations Conversation[]
   activities    ContactActivity[]
+  deals         Deal[]
 
   // Ürün / Kategori
   categoryId String?

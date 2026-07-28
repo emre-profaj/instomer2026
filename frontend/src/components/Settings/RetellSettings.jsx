@@ -4,7 +4,7 @@ import { retellAPI, facebookAPI, whatsappAPI, emailAPI, formWebhookAPI, webWidge
 import { Phone, Key, Bot, Save, Loader, CheckCircle, AlertCircle, RefreshCw, Clock, Calendar, PhoneCall, Trash2, Plus, Zap, XCircle, BookOpen } from 'lucide-react';
 import { RetellAgentManager, RetellKnowledgeBaseSync } from './RetellAgentManager';
 
-const RetellSettings = ({ onSave }) => {
+const RetellSettings = ({ onSave, hideApiSetup = false }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
     const [activeTab, setActiveTab] = useState('general');
@@ -308,6 +308,7 @@ const RetellSettings = ({ onSave }) => {
         <div className="settings-section">
 
             {/* Tab Navigation */}
+            {!hideApiSetup && (
             <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 }}>
                 {[
                     { id: 'general', icon: <Phone size={15} />, label: '⚙️ Genel Ayarlar' },
@@ -331,6 +332,7 @@ const RetellSettings = ({ onSave }) => {
                     </button>
                 ))}
             </div>
+            )}
 
             {activeTab === 'agents' && (
                 <RetellAgentManager workspaceId={workspaceId} />
@@ -356,6 +358,7 @@ const RetellSettings = ({ onSave }) => {
             )}
 
             {/* RETELL CONFIG CARD */}
+            {!hideApiSetup && (
             <div className="card" style={{ padding: 24, position: 'relative' }}>
                 <button onClick={handleRemoveSetup} disabled={saving}
                     style={{
@@ -415,6 +418,7 @@ const RetellSettings = ({ onSave }) => {
                     />
                 </div>
             </div>
+            )}
 
             {/* AUTO CALL CARD — Routing Style */}
             <div className="card" style={{ padding: 24, marginTop: 20 }}>

@@ -1,7 +1,8 @@
 import prisma from '../lib/prisma.js';
 import { emitToWorkspace } from '../socket.js';
 import { executeHotOpportunityEmailRule } from './rules.controller.js';
-import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { normalizePhone, normalizePhonesArray } from '../utils/phoneNormalizer.js';
+import { mergeContacts } from '../services/contactMerge.service.js';
 import { ensureCaseForConversation } from './case.controller.js';
 import { evaluateAndApplyRules } from '../services/stageRuleEngine.service.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -1817,10 +1818,46 @@ export const updateContact = async (req, res) => {
             console.log(`📱 [Contact] Auto-upgrading status to OPPORTUNITY (phone added): ${id}`);
         }
 
-        const contact = await prisma.contact.update({
-            where: { id },
-            data: updateData
-        });
+        let contact = null;
+
+        // ── Auto Merge Logic if phone changes ──
+        if (newPhone && newPhone !== existing.phone) {
+            const normalizedNewPhone = normalizePhone(newPhone);
+            const phoneVariants = [...new Set([newPhone, normalizedNewPhone])];
+            
+            if (newPhone.startsWith('90') && newPhone.length === 12) {
+                phoneVariants.push('+' + newPhone, '0' + newPhone.slice(2));
+            }
+            if (normalizedNewPhone.startsWith('+90')) {
+                phoneVariants.push(normalizedNewPhone.slice(1), '0' + normalizedNewPhone.slice(3));
+            }
+
+            const duplicateContact = await prisma.contact.findFirst({
+                where: {
+                    workspaceId,
+                    id: { not: existing.id },
+                    OR: phoneVariants.map(p => ({ phone: p }))
+                }
+            });
+
+            if (duplicateContact) {
+                // Merge current (existing) contact into the duplicateContact
+                console.log(`🔗 [Auto-Merge] Contact phone update triggered merge. Target: ${duplicateContact.id}, Source: ${existing.id}`);
+                // Before merging, apply the requested updates to duplicateContact
+                await prisma.contact.update({
+                    where: { id: duplicateContact.id },
+                    data: updateData // Apply the updates the user just made
+                });
+                contact = await mergeContacts(duplicateContact.id, existing.id);
+            }
+        }
+
+        if (!contact) {
+            contact = await prisma.contact.update({
+                where: { id },
+                data: updateData
+            });
+        }
 
         // ── Auto-update Case status based on stage's statusType ──
         if (funnelStageId !== undefined && funnelStageId !== existing.funnelStageId) {

@@ -9,6 +9,8 @@ import { getIO, emitToWorkspace } from '../socket.js';
 import { checkAiUsageLimit, incrementAiUsage } from '../services/aiUsage.service.js';
 import { isEmojiOrIconOnly } from '../utils/messageClassifier.js';
 import { hasProfanity } from '../utils/profanityFilter.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { mergeContacts } from '../services/contactMerge.service.js';
 
 
 // Lock to prevent duplicate AI replies for same conversation
@@ -3555,16 +3557,52 @@ JSON:`;
                 console.log(`📱 [AI Auto-Extract] Auto-upgrading status to OPPORTUNITY (phone extracted)`);
             }
 
-            console.log(`💾 [AI Auto-Extract] Saving new info for contact ${conversation.contact.id}:`, updateData);
-            await prisma.contact.update({
-                where: { id: conversation.contact.id },
-                data: updateData
-            });
+            let finalContactId = conversation.contact.id;
+
+            // ── Auto Merge Logic if phone changes ──
+            if (updateData.phone && updateData.phone !== conversation.contact.phone) {
+                const normalizedNewPhone = normalizePhone(updateData.phone);
+                const phoneVariants = [...new Set([updateData.phone, normalizedNewPhone])];
+                
+                if (updateData.phone.startsWith('90') && updateData.phone.length === 12) {
+                    phoneVariants.push('+' + updateData.phone, '0' + updateData.phone.slice(2));
+                }
+                if (normalizedNewPhone.startsWith('+90')) {
+                    phoneVariants.push(normalizedNewPhone.slice(1), '0' + normalizedNewPhone.slice(3));
+                }
+
+                const duplicateContact = await prisma.contact.findFirst({
+                    where: {
+                        workspaceId,
+                        id: { not: conversation.contact.id },
+                        OR: phoneVariants.map(p => ({ phone: p }))
+                    }
+                });
+
+                if (duplicateContact) {
+                    console.log(`🔗 [Auto-Merge] AI phone extraction triggered merge. Target: ${duplicateContact.id}, Source: ${conversation.contact.id}`);
+                    // Before merging, apply the requested updates to duplicateContact
+                    await prisma.contact.update({
+                        where: { id: duplicateContact.id },
+                        data: updateData
+                    });
+                    const mergedContact = await mergeContacts(duplicateContact.id, conversation.contact.id);
+                    finalContactId = mergedContact.id;
+                }
+            }
+
+            if (finalContactId === conversation.contact.id) {
+                console.log(`💾 [AI Auto-Extract] Saving new info for contact ${conversation.contact.id}:`, updateData);
+                await prisma.contact.update({
+                    where: { id: conversation.contact.id },
+                    data: updateData
+                });
+            }
 
             // Emit socket event (workspace-specific)
             emitToWorkspace(workspaceId, 'contact_updated', {
                 workspaceId,
-                contactId: conversation.contact.id,
+                contactId: finalContactId,
                 updatedFields: updateData
             });
             console.log('📡 [AI Auto-Extract] WebSocket event (contact_updated) emitted to workspace');
@@ -3575,8 +3613,8 @@ JSON:`;
             if (updateData.phone) {
                 try {
                     const { executeAutoCallPlanning } = await import('./rules.controller.js');
-                    console.log(`📞 [AI Auto-Extract] Phone extracted → triggering auto call planning for contact ${conversation.contact.id}`);
-                    await executeAutoCallPlanning(workspaceId, conversation.contact.id, conversation.channel || 'AI_EXTRACT');
+                    console.log(`📞 [AI Auto-Extract] Phone extracted → triggering auto call planning for contact ${finalContactId}`);
+                    await executeAutoCallPlanning(workspaceId, finalContactId, conversation.channel || 'AI_EXTRACT');
                 } catch (callErr) {
                     console.error('⚠️ [AI Auto-Extract] Auto call planning trigger error:', callErr.message);
                 }

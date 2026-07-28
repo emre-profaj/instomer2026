@@ -1,8 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { workspaceAPI, teamAPI, aiAPI, retellAPI } from '../../services/api';
+import { workspaceAPI, teamAPI, aiAPI, retellAPI, automationAPI } from '../../services/api';
 import AddMemberModal from '../../components/AddMemberModal';
+import BotModal from '../../components/Settings/BotModal';
+import RetellSettings from '../../components/Settings/RetellSettings';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import {
     Users as UsersIcon,
@@ -325,6 +327,11 @@ const UsersTeams = () => {
     // Bots (AI Assistants)
     const [bots, setBots] = useState([]);
     const [retellAgents, setRetellAgents] = useState([]);
+    const [botModal, setBotModal] = useState({ isOpen: false, bot: null });
+    const [showRetellModal, setShowRetellModal] = useState(false);
+    const [createBotModal, setCreateBotModal] = useState(false);
+    const [newBotName, setNewBotName] = useState('');
+    const [automationsList, setAutomationsList] = useState([]);
     const [expandedTeams, setExpandedTeams] = useState({});
 
     // Drag & drop — user onto team
@@ -341,8 +348,19 @@ const UsersTeams = () => {
     // Shared confirm modal
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, onConfirm: null, title: '', message: '' });
 
+    const loadUsersAndTeams = () => {
+        loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); loadAutomations();
+    };
+
+    const loadAutomations = async () => {
+        try {
+            const res = await automationAPI.getAutomations(currentWorkspace.id);
+            setAutomationsList(res.data.automations || []);
+        } catch { }
+    };
+
     useEffect(() => {
-        if (currentWorkspace) { loadMembers(); loadTeams(); loadBots(); loadRetellAgents(); }
+        if (currentWorkspace) { loadUsersAndTeams(); }
     }, [currentWorkspace]);
 
     // ── Loaders ──────────────────────────────────────────────
@@ -386,7 +404,27 @@ const UsersTeams = () => {
         catch (err) { alert('Arama asistanı çıkarılamadı: ' + (err.response?.data?.error || err.message)); }
     };
 
-    // ── Member actions ────────────────────────────────────────
+    const handleDeleteBot = async (botId) => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Asistanı Sil',
+            message: 'Bu asistanı silmek istediğinize emin misiniz?',
+            confirmText: 'Sil',
+            type: 'danger',
+            onConfirm: async () => {
+                setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                try {
+                    await aiAPI.deleteBot(currentWorkspace.id, botId);
+                    setBotModal({ isOpen: false, bot: null });
+                    loadBots();
+                } catch (error) {
+                    alert('Asistan silinemedi.');
+                }
+            }
+        });
+    };
+
+    // ── Update member role ────────────────────────────────────────
     const canManage = () => ['SUPER_ADMIN', 'OWNER'].includes(user?.role);
 
     const handleRemoveMember = (targetUserId) => {
@@ -570,15 +608,6 @@ const UsersTeams = () => {
             setExpandedTeams(p => ({ ...p, [targetTeam.id]: true }));
             loadTeams();
         } catch { alert('Takım taşınamadı'); }
-    };
-
-    // ── Find team name helper ─────────────────────────────────
-    const findTeamName = (list, id) => {
-        for (const t of list) {
-            if (t.id === id) return t.name;
-            if (t.children) { const n = findTeamName(t.children, id); if (n) return n; }
-        }
-        return null;
     };
 
     // ── Render team card (recursive) ──────────────────────────
@@ -772,6 +801,12 @@ const UsersTeams = () => {
                     <button className="ut-btn-outline" onClick={() => setShowAddMemberModal(true)}>
                         <Plus size={15} /> Kullanıcı Ekle
                     </button>
+                    <button className="ut-btn-outline" onClick={() => setCreateBotModal(true)}>
+                        <Bot size={15} /> AI Asistan Ekle
+                    </button>
+                    <button className="ut-btn-outline" onClick={() => setShowRetellModal(true)}>
+                        <Phone size={15} /> Sesli Asistan Ekle
+                    </button>
                     <button className="ut-btn-primary" onClick={() => setTeamModal({ show: true, team: null, parentId: null, parentName: null })}>
                         <Plus size={15} /> Takım Oluştur
                     </button>
@@ -857,7 +892,9 @@ const UsersTeams = () => {
                                         className="ut-user-card ut-bot-card"
                                         draggable
                                         onDragStart={e => handleBotDragStart(e, bot)}
-                                        title="Takıma eklemek için sürükle"
+                                        onClick={() => setBotModal({ isOpen: true, bot })}
+                                        title="Düzenlemek için tıklayın. Takıma eklemek için sürükleyin."
+                                        style={{ cursor: 'pointer' }}
                                     >
                                         <div className="ut-user-drag-handle"><GripVertical size={14} /></div>
                                         <div className="ut-user-avatar-wrap">
@@ -885,8 +922,9 @@ const UsersTeams = () => {
                                         className="ut-user-card ut-bot-card"
                                         draggable
                                         onDragStart={e => handleRetellAgentDragStart(e, agent)}
-                                        title="Takıma eklemek için sürükle"
-                                        style={{ borderLeftColor: '#0d9488' }}
+                                        onClick={() => setShowRetellModal(true)}
+                                        title="Düzenlemek için tıklayın. Takıma eklemek için sürükleyin."
+                                        style={{ borderLeftColor: '#0d9488', cursor: 'pointer' }}
                                     >
                                         <div className="ut-user-drag-handle"><GripVertical size={14} /></div>
                                         <div className="ut-user-avatar-wrap">
@@ -972,6 +1010,68 @@ const UsersTeams = () => {
                 onCancel={() => setConfirmModal(p => ({ ...p, isOpen: false }))}
                 type={confirmModal.type}
             />
+
+            {createBotModal && (
+                <div className="ut-modal-overlay" onClick={() => setCreateBotModal(false)}>
+                    <div className="ut-modal" onClick={e => e.stopPropagation()}>
+                        <div className="ut-modal-header">
+                            <h3>Yeni AI Asistan Ekle</h3>
+                            <button className="ut-modal-close" onClick={() => setCreateBotModal(false)}><X size={18} /></button>
+                        </div>
+                        <form onSubmit={async (e) => {
+                            e.preventDefault();
+                            try {
+                                const res = await aiAPI.createBot(currentWorkspace.id, {
+                                    name: newBotName,
+                                    role: 'AI Asistan',
+                                    prompt: 'Sen yardımsever bir müşteri temsilcisisin.',
+                                    botType: 'CHATS'
+                                });
+                                setCreateBotModal(false);
+                                setNewBotName('');
+                                loadUsersAndTeams();
+                                setBotModal({ isOpen: true, bot: res.data.bot });
+                            } catch (err) {
+                                alert("Bot oluşturulamadı: " + (err.response?.data?.error || err.message));
+                            }
+                        }} className="ut-modal-body">
+                            <div className="ut-form-group">
+                                <label>Asistan Adı</label>
+                                <input type="text" value={newBotName} onChange={e => setNewBotName(e.target.value)} required autoFocus placeholder="Örn: Profiy Destek Botu" />
+                            </div>
+                            <div className="ut-modal-footer">
+                                <button type="button" className="ut-btn-secondary" onClick={() => setCreateBotModal(false)}>İptal</button>
+                                <button type="submit" className="ut-btn-primary">Oluştur</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {botModal.isOpen && botModal.bot && (
+                <BotModal 
+                    isOpen={botModal.isOpen} 
+                    bot={botModal.bot} 
+                    workspaceId={currentWorkspace?.id} 
+                    automationsList={automationsList}
+                    onRefresh={loadUsersAndTeams} 
+                    onDelete={handleDeleteBot}
+                    onClose={() => setBotModal({ isOpen: false, bot: null })} 
+                />
+            )}
+
+            {showRetellModal && (
+                <div className="ut-modal-overlay" onClick={() => setShowRetellModal(false)}>
+                    <div className="ut-modal ut-modal-wide" style={{ width: '900px', maxHeight: '90vh', overflowY: 'auto', padding: 0 }} onClick={e => e.stopPropagation()}>
+                        <div className="ut-modal-header" style={{ position: 'absolute', top: 0, right: 0, zIndex: 10, background: 'transparent', borderBottom: 'none' }}>
+                            <button className="ut-modal-close" onClick={() => setShowRetellModal(false)}><X size={20} color="#6b7280" /></button>
+                        </div>
+                        <div className="ut-modal-body" style={{ padding: '24px', paddingTop: '40px' }}>
+                            <RetellSettings hideApiSetup={true} onSave={() => loadUsersAndTeams()} />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -247,7 +247,8 @@ export const createDeal = async (req, res) => {
             conversationId: conversationId || null,
             channel: channel || null,
             sourceNote: sourceNote || null,
-            protocolNo: protocolNo || null
+            protocolNo: protocolNo || null,
+            caseId: req.body.caseId || null
         };
 
         // assignedToId varsa atayan bilgisini ekle
@@ -337,7 +338,9 @@ export const updateDeal = async (req, res) => {
             // Kaynak notu
             sourceNote,
             // Protokol No
-            protocolNo
+            protocolNo,
+            // İlişkili Case
+            caseId
         } = req.body;
 
         // Mevcut deal'ı kontrol et
@@ -354,6 +357,7 @@ export const updateDeal = async (req, res) => {
         if (description !== undefined) updateData.description = description;
         if (amount !== undefined) updateData.amount = parseFloat(amount);
         if (currency !== undefined) updateData.currency = currency;
+        if (caseId !== undefined) updateData.caseId = caseId || null;
         if (products !== undefined) {
             // Ürün bilgisini zenginleştir: productId, groupName, categoryId ekle
             let enrichedProducts = products;

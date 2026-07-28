@@ -1,6 +1,5 @@
 import prisma from '../lib/prisma.js';
 
-
 // Tüm kanal yönlendirmelerini getir
 export const getChannelRoutings = async (req, res) => {
     try {
@@ -14,42 +13,24 @@ export const getChannelRoutings = async (req, res) => {
                         id: true,
                         name: true,
                         color: true,
-                        assignedBot: {
-                            select: {
-                                id: true,
-                                name: true
-                            }
-                        }
+                        assignedBot: { select: { id: true, name: true } }
                     }
                 },
                 funnel: true,
-                stage: {
-                    select: {
-                        id: true,
-                        name: true
-                    }
-                }
+                stage: { select: { id: true, name: true } }
             },
             orderBy: { channel: 'asc' }
         });
 
-        // Tüm kanalları listele (yönlendirme olmasa bile)
         const allChannels = ['INSTAGRAM', 'FACEBOOK', 'WHATSAPP', 'EMAIL', 'WEB_WIDGET', 'FORM'];
-        
-        const channelRoutingsMap = routings.reduce((acc, r) => {
-            acc[r.channel] = r;
-            return acc;
-        }, {});
+        const channelRoutingsMap = routings.reduce((acc, r) => { acc[r.channel] = r; return acc; }, {});
 
         const fullRoutings = allChannels.map(channel => ({
             channel,
             routing: channelRoutingsMap[channel] || null
         }));
 
-        res.json({ 
-            routings,
-            channels: fullRoutings
-        });
+        res.json({ routings, channels: fullRoutings });
     } catch (error) {
         console.error('Get channel routings error:', error);
         res.status(500).json({ error: 'Kanal yönlendirmeleri alınamadı' });
@@ -62,70 +43,59 @@ export const upsertChannelRouting = async (req, res) => {
         const { workspaceId } = req.params;
         const { channel, teamId, botDelay, botEnabled, isActive, funnelId, pageId, accountName, stageId } = req.body;
 
-        if (!channel) {
-            return res.status(400).json({ error: 'Kanal gereklidir' });
-        }
+        if (!channel) return res.status(400).json({ error: 'Kanal gereklidir' });
 
-        // Ekibin var olduğunu kontrol et
         let team = null;
         if (teamId) {
-            team = await prisma.team.findFirst({
-                where: { id: teamId, workspaceId }
-            });
-
-            if (!team) {
-                return res.status(404).json({ error: 'Ekip bulunamadı' });
-            }
+            team = await prisma.team.findFirst({ where: { id: teamId, workspaceId } });
+            if (!team) return res.status(404).json({ error: 'Ekip bulunamadı' });
         }
 
-        const routing = await prisma.channelRouting.upsert({
+        let routing = await prisma.channelRouting.findFirst({
             where: {
-                workspaceId_channel: {
-                    workspaceId,
-                    channel
-                }
-            },
-            create: {
                 workspaceId,
                 channel,
-                teamId: teamId || null,
-                botDelay: botDelay ?? 30,
-                botEnabled: botEnabled ?? true,
-                isActive: isActive ?? true,
-                funnelId: funnelId || null,
-                stageId: stageId || null,
-                pageId: pageId || null,
-                accountName: accountName || null
-            },
-            update: {
-                teamId: teamId || null,
-                botDelay: botDelay ?? 30,
-                botEnabled: botEnabled ?? true,
-                isActive: isActive ?? true,
-                funnelId: funnelId || null,
-                stageId: stageId || null,
-                pageId: pageId || null,
-                accountName: accountName || null
-            },
-            include: {
-                team: {
-                    select: {
-                        id: true,
-                        name: true,
-                        color: true
-                    }
-                },
-                funnel: {
-                    select: { id: true, name: true, icon: true, color: true }
-                },
-                stage: {
-                    select: { id: true, name: true, color: true }
-                }
+                pageId: pageId || null
             }
         });
 
-        console.log(`📡 [ChannelRouting] ${channel} → ${team ? team.name : 'No Team'} (delay: ${routing.botDelay}s)`);
+        const data = {
+            teamId: teamId || null,
+            botDelay: botDelay ?? 30,
+            botEnabled: botEnabled ?? true,
+            isActive: isActive ?? true,
+            funnelId: funnelId || null,
+            stageId: stageId || null,
+            accountName: accountName || null
+        };
 
+        if (routing) {
+            routing = await prisma.channelRouting.update({
+                where: { id: routing.id },
+                data,
+                include: {
+                    team: { select: { id: true, name: true, color: true } },
+                    funnel: { select: { id: true, name: true, icon: true, color: true } },
+                    stage: { select: { id: true, name: true, color: true } }
+                }
+            });
+        } else {
+            routing = await prisma.channelRouting.create({
+                data: {
+                    workspaceId,
+                    channel,
+                    pageId: pageId || null,
+                    ...data
+                },
+                include: {
+                    team: { select: { id: true, name: true, color: true } },
+                    funnel: { select: { id: true, name: true, icon: true, color: true } },
+                    stage: { select: { id: true, name: true, color: true } }
+                }
+            });
+        }
+
+        console.log(`📡 [ChannelRouting] ${channel} → ${team ? team.name : 'No Team'} (delay: ${routing.botDelay}s)`);
         res.json({ routing });
     } catch (error) {
         console.error('Upsert channel routing error:', error);
@@ -137,17 +107,16 @@ export const upsertChannelRouting = async (req, res) => {
 export const deleteChannelRouting = async (req, res) => {
     try {
         const { workspaceId, channel } = req.params;
+        const pageId = req.query.pageId || null;
 
-        await prisma.channelRouting.delete({
-            where: {
-                workspaceId_channel: {
-                    workspaceId,
-                    channel
-                }
-            }
+        const routing = await prisma.channelRouting.findFirst({
+            where: { workspaceId, channel, pageId }
         });
 
-        console.log(`🗑️ [ChannelRouting] Deleted routing for ${channel}`);
+        if (routing) {
+            await prisma.channelRouting.delete({ where: { id: routing.id } });
+            console.log(`🗑️ [ChannelRouting] Deleted routing for ${channel}`);
+        }
 
         res.json({ message: 'Kanal yönlendirmesi silindi' });
     } catch (error) {
@@ -159,32 +128,17 @@ export const deleteChannelRouting = async (req, res) => {
 // Belirli bir kanal için yönlendirme bilgisini getir (webhook'lar için)
 export const getRoutingForChannel = async (workspaceId, channel) => {
     try {
-        const routing = await prisma.channelRouting.findUnique({
-            where: {
-                workspaceId_channel: {
-                    workspaceId,
-                    channel
-                }
-            },
+        const routing = await prisma.channelRouting.findFirst({
+            where: { workspaceId, channel, pageId: null },
             include: {
                 team: {
                     include: {
                         assignedBot: true,
-                        members: {
-                            include: {
-                                user: {
-                                    select: {
-                                        id: true,
-                                        name: true
-                                    }
-                                }
-                            }
-                        }
+                        members: { include: { user: { select: { id: true, name: true } } } }
                     }
                 }
             }
         });
-
         return routing;
     } catch (error) {
         console.error('Get routing for channel error:', error);

@@ -36,6 +36,7 @@ const Funnels = () => {
     const [members, setMembers] = useState([]);
     const [bots, setBots] = useState([]);
     const [templates, setTemplates] = useState([]);
+    const [automations, setAutomations] = useState([]);
     const [topicCategories, setTopicCategories] = useState([]);
 
     // Stage counts
@@ -75,16 +76,18 @@ const Funnels = () => {
 
     const loadTeamsAndMembers = async () => {
         try {
-            const [teamsRes, membersRes, botsRes, tplRes] = await Promise.all([
+            const [teamsRes, membersRes, botsRes, tplRes, autoRes] = await Promise.all([
                 teamAPI.getWorkspaceTeams(currentWorkspace.id).catch(() => ({ data: { teams: [] } })),
                 workspaceAPI.getMembers(currentWorkspace.id).catch(() => ({ data: { members: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
-                automationAPI.getTemplates(currentWorkspace.id).catch(() => ({ data: { templates: [] } }))
+                automationAPI.getTemplates(currentWorkspace.id).catch(() => ({ data: { templates: [] } })),
+                automationAPI.getAutomations(currentWorkspace.id).catch(() => ({ data: { automations: [] } }))
             ]);
             setTeams(teamsRes.data?.teams || []);
             setMembers(membersRes.data?.members?.map(m => m.user) || membersRes.data || []);
             setBots(botsRes.data?.bots || []);
             setTemplates(tplRes.data?.templates || tplRes.data || []);
+            setAutomations(autoRes.data?.automations || autoRes.data || []);
             // Topic Categories yükle
             try {
                 const catRes = await getTopicCategories(currentWorkspace.id);
@@ -798,6 +801,7 @@ const Funnels = () => {
                                                             </optgroup>
                                                             <optgroup label="🔄 Otomatik">
                                                                 <option value="AUTO_CHANNEL_MESSAGE">🔄 Yazıştığı Kanaldan Gönder</option>
+                                                                <option value="TRIGGER_AUTOMATION">🤖 Otomasyon Tetikle</option>
                                                             </optgroup>
                                                         </select>
                                                         <button className="btn-icon" onClick={() => {
@@ -816,6 +820,12 @@ const Funnels = () => {
                                                         <select className="action-param" value={a.botId || ''} onChange={e => updateEntryAction(i, { botId: e.target.value })}>
                                                             <option value="">Asistan Seç...</option>
                                                             {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {a.type === 'TRIGGER_AUTOMATION' && (
+                                                        <select className="action-param" value={a.automationId || ''} onChange={e => updateEntryAction(i, { automationId: e.target.value })}>
+                                                            <option value="">Otomasyon Seç...</option>
+                                                            {automations.map(auto => <option key={auto.id} value={auto.id}>{auto.name}</option>)}
                                                         </select>
                                                     )}
                                                     {a.type === 'SEND_EMAIL' && (

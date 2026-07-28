@@ -1,6 +1,8 @@
 import { validationResult } from 'express-validator';
 import prisma from '../lib/prisma.js';
 import { logEvent } from '../services/conversationEvent.service.js';
+import crypto from 'crypto';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
 import axios from 'axios';
 import { sendEmailReply } from './email.controller.js';
 import { getIO, emitToWorkspace, emitToUser } from '../socket.js';
@@ -2149,14 +2151,28 @@ export const createManualConversation = async (req, res) => {
         let contact = null;
 
         if (phone?.trim()) {
+            const trimmedPhone = phone.trim();
+            const normalizedPhone = normalizePhone(trimmedPhone);
+            const phoneVariants = [...new Set([trimmedPhone, normalizedPhone])];
+            
+            if (trimmedPhone.startsWith('90') && trimmedPhone.length === 12) {
+                phoneVariants.push('+' + trimmedPhone, '0' + trimmedPhone.slice(2));
+            }
+            if (normalizedPhone.startsWith('+90')) {
+                phoneVariants.push(normalizedPhone.slice(1), '0' + normalizedPhone.slice(3));
+            }
+
             contact = await prisma.contact.findFirst({
-                where: { phone: phone.trim() }
+                where: {
+                    workspaceId,
+                    OR: phoneVariants.map(p => ({ phone: p }))
+                }
             });
         }
 
         if (!contact && email?.trim()) {
             contact = await prisma.contact.findFirst({
-                where: { email: email.trim() }
+                where: { workspaceId, email: email.trim() }
             });
         }
 
@@ -2188,60 +2204,66 @@ export const createManualConversation = async (req, res) => {
             });
         }
 
-        // Check if there's already a conversation with this contact in this workspace
-        let conversation = await prisma.conversation.findFirst({
-            where: {
-                contactId: contact.id,
+        // Generate new Case Number
+        const lastCase = await prisma.case.findFirst({
+            where: { workspaceId },
+            orderBy: { createdAt: 'desc' }
+        });
+        let nextNumber = 1;
+        if (lastCase?.caseNumber) {
+            const parts = lastCase.caseNumber.split('-');
+            if (parts.length === 3) {
+                nextNumber = parseInt(parts[2], 10) + 1;
+            }
+        }
+        const caseNumber = `CSE-${new Date().getFullYear()}-${String(nextNumber).padStart(4, '0')}`;
+        const topic = aiTopic || description?.trim()?.substring(0, 100) || 'Manuel Kayıt';
+
+        console.log(`📝 [Manual Conversation] Creating new case and conversation`);
+        
+        // Create new Case
+        const newCase = await prisma.case.create({
+            data: {
                 workspaceId: workspaceId,
-                channel: 'MANUAL'
+                contactId: contact.id,
+                caseNumber,
+                title: topic,
+                status: 'ACTIVE',
+                priority: 'NORMAL',
+                assignedToId: req.user.id,
+                ...(funnelType && { funnelType }),
+                ...(funnelStageId && { funnelStageId })
             }
         });
 
-        if (conversation) {
-            console.log(`📝 [Manual Conversation] Found existing conversation: ${conversation.id}`);
-            // Update last message time to bring it to top
-            conversation = await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { lastMessageAt: new Date() },
-                include: {
-                    contact: true,
-                    messages: {
-                        orderBy: { createdAt: 'desc' },
-                        take: 1
-                    }
-                }
-            });
-        } else {
-            console.log(`📝 [Manual Conversation] Creating new conversation`);
-            conversation = await prisma.conversation.create({
-                data: {
-                    workspaceId: workspaceId,
-                    contactId: contact.id,
-                    channel: 'MANUAL',
-                    status: 'OPEN',
-                    lastMessageAt: date ? new Date(date) : new Date(),
-                    teamIds: '[]',
-                    assignedToId: req.user.id,
-                    ...(funnelType && { funnelType }),
-                    ...(funnelStageId && { funnelStageId }),
-                    ...(aiTopic && { aiTopic }),
-                    ...(utmSource && { utmSource }),
-                    ...(utmMedium && { utmMedium }),
-                    ...(utmCampaign && { utmCampaign }),
-                    ...(utmTerm && { utmTerm }),
-                    ...(utmContent && { utmContent })
-                },
-                include: {
-                    contact: true
-                }
-            });
-        }
+        const conversation = await prisma.conversation.create({
+            data: {
+                workspaceId: workspaceId,
+                contactId: contact.id,
+                caseId: newCase.id,
+                channel: 'MANUAL',
+                status: 'OPEN',
+                lastMessageAt: date ? new Date(date) : new Date(),
+                teamIds: '[]',
+                assignedToId: req.user.id,
+                ...(funnelType && { funnelType }),
+                ...(funnelStageId && { funnelStageId }),
+                ...(aiTopic && { aiTopic }),
+                ...(utmSource && { utmSource }),
+                ...(utmMedium && { utmMedium }),
+                ...(utmCampaign && { utmCampaign }),
+                ...(utmTerm && { utmTerm }),
+                ...(utmContent && { utmContent })
+            },
+            include: {
+                contact: true
+            }
+        });
 
         // Add structured lead-form-style message (like auto-captured leads)
         const contactName = name?.trim() || 'Bilinmeyen';
         const contactPhone = phone?.trim() || '';
         const contactEmail = email?.trim() || '';
-        const topic = aiTopic || description?.trim()?.substring(0, 100) || '';
         
         // Build structured message content like a lead form
         const lines = [];

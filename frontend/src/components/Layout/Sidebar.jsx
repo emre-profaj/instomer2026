@@ -62,7 +62,6 @@ const Sidebar = () => {
     const settingsSubItems = [
         { path: '/channels', icon: Radio, label: t('channels.title') },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
-        { path: '/assistants', icon: Bot, label: t('nav.assistants') },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
         { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' },

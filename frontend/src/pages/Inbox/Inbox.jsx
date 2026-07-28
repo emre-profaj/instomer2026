@@ -754,6 +754,29 @@ const Inbox = () => {
     const [newConversationDate, setNewConversationDate] = useState('');
     const [newConversationTopic, setNewConversationTopic] = useState('');
     const [creatingConversation, setCreatingConversation] = useState(false);
+    const [phoneSearchResults, setPhoneSearchResults] = useState([]);
+    const [isSearchingPhone, setIsSearchingPhone] = useState(false);
+
+    useEffect(() => {
+        if (!newConversationPhone || newConversationPhone.length < 3) {
+            setPhoneSearchResults([]);
+            return;
+        }
+        const timer = setTimeout(async () => {
+            setIsSearchingPhone(true);
+            try {
+                let phone = newConversationPhone.replace(/[\s\-\(\)]/g, '');
+                if (phone.startsWith('0')) phone = phone.substring(1);
+                const res = await contactAPI.getAll(currentWorkspace?.id, { search: phone });
+                setPhoneSearchResults(res.data?.contacts || []);
+            } catch (err) {
+                console.error('Error searching phone:', err);
+            } finally {
+                setIsSearchingPhone(false);
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [newConversationPhone, currentWorkspace?.id]);
 
     // Quick Reply (Hazır Mesaj) states
     const [quickReplies, setQuickReplies] = useState([]);
@@ -967,7 +990,7 @@ const Inbox = () => {
                     updates.case = {
                         ...item.case,
                         assignedToId: assignedToId !== undefined ? assignedToId : item.case.assignedToId,
-                        assignedTeamId: assignedTeamId !== undefined ? assignedTeamId : item.case.assignedTeamId,
+                        assignedTeamId: assignedTeamId !== undefined ? assignedTeamId : item.case?.assignedTeamId,
                         ...(assignedToName ? { assignedTo: { ...(item.case.assignedTo || {}), name: assignedToName } } : {})
                     };
                 }
@@ -982,7 +1005,7 @@ const Inbox = () => {
                     updates.case = {
                         ...prev.case,
                         assignedToId: assignedToId !== undefined ? assignedToId : prev.case.assignedToId,
-                        assignedTeamId: assignedTeamId !== undefined ? assignedTeamId : prev.case.assignedTeamId,
+                        assignedTeamId: assignedTeamId !== undefined ? assignedTeamId : prev.case?.assignedTeamId,
                         ...(assignedToName ? { assignedTo: { ...(prev.case.assignedTo || {}), name: assignedToName } } : {})
                     };
                 }
@@ -2030,8 +2053,8 @@ const Inbox = () => {
                             conv.assignedToId = conv.case.assignedToId;
                             conv.assignedTo = conv.case.assignedTo || conv.assignedTo;
                         }
-                        if (conv.case.assignedTeamId) {
-                            conv.assignedTeamId = conv.case.assignedTeamId;
+                        if (conv.case?.assignedTeamId) {
+                            conv.assignedTeamId = conv.case?.assignedTeamId;
                         }
 
                         // Case statusünü closingStatus olarak kullan
@@ -2567,17 +2590,20 @@ const Inbox = () => {
         try {
             // Format phone number - remove spaces, dashes, parens
             let phone = newConversationPhone.replace(/[\s\-\(\)]/g, '');
-            // Baştaki 0'ı sil (05xx → 5xx)
-            if (phone.startsWith('0')) {
-                phone = phone.substring(1);
+            
+            if (!phone.startsWith('+')) {
+                // Remove leading 0 if user typed 0555
+                if (phone.startsWith('0')) {
+                    phone = phone.substring(1);
+                }
+                const countryCode = newConversationPhonePrefix.replace('+', '');
+                // Avoid double prepending if user typed 90555
+                if (phone.startsWith(countryCode)) {
+                    phone = '+' + phone;
+                } else {
+                    phone = newConversationPhonePrefix + phone;
+                }
             }
-            // Prefix'ten ülke kodunu al (+90 → 90)
-            const countryCode = newConversationPhonePrefix.replace('+', '');
-            // Add country code if not already present
-            if (!phone.startsWith(countryCode)) {
-                phone = countryCode + phone;
-            }
-            phone = phone.replace('+', '');
 
             const response = await conversationAPI.createManual(currentWorkspace.id, {
                 phone,
@@ -2959,7 +2985,7 @@ const Inbox = () => {
                         case: {
                             ...item.case,
                             assignedToId: agentId || item.case.assignedToId,
-                            assignedTeamId: teamId || item.case.assignedTeamId,
+                            assignedTeamId: teamId || item.case?.assignedTeamId,
                             ...(conv.assignedTo ? { assignedTo: conv.assignedTo } : {})
                         }
                     } : {})
@@ -2974,7 +3000,7 @@ const Inbox = () => {
                     case: {
                         ...prev.case,
                         assignedToId: agentId || prev.case.assignedToId,
-                        assignedTeamId: teamId || prev.case.assignedTeamId,
+                        assignedTeamId: teamId || prev.case?.assignedTeamId,
                         ...(conv.assignedTo ? { assignedTo: conv.assignedTo } : {})
                     }
                 } : {})
@@ -4073,7 +4099,7 @@ const Inbox = () => {
 
                                         <div className="profile-bar-actions">
                                             {/* Case Numarası Badge */}
-                                            {selectedItem._caseNumber && (
+                                            {selectedItem?._caseNumber && (
                                                 <span style={{
                                                     display: 'inline-flex', alignItems: 'center', gap: 3,
                                                     padding: '2px 7px', borderRadius: 6,
@@ -4081,7 +4107,7 @@ const Inbox = () => {
                                                     color: '#0369a1', fontSize: '0.65rem', fontWeight: 700,
                                                     whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.3px'
                                                 }}>
-                                                    📋 {selectedItem._caseNumber}
+                                                    📋 {selectedItem?._caseNumber}
                                                 </span>
                                             )}
                                             {/* Konu Başlığı Input with Fixed Dropdown */}
@@ -4264,7 +4290,7 @@ const Inbox = () => {
                                                                             }}>
                                                                                 <div style={{ flex: 1 }}>
                                                                                     <div style={{ fontSize: '0.68rem', color: '#a78bfa', fontFamily: 'monospace', fontWeight: 600 }}>
-                                                                                        {linkedCase.caseNumber}
+                                                                                        {linkedCase?.caseNumber}
                                                                                     </div>
                                                                                     <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#5b21b6' }}>
                                                                                         {linkedCase.title}
@@ -4332,7 +4358,7 @@ const Inbox = () => {
                                                                                                 {c.title}
                                                                                             </div>
                                                                                             <div style={{ fontSize: '0.65rem', color: '#9ca3af' }}>
-                                                                                                {c.caseNumber} · 💬{c._conversationCount || 0}
+                                                                                                {c?.caseNumber} · 💬{c._conversationCount || 0}
                                                                                             </div>
                                                                                         </div>
                                                                                     </div>
@@ -4786,7 +4812,7 @@ const Inbox = () => {
                                                                     funnelType: newFunnel,
                                                                     funnelStageId: newStage,
                                                                     status: isClosingStage ? newCaseStatus : (prev.case.status !== 'ACTIVE' ? 'ACTIVE' : prev.case.status),
-                                                                    assignedTeamId: responseData.assignedTeamId || prev.case.assignedTeamId,
+                                                                    assignedTeamId: responseData.assignedTeamId || prev.case?.assignedTeamId,
                                                                     assignedToId: responseData.assignedToId || prev.case.assignedToId,
                                                                     assignedTo: responseData.assignedToName ? { name: responseData.assignedToName } : prev.case.assignedTo
                                                                 }
@@ -6685,6 +6711,35 @@ const Inbox = () => {
                                         onChange={(e) => setNewConversationPhone(e.target.value)}
                                     />
                                 </div>
+                                {isSearchingPhone && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Kişilerde aranıyor...</div>}
+                                {phoneSearchResults.length > 0 && (
+                                    <div className="phone-search-results" style={{
+                                        border: '1px solid #e2e8f0', borderRadius: 6, marginTop: 4, maxHeight: 150, overflowY: 'auto', backgroundColor: '#fff'
+                                    }}>
+                                        {phoneSearchResults.map(c => (
+                                            <div 
+                                                key={c.id} 
+                                                style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}
+                                                onClick={() => {
+                                                    let p = c.phone || '';
+                                                    const prefix = newConversationPhonePrefix;
+                                                    if (p.startsWith(prefix)) {
+                                                        p = p.substring(prefix.length);
+                                                    } else if (p.startsWith(prefix.substring(1))) {
+                                                        p = p.substring(prefix.length - 1);
+                                                    }
+                                                    setNewConversationPhone(p);
+                                                    setNewConversationName(c.name);
+                                                    setPhoneSearchResults([]);
+                                                }}
+                                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                            >
+                                                <strong>{c.name}</strong> <span style={{color: '#64748b', marginLeft: 6}}>{c.phone}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <div className="form-group">
                                 <label>
@@ -6753,7 +6808,7 @@ const Inbox = () => {
                             <div className="form-group">
                                 <label>
                                     <Target size={18} />
-                                    Konu Başlığı
+                                    Konu Başlığı *
                                 </label>
                                 <input
                                     type="text"
@@ -6784,7 +6839,7 @@ const Inbox = () => {
                                 <button
                                     className="btn-submit"
                                     onClick={handleCreateNewConversation}
-                                    disabled={!newConversationPhone || creatingConversation}
+                                    disabled={!newConversationPhone || !newConversationTopic.trim() || creatingConversation}
                                 >
                                     {creatingConversation ? 'Oluşturuluyor...' : 'Görüşme Başlat'}
                                 </button>

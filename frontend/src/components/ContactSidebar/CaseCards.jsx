@@ -192,7 +192,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                         || [];
                     onCaseInfo({
                         caseId: linkedCase.id,
-                        caseNumber: linkedCase.caseNumber,
+                        caseNumber: linkedCase?.caseNumber,
                         title: linkedCase.title,
                         status: linkedCase.status,
                         funnelType: linkedCase.funnelType,
@@ -739,7 +739,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         }}
                                     >
                                         <Briefcase size={11} style={{ color: '#8b5cf6', flexShrink: 0 }} />
-                                        <span style={{ fontSize: '0.6rem', color: '#a1a1aa', fontFamily: 'monospace' }}>{c.caseNumber}</span>
+                                        <span style={{ fontSize: '0.6rem', color: '#a1a1aa', fontFamily: 'monospace' }}>{c?.caseNumber}</span>
                                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</span>
                                     </button>
                                 ))}
@@ -876,7 +876,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 {/* Case Header */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                                     <span style={{ fontSize: '0.68rem', color: '#a78bfa', fontWeight: 600, fontFamily: 'monospace' }}>
-                                        {c.caseNumber}
+                                        {c?.caseNumber}
                                     </span>
                                     {prioIcon && <span style={{ fontSize: '0.7rem' }}>{prioIcon}</span>}
                                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -1111,7 +1111,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                                         <span style={{ fontSize: '0.68rem', color: '#a78bfa', fontWeight: 600, fontFamily: 'monospace' }}>
-                                            {c.caseNumber}
+                                            {c?.caseNumber}
                                         </span>
                                         {prioIcon && <span style={{ fontSize: '0.7rem' }}>{prioIcon}</span>}
                                         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -1183,7 +1183,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                             <span style={{ fontSize: '0.68rem', color: '#d1d5db', fontFamily: 'monospace' }}>
-                                                {c.caseNumber}
+                                                {c?.caseNumber}
                                             </span>
                                             <span style={{
                                                 fontSize: '0.68rem', fontWeight: 600,

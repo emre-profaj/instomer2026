@@ -1087,28 +1087,6 @@ const Calendar = () => {
 
                     {/* Orta+Sağ: Aktivite tip filtreleri + Status filtreleri yan yana */}
                     <div className="cal-activity-filters-group">
-                        {/* Aktivite tip filtreleri */}
-                        <div className="activity-type-filters">
-                            {[
-                                { key: 'all',          label: 'Tümü',       icon: Layers,        colorClass: 'cal-all' },
-                                { key: 'calls',        label: 'Aramalar',   icon: PhoneCall,     colorClass: 'cal-calls' },
-                                { key: 'appointments', label: 'Randevular', icon: CalendarClock, colorClass: 'cal-apts' },
-                                { key: 'meetings',     label: 'Görüşmeler', icon: Handshake,     colorClass: 'cal-meetings' },
-                                { key: 'tasks',        label: 'Görevler',   icon: ListTodo,      colorClass: 'cal-tasks' },
-                            ].map(f => (
-                                <div
-                                    key={f.key}
-                                    className={`quick-stat-card ${isFilterActive(f.key) ? 'quick-stat-active' : ''}`}
-                                    onClick={() => toggleActivityFilter(f.key)}
-                                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                                >
-                                    <div className={`quick-stat-icon ${f.colorClass}`}><f.icon size={13} /></div>
-                                    {f.key !== 'all' && <span className="quick-stat-value">{activityCounts[f.key] || 0}</span>}
-                                    <span className="quick-stat-label">{f.label}</span>
-                                </div>
-                            ))}
-                        </div>
-
                         {/* Tamamlananları göster toggle */}
                         <label className="show-completed-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#64748b', userSelect: 'none' }}>
                             <div
@@ -1552,28 +1530,6 @@ const Calendar = () => {
                 ) : (
                     /* ═══════ FULL-PAGE LIST VIEW ═══════ */
                     <div className="activities-list-page">
-                        {/* Filter Tabs */}
-                        <div className="activities-list-tabs">
-                            <button
-                                className={`activities-tab ${listFilter === 'all' ? 'active' : ''}`}
-                                onClick={() => setListFilter('all')}
-                            >
-                                Tümü
-                            </button>
-                            <button
-                                className={`activities-tab ${listFilter === 'appointments' ? 'active' : ''}`}
-                                onClick={() => setListFilter('appointments')}
-                            >
-                                📅 Randevular
-                            </button>
-                            <button
-                                className={`activities-tab ${listFilter === 'calls' ? 'active' : ''}`}
-                                onClick={() => setListFilter('calls')}
-                            >
-                                📞 Aramalar
-                            </button>
-                        </div>
-
                         {/* Search Bar */}
                         <div className="activities-list-search">
                             <Search size={16} />

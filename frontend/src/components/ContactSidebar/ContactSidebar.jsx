@@ -215,7 +215,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const [categoryDropdownPos, setCategoryDropdownPos] = useState({ top: 0, right: 0 });
     const [creatingCase, setCreatingCase] = useState(false);
     const [showExtraFields, setShowExtraFields] = useState(false);
-    const [caseStatusDropdownOpen, setCaseStatusDropdownOpen] = useState(false);
+    const [caseStatusDropdownOpenCaseId, setCaseStatusDropdownOpenCaseId] = useState(null);
+    const [expandedCases, setExpandedCases] = useState({});
+    const [assignMegaMenuOpenCaseId, setAssignMegaMenuOpenCaseId] = useState(null);
+
 
     // Grup state'leri
     const [allGroups, setAllGroups] = useState([]);
@@ -303,7 +306,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         amount: '',
         currency: 'TRY',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
-        notes: ''
+        notes: '',
+        caseId: ''
     });
     const [quoteSubmitting, setQuoteSubmitting] = useState(false);
 
@@ -314,7 +318,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         description: '',
         currency: 'TRY',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
-        notes: ''
+        notes: '',
+        caseId: ''
     });
     const [orderSubmitting, setOrderSubmitting] = useState(false);
 
@@ -326,7 +331,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         taxRate: 20,
         dueDate: '',
         products: [{ name: '', quantity: 1, unitPrice: 0 }],
-        notes: ''
+        notes: '',
+        caseId: ''
     });
     const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
 
@@ -690,6 +696,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         const defaultTeamId = effectiveConv?.teamIds
             ? ((() => { try { return JSON.parse(effectiveConv.teamIds)[0] || ''; } catch { return ''; } })())
             : '';
+        const defaultStageId = activeCaseInfo?.funnelStageId || effectiveConv?.funnelStageId || conversationData?.funnelStageId || '';
         setActivityForm({
             type,
             title: '',
@@ -697,7 +704,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             dueDate: '',
             assignedToId: defaultAssigneeId,
             teamId: defaultTeamId,
-            funnelStageId: ''
+            funnelStageId: defaultStageId,
+            caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '')
         });
         setCallCompleted(true);
         setNoteCallSuccess(null);
@@ -720,6 +728,21 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         setShowActivityModal(true);
     };
 
+    const openQuoteFormHandler = () => {
+        setQuoteFormData(p => ({ ...p, caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '') }));
+        setShowQuoteForm(true);
+    };
+
+    const openOrderFormHandler = () => {
+        setOrderFormData(p => ({ ...p, caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '') }));
+        setShowOrderForm(true);
+    };
+
+    const openInvoiceFormHandler = () => {
+        setInvoiceFormData(p => ({ ...p, caseId: activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : '') }));
+        setShowInvoiceForm(true);
+    };
+
     const handleSaveActivity = async () => {
         if (!profile || !profile.id) return;
         if (!activityForm.type) return;
@@ -738,8 +761,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if ((activityForm.type === 'REMINDER' || activityForm.type === 'MEETING') && (!activityForm.dueDate || !activityForm.description.trim())) {
             return alert('Tarih ve açıklama girmelisiniz.');
         }
+        
         if (activityForm.type === 'TASK' && (!activityForm.title.trim() || !activityForm.assignedToId)) {
             return alert('Görev başlığı ve atanacak kişi zorunludur.');
+        }
+        if (!activityForm.caseId) {
+            return alert('Lütfen bu işlem için bir Case seçiniz (Zorunlu).');
         }
 
         setActivitySaving(true);
@@ -758,7 +785,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 ...(isNoteType && { status: 'COMPLETED', completedAt: new Date().toISOString() }),
                 ...(isCallNote && noteCallSuccess !== null && { callSuccessful: noteCallSuccess === 'SUCCESS' }),
                 ...(isCallNote && noteCallSentiment && noteCallSuccess === 'SUCCESS' && { callSentiment: noteCallSentiment }),
-                ...(isCallNote && completePlannedCall && { completePlannedCall: true })
+                ...(isCallNote && completePlannedCall && { completePlannedCall: true }),
+                ...(activityForm.caseId ? { caseId: activityForm.caseId } : {})
             };
 
             let activityResponse = null;
@@ -815,7 +843,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
             setShowActivityModal(false);
             setEditingActivityId(null);
-            setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '' });
+            setActivityForm({ type: 'NOTE', title: '', description: '', dueDate: '', assignedToId: '', funnelStageId: '', caseId: '' });
             setNoteCallSuccess(null);
             setNoteCallSentiment(null);
             fetchTimeline(profile.id);
@@ -1031,8 +1059,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             const convCaseId = activeConv.caseId;
             if (convCaseId && currentWorkspace?.id) {
                 try {
-                    const effectiveTeamId = teamId !== undefined ? (teamId || null) : (activeConv.assignedTeamId || null);
-                    const effectiveUserId = userId !== undefined ? (userId || null) : (activeConv.assignedToId || null);
+                    const effectiveTeamId = teamId !== undefined ? (teamId || null) : (activeConv?.assignedTeamId || null);
+                    const effectiveUserId = userId !== undefined ? (userId || null) : (activeConv?.assignedToId || null);
                     await caseAPI.assign(currentWorkspace.id, convCaseId, {
                         assignedToId: effectiveUserId,
                         assignedTeamId: effectiveTeamId
@@ -1046,10 +1074,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
             const foundMember = userId ? (members.find(m => (m.user?.id || m.userId) === userId) || members.find(m => m.id === userId)) : null;
             const assignedToObj = foundMember ? { id: userId, name: foundMember.user?.name || foundMember.name || 'Agent' } : (userId ? { id: userId, name: 'Agent' } : null);
             const updatedData = {
-                teamIds: teamId !== undefined ? (teamId ? JSON.stringify([teamId]) : '[]') : (activeConv.teamIds || '[]'),
-                assignedTeamId: teamId !== undefined ? (teamId || null) : activeConv.assignedTeamId,
-                assignedToId: userId !== undefined ? (userId || null) : activeConv.assignedToId,
-                assignedTo: userId !== undefined ? assignedToObj : activeConv.assignedTo
+                teamIds: teamId !== undefined ? (teamId ? JSON.stringify([teamId]) : '[]') : (activeConv?.teamIds || '[]'),
+                assignedTeamId: teamId !== undefined ? (teamId || null) : activeConv?.assignedTeamId,
+                assignedToId: userId !== undefined ? (userId || null) : activeConv?.assignedToId,
+                assignedTo: userId !== undefined ? assignedToObj : activeConv?.assignedTo
             };
 
             setLocalConvOverride(prev => ({ ...(prev || activeConv), ...updatedData }));
@@ -1081,7 +1109,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 try {
                     await caseAPI.assign(currentWorkspace.id, convCaseId, {
                         assignedToId: myId,
-                        assignedTeamId: activeConv.assignedTeamId || null
+                        assignedTeamId: activeConv?.assignedTeamId || null
                     });
                 } catch (caseErr) {
                     console.warn('Case cascade claim failed (non-critical):', caseErr.message);
@@ -2039,15 +2067,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                             </div>
                             {/* ACTION BUTTONS — Row 2: Satış */}
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', padding: '2px 0 8px' }}>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowQuoteForm(true)}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={openQuoteFormHandler}>
                                     <FileText size={18} style={{ color: '#10b981' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Teklif</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowOrderForm(true)}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={openOrderFormHandler}>
                                     <TrendingUp size={18} style={{ color: '#3b82f6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Sipariş</span>
                                 </button>
-                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setShowInvoiceForm(true)}>
+                                <button className="activity-btn" style={{ padding: '8px 4px', minHeight: 56, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={openInvoiceFormHandler}>
                                     <FileText size={18} style={{ color: '#8b5cf6' }} />
                                     <span style={{ fontSize: '0.6rem', color: '#6b7280', fontWeight: 500 }}>Fatura</span>
                                 </button>
@@ -2061,14 +2089,34 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
 
                             {/* ═══ BİRLEŞİK SOHBET AKIŞI SECTIONı ═══ */}
                             {/* CaseCards header'a entegre + Atama + Timeline hepsi tek section'da */}
-                            {activeConv && (
-                                <div className="customer-journey-timeline">
-                                    <div className="journey-header">
+                            {(() => {
+                                const casesToRender = allCases.length > 0 ? allCases : (activeCaseInfo ? [{...activeCaseInfo, id: activeCaseInfo.caseId}] : []);
+                                const loopArray = casesToRender.length > 0 ? casesToRender : [{ id: 'default', title: 'Genel', caseNumber: '' }];
+                                return loopArray.map((c, index) => {
+                                    const isExpanded = expandedCases[c.id] !== false;
+                                    const caseTimeline = [...pastTimeline, ...plannedTimeline].filter(item => {
+                                        if (item.caseId === c.id) return true;
+                                        if (!item.caseId && (c.id === (activeCaseInfo?.caseId || loopArray[0].id))) return true;
+                                        return false;
+                                    });
+                                    return (
+                                <div key={c.id || index} className="customer-journey-timeline" style={{ marginBottom: 16, paddingBottom: isExpanded ? 14 : 6 }}>
+                                    <div className="journey-header" style={{ paddingBottom: 0 }}>
                                         {/* ── Satır 1: Case ID + Kategori etiketi ── */}
-                                        {activeCaseInfo?.caseNumber && (
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2, gap: 8, flexDirection: 'row-reverse' }}>
+                                            <button 
+                                                onClick={() => setExpandedCases(prev => ({ ...prev, [c.id]: !isExpanded }))}
+                                                style={{ 
+                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                    fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', 
+                                                    flex: 1, textAlign: 'right', marginTop: 2, padding: '4px' 
+                                                }}>
+                                                {isExpanded ? '▼' : '▶'}
+                                            </button>
+                                            {c?.caseNumber && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, flexShrink: 0 }}>
                                                 {/* Kategori etiketi — tıklanabilir */}
-                                                <div style={{ position: 'relative' }}>
+                                                <div style={{ position: 'relative', minWidth: 0, flexShrink: 1 }}>
                                                     <button
                                                         onClick={async () => {
                                                              if (!categoryDropdownOpen && availableCategories.length === 0) {
@@ -2100,12 +2148,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             alignItems: 'center',
                                                             gap: 3,
                                                             cursor: 'pointer',
-                                                            transition: 'all 0.15s'
+                                                            transition: 'all 0.15s',
+                                                            maxWidth: '180px'
                                                         }}
                                                     >
-                                                        {activeConv?.topicCategory?.icon && <span style={{ fontSize: '0.6rem' }}>{activeConv.topicCategory.icon}</span>}
-                                                        {activeConv?.topicCategory?.name || 'Kategori Seç'}
-                                                        <ChevronDown size={8} style={{ opacity: 0.5 }} />
+                                                        {activeConv?.topicCategory?.icon && <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{activeConv.topicCategory.icon}</span>}
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {activeConv?.topicCategory?.name || 'Kategori Seç'}
+                                                        </span>
+                                                        <ChevronDown size={8} style={{ opacity: 0.5, flexShrink: 0 }} />
                                                     </button>
 
                                                     {categoryDropdownOpen && (
@@ -2213,7 +2264,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         onMouseLeave={e => { e.currentTarget.style.opacity = '0.8'; }}
                                                     >
                                                         <Briefcase size={9} />
-                                                        <span>{activeCaseInfo.caseNumber}</span>
+                                                        <span>{activeCaseInfo?.caseNumber}</span>
                                                         <ChevronDown size={8} style={{
                                                             transition: 'transform 0.2s',
                                                             transform: caseIdDropdownOpen ? 'rotate(180deg)' : 'none',
@@ -2238,7 +2289,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 Case'ler
                                                             </div>
                                                             {allCases.map(c => {
-                                                                const isActive = c.id === activeCaseInfo?.caseId;
+                                                                const isActive = c.id === c.id;
                                                                 const statusInfo = { ACTIVE: '🟢', WON: '✅', LOST: '⚪', CLOSED: '🔴' };
                                                                 return (
                                                                     <div
@@ -2263,7 +2314,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isActive ? '#f5f3ff' : 'transparent'; }}
                                                                     >
                                                                         <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{statusInfo[c.status] || '⚪'}</span>
-                                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#a1a1aa', flexShrink: 0 }}>{c.caseNumber}</span>
+                                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#a1a1aa', flexShrink: 0 }}>{c?.caseNumber}</span>
                                                                         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || '—'}</span>
                                                                         {isActive && <span style={{ fontSize: '0.65rem', color: '#7c3aed', marginLeft: 'auto' }}>✓</span>}
                                                                     </div>
@@ -2352,12 +2403,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 </div>
                                             </div>
                                         )}
+                                        </div>
 
                                         {/* ── Satır 2: Editable başlık (çizgisiz) ── */}
                                         {activeCaseInfo && (() => {
                                             // Generic kanal etiketleri ve dekoratif başlıklar - bunlar gerçek başlık sayılmaz
                                             const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', '-', '—', ''];
-                                            const rawTitle = activeCaseInfo.title || '';
+                                            const rawTitle = c.title || '';
                                             const isGeneric = GENERIC.includes(rawTitle.trim()) || rawTitle.includes('━') || rawTitle.includes('═');
                                             // Eğer title generic/dekoratif ise, conversation'ın aiTopic'ini fallback olarak kullan
                                             const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || '';
@@ -2375,10 +2427,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         const newTitle = e.target.value.trim();
                                                         if (!newTitle || newTitle === activeCaseInfo._savedTitle) return;
                                                         try {
-                                                            await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { title: newTitle });
+                                                            await caseAPI.update(currentWorkspace.id, c.id, { title: newTitle });
                                                             setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle }));
                                                             window.dispatchEvent(new CustomEvent('case_title_updated', {
-                                                                detail: { caseId: activeCaseInfo.caseId, title: newTitle, conversationId }
+                                                                detail: { caseId: c.id, title: newTitle, conversationId }
                                                             }));
                                                         } catch (err) { console.error('Title update error:', err); }
                                                     }}
@@ -2393,6 +2445,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             );
                                         })()}
 
+                                        {isExpanded && (
+                                            <>
                                         {/* ── Satır 3: Akış/Aşama (sol) + Durum (sağ) ── */}
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px 0' }}>
                                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -2429,18 +2483,18 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             <div style={{ flexShrink: 0 }}>
                                                 {(activeCaseInfo?.status || conversationData?.status) && (() => {
                                                     // closingStages ve openStages'ı funnelOptions'dan dinamik hesapla
-                                                    const currentFunnelType = activeCaseInfo?.funnelType;
+                                                    const currentFunnelType = c.funnelType;
                                                     const currentFunnel = currentFunnelType ? funnelOptions.find(f => f.value === currentFunnelType) : null;
                                                     const closingStages = currentFunnel?.stages
                                                         ?.filter(s => s.isClosing)
                                                         ?.map(s => ({ id: s.value, name: s.label, color: s.color, statusType: s.statusType }))
-                                                        || activeCaseInfo?.closingStages || [];
+                                                        || c.closingStages || [];
                                                     const openStages = currentFunnel?.stages
                                                         ?.filter(s => !s.isClosing)
                                                         ?.map(s => ({ id: s.value, name: s.label, color: s.color }))
-                                                        || activeCaseInfo?.openStages || [];
+                                                        || c.openStages || [];
                                                     // Case VEYA conversation kapalıysa pill kapalı göster
-                                                    const isClosed = (activeCaseInfo?.status && activeCaseInfo.status !== 'ACTIVE') || conversationData?.status === 'RESOLVED';
+                                                    const isClosed = (activeCaseInfo?.status && c.status !== 'ACTIVE') || conversationData?.status === 'RESOLVED';
 
                                                     const currentOpt = isClosed
                                                         ? { label: 'Kapalı', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', dotColor: '#ef4444' }
@@ -2449,7 +2503,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     return (
                                                         <div style={{ position: 'relative', display: 'inline-flex' }}>
                                                             <button
-                                                                onClick={() => setCaseStatusDropdownOpen(prev => !prev)}
+                                                                onClick={() => setCaseStatusDropdownOpenCaseId(prev => prev === c.id ? null : c.id)}
                                                                 style={{
                                                                     display: 'inline-flex', alignItems: 'center', gap: 2,
                                                                     padding: '0 5px', height: 22, borderRadius: 11,
@@ -2465,13 +2519,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 {currentOpt.label}
                                                                 <ChevronDown size={8} style={{
                                                                     transition: 'transform 0.2s',
-                                                                    transform: caseStatusDropdownOpen ? 'rotate(180deg)' : 'none',
+                                                                    transform: (caseStatusDropdownOpenCaseId === c.id) ? 'rotate(180deg)' : 'none',
                                                                     opacity: 0.6
                                                                 }} />
                                                             </button>
-                                                            {caseStatusDropdownOpen && (
+                                                            {(caseStatusDropdownOpenCaseId === c.id) && (
                                                                 <>
-                                                                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCaseStatusDropdownOpen(false)} />
+                                                                <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCaseStatusDropdownOpenCaseId(null)} />
                                                                 <div
                                                                     style={{
                                                                         position: 'absolute', top: '100%', right: 0, zIndex: 9999,
@@ -2494,20 +2548,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                 key={stage.id}
                                                                                 onClick={async () => {
                                                                                     try {
-                                                                                        await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, {
+                                                                                        await caseAPI.update(currentWorkspace.id, c.id, {
                                                                                             status: 'ACTIVE',
                                                                                             funnelStageId: stage.id
                                                                                         });
                                                                                         setActiveCaseInfo(prev => ({ ...prev, status: 'ACTIVE', funnelStageId: stage.id }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: activeCaseInfo.caseId, changes: { status: 'ACTIVE', funnelStageId: stage.id } }
+                                                                                            detail: { caseId: c.id, changes: { status: 'ACTIVE', funnelStageId: stage.id } }
                                                                                         }));
                                                                                         window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                         if (onConversationStatusChange && conversationId) {
                                                                                             onConversationStatusChange(conversationId, 'OPEN');
                                                                                         }
                                                                                     } catch (err) { console.error('Status update error:', err); }
-                                                                                    setCaseStatusDropdownOpen(false);
+                                                                                    setCaseStatusDropdownOpenCaseId(null);
                                                                                 }}
                                                                                 style={{
                                                                                     padding: '8px 14px', cursor: 'pointer',
@@ -2526,17 +2580,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                             <div
                                                                                 onClick={async () => {
                                                                                     try {
-                                                                                        await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: 'ACTIVE' });
+                                                                                        await caseAPI.update(currentWorkspace.id, c.id, { status: 'ACTIVE' });
                                                                                         setActiveCaseInfo(prev => ({ ...prev, status: 'ACTIVE' }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: activeCaseInfo.caseId, changes: { status: 'ACTIVE' } }
+                                                                                            detail: { caseId: c.id, changes: { status: 'ACTIVE' } }
                                                                                         }));
                                                                                         window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                         if (onConversationStatusChange && conversationId) {
                                                                                             onConversationStatusChange(conversationId, 'OPEN');
                                                                                         }
                                                                                     } catch (err) { console.error('Status update error:', err); }
-                                                                                    setCaseStatusDropdownOpen(false);
+                                                                                    setCaseStatusDropdownOpenCaseId(null);
                                                                                 }}
                                                                                 style={{
                                                                                     padding: '8px 14px', cursor: 'pointer',
@@ -2560,20 +2614,20 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                 onClick={async () => {
                                                                                     try {
                                                                                         const newStatus = cs.statusType || 'CLOSED';
-                                                                                        await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, {
+                                                                                        await caseAPI.update(currentWorkspace.id, c.id, {
                                                                                             status: newStatus,
                                                                                             funnelStageId: cs.id
                                                                                         });
                                                                                         setActiveCaseInfo(prev => ({ ...prev, status: newStatus, funnelStageId: cs.id }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: activeCaseInfo.caseId, changes: { status: newStatus, funnelStageId: cs.id } }
+                                                                                            detail: { caseId: c.id, changes: { status: newStatus, funnelStageId: cs.id } }
                                                                                         }));
                                                                                         window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                         if (onConversationStatusChange && conversationId) {
                                                                                             onConversationStatusChange(conversationId, 'RESOLVED', cs.id);
                                                                                         }
                                                                                     } catch (err) { console.error('Status update error:', err); }
-                                                                                    setCaseStatusDropdownOpen(false);
+                                                                                    setCaseStatusDropdownOpenCaseId(null);
                                                                                 }}
                                                                                 style={{
                                                                                     padding: '8px 14px', cursor: 'pointer',
@@ -2592,17 +2646,17 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                             <div
                                                                                 onClick={async () => {
                                                                                     try {
-                                                                                        await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { status: 'CLOSED' });
+                                                                                        await caseAPI.update(currentWorkspace.id, c.id, { status: 'CLOSED' });
                                                                                         setActiveCaseInfo(prev => ({ ...prev, status: 'CLOSED' }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: activeCaseInfo.caseId, changes: { status: 'CLOSED' } }
+                                                                                            detail: { caseId: c.id, changes: { status: 'CLOSED' } }
                                                                                         }));
                                                                                         window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                         if (onConversationStatusChange && conversationId) {
                                                                                             onConversationStatusChange(conversationId, 'RESOLVED');
                                                                                         }
                                                                                     } catch (err) { console.error('Status update error:', err); }
-                                                                                    setCaseStatusDropdownOpen(false);
+                                                                                    setCaseStatusDropdownOpenCaseId(null);
                                                                                 }}
                                                                                 style={{
                                                                                     padding: '8px 14px', cursor: 'pointer',
@@ -2627,9 +2681,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 })()}
                                             </div>
                                         </div>
+                                        </>
+                                        )}
                                     </div>
 
 
+                                    {isExpanded && (
+                                        <>
                                     {/* Hidden CaseCards for data sync (actions removed from view) */}
                                     {profile?.id && currentWorkspace?.id && (
                                         <div style={{ display: 'none' }}>
@@ -2669,10 +2727,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         } else {
                                             // Conversation fallback
                                             let convTeamIds = [];
-                                            try { convTeamIds = JSON.parse(activeConv.teamIds || '[]'); } catch {}
-                                            effectiveTeamId = convTeamIds[0] || activeConv.assignedTeamId || null;
-                                            effectiveAgentId = activeConv.assignedToId || null;
-                                            effectiveAgentObj = activeConv.assignedTo || null;
+                                            try { convTeamIds = JSON.parse(activeConv?.teamIds || '[]'); } catch {}
+                                            effectiveTeamId = convTeamIds[0] || activeConv?.assignedTeamId || null;
+                                            effectiveAgentId = activeConv?.assignedToId || null;
+                                            effectiveAgentObj = activeConv?.assignedTo || null;
                                         }
 
                                         const assignedTeam = effectiveTeamId ? teams.find(t => t.id === effectiveTeamId) : null;
@@ -2696,7 +2754,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             const rect = e.currentTarget.getBoundingClientRect();
                                                             setAssignMegaMenuPos({ top: rect.bottom + 6, left: Math.max(10, rect.right - 342) });
                                                             setAssignSelectedTeam(assignedTeam?.id || null);
-                                                            setAssignMegaMenuOpen(o => !o);
+                                                            setAssignMegaMenuOpenCaseId(prev => prev === c.id ? null : c.id);
                                                         }}
                                                         title="Atama"
                                                     >
@@ -2707,7 +2765,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         <ChevronDown size={10} style={{ flexShrink: 0 }} />
                                                     </button>
 
-                                                    {assignMegaMenuOpen && (() => {
+                                                    {(assignMegaMenuOpenCaseId === c.id) && (() => {
                                                         const menuTeam = assignSelectedTeam ? teams.find(t => t.id === assignSelectedTeam) : null;
                                                         const teamMembers = menuTeam?.members || [];
                                                         const ruleLabel = { POOL: 'Havuza At', ROUND_ROBIN: 'Sırayla At', LEAST_BUSY: 'En Az Yüklüye', ONLINE_ROUND_ROBIN: "Online'a Sırayla" };
@@ -2716,7 +2774,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             <>
                                                                 <div
                                                                     style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
-                                                                    onClick={() => setAssignMegaMenuOpen(false)}
+                                                                    onClick={() => setAssignMegaMenuOpenCaseId(null)}
                                                                 />
                                                                 <div ref={assignMenuDivRef}
                                                                     style={{
@@ -2799,8 +2857,8 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                             display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
                                                                                             padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
                                                                                             fontSize: '0.72rem',
-                                                                                            background: activeConv.assignedToId === uid ? '#eff6ff' : 'transparent',
-                                                                                            color: activeConv.assignedToId === uid ? '#1d4ed8' : '#374151'
+                                                                                            background: activeConv?.assignedToId === uid ? '#eff6ff' : 'transparent',
+                                                                                            color: activeConv?.assignedToId === uid ? '#1d4ed8' : '#374151'
                                                                                         }}
                                                                                     >
                                                                                         <span style={{
@@ -2812,7 +2870,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                         </span>
                                                                                         {uname}
                                                                                         {uOnline && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', marginLeft: 'auto' }} />}
-                                                                                        {activeConv.assignedToId === uid && <span style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>✓</span>}
+                                                                                        {activeConv?.assignedToId === uid && <span style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>✓</span>}
                                                                                     </button>
                                                                                 );
                                                                             })}
@@ -2841,9 +2899,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </div>
                                         );
                                     })()}
+                                        </>
+                                    )}
 
                                     {/* ── Timeline Steps ── */}
-                                    {!timelineLoading && (pastTimeline.length > 0 || plannedTimeline.length > 0 || profile?.createdAt) && (() => {
+                                    {isExpanded && !timelineLoading && (caseTimeline.length > 0 || profile?.createdAt) && (() => {
                                         // Build journey milestones from timeline data + profile
                                         const milestones = [];
 
@@ -2861,7 +2921,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         }
 
                                         // 2. İlk sohbet
-                                        const allTimeline = [...pastTimeline, ...plannedTimeline];
+                                        const allTimeline = caseTimeline;
                                         const firstConv = allTimeline
                                             .filter(i => i.sourceType === 'CONVERSATION')
                                             .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
@@ -3273,7 +3333,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         );
                                     })()}
                                 </div>
-                            )}
+                                    );
+                                })
+                            })()}
 
                             {/* AI Araması Detay Modalı */}
                             {selectedAiCall && (
@@ -3463,13 +3525,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     })();
                                                     setSelectedDealDetail(null);
                                                     if (d.stage === 'QUOTE') {
-                                                        setQuoteFormData({ title: d.title || '', description: d.description || '', amount: d.amount || '', currency: d.currency || 'TRY', products: prods, notes: d.notes || '', _editId: d.id });
+                                                        setQuoteFormData({ title: d.title || '', description: d.description || '', amount: d.amount || '', currency: d.currency || 'TRY', products: prods, notes: d.notes || '', caseId: d.caseId || activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : ''), _editId: d.id });
                                                         setShowQuoteForm(true);
                                                     } else if (d.stage === 'ORDER') {
-                                                        setOrderFormData({ title: d.title || '', description: d.description || '', currency: d.currency || 'TRY', products: prods, notes: d.notes || '', _editId: d.id });
+                                                        setOrderFormData({ title: d.title || '', description: d.description || '', currency: d.currency || 'TRY', products: prods, notes: d.notes || '', caseId: d.caseId || activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : ''), _editId: d.id });
                                                         setShowOrderForm(true);
                                                     } else if (d.stage === 'INVOICE') {
-                                                        setInvoiceFormData({ title: d.title || '', currency: d.currency || 'TRY', taxRate: d.taxRate || 20, dueDate: d.dueDate ? new Date(d.dueDate).toISOString().slice(0, 10) : '', products: prods, notes: d.notes || '', _editId: d.id });
+                                                        setInvoiceFormData({ title: d.title || '', currency: d.currency || 'TRY', taxRate: d.taxRate || 20, dueDate: d.dueDate ? new Date(d.dueDate).toISOString().slice(0, 10) : '', products: prods, notes: d.notes || '', caseId: d.caseId || activeCaseInfo?.id || (allCases?.length > 0 ? allCases[0].id : ''), _editId: d.id });
                                                         setShowInvoiceForm(true);
                                                     }
                                                 }}
@@ -3653,7 +3715,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     setEditingActivityId(item.id);
                                                                     setActivityForm({ type: item.type || 'CALL', title: item.title || '', description: item.content || item.description || '',
                                                                         dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
-                                                                        assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '' });
+                                                                        assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '', caseId: item.caseId || '' });
                                                                     setShowActivityModal(true);
                                                                 }}
                                                                     style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '6px 14px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -3727,7 +3789,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     setEditingActivityId(item.id);
                                                                     setActivityForm({ type: item.type || 'CALL', title: item.title || '', description: item.content || item.description || '',
                                                                         dueDate: item.dueDate ? (() => { const d = new Date(item.dueDate); const pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; })() : '',
-                                                                        assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '' });
+                                                                        assignedToId: item.assignedToId || '', teamId: item.teamId || '', funnelStageId: '', caseId: item.caseId || '' });
                                                                     setShowActivityModal(true);
                                                                 }}
                                                                     style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}>
@@ -3873,6 +3935,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                             </button>
                                         </div>
                                         <div className="reminder-modal-body">
+                                            
+                                            <div className="reminder-form-group">
+                                                <label><Briefcase size={14} /> İlgili Case <span style={{color: '#ef4444'}}>*</span></label>
+                                                <select
+                                                    value={activityForm.caseId || ''}
+                                                    onChange={e => setActivityForm(prev => ({ ...prev, caseId: e.target.value }))}
+                                                    style={{ borderColor: !activityForm.caseId ? '#fca5a5' : '#e5e7eb', marginBottom: '4px' }}
+                                                >
+                                                    <option value="">📁 Lütfen bir Case seçiniz...</option>
+                                                    {allCases.map(c => (
+                                                        <option key={c.id} value={c.id}>
+                                                            {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                {!activityForm.caseId && <div style={{ fontSize: '10px', color: '#ef4444', marginBottom: '14px' }}>Bu işlem için Case seçimi zorunludur. (Açık bir case yoksa önce 'Yeni Case' oluşturun.)</div>}
+                                            </div>
+
                                             {/* Planlanmış arama varsa — tamamla checkbox */}
                                             {activityForm.type === 'NOTE' && (
                                                 <label style={{
@@ -4053,6 +4133,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     </select>
                                                 </div>
                                             )}
+
                                             <div className="reminder-form-group">
                                                 <label><FileText size={14} /> Açıklama {activityForm.type === 'NOTE' ? '*' : ''}</label>
                                                 <textarea
@@ -4485,6 +4566,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                         <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
                             <form onSubmit={async (e) => {
                                 e.preventDefault();
+                                if (!quoteFormData.caseId) {
+                                    return alert('Lütfen bu işlem için bir Case seçiniz (Zorunlu).');
+                                }
                                 if (quoteSubmitting) return;
                                 setQuoteSubmitting(true);
                                 try {
@@ -4497,10 +4581,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         amount: totalAmount,
                                         products: quoteFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
                                         notes: quoteFormData.notes,
-                                        assignedToId: user?.id || null
+                                        assignedToId: user?.id || null,
+                                        caseId: quoteFormData.caseId
                                     });
                                     setShowQuoteForm(false);
-                                    setQuoteFormData({ title: '', description: '', amount: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
+                                    setQuoteFormData({ title: '', description: '', amount: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '', caseId: '' });
                                     // Refresh deals
                                     if (profile?.id && currentWorkspace?.id) {
                                         const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
@@ -4513,6 +4598,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     setQuoteSubmitting(false);
                                 }
                             }}>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>İlgili Case *</label>
+                                    <select
+                                        value={quoteFormData.caseId}
+                                        onChange={e => setQuoteFormData(prev => ({ ...prev, caseId: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !quoteFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                                    >
+                                        <option value="">📁 Lütfen bir Case seçiniz...</option>
+                                        {allCases.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                                {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {!quoteFormData.caseId && <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>Bu işlem için Case seçimi zorunludur. (Açık bir case yoksa önce 'Yeni Case' oluşturun.)</div>}
+                                </div>
                                 <div style={{ marginBottom: 16 }}>
                                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Teklif Başlığı *</label>
                                     <input type="text" required value={quoteFormData.title} onChange={e => setQuoteFormData(p => ({ ...p, title: e.target.value }))}
@@ -4609,6 +4710,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                         <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
                             <form onSubmit={async (e) => {
                                 e.preventDefault();
+                                if (!orderFormData.caseId) {
+                                    return alert('Lütfen bu işlem için bir Case seçiniz (Zorunlu).');
+                                }
                                 if (orderSubmitting) return;
                                 setOrderSubmitting(true);
                                 try {
@@ -4622,10 +4726,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         products: orderFormData.products.map(p => ({ ...p, total: p.quantity * p.unitPrice })),
                                         notes: orderFormData.notes,
                                         stage: 'ORDER',
-                                        assignedToId: user?.id || null
+                                        assignedToId: user?.id || null,
+                                        caseId: orderFormData.caseId
                                     });
                                     setShowOrderForm(false);
-                                    setOrderFormData({ title: '', description: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
+                                    setOrderFormData({ title: '', description: '', amount: '', currency: 'TRY', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '', caseId: '' });
+                                    // Refresh deals
                                     if (profile?.id && currentWorkspace?.id) {
                                         const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
                                         setDeals(r.data.deals || []);
@@ -4637,6 +4743,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     setOrderSubmitting(false);
                                 }
                             }}>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>İlgili Case *</label>
+                                    <select
+                                        value={orderFormData.caseId}
+                                        onChange={e => setOrderFormData(prev => ({ ...prev, caseId: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !orderFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                                    >
+                                        <option value="">📁 Lütfen bir Case seçiniz...</option>
+                                        {allCases.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                                {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {!orderFormData.caseId && <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>Bu işlem için Case seçimi zorunludur. (Açık bir case yoksa önce 'Yeni Case' oluşturun.)</div>}
+                                </div>
                                 <div style={{ marginBottom: 16 }}>
                                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Sipariş Başlığı *</label>
                                     <input type="text" required value={orderFormData.title} onChange={e => setOrderFormData(p => ({ ...p, title: e.target.value }))}
@@ -4731,6 +4853,9 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                         <div style={{ padding: '20px 28px', overflowY: 'auto', flex: 1 }}>
                             <form onSubmit={async (e) => {
                                 e.preventDefault();
+                                if (!invoiceFormData.caseId) {
+                                    return alert('Lütfen bu işlem için bir Case seçiniz (Zorunlu).');
+                                }
                                 if (invoiceSubmitting) return;
                                 setInvoiceSubmitting(true);
                                 try {
@@ -4743,10 +4868,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         notes: invoiceFormData.notes,
                                         stage: 'INVOICE',
                                         metadata: { taxRate: invoiceFormData.taxRate, subtotal: invSubtotal, tax: invTax, dueDate: invoiceFormData.dueDate },
-                                        assignedToId: user?.id || null
+                                        assignedToId: user?.id || null,
+                                        caseId: invoiceFormData.caseId
                                     });
                                     setShowInvoiceForm(false);
-                                    setInvoiceFormData({ title: '', currency: 'TRY', taxRate: 20, dueDate: '', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '' });
+                                    setInvoiceFormData({ title: '', currency: 'TRY', taxRate: 20, dueDate: '', products: [{ name: '', quantity: 1, unitPrice: 0 }], notes: '', caseId: '' });
                                     if (profile?.id && currentWorkspace?.id) {
                                         const r = await dealAPI.getAll(currentWorkspace.id, { contactId: profile.id });
                                         setDeals(r.data.deals || []);
@@ -4758,6 +4884,22 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     setInvoiceSubmitting(false);
                                 }
                             }}>
+                                <div style={{ marginBottom: 16 }}>
+                                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>İlgili Case *</label>
+                                    <select
+                                        value={invoiceFormData.caseId}
+                                        onChange={e => setInvoiceFormData(prev => ({ ...prev, caseId: e.target.value }))}
+                                        style={{ width: '100%', padding: '10px 14px', border: '1px solid', borderColor: !invoiceFormData.caseId ? '#fca5a5' : '#e2e8f0', borderRadius: 10, fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' }}
+                                    >
+                                        <option value="">📁 Lütfen bir Case seçiniz...</option>
+                                        {allCases.map(c => (
+                                            <option key={c.id} value={c.id}>
+                                                {c?.caseNumber} {c.title ? `- ${c.title}` : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {!invoiceFormData.caseId && <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '4px' }}>Bu işlem için Case seçimi zorunludur. (Açık bir case yoksa önce 'Yeni Case' oluşturun.)</div>}
+                                </div>
                                 <div style={{ marginBottom: 16 }}>
                                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 6 }}>Fatura Başlığı *</label>
                                     <input type="text" required value={invoiceFormData.title} onChange={e => setInvoiceFormData(p => ({ ...p, title: e.target.value }))}

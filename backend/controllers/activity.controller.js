@@ -96,6 +96,7 @@ export const createActivity = async (req, res) => {
                         assignedToId: assignedToId || userId,
                         ...(req.body.callSuccessful !== undefined ? { callSuccessful: req.body.callSuccessful } : {}),
                         ...(req.body.callSentiment ? { callSentiment: req.body.callSentiment } : {}),
+                        ...(req.body.caseId ? { caseId: req.body.caseId } : {}),
                         assignedById: req.user?.id || null,
                         assignedByType: 'USER',
                         assignedAt: new Date()
@@ -132,6 +133,7 @@ export const createActivity = async (req, res) => {
                 source: req.body.source || 'MANUAL',
                 priority: req.body.priority || 'NORMAL',
                 isCompleted: resolvedIsCompleted,
+                caseId: req.body.caseId || null,
                 // Arama sonuç bilgileri (insan aramaları için)
                 ...(req.body.callSuccessful !== undefined ? { callSuccessful: req.body.callSuccessful } : {}),
                 ...(req.body.callSentiment ? { callSentiment: req.body.callSentiment } : {}),
@@ -655,7 +657,7 @@ export const getContactTimeline = async (req, res) => {
 export const updateActivity = async (req, res) => {
     try {
         const { activityId } = req.params;
-        const { title, description, dueDate, assignedToId } = req.body;
+        const { title, description, dueDate, assignedToId, topicCategoryId, caseId } = req.body;
 
         const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
         if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
@@ -665,6 +667,8 @@ export const updateActivity = async (req, res) => {
             description: description !== undefined ? description : existing.description,
             result: (existing.status === 'COMPLETED' && description !== undefined) ? description : existing.result,
             dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
+            topicCategoryId: topicCategoryId !== undefined ? topicCategoryId : existing.topicCategoryId,
+            caseId: caseId !== undefined ? caseId : existing.caseId,
         };
 
         // assignedToId değiştiyse atama bilgisini güncelle
