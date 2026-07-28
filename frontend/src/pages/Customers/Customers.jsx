@@ -2272,28 +2272,6 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                {/* SKOR */}
-                                                <td style={{ maxWidth: '80px', textAlign: 'center' }}>
-                                                    {(() => {
-                                                        if (contact.leadScore == null) return <span style={{ color: '#94a3b8' }}>---</span>;
-                                                        let bgColor = '#f3f4f6';
-                                                        let textColor = '#374151';
-                                                        let emoji = '⚪';
-                                                        switch (contact.leadTemperature) {
-                                                            case 'COLD': bgColor = '#eff6ff'; textColor = '#1d4ed8'; emoji = '🔵'; break;
-                                                            case 'COOL': bgColor = '#dcfce7'; textColor = '#15803d'; emoji = '🟢'; break;
-                                                            case 'WARM': bgColor = '#fef9c3'; textColor = '#a16207'; emoji = '🟡'; break;
-                                                            case 'HOT': bgColor = '#ffedd5'; textColor = '#c2410c'; emoji = '🟠'; break;
-                                                            case 'FIRE': bgColor = '#fee2e2'; textColor = '#b91c1c'; emoji = '🔴'; break;
-                                                        }
-                                                        return (
-                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: bgColor, color: textColor, padding: '2px 6px', borderRadius: '999px', fontSize: '11px', fontWeight: '600' }}>
-                                                                <span>{emoji}</span>
-                                                                <span>{contact.leadScore}</span>
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </td>
                                                 {/* KONU */}
                                                 <td className="contact-topic" title={(() => { const c = contact.cases?.find(c => c.status === 'ACTIVE') || contact.activeCase || contact.cases?.[0]; return c?.title || contact.aiTopic || ''; })()} style={{ maxWidth: '140px' }}>
                                                     {(() => {
@@ -2324,6 +2302,28 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                 {topic}
                                                             </span>
                                                         ) : <span style={{color: '#94a3b8'}}>---</span>;
+                                                    })()}
+                                                </td>
+                                                {/* SKOR */}
+                                                <td style={{ maxWidth: '80px', textAlign: 'center' }}>
+                                                    {(() => {
+                                                        if (contact.leadScore == null) return <span style={{ color: '#94a3b8' }}>---</span>;
+                                                        let bgColor = '#f3f4f6';
+                                                        let textColor = '#374151';
+                                                        let emoji = '⚪';
+                                                        switch (contact.leadTemperature) {
+                                                            case 'COLD': bgColor = '#eff6ff'; textColor = '#1d4ed8'; emoji = '🔵'; break;
+                                                            case 'COOL': bgColor = '#dcfce7'; textColor = '#15803d'; emoji = '🟢'; break;
+                                                            case 'WARM': bgColor = '#fef9c3'; textColor = '#a16207'; emoji = '🟡'; break;
+                                                            case 'HOT': bgColor = '#ffedd5'; textColor = '#c2410c'; emoji = '🟠'; break;
+                                                            case 'FIRE': bgColor = '#fee2e2'; textColor = '#b91c1c'; emoji = '🔴'; break;
+                                                        }
+                                                        return (
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', backgroundColor: bgColor, color: textColor, padding: '2px 6px', borderRadius: '999px', fontSize: '11px', fontWeight: '600' }}>
+                                                                <span>{emoji}</span>
+                                                                <span>{contact.leadScore}</span>
+                                                            </div>
+                                                        );
                                                     })()}
                                                 </td>
                                                 {/* DURUM = Akış / Aşama - Tıklanabilir */}

@@ -149,12 +149,21 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             }
         };
         const handleRefresh = () => { setTimeout(() => fetchCases(), 500); };
+        const handleScoreUpdated = (e) => {
+            const { caseId, score, temperature } = e.detail || {};
+            if (!caseId) return;
+            setCases(prev => prev.map(c =>
+                c.id === caseId ? { ...c, leadScore: score, leadTemperature: temperature } : c
+            ));
+        };
 
         window.addEventListener('websocket:case_updated', handleCaseUpdated);
         window.addEventListener('case_cards_refresh', handleRefresh);
+        window.addEventListener('websocket:case_score_updated', handleScoreUpdated);
         return () => {
             window.removeEventListener('websocket:case_updated', handleCaseUpdated);
             window.removeEventListener('case_cards_refresh', handleRefresh);
+            window.removeEventListener('websocket:case_score_updated', handleScoreUpdated);
         };
     }, [workspaceId, contactId]);
 
@@ -912,7 +921,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     } catch (e) { return null; }
                                 })()}
 
-                                {/* Lead Score (Case bazlı) */}
+                                {/* Skorlama (Case bazlı) */}
                                 {(c.leadScore != null && c.leadScore > 0) && (
                                     <div style={{
                                         display: 'flex', alignItems: 'center', gap: 8,

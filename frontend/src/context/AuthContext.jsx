@@ -163,6 +163,14 @@ export const AuthProvider = ({ children }) => {
             window.dispatchEvent(new CustomEvent('websocket:case_assignment_updated', { detail: data }));
         });
 
+        socket.on('case_score_updated', (data) => {
+            window.dispatchEvent(new CustomEvent('websocket:case_score_updated', { detail: data }));
+        });
+
+        socket.on('contact_score_updated', (data) => {
+            window.dispatchEvent(new CustomEvent('websocket:contact_score_updated', { detail: data }));
+        });
+
         socket.on('new_notification', (data) => {
             console.log('🔔 [AuthContext] New notification:', data);
             window.dispatchEvent(new CustomEvent('websocket:new_notification', { detail: data }));

@@ -96,7 +96,7 @@ export async function calculateLeadScore(contactId) {
         deals: {
           orderBy: { createdAt: 'desc' },
           take: 5,
-          select: { status: true, totalAmount: true, createdAt: true }
+          select: { status: true, amount: true, createdAt: true }
         },
         formSubmissions: {
           orderBy: { createdAt: 'desc' },
