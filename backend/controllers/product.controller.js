@@ -70,7 +70,7 @@ export const createProduct = async (req, res) => {
     try {
         const { workspaceId } = req.params;
         const {
-            name, description, groupName, unit,
+            name, description, groupName, categoryId, unit,
             price, priceUSD, priceEUR, priceGBP,
             discountedPrice, tax1Type, tax1Rate,
             tax2Type, tax2Rate, isActive
@@ -86,6 +86,7 @@ export const createProduct = async (req, res) => {
                 name,
                 description: description || null,
                 groupName: groupName || null,
+                categoryId: categoryId || null,
                 unit: unit || null,
                 price: price ? parseFloat(price) : 0,
                 priceUSD: priceUSD ? parseFloat(priceUSD) : null,
@@ -123,7 +124,7 @@ export const updateProduct = async (req, res) => {
 
         const updateData = {};
         const fields = [
-            'name', 'description', 'groupName', 'unit',
+            'name', 'description', 'groupName', 'categoryId', 'unit',
             'tax1Type', 'tax2Type', 'isActive'
         ];
         const floatFields = [

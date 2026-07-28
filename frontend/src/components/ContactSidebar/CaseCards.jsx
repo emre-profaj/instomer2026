@@ -17,6 +17,22 @@ const PRIORITY_ICONS = {
     URGENT: '🔴'
 };
 
+const getScoreColor = (temp) => ({
+  COLD: '#3b82f6', COOL: '#22c55e', WARM: '#eab308', HOT: '#f97316', FIRE: '#ef4444'
+})[temp] || '#94a3b8';
+
+const getScoreBgColor = (temp) => ({
+  COLD: '#eff6ff', COOL: '#f0fdf4', WARM: '#fefce8', HOT: '#fff7ed', FIRE: '#fef2f2'
+})[temp] || '#f1f5f9';
+
+const getScoreEmoji = (temp) => ({
+  COLD: '🔵', COOL: '🟢', WARM: '🟡', HOT: '🟠', FIRE: '🔴'
+})[temp] || '⬜';
+
+const getScoreLabel = (temp) => ({
+  COLD: 'Soğuk', COOL: 'Ilık', WARM: 'Sıcak', HOT: 'Çok Sıcak', FIRE: 'Yanıyor'
+})[temp] || '';
+
 const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversationId, activeCaseId = null, onCaseLinked, inline = false, onStageChanged = null, onCaseInfo = null, onCasesLoaded = null, showOnly = null }) => {
     // Flatten hierarchical teams
     const flatTeams = (() => {
@@ -43,6 +59,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [inlineNewTitle, setInlineNewTitle] = useState('');
     const [inlineCreating, setInlineCreating] = useState(false);
     const [showCaseSwitch, setShowCaseSwitch] = useState(false);
+    const [categories, setCategories] = useState([]);
 
     // Mega menü state (inline mode) — must be before any early returns to respect Rules of Hooks
     const [megaOpen, setMegaOpen] = useState(false);
@@ -50,10 +67,19 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [megaHoverFunnel, setMegaHoverFunnel] = useState(null);
     const megaRef = useRef(null);
 
+    const loadCategories = async () => {
+        try {
+            const { default: api } = await import('../../services/api');
+            const res = await api.get(`/workspaces/${workspaceId}/topic-categories`);
+            setCategories(res.data || []);
+        } catch (e) { /* opsiyonel */ }
+    };
+
     useEffect(() => {
         if (workspaceId && contactId) {
             fetchCases();
             loadFunnels();
+            loadCategories();
         }
     }, [workspaceId, contactId]);
 
@@ -886,6 +912,35 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     } catch (e) { return null; }
                                 })()}
 
+                                {/* Lead Score (Case bazlı) */}
+                                {(c.leadScore != null && c.leadScore > 0) && (
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        padding: '6px 10px', margin: '4px 0',
+                                        background: getScoreBgColor(c.leadTemperature),
+                                        borderRadius: 8, border: `1px solid ${getScoreColor(c.leadTemperature)}25`
+                                    }}>
+                                        <span style={{ fontSize: '18px', fontWeight: 800, color: getScoreColor(c.leadTemperature) }}>
+                                            {c.leadScore}
+                                        </span>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                <span style={{ fontSize: '10px' }}>{getScoreEmoji(c.leadTemperature)}</span>
+                                                <span style={{ fontSize: '11px', fontWeight: 600, color: getScoreColor(c.leadTemperature) }}>
+                                                    {getScoreLabel(c.leadTemperature)}
+                                                </span>
+                                            </div>
+                                            <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: 2, marginTop: 3 }}>
+                                                <div style={{
+                                                    width: `${c.leadScore}%`, height: '100%',
+                                                    backgroundColor: getScoreColor(c.leadTemperature),
+                                                    borderRadius: 2, transition: 'width 0.5s ease'
+                                                }} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Pipeline Stage */}
                                 <div style={{ marginBottom: 6 }}>
                                     <select
@@ -922,6 +977,29 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         ))}
                                     </select>
                                 </div>
+
+                                {/* Kategori Seçimi */}
+                                <select
+                                    value={c.categoryId || ''}
+                                    onChange={async (e) => {
+                                        try {
+                                            await caseAPI.update(workspaceId, c.id, { categoryId: e.target.value || null });
+                                            fetchCases();
+                                        } catch (err) { console.error('Kategori güncelleme hatası:', err); }
+                                    }}
+                                    style={{
+                                        width: '100%', padding: '4px 8px', fontSize: '0.75rem',
+                                        border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
+                                        color: c.categoryId ? '#3730a3' : '#9ca3af',
+                                        background: c.categoryId ? '#eef2ff' : '#fff', outline: 'none',
+                                        marginTop: 4, marginBottom: 6
+                                    }}
+                                >
+                                    <option value="">📁 Kategori seç...</option>
+                                    {categories.map(cat => (
+                                        <option key={cat.id} value={cat.id}>{cat.icon || '📁'} {cat.name}</option>
+                                    ))}
+                                </select>
 
                                 {/* Assignment */}
                                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>

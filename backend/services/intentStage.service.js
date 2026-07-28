@@ -118,6 +118,15 @@ export async function applyIntentStageTransition(workspaceId, conversationId, co
     if (!targetStage) return null;
     if (targetStage.id === conversation.funnelStageId) return null;
 
+    // 3.5. Giriş kurallarını kontrol et (entryRules)
+    if (targetStage.entryRules) {
+      const rulesOk = await evaluateEntryRules(targetStage.entryRules, contactId, conversationId);
+      if (!rulesOk) {
+        console.log(`🧠 [IntentStage] Entry rules not met for stage "${targetStage.name}", skipping`);
+        return null;
+      }
+    }
+
     // Mevcut aşamadan geri gitmeyi engelle (order bazlı)
     const currentStage = stages.find(s => s.id === conversation.funnelStageId);
     if (currentStage && targetStage.order <= currentStage.order) {
@@ -285,5 +294,131 @@ export async function createIntentActivity(workspaceId, contactId, classifierRes
   } catch (error) {
     console.error('❌ [IntentActivity] Error:', error.message);
     return null;
+  }
+}
+
+/**
+ * Giriş kurallarını değerlendir
+ * 
+ * @param {string} entryRulesJson - JSON string: { matchType: 'ALL'|'ANY', rules: [...] }
+ * @param {string} contactId
+ * @param {string} conversationId
+ * @returns {boolean} - Kurallar sağlanıyor mu?
+ */
+async function evaluateEntryRules(entryRulesJson, contactId, conversationId) {
+  try {
+    const parsed = JSON.parse(entryRulesJson);
+    if (!parsed || !Array.isArray(parsed.rules) || parsed.rules.length === 0) return true;
+
+    const matchType = parsed.matchType || 'ALL';
+
+    // Gerekli verileri topla
+    const [contact, conversation] = await Promise.all([
+      prisma.contact.findUnique({
+        where: { id: contactId },
+        select: { 
+          name: true, phone: true, email: true, topic: true, source: true,
+          deals: { select: { status: true }, take: 5 },
+          activities: { select: { type: true, status: true, callSuccessful: true }, take: 20 },
+          formSubmissions: { select: { id: true }, take: 1 },
+        }
+      }),
+      prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { 
+          channel: true,
+          _count: { select: { messages: true } }
+        }
+      })
+    ]);
+
+    if (!contact) return false;
+
+    const results = [];
+
+    for (const rule of parsed.rules) {
+      let passed = false;
+
+      switch (rule.type) {
+        case 'CHANNEL_IS': {
+          const channels = rule.channels || [];
+          if (channels.length === 0) { passed = true; break; }
+          // Conversation kanalını kontrol et
+          passed = channels.includes(conversation?.channel);
+          // Contact source'u da kontrol et (FORM, META_LEAD gibi conversation'sız olanlar)
+          if (!passed && contact.source) {
+            passed = channels.includes(contact.source);
+          }
+          break;
+        }
+
+        case 'FIELD_EXISTS': {
+          const val = contact[rule.field];
+          passed = val !== null && val !== undefined && val !== '';
+          break;
+        }
+
+        case 'FIELD_EQUALS': {
+          const val = contact[rule.field];
+          passed = val != null && String(val).toLowerCase() === String(rule.value || '').toLowerCase();
+          break;
+        }
+
+        case 'TOPIC_CONTAINS': {
+          const topic = (contact.topic || '').toLowerCase();
+          const keywords = (rule.value || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+          passed = keywords.some(kw => topic.includes(kw));
+          break;
+        }
+
+        case 'DEAL_EXISTS': {
+          passed = contact.deals && contact.deals.length > 0;
+          break;
+        }
+
+        case 'DEAL_STATUS': {
+          passed = contact.deals?.some(d => d.status === rule.value);
+          break;
+        }
+
+        case 'ACTIVITY_EXISTS': {
+          passed = contact.activities?.some(a => a.type === (rule.value || rule.activityType));
+          break;
+        }
+
+        case 'ACTIVITY_RESULT': {
+          const aType = rule.activityType || 'MEETING';
+          const aResult = rule.value || 'COMPLETED';
+          passed = contact.activities?.some(a => a.type === aType && a.status === aResult);
+          break;
+        }
+
+        case 'HAS_APPOINTMENT': {
+          passed = contact.activities?.some(a => a.type === 'MEETING' || a.type === 'VISIT');
+          break;
+        }
+
+        case 'MESSAGE_COUNT_GT': {
+          const threshold = parseInt(rule.value) || 0;
+          passed = (conversation?._count?.messages || 0) > threshold;
+          break;
+        }
+
+        default:
+          passed = true; // Bilinmeyen kural tipi → geç
+      }
+
+      results.push(passed);
+    }
+
+    // Match type'a göre sonuç
+    if (matchType === 'ANY') {
+      return results.some(r => r === true);
+    }
+    return results.every(r => r === true); // ALL
+
+  } catch (error) {
+    console.error('❌ [EntryRules] Evaluation error:', error.message);
+    return true; // Hata durumunda geçişe izin ver
   }
 }

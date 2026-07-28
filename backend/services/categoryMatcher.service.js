@@ -120,3 +120,65 @@ export const syncDealToCase = async (dealId, workspaceId) => {
         return null;
     }
 };
+
+export const matchCategoryFromConversation = async (workspaceId, conversationId) => {
+    try {
+        // Son 20 mesajı al
+        const messages = await prisma.message.findMany({
+            where: { conversationId },
+            orderBy: { createdAt: 'desc' },
+            take: 20,
+            select: { content: true, isFromContact: true }
+        });
+        
+        const content = messages.filter(m => m.isFromContact).map(m => m.content || '').join(' ').toLowerCase();
+        if (!content.trim()) return null;
+        
+        // Workspace'teki tüm kategorileri ve keywordlerini al
+        const categories = await prisma.topicCategory.findMany({
+            where: { workspaceId }
+        });
+        
+        if (!categories.length) return null;
+        
+        // Ayrıca workspace'teki tüm ürünleri al ve ürün adlarını da kontrol et
+        const products = await prisma.product.findMany({
+            where: { workspaceId, isActive: true },
+            select: { name: true, groupName: true }
+        });
+        
+        // 1. Ürün adı eşleşmesi (en güçlü sinyal)
+        for (const product of products) {
+            if (product.name && content.includes(product.name.toLowerCase())) {
+                // Bu ürünün grubundan kategori bul
+                if (product.groupName) {
+                    const cat = categories.find(c => c.name.toLowerCase() === product.groupName.toLowerCase());
+                    if (cat) return { categoryId: cat.id, matchedProduct: product.name, matchType: 'PRODUCT_NAME' };
+                }
+            }
+        }
+        
+        // 2. Kategori keyword eşleşmesi
+        for (const cat of categories) {
+            const keywords = cat.keywords ? (typeof cat.keywords === 'string' ? JSON.parse(cat.keywords) : cat.keywords) : [];
+            
+            if (Array.isArray(keywords)) {
+                for (const kw of keywords) {
+                    if (kw && content.includes(kw.toLowerCase())) {
+                        return { categoryId: cat.id, matchedKeyword: kw, matchType: 'KEYWORD' };
+                    }
+                }
+            }
+            
+            // Kategori adı da bir keyword olarak dene
+            if (cat.name && content.includes(cat.name.toLowerCase())) {
+                return { categoryId: cat.id, matchedKeyword: cat.name, matchType: 'CATEGORY_NAME' };
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Konuşma kategori eşleştirme hatası:', error.message);
+        return null;
+    }
+};

@@ -199,6 +199,30 @@ export const createDeal = async (req, res) => {
             if (conv) channel = conv.channel;
         }
 
+        // Ürün bilgisini zenginleştir: productId, groupName, categoryId ekle
+        let enrichedProducts = products;
+        if (Array.isArray(products) && products.length > 0) {
+            const productNames = products.map(p => p.name).filter(Boolean);
+            if (productNames.length > 0) {
+                const dbProducts = await prisma.product.findMany({
+                    where: { workspaceId, name: { in: productNames } },
+                    select: { id: true, name: true, groupName: true, categoryId: true }
+                });
+                const productMap = {};
+                for (const p of dbProducts) { productMap[p.name.toLocaleLowerCase('tr-TR').trim()] = p; }
+
+                enrichedProducts = products.map(item => {
+                    const found = item.name ? productMap[item.name.toLocaleLowerCase('tr-TR').trim()] : null;
+                    return {
+                        ...item,
+                        productId: item.productId || found?.id || null,
+                        groupName: item.groupName || found?.groupName || null,
+                        categoryId: item.categoryId || found?.categoryId || null
+                    };
+                });
+            }
+        }
+
         // Ürünlerin KDV dahil toplamını hesapla
         const baseAmount = parseFloat(amount) || 0;
         const vatAmount = baseAmount * (parseFloat(vatRate) / 100);
@@ -213,7 +237,7 @@ export const createDeal = async (req, res) => {
             amount: totalAmount,
             currency,
             stage,
-            products: JSON.stringify(products),
+            products: JSON.stringify(enrichedProducts),
             assignedToId: assignedToId || null,
             notes,
             vatRate: parseFloat(vatRate) || 0,
@@ -330,7 +354,32 @@ export const updateDeal = async (req, res) => {
         if (description !== undefined) updateData.description = description;
         if (amount !== undefined) updateData.amount = parseFloat(amount);
         if (currency !== undefined) updateData.currency = currency;
-        if (products !== undefined) updateData.products = JSON.stringify(products);
+        if (products !== undefined) {
+            // Ürün bilgisini zenginleştir: productId, groupName, categoryId ekle
+            let enrichedProducts = products;
+            if (Array.isArray(products) && products.length > 0) {
+                const productNames = products.map(p => p.name).filter(Boolean);
+                if (productNames.length > 0) {
+                    const dbProducts = await prisma.product.findMany({
+                        where: { workspaceId, name: { in: productNames } },
+                        select: { id: true, name: true, groupName: true, categoryId: true }
+                    });
+                    const productMap = {};
+                    for (const p of dbProducts) { productMap[p.name.toLocaleLowerCase('tr-TR').trim()] = p; }
+
+                    enrichedProducts = products.map(item => {
+                        const found = item.name ? productMap[item.name.toLocaleLowerCase('tr-TR').trim()] : null;
+                        return {
+                            ...item,
+                            productId: item.productId || found?.id || null,
+                            groupName: item.groupName || found?.groupName || null,
+                            categoryId: item.categoryId || found?.categoryId || null
+                        };
+                    });
+                }
+            }
+            updateData.products = JSON.stringify(enrichedProducts);
+        }
         if (assignedToId !== undefined) {
             updateData.assignedToId = assignedToId || null;
             // Atayan değiştiyse atayan bilgisini güncelle

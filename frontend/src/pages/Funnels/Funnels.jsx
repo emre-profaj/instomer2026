@@ -730,7 +730,10 @@ const Funnels = () => {
                                         {getEntryRulesList(stagePanel).map((rule, i) => (
                                             <div key={i} className="entry-rule-item">
                                                 <span className="entry-rule-badge">{rule.type}</span>
-                                                <span>{rule.field || rule.value || ''}</span>
+                                                <span>{rule.type === 'CHANNEL_IS'
+                                                    ? (rule.channels || []).join(', ')
+                                                    : (rule.field || rule.value || '')
+                                                }</span>
                                             </div>
                                         ))}
                                     </div>

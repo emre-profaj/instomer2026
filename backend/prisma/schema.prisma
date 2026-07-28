@@ -1282,6 +1282,7 @@ model TopicCategory {
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   cases         Case[]
+  products      Product[]
 
   @@index([workspaceId])
   @@map("topic_categories")
@@ -1776,6 +1777,8 @@ model Case {
   categoryId String?
   category   TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   products   String         @default("[]") // JSON array [{productId, name, quantity, unitPrice}]
+  leadScore       Int      @default(0)
+  leadTemperature String   @default("COLD")
 
   @@index([workspaceId])
   @@index([contactId])
@@ -1791,6 +1794,7 @@ model Product {
   name            String
   description     String?
   groupName       String?
+  categoryId      String? // TopicCategory ile doğrudan ilişki
   unit            String?
   price           Float    @default(0)
   priceUSD        Float?
@@ -1805,10 +1809,12 @@ model Product {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([workspaceId, groupName])
+  @@index([categoryId])
   @@map("products")
 }
 

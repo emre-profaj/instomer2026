@@ -232,6 +232,156 @@ export async function calculateLeadScore(contactId) {
 }
 
 /**
+ * Case'in skorunu hesapla
+ */
+export async function calculateCaseScore(caseId) {
+  try {
+    const caseData = await prisma.case.findUnique({
+      where: { id: caseId },
+      include: {
+        contact: {
+          select: { phone: true, email: true, name: true, company: true, source: true }
+        },
+        conversations: {
+          include: {
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 50,
+              select: { isFromContact: true, content: true, createdAt: true, messageType: true }
+            },
+            deals: {
+              orderBy: { createdAt: 'desc' },
+              take: 5,
+              select: { status: true, amount: true, createdAt: true }
+            }
+          },
+          orderBy: { lastMessageAt: 'desc' },
+          take: 5
+        },
+        activities: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          select: { type: true, status: true, createdAt: true, callSuccessful: true }
+        }
+      }
+    });
+
+    if (!caseData) return { score: 0, temperature: 'COLD', breakdown: {} };
+
+    const contact = caseData.contact;
+    const funnelType = caseData.funnelType || 'DEFAULT';
+    const template = SCORING_TEMPLATES[funnelType] || SCORING_TEMPLATES.DEFAULT;
+
+    let score = 0;
+    const breakdown = {};
+
+    // ── 1. Temel bilgi puanları ──────────────────────────────
+    if (contact.phone) { 
+        const p = template.phoneShared || 10;
+        score += p; breakdown.phone = p; 
+    }
+    if (contact.email) { 
+        const p = template.emailShared || 5;
+        score += p; breakdown.email = p; 
+    }
+    if (contact.name && contact.name !== 'Web Ziyaretçisi') { score += 3; breakdown.name = 3; }
+    if (contact.company) { score += 5; breakdown.company = 5; }
+
+    // ── 2. Mesaj puanları ────────────────────────────────────
+    const allMessages = caseData.conversations.flatMap(c => c.messages);
+    const customerMessages = allMessages.filter(m => m.isFromContact);
+    
+    // Mesaj sayısı
+    const msgMultiplier = template.messageCount !== undefined ? template.messageCount : 2;
+    const msgScore = Math.min(customerMessages.length * msgMultiplier, 15);
+    score += msgScore;
+    breakdown.messageCount = msgScore;
+
+    // Son mesaj ne zaman
+    if (customerMessages.length > 0) {
+      const lastMsg = customerMessages[0];
+      const daysSince = (Date.now() - new Date(lastMsg.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSince < 1) { score += 10; breakdown.recency = 10; }
+      else if (daysSince < 3) { score += 7; breakdown.recency = 7; }
+      else if (daysSince < 7) { score += 4; breakdown.recency = 4; }
+      else { breakdown.recency = 0; }
+    }
+
+    // ── 3. İçerik puanları ───────────────────────────────────
+    const allContent = customerMessages.map(m => m.content || '').join(' ').toLowerCase();
+    
+    const priceKeywords = ['fiyat', 'ücret', 'maliyet', 'bütçe', 'ne kadar', 'kaç lira', 'kaç tl', 'fiyatı'];
+    if (priceKeywords.some(kw => allContent.includes(kw))) {
+      const p = template.priceDiscussed || template.budgetMentioned || 10;
+      score += p;
+      breakdown.priceDiscussion = p;
+    }
+
+    const purchaseKeywords = ['almak istiyorum', 'satın al', 'sipariş', 'hemen', 'başlayalım', 'anlaştık', 'olur'];
+    if (purchaseKeywords.some(kw => allContent.includes(kw))) {
+      score += 15;
+      breakdown.purchaseIntent = 15;
+    }
+
+    const callKeywords = ['beni arayın', 'arar mısınız', 'bana ulaşın', 'numaramı'];
+    if (callKeywords.some(kw => allContent.includes(kw))) {
+      const p = template.meetingRequested || 8;
+      score += p;
+      breakdown.callRequest = p;
+    }
+
+    // ── 4. Aktivite puanları ─────────────────────────────────
+    const completedCalls = caseData.activities.filter(a => a.type === 'CALL' && a.callSuccessful === true);
+    if (completedCalls.length > 0) {
+      const callScore = Math.min(completedCalls.length * 5, 15);
+      score += callScore;
+      breakdown.successfulCalls = callScore;
+    }
+
+    const proposals = caseData.activities.filter(a => a.type === 'PROPOSAL');
+    if (proposals.length > 0) {
+      score += 10;
+      breakdown.proposalSent = 10;
+    }
+
+    // ── 5. Deal puanları ─────────────────────────────────────
+    const allDeals = caseData.conversations.flatMap(c => c.deals);
+    if (allDeals.length > 0) {
+      const p = template.dealCreated || 10;
+      score += p;
+      breakdown.hasDeal = p;
+      
+      const wonDeals = allDeals.filter(d => d.status === 'WON');
+      if (wonDeals.length > 0) {
+        score += 15;
+        breakdown.wonDeal = 15;
+      }
+    }
+
+    // ── 6. Kaynak puanları ───────────────────────────────────
+    if (contact.source === 'FORM') { score += 5; breakdown.formSource = 5; }
+    if (contact.source === 'FACEBOOK' || contact.source === 'INSTAGRAM') { score += 3; breakdown.socialSource = 3; }
+
+    // ── 7. Çoklu kanal bonus ─────────────────────────────────
+    const channels = new Set(caseData.conversations.map(c => c.channel));
+    if (channels.size > 1) {
+      score += 5;
+      breakdown.multiChannel = 5;
+    }
+
+    score = Math.min(score, 100);
+    score = Math.max(score, 0);
+
+    const temperature = getTemperature(score);
+
+    return { score, temperature, breakdown };
+  } catch (error) {
+    console.error('❌ [CaseScoring] Calculate error:', error.message);
+    return { score: 0, temperature: 'COLD', breakdown: {} };
+  }
+}
+
+/**
  * Skoru veritabanına kaydet
  */
 export async function updateLeadScore(contactId) {
@@ -245,6 +395,15 @@ export async function updateLeadScore(contactId) {
         leadTemperature: temperature,
       }
     });
+
+    // Aktif case'lerin skorlarını da güncelle (yeni)
+    const activeCases = await prisma.case.findMany({
+        where: { contactId, status: 'ACTIVE' },
+        select: { id: true }
+    });
+    for (const c of activeCases) {
+        await updateCaseScore(c.id);
+    }
 
     // Socket bildirim
     const contact = await prisma.contact.findUnique({
@@ -270,6 +429,23 @@ export async function updateLeadScore(contactId) {
     console.error('❌ [LeadScoring] Update error:', error.message);
     return null;
   }
+}
+
+/**
+ * Case skorunu güncelle
+ */
+export async function updateCaseScore(caseId) {
+    const { score, temperature, breakdown } = await calculateCaseScore(caseId);
+    await prisma.case.update({
+        where: { id: caseId },
+        data: { leadScore: score, leadTemperature: temperature }
+    });
+    // Socket bildirim
+    const caseData = await prisma.case.findUnique({ where: { id: caseId }, select: { workspaceId: true, contactId: true } });
+    if (caseData?.workspaceId) {
+        emitToWorkspace(caseData.workspaceId, 'case_score_updated', { caseId, contactId: caseData.contactId, score, temperature });
+    }
+    return { score, temperature, breakdown };
 }
 
 /**

@@ -5126,6 +5126,7 @@ export const getSalesReport = async (req, res) => {
                 amount: true,
                 currency: true,
                 stage: true,
+                products: true, // JSON array — ürün bilgisi (kategori eşleşmesi için)
                 createdAt: true,
                 assignedToId: true,
                 assignedTo: { select: { id: true, name: true, avatar: true } },
@@ -5185,22 +5186,79 @@ export const getSalesReport = async (req, res) => {
             return match || null;
         };
 
+        // Workspace'in tüm ürünlerini categoryId ile birlikte önceden çek
+        const allProducts = await prisma.product.findMany({
+            where: { workspaceId },
+            select: { id: true, name: true, groupName: true, categoryId: true, category: { select: { id: true, name: true, icon: true, color: true } } }
+        });
+        // Ürün adı → product haritası (hızlı lookup için)
+        const productByName = {};
+        const productById = {};
+        for (const p of allProducts) {
+            productByName[p.name.toLocaleLowerCase('tr-TR').trim()] = p;
+            productById[p.id] = p;
+        }
+
+        // Deal'ın ürünlerinden kategori bul
+        const getCategoryFromProducts = (deal) => {
+            try {
+                const products = typeof deal.products === 'string' ? JSON.parse(deal.products || '[]') : (deal.products || []);
+                for (const item of products) {
+                    // 1. productId varsa direkt bul
+                    if (item.productId && productById[item.productId]?.category) {
+                        return productById[item.productId].category;
+                    }
+                    // 2. categoryId varsa direkt bul
+                    if (item.categoryId) {
+                        const cat = allTopicCategories.find(tc => tc.id === item.categoryId);
+                        if (cat) return cat;
+                    }
+                    // 3. Ürün adından eşleştir
+                    if (item.name) {
+                        const found = productByName[item.name.toLocaleLowerCase('tr-TR').trim()];
+                        if (found?.category) return found.category;
+                        // 4. groupName'den eşleştir
+                        if (found?.groupName) {
+                            const catFromGroup = matchTopicByText(found.groupName);
+                            if (catFromGroup) return catFromGroup;
+                        }
+                    }
+                }
+            } catch { /* JSON parse error */ }
+            return null;
+        };
+
         // Her deal'a topicCategory ekle
         const salesList = await Promise.all(deals.map(async (d) => {
-            // 1. Deal'ın kendi conversation'ının yapılandırılmış topicCategory'si (en doğru kaynak)
-            let topicCat = d.conversation?.topicCategory || null;
+            // 1. Ürünün kategorisi (en doğru kaynak — satılan şey üründür)
+            let topicCat = getCategoryFromProducts(d);
 
-            // 2. Conversation'da topicCategoryId yoksa, aiTopic metnini mevcut kategorilerle eşleştir.
-            //    Bu, kategoriler eklenmeden ÖNCE oluşturulmuş konuşmaları doğru şekilde sınıflandırır.
-            //    Başka bir contact'ın veya agent'ın verisine başvurulmaz.
+            // 2. Deal'ın kendi conversation'ının yapılandırılmış topicCategory'si
+            if (!topicCat) {
+                topicCat = d.conversation?.topicCategory || null;
+            }
+
+            // 3. Conversation'da topicCategoryId yoksa, aiTopic metnini mevcut kategorilerle eşleştir.
             if (!topicCat && d.conversation?.aiTopic) {
                 topicCat = matchTopicByText(d.conversation.aiTopic);
             }
 
-            // 3. Deal'ın hiç conversation'ı yoksa ya da conversation'da aiTopic de yoksa,
-            //    deal başlığını kategori isimleriyle eşleştirmeyi dene.
+            // 4. Deal başlığını kategori isimleriyle eşleştirmeyi dene.
             if (!topicCat && d.title) {
                 topicCat = matchTopicByText(d.title);
+            }
+
+            // 5. Son çare: deal ürünlerinin groupName'lerini text eşleştir
+            if (!topicCat) {
+                try {
+                    const products = typeof d.products === 'string' ? JSON.parse(d.products || '[]') : (d.products || []);
+                    for (const item of products) {
+                        if (item.name) {
+                            topicCat = matchTopicByText(item.name);
+                            if (topicCat) break;
+                        }
+                    }
+                } catch { /* ignore */ }
             }
 
             return {

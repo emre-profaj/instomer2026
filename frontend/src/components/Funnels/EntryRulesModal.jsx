@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const RULE_TYPES = [
+    { value: 'CHANNEL_IS',      label: '📡 Kanaldan gelen' },
     { value: 'FIELD_EXISTS',    label: 'Alan var mı?' },
     { value: 'FIELD_EQUALS',    label: 'Alan eşit mi?' },
     { value: 'TOPIC_CONTAINS',  label: 'Konu içerir' },
@@ -10,6 +11,20 @@ const RULE_TYPES = [
     { value: 'ACTIVITY_RESULT', label: 'Aktivite sonucu' },
     { value: 'HAS_APPOINTMENT', label: 'Randevu var mı?' },
     { value: 'MESSAGE_COUNT_GT',label: 'Mesaj sayısı >' }
+];
+
+const CHANNEL_OPTIONS = [
+    { value: 'WHATSAPP',    label: '💬 WhatsApp',       icon: '💬' },
+    { value: 'INSTAGRAM',   label: '📸 Instagram DM',   icon: '📸' },
+    { value: 'FACEBOOK',    label: '📘 Facebook',        icon: '📘' },
+    { value: 'FORM',        label: '📋 Web Formu',       icon: '📋' },
+    { value: 'META_LEAD',   label: '📑 Meta Lead Formu', icon: '📑' },
+    { value: 'EMAIL',       label: '📧 Email',           icon: '📧' },
+    { value: 'WIDGET',      label: '🌐 Web Widget',      icon: '🌐' },
+    { value: 'RETELL',      label: '📞 AI Telefon',      icon: '📞' },
+    { value: 'MANUAL',      label: '✍️ Manuel Kayıt',    icon: '✍️' },
+    { value: 'IG_COMMENT',  label: '💬 Instagram Yorum',  icon: '💬' },
+    { value: 'FB_COMMENT',  label: '💬 Facebook Yorum',   icon: '💬' },
 ];
 
 const FIELD_OPTIONS = [
@@ -176,6 +191,38 @@ const EntryRulesModal = ({ isOpen, onClose, stage, onSave }) => {
                             {ACTIVITY_RESULT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                     </>
+                );
+
+            case 'CHANNEL_IS':
+                return (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+                        {CHANNEL_OPTIONS.map(ch => {
+                            const selected = (rule.channels || []).includes(ch.value);
+                            return (
+                                <button
+                                    key={ch.value}
+                                    type="button"
+                                    onClick={() => {
+                                        const current = rule.channels || [];
+                                        const updated = selected
+                                            ? current.filter(v => v !== ch.value)
+                                            : [...current, ch.value];
+                                        updateRule(index, { channels: updated });
+                                    }}
+                                    style={{
+                                        padding: '4px 10px', fontSize: '11px', fontWeight: 500,
+                                        borderRadius: 16, cursor: 'pointer',
+                                        border: selected ? '1.5px solid #3b82f6' : '1px solid #d1d5db',
+                                        background: selected ? '#eff6ff' : '#fff',
+                                        color: selected ? '#1d4ed8' : '#64748b',
+                                        transition: 'all 0.15s ease'
+                                    }}
+                                >
+                                    {ch.icon} {ch.label.split(' ').slice(1).join(' ')}
+                                </button>
+                            );
+                        })}
+                    </div>
                 );
 
             case 'MESSAGE_COUNT_GT':

@@ -1822,44 +1822,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 )}
                                             </div>
 
-                                            {/* Lead Score */}
-                                            {profile?.leadScore != null && (
-                                            <div style={{
-                                                margin: '12px 16px', padding: '12px 16px',
-                                                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
-                                                borderRadius: '12px', border: '1px solid #e2e8f0'
-                                            }}>
-                                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
-                                                🎯 Lead Skoru
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                <div style={{
-                                                    fontSize: '28px', fontWeight: 800,
-                                                    color: getScoreColor(profile.leadTemperature)
-                                                }}>
-                                                    {profile.leadScore}
-                                                </div>
-                                                <div style={{ flex: 1 }}>
-                                                    <div style={{
-                                                    display: 'inline-block',
-                                                    padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 700,
-                                                    backgroundColor: getScoreBgColor(profile.leadTemperature),
-                                                    color: getScoreColor(profile.leadTemperature)
-                                                    }}>
-                                                    {getScoreEmoji(profile.leadTemperature)} {getScoreLabel(profile.leadTemperature)}
-                                                    </div>
-                                                    <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', marginTop: '6px' }}>
-                                                    <div style={{
-                                                        width: `${profile.leadScore}%`, height: '100%',
-                                                        backgroundColor: getScoreColor(profile.leadTemperature),
-                                                        borderRadius: '3px', transition: 'width 0.5s ease'
-                                                    }} />
-                                                    </div>
-                                                </div>
-                                                </div>
-                                            </div>
-                                            )}
-
                                             {/* Attribution Card */}
                                             {attributions.length > 0 && (
                                             <div style={{

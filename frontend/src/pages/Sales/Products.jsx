@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { productAPI } from '../../services/api';
 import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown } from 'lucide-react';
 import TopicCategories from '../Settings/TopicCategories';
-import { importFromExcel } from '../../services/topicCategory.api';
+import { importFromExcel, getTopicCategories } from '../../services/topicCategory.api';
 import './Sales.css';
 
 const TAX_OPTIONS = [
@@ -29,6 +29,7 @@ const Products = () => {
     const [search, setSearch] = useState('');
     const [groupFilter, setGroupFilter] = useState('');
     const [groups, setGroups] = useState([]);
+    const [categories, setCategories] = useState([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
     const pageSize = 25;
@@ -46,6 +47,7 @@ const Products = () => {
         name: '',
         description: '',
         groupName: '',
+        categoryId: '',
         unit: 'Adet',
         price: '',
         priceUSD: '',
@@ -69,8 +71,18 @@ const Products = () => {
         if (currentWorkspace?.id) {
             fetchProducts();
             fetchGroups();
+            fetchCategories();
         }
     }, [currentWorkspace?.id, search, groupFilter, page]);
+
+    const fetchCategories = async () => {
+        try {
+            const res = await getTopicCategories(currentWorkspace.id);
+            setCategories(res.data.categories || res.data || []);
+        } catch (err) {
+            console.error('Failed to fetch categories:', err);
+        }
+    };
 
     const fetchProducts = async () => {
         try {
@@ -101,7 +113,7 @@ const Products = () => {
 
     const resetForm = () => {
         setFormData({
-            name: '', description: '', groupName: '', unit: 'Adet',
+            name: '', description: '', groupName: '', categoryId: '', unit: 'Adet',
             price: '', priceUSD: '', priceEUR: '', priceGBP: '',
             discountedPrice: '', tax1Type: '', tax1Rate: 0, tax2Type: '', tax2Rate: 0,
         });
@@ -119,6 +131,7 @@ const Products = () => {
             name: product.name || '',
             description: product.description || '',
             groupName: product.groupName || '',
+            categoryId: product.categoryId || '',
             unit: product.unit || 'Adet',
             price: product.price || '',
             priceUSD: product.priceUSD || '',
@@ -705,6 +718,27 @@ const Products = () => {
                                         resize: 'vertical', boxSizing: 'border-box'
                                     }}
                                 />
+                            </div>
+
+                            {/* Kategori */}
+                            <div style={{ marginBottom: '14px' }}>
+                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
+                                    📁 Kategori <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Raporlarda gruplanır)</span>
+                                </label>
+                                <select
+                                    value={formData.categoryId}
+                                    onChange={e => setFormData(prev => ({ ...prev, categoryId: e.target.value }))}
+                                    style={{
+                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
+                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
+                                        background: '#fff', cursor: 'pointer', boxSizing: 'border-box'
+                                    }}
+                                >
+                                    <option value="">Kategori seçin...</option>
+                                    {categories.map(c => (
+                                        <option key={c.id} value={c.id}>{c.icon || '📁'} {c.name}</option>
+                                    ))}
+                                </select>
                             </div>
 
                             {/* Grup & Birim */}
