@@ -449,6 +449,107 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
                         <p style={{ fontSize: '0.82rem', color: '#6b7280', marginTop: 0, marginBottom: 20 }}>
                             Belirli kanallardan numara geldiğinde otomatik arama başlatır.
                         </p>
+
+                        {/* Çalışma Saatleri */}
+                        <div style={{ marginBottom: 18, padding: '16px 18px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                                <Clock size={16} style={{ color: '#6366f1' }} />
+                                <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e1b4b' }}>Çalışma Saatleri</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                                <input type="time"
+                                    value={settings.retellAutoCallSchedule.start || '09:00'}
+                                    onChange={e => setSettings(prev => ({
+                                        ...prev,
+                                        retellAutoCallSchedule: { ...prev.retellAutoCallSchedule, start: e.target.value }
+                                    }))}
+                                    style={{ ...inputStyle, flex: 1, maxWidth: 140 }}
+                                />
+                                <span style={{ color: '#9ca3af', fontSize: '0.85rem', fontWeight: 600 }}>—</span>
+                                <input type="time"
+                                    value={settings.retellAutoCallSchedule.end || '18:00'}
+                                    onChange={e => setSettings(prev => ({
+                                        ...prev,
+                                        retellAutoCallSchedule: { ...prev.retellAutoCallSchedule, end: e.target.value }
+                                    }))}
+                                    style={{ ...inputStyle, flex: 1, maxWidth: 140 }}
+                                />
+                            </div>
+                            <div>
+                                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>Aktif Günler</span>
+                                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                    {dayLabels.map(d => (
+                                        <button key={d.value} type="button"
+                                            onClick={() => toggleDay(d.value)}
+                                            style={{
+                                                padding: '5px 10px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600,
+                                                border: (settings.retellAutoCallSchedule.days || []).includes(d.value) ? '1px solid #6366f1' : '1px solid #e5e7eb',
+                                                background: (settings.retellAutoCallSchedule.days || []).includes(d.value) ? '#eef2ff' : '#fff',
+                                                color: (settings.retellAutoCallSchedule.days || []).includes(d.value) ? '#4338ca' : '#9ca3af',
+                                                cursor: 'pointer', transition: 'all 0.15s'
+                                            }}
+                                        >{d.label}</button>
+                                    ))}
+                                </div>
+                                <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4, marginBottom: 0 }}>Seçili günlerde ve saatlerde otomatik arama yapılır.</p>
+                            </div>
+                        </div>
+
+                        {/* Arama Kuralları */}
+                        <div style={{ marginBottom: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.85rem', color: '#374151' }}>Arama Kuralları</span>
+                                <button type="button" onClick={addRule}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 4,
+                                        padding: '5px 12px', borderRadius: 6, fontSize: '0.78rem', fontWeight: 600,
+                                        border: '1px dashed #c7d2fe', background: '#eef2ff', color: '#6366f1',
+                                        cursor: 'pointer'
+                                    }}>
+                                    <Plus size={14} /> Kural Ekle
+                                </button>
+                            </div>
+                            {rules.length === 0 && (
+                                <div style={{ textAlign: 'center', padding: '20px', background: '#f9fafb', borderRadius: 8, border: '1px dashed #e5e7eb', color: '#9ca3af', fontSize: '0.82rem' }}>
+                                    Henüz kural eklenmedi. "Kural Ekle" ile başlayın.
+                                </div>
+                            )}
+                            {rules.map((rule, i) => (
+                                <div key={i} style={{
+                                    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
+                                    background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb',
+                                    marginBottom: 6, flexWrap: 'wrap'
+                                }}>
+                                    <select value={rule.source} onChange={e => updateRuleField(i, 'source', e.target.value)}
+                                        style={{ ...selectStyle, minWidth: 120, flex: 1 }}>
+                                        {getAvailableChannels(rule.source).map(ch => (
+                                            <option key={ch} value={ch}>{channelLabels[ch] || ch}</option>
+                                        ))}
+                                    </select>
+                                    <select value={rule.delay} onChange={e => updateRuleField(i, 'delay', parseInt(e.target.value))}
+                                        style={{ ...selectStyle, minWidth: 90 }}>
+                                        <option value={0}>Hemen</option>
+                                        <option value={5}>5 dk</option>
+                                        <option value={10}>10 dk</option>
+                                        <option value={15}>15 dk</option>
+                                        <option value={30}>30 dk</option>
+                                        <option value={60}>1 saat</option>
+                                        <option value={120}>2 saat</option>
+                                    </select>
+                                    {agents.length > 0 && (
+                                        <select value={rule.agentId || ''} onChange={e => updateRuleField(i, 'agentId', e.target.value)}
+                                            style={{ ...selectStyle, minWidth: 120, flex: 1 }}>
+                                            <option value="">Varsayılan Agent</option>
+                                            {agents.map(a => <option key={a.agent_id} value={a.agent_id}>{a.agent_name || a.agent_id}</option>)}
+                                        </select>
+                                    )}
+                                    <button type="button" onClick={() => removeRule(i)}
+                                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}>
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </>
                 )}
             </div>
