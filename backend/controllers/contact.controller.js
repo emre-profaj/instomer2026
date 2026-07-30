@@ -433,11 +433,12 @@ export const getContacts = async (req, res) => {
         // Build where clause based on role
         let where;
         if (role === 'AGENT') {
-            // AGENT: only see contacts that have conversations assigned to them or their teams
+            // AGENT: see contacts that have conversations OR active cases assigned to them or their teams
             where = {
-                conversations: {
-                    some: conversationFilter
-                }
+                OR: [
+                    { conversations: { some: conversationFilter } },
+                    { cases: { some: { workspaceId, status: 'ACTIVE', OR: [ { assignedToId: req.user.id }, { assignedTeamId: { in: myTeamIds } } ] } } }
+                ]
             };
         } else {
             // ADMIN/OWNER: see all contacts - either via conversations or directly assigned to workspace
@@ -634,33 +635,55 @@ export const getContacts = async (req, res) => {
             const myTeamIds = userTeams.map(t => t.teamId);
 
             if (assignmentFilter === 'mine') {
-                // Contacts with conversations assigned to me
+                // Contacts with active case assigned to me OR (no active case AND conversation assigned to me)
                 where = {
                     AND: [
                         where,
                         {
-                            conversations: {
-                                some: {
-                                    workspaceId,
-                                    assignedToId: req.user.id
+                            OR: [
+                                {
+                                    cases: {
+                                        some: { workspaceId, status: 'ACTIVE', assignedToId: req.user.id }
+                                    }
+                                },
+                                {
+                                    AND: [
+                                        { cases: { none: { workspaceId, status: 'ACTIVE' } } },
+                                        { conversations: { some: { workspaceId, assignedToId: req.user.id } } }
+                                    ]
                                 }
-                            }
+                            ]
                         }
                     ]
                 };
                 console.log(`   AssignmentFilter: MINE (userId: ${req.user.id})`);
             } else if (assignmentFilter === 'unassigned') {
-                // Contacts with conversations that have no assignedToId AND no team
+                // Contacts with unassigned active case OR (no active case AND unassigned conversation)
                 where = {
                     AND: [
                         where,
                         {
-                            conversations: {
-                                some: {
-                                    workspaceId,
-                                    assignedToId: null
+                            OR: [
+                                {
+                                    cases: {
+                                        some: { workspaceId, status: 'ACTIVE', assignedToId: null, assignedTeamId: null }
+                                    }
+                                },
+                                {
+                                    AND: [
+                                        { cases: { none: { workspaceId, status: 'ACTIVE' } } },
+                                        {
+                                            conversations: {
+                                                some: {
+                                                    workspaceId,
+                                                    assignedToId: null,
+                                                    OR: [{ teamIds: '[]' }, { teamIds: null }]
+                                                }
+                                            }
+                                        }
+                                    ]
                                 }
-                            }
+                            ]
                         }
                     ]
                 };
@@ -675,54 +698,80 @@ export const getContacts = async (req, res) => {
                     AND: [
                         where,
                         {
-                            conversations: {
-                                some: {
-                                    workspaceId,
-                                    OR: [
-                                        { assignedToId: req.user.id },
-                                        { assignedToId: null },
-                                        ...teamConditions
+                            OR: [
+                                {
+                                    cases: {
+                                        some: {
+                                            workspaceId,
+                                            status: 'ACTIVE',
+                                            OR: [
+                                                { assignedToId: req.user.id },
+                                                { assignedToId: null },
+                                                { assignedTeamId: { in: myTeamIds } }
+                                            ]
+                                        }
+                                    }
+                                },
+                                {
+                                    AND: [
+                                        { cases: { none: { workspaceId, status: 'ACTIVE' } } },
+                                        {
+                                            conversations: {
+                                                some: {
+                                                    workspaceId,
+                                                    OR: [
+                                                        { assignedToId: req.user.id },
+                                                        { assignedToId: null },
+                                                        ...teamConditions
+                                                    ]
+                                                }
+                                            }
+                                        }
                                     ]
                                 }
-                            }
+                            ]
                         }
                     ]
                 };
                 console.log(`   AssignmentFilter: POOL (teams: ${myTeamIds.length})`);
             } else if (assignmentFilter.startsWith('team_')) {
-                // Filter by specific team: show contacts assigned to this team (pool + all members)
+                // Filter by specific team
                 const teamId = assignmentFilter.replace('team_', '');
-                // Get all member userIds of this team
-                const teamMembers = await prisma.teamMember.findMany({
-                    where: { teamId },
-                    select: { userId: true }
-                });
-                const memberUserIds = teamMembers.map(m => m.userId).filter(Boolean);
 
                 const orConditions = [
-                    // Conversations assigned to this team (pool)
+                    // Conversations assigned to this team
                     { teamIds: { contains: `"${teamId}"` } },
                     { assignedTeamId: teamId }
                 ];
-                // Also include conversations assigned to any member of this team
-                if (memberUserIds.length > 0) {
-                    orConditions.push({ assignedToId: { in: memberUserIds } });
-                }
 
                 where = {
                     AND: [
                         where,
                         {
-                            conversations: {
-                                some: {
-                                    workspaceId,
-                                    OR: orConditions
+                            OR: [
+                                {
+                                    cases: {
+                                        some: { workspaceId, status: 'ACTIVE', assignedTeamId: teamId }
+                                    }
+                                },
+                                {
+                                    AND: [
+                                        { cases: { none: { workspaceId, status: 'ACTIVE' } } },
+                                        {
+                                            conversations: {
+                                                some: {
+                                                    workspaceId,
+                                                    OR: orConditions
+                                                }
+                                            }
+                                        }
+                                    ]
                                 }
-                            }
+                            ]
                         }
                     ]
                 };
-                console.log(`   AssignmentFilter: TEAM (teamId: ${teamId}, members: ${memberUserIds.length})`);
+                console.log(`   AssignmentFilter: TEAM (teamId: ${teamId})`);
             } else if (assignmentFilter.startsWith('user_')) {
                 // Filter by specific user
                 const userId = assignmentFilter.replace('user_', '');
@@ -730,12 +779,19 @@ export const getContacts = async (req, res) => {
                     AND: [
                         where,
                         {
-                            conversations: {
-                                some: {
-                                    workspaceId,
-                                    assignedToId: userId
+                            OR: [
+                                {
+                                    cases: {
+                                        some: { workspaceId, status: 'ACTIVE', assignedToId: userId }
+                                    }
+                                },
+                                {
+                                    AND: [
+                                        { cases: { none: { workspaceId, status: 'ACTIVE' } } },
+                                        { conversations: { some: { workspaceId, assignedToId: userId } } }
+                                    ]
                                 }
-                            }
+                            ]
                         }
                     ]
                 };

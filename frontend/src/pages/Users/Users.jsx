@@ -241,9 +241,11 @@ const TeamModal = ({ team, parentName, onSubmit, onClose }) => {
 const getInitials = (name = '') => name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
 
 const ROLE_COLORS = {
+    SUPER_ADMIN: { bg: '#818cf8', color: '#fff', label: 'Super Admin' },
     OWNER: { bg: '#fef3c7', color: '#92400e', label: 'Owner' },
-    AGENT: { bg: '#eff6ff', color: '#1e40af', label: 'Agent' },
-    SUPER_ADMIN: { bg: '#f5f3ff', color: '#6d28d9', label: 'Admin' }
+    MANAGER: { bg: '#dcfce7', color: '#166534', label: 'Yönetici' },
+    AGENT: { bg: '#f1f5f9', color: '#475569', label: 'Agent' },
+    VIEWER: { bg: '#fce7f3', color: '#9d174d', label: 'İzleyici' }
 };
 
 // ─── Member Chip with hover popup ────────────────────────────
@@ -865,6 +867,7 @@ const UsersTeams = () => {
                                                             onChange={e => handleUpdateRole(member.userId, e.target.value)}
                                                             title="Rol Değiştir">
                                                             <option value="OWNER">Owner</option>
+                                                            <option value="MANAGER">Yönetici</option>
                                                             <option value="AGENT">Agent</option>
                                                         </select>
                                                         <button className="ut-icon-btn" title="Düzenle"

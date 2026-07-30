@@ -62,6 +62,7 @@ import '../../components/ContactSidebar/ContactSidebar.css';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConfirmModal from '../../components/ConfirmModal/ConfirmModal';
 import PipelineView from '../Pipeline/Pipeline';
+import NewConversationModal from '../../components/NewConversationModal/NewConversationModal';
 
 const Customers = () => {
     const { currentWorkspace, user } = useAuth();
@@ -3250,139 +3251,14 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                     />
                 )}
                 {/* Create/Edit Contact Modal - Google Contacts Style */}
-                {isModalOpen && (
-                    <div className="contact-modal-overlay" onClick={closeModal}>
-                        <div className="contact-modal-panel" onClick={(e) => e.stopPropagation()}>
-                            {/* Header */}
-                            <div className="contact-modal-header">
-                                <button className="modal-back-btn" onClick={closeModal}>
-                                    <X size={20} />
-                                </button>
-                                <button className="modal-save-btn" type="submit" form="contact-form">
-                                    Kaydet
-                                </button>
-                            </div>
-
-                            {formError && (
-                                <div className="alert alert-error">{formError}</div>
-                            )}
-
-                            {/* Form */}
-                            <form id="contact-form" className="contact-modal-form" onSubmit={handleCreateContact}>
-                                {/* Name Row */}
-                                <div className="contact-form-row">
-                                    <div className="contact-form-icon">
-                                        <User size={20} />
-                                    </div>
-                                    <div className="contact-form-fields">
-                                        <input
-                                            type="text"
-                                            className="contact-form-input"
-                                            placeholder="İsim"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        />
-                                        <input
-                                            type="text"
-                                            className="contact-form-input"
-                                            placeholder="Soyadı"
-                                            value={formData.fullName}
-                                            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Company Row */}
-                                <div className="contact-form-row">
-                                    <div className="contact-form-icon">
-                                        <Building size={20} />
-                                    </div>
-                                    <div className="contact-form-fields">
-                                        <input
-                                            type="text"
-                                            className="contact-form-input"
-                                            placeholder="Şirket"
-                                            value={formData.company}
-                                            onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Email Row - Dynamic */}
-                                <div className="contact-form-row">
-                                    <div className="contact-form-icon">
-                                        <Mail size={20} />
-                                    </div>
-                                    <div className="contact-form-fields">
-                                        {formData.emails.map((email, index) => (
-                                            <div key={index} className="dynamic-input-row">
-                                                <input
-                                                    type="email"
-                                                    className="contact-form-input"
-                                                    placeholder="E-posta"
-                                                    value={email}
-                                                    onChange={(e) => updateEmail(index, e.target.value)}
-                                                />
-                                                {formData.emails.length > 1 && (
-                                                    <button
-                                                        type="button"
-                                                        className="remove-field-btn"
-                                                        onClick={() => removeEmail(index)}
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                        <button type="button" className="add-field-btn" onClick={addEmail}>
-                                            <Plus size={16} />
-                                            E-posta ekle
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Phone Row - Dynamic */}
-                                <div className="contact-form-row">
-                                    <div className="contact-form-icon">
-                                        <Phone size={20} />
-                                    </div>
-                                    <div className="contact-form-fields">
-                                        {formData.phones.map((phone, index) => (
-                                            <div key={index} className="dynamic-input-row">
-                                                <input
-                                                    type="tel"
-                                                    className="contact-form-input"
-                                                    placeholder="Telefon"
-                                                    value={phone}
-                                                    onChange={(e) => updatePhone(index, e.target.value)}
-                                                />
-                                                {formData.phones.length > 1 && (
-                                                    <button
-                                                        type="button"
-                                                        className="remove-field-btn"
-                                                        onClick={() => removePhone(index)}
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                        <button type="button" className="add-field-btn" onClick={addPhone}>
-                                            <Plus size={16} />
-                                            Telefon ekle
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {!editingContact && (
-                                    <p className="contact-form-hint">
-                                        * Yeni kişi için isim ve en az bir iletişim bilgisi gereklidir
-                                    </p>
-                                )}
-                            </form>
-                        </div>
-                    </div>
-                )}
+                <NewConversationModal
+                    workspaceId={currentWorkspace?.id}
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    onSuccess={(conversation) => {
+                        loadContacts();
+                    }}
+                />
 
                 {/* Export Modal */}
                 {showExportModal && (

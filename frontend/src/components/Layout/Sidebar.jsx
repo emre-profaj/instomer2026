@@ -61,6 +61,7 @@ const Sidebar = () => {
 
     const settingsSubItems = [
         { path: '/channels', icon: Radio, label: t('channels.title') },
+
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
@@ -417,7 +418,7 @@ const Sidebar = () => {
                             )}
 
                             {/* Settings */}
-                            {(workspaceRole !== 'AGENT' || user?.role === 'SUPER_ADMIN') && (
+                            {(workspaceRole === 'OWNER' || user?.role === 'SUPER_ADMIN') && (
                                 <div className="nav-category">
                                     <button
                                         className={`nav-category-header ${settingsSubItems.some(i => location.pathname === i.path) ? 'active' : ''}`}

@@ -1033,9 +1033,9 @@ export const assignConversation = async (req, res) => {
 
                 const contactName = conversation.contact?.name || conversation.contact?.fullName || 'Müşteri';
 
-                // Her takım üyesine bildirim gönder (atayan kişi hariç)
+                // Her takım üyesine bildirim gönder (atayan kişi hariç ve sadece gerçek kullanıcılar)
                 for (const member of teamMembers) {
-                    if (member.userId !== req.user.id) {
+                    if (member.userId && member.userId !== req.user.id) {
                         emitToUser(member.userId, 'conversation_assigned_to_you', {
                             conversationId,
                             workspaceId,

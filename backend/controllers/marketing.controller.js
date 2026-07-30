@@ -138,6 +138,120 @@ export const getTemplateAnalytics = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /marketing/:workspaceId/template-analytics/retry
+// ─────────────────────────────────────────────────────────────────────────────
+export const retryTemplateFailed = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { templateName, messageIds } = req.body;
+
+        if (!templateName || !messageIds || !Array.isArray(messageIds) || messageIds.length === 0) {
+            return res.status(400).json({ error: 'Geçersiz parametreler' });
+        }
+
+        const template = await prisma.whatsappTemplate.findFirst({
+            where: { workspaceId, name: templateName }
+        });
+        if (!template) return res.status(404).json({ error: 'Şablon bulunamadı' });
+
+        const whatsappPhone = await prisma.whatsappPhoneNumber.findFirst({ where: { workspaceId } });
+        if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
+
+        // Find failed messages matching these IDs
+        const failedMessages = await prisma.message.findMany({
+            where: {
+                id: { in: messageIds },
+                workspaceId,
+                status: 'FAILED',
+                messageType: 'TEMPLATE'
+            },
+            include: {
+                conversation: { include: { contact: true } }
+            }
+        });
+
+        if (failedMessages.length === 0) {
+            return res.json({ success: true, retried: 0, message: 'Başarısız mesaj bulunamadı' });
+        }
+
+        res.json({
+            success: true,
+            retrying: failedMessages.length,
+            message: `${failedMessages.length} başarısız mesaja tekrar gönderiliyor...`
+        });
+
+        // Background send
+        setImmediate(async () => {
+            let retried = 0, stillFailed = 0;
+            const WHATSAPP_API_VERSION = process.env.WHATSAPP_API_VERSION || 'v21.0';
+            const apiUrl = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${whatsappPhone.phoneNumberId}/messages`;
+
+            for (const msg of failedMessages) {
+                const phone = msg.conversation?.contact?.phone;
+                if (!phone) continue;
+
+                try {
+                    // Reset status to SENDING temporarily
+                    await prisma.message.update({
+                        where: { id: msg.id },
+                        data: { status: 'SENDING' }
+                    });
+
+                    const payload = {
+                        messaging_product: 'whatsapp',
+                        to: phone,
+                        type: 'template',
+                        template: {
+                            name: template.name,
+                            language: { code: template.language || 'tr' }
+                        }
+                    };
+
+                    const response = await axios.post(apiUrl, payload, {
+                        headers: { Authorization: `Bearer ${whatsappPhone.accessToken}`, 'Content-Type': 'application/json' }
+                    });
+
+                    const newWaId = response.data?.messages?.[0]?.id;
+                    await prisma.message.update({
+                        where: { id: msg.id },
+                        data: { status: 'SENT', whatsappMessageId: newWaId, createdAt: new Date() }
+                    });
+                    retried++;
+                    
+                    // If this was originally sent via a campaign, we might want to update the recipient status
+                    // But in this view it's just general template analytics, so updating the message table is enough.
+                    // Wait, MarketingRecipient has a messageId. Let's update it if exists!
+                    await prisma.marketingRecipient.updateMany({
+                        where: { messageId: msg.id },
+                        data: { status: 'SENT', messageId: newWaId, sentAt: new Date(), failReason: null, failedAt: null }
+                    });
+
+                    await new Promise(r => setTimeout(r, 1500));
+                } catch (err) {
+                    const failReason = err.response?.data?.error?.message || err.message;
+                    console.error(`❌ [Template Retry] Failed again for ${phone}:`, failReason);
+                    await prisma.message.update({
+                        where: { id: msg.id },
+                        data: { status: 'FAILED' }
+                    });
+                    
+                    await prisma.marketingRecipient.updateMany({
+                        where: { messageId: msg.id },
+                        data: { status: 'FAILED', failedAt: new Date(), failReason }
+                    });
+                    stillFailed++;
+                }
+            }
+            console.log(`🔄 [Template Retry] Done: ${retried} resent, ${stillFailed} still failed`);
+        });
+
+    } catch (error) {
+        console.error('❌ [retryTemplateFailed]', error);
+        res.status(500).json({ error: 'Tekrar gönderim başlatılamadı' });
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DELETE /marketing/:workspaceId/template-analytics
 // Clear template message history (all or specific template name)
 // Query: ?templateName=xxx  → clears only that template

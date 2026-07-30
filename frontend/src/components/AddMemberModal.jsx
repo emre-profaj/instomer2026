@@ -269,8 +269,9 @@ const AddMemberModal = ({ workspaceId, onClose, onSuccess }) => {
                                     value={role}
                                     onChange={(e) => setRole(e.target.value)}
                                 >
+                                    <option value="OWNER">Owner (Kurucu)</option>
+                                    <option value="MANAGER">Manager (Yönetici)</option>
                                     <option value="AGENT">Agent (Temsilci)</option>
-                                    <option value="OWNER">Owner (Yönetici)</option>
                                 </select>
                                 <small className="text-muted">
                                     Agent: Sadece atanan sohbetleri görür ve yönetir

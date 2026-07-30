@@ -834,14 +834,30 @@ function AnalyticsTab({ wsId }) {
         } catch (e) { console.error(e); }
     }, [wsId]);
 
-    const handleRetry = async (campaignId) => {
-        if (!campaignId) return alert('Kampanya ID bulunamadı.');
+    const handleRetry = async (selected) => {
+        const campaignId = selected.id || selected.campaignId;
+        
+        if (!campaignId && !selected.templateName) return alert('Kampanya ID veya Şablon bulunamadı.');
+        if (!window.confirm('Bu başarısız mesajları tekrar göndermek istediğinize emin misiniz?')) return;
+        
         setRetrying(true);
         try {
-            await api.post(`/marketing/${wsId}/campaigns/${campaignId}/retry`);
+            if (campaignId) {
+                await api.post(`/marketing/${wsId}/campaigns/${campaignId}/retry`);
+                fetchRecipients(campaignId);
+            } else if (selected.templateName) {
+                const failedMessageIds = (selected.recipients || []).filter(r => r.status === 'FAILED').map(r => r.messageId);
+                if (failedMessageIds.length === 0) {
+                    setRetrying(false);
+                    return alert('Tekrar gönderilecek başarısız mesaj bulunamadı.');
+                }
+                await api.post(`/marketing/${wsId}/template-analytics/retry`, {
+                    templateName: selected.templateName,
+                    messageIds: failedMessageIds
+                });
+            }
             alert('Başarısız mesajlar için yeniden gönderim başlatıldı!');
             fetchAnalytics();
-            fetchRecipients(campaignId);
         } catch (e) {
             alert('Hata: ' + (e.response?.data?.error || e.message));
         }
@@ -984,7 +1000,7 @@ function AnalyticsTab({ wsId }) {
                                                 <button 
                                                     className="mkt-btn-primary" 
                                                     style={{ background: '#3b82f6', borderColor: '#2563eb' }}
-                                                    onClick={() => handleRetry(sel.id || sel.campaignId)}
+                                                    onClick={() => handleRetry(sel)}
                                                     disabled={retrying}
                                                 >
                                                     {retrying ? '⏳ Bekleyin...' : '🔄 Tekrar Gönder'}
@@ -1204,6 +1220,28 @@ const TARGET_STATUS_META = {
     called:  { label: 'Arandı',    bg: '#f0fdf4', text: '#16a34a',  icon: '✅' },
     failed:  { label: 'Aranamadı', bg: '#fef2f2', text: '#dc2626',  icon: '❌' },
 };
+
+const CALL_STATUS_META = {
+    registered: { label: 'Hazırlanıyor', bg: '#f3f4f6', text: '#6b7280', icon: '⏳' },
+    ongoing:    { label: 'Devam Ediyor', bg: '#eff6ff', text: '#3b82f6', icon: '📞' },
+    ended:      { label: 'Bitti',        bg: '#f0fdf4', text: '#16a34a', icon: '✅' },
+    error:      { label: 'Hata',         bg: '#fef2f2', text: '#dc2626', icon: '❌' },
+};
+
+const SENTIMENT_META = {
+    positive: { label: 'Olumlu',  color: '#16a34a', icon: '😊' },
+    neutral:  { label: 'Nötr',    color: '#6b7280', icon: '😐' },
+    negative: { label: 'Olumsuz', color: '#dc2626', icon: '😞' },
+};
+
+const fmtDur = (ms) => {
+    if (!ms) return '—';
+    const s = Math.round(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+};
+
 
 function CallAnalyticsTab({ wsId }) {
     const [batches, setBatches]         = useState([]);

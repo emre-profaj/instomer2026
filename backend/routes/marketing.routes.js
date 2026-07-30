@@ -14,6 +14,7 @@ import {
     deleteCampaign,
     getSegments,
     retryCampaignFailed,
+    retryTemplateFailed,
     checkCampaignDuplicates,
     getCampaignRecipients
 } from '../controllers/marketing.controller.js';
@@ -24,6 +25,7 @@ router.use(authenticateJWT);
 
 // Template analytics
 router.get('/:workspaceId/template-analytics', requireWorkspaceAccess, getTemplateAnalytics);
+router.post('/:workspaceId/template-analytics/retry', requireWorkspaceAccess, retryTemplateFailed);
 router.delete('/:workspaceId/template-analytics', requireWorkspaceAccess, clearTemplateHistory);
 
 // Contacts (for bulk send)

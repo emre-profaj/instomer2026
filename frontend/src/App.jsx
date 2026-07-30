@@ -14,6 +14,7 @@ import WorkspaceSettings from './pages/Settings/WorkspaceSettings';
 import Comments from './pages/Comments/Comments';
 import Channels from './pages/Channels/Channels';
 
+
 import Users from './pages/Users/Users';
 import Teams from './pages/Teams/Teams';
 import Customers from './pages/Customers/Customers';
@@ -100,6 +101,7 @@ function App() {
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
               <Route path="channels" element={<Channels />} />
+
 
               <Route path="teams" element={<Users />} />
               <Route path="users" element={<Navigate to="/teams" replace />} />
