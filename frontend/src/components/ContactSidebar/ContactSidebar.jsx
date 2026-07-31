@@ -2409,11 +2409,16 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         {activeCaseInfo && (() => {
                                             // Generic kanal etiketleri ve dekoratif başlıklar - bunlar gerçek başlık sayılmaz
                                             const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', '-', '—', ''];
-                                            const rawTitle = c.title || '';
+                                            const rawTitle = activeCaseInfo.title || '';
                                             const isGeneric = GENERIC.includes(rawTitle.trim()) || rawTitle.includes('━') || rawTitle.includes('═');
                                             // Eğer title generic/dekoratif ise, conversation'ın aiTopic'ini fallback olarak kullan
                                             const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || '';
-                                            const displayTitle = isGeneric && convTopic ? convTopic : rawTitle;
+                                            
+                                            // activeCaseInfo.title kullanıcı tarafından değiştirilmişse onu kullan
+                                            // _userEdited flag'i ile generic fallback'i takip et
+                                            const displayTitle = activeCaseInfo._userEdited 
+                                                ? activeCaseInfo.title 
+                                                : (isGeneric && convTopic ? convTopic : rawTitle);
                                             
                                             // Title boş VE fallback da yoksa input gösterme (düz çizgi olmasın)
                                             if (!displayTitle && !rawTitle) return null;
@@ -2422,15 +2427,15 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 <input
                                                     type="text"
                                                     value={displayTitle}
-                                                    onChange={(e) => setActiveCaseInfo(prev => ({ ...prev, title: e.target.value }))}
+                                                    onChange={(e) => setActiveCaseInfo(prev => ({ ...prev, title: e.target.value, _userEdited: true }))}
                                                     onBlur={async (e) => {
                                                         const newTitle = e.target.value.trim();
                                                         if (!newTitle || newTitle === activeCaseInfo._savedTitle) return;
                                                         try {
-                                                            await caseAPI.update(currentWorkspace.id, c.id, { title: newTitle });
-                                                            setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle }));
+                                                            await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { title: newTitle });
+                                                            setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle, _userEdited: false }));
                                                             window.dispatchEvent(new CustomEvent('case_title_updated', {
-                                                                detail: { caseId: c.id, title: newTitle, conversationId }
+                                                                detail: { caseId: activeCaseInfo.caseId, title: newTitle, conversationId }
                                                             }));
                                                         } catch (err) { console.error('Title update error:', err); }
                                                     }}
@@ -2464,7 +2469,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             if (!prev || prev.caseId !== info.caseId) {
                                                                 return { ...info, _savedTitle: info.title };
                                                             }
-                                                            return { ...prev, ...info };
+                                                            // Kullanıcı düzenliyorsa, title'ı ezme
+                                                            if (prev._userEdited) {
+                                                                return { ...prev, ...info, title: prev.title, _userEdited: true };
+                                                            }
+                                                            return { ...prev, ...info, _savedTitle: info.title };
                                                         })}
                                                         onCasesLoaded={(cases) => setAllCases(cases)}
                                                         onStageChanged={({ funnelType, funnelStageId, stageName, stageColor }) => {
@@ -2704,7 +2713,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     if (!prev || prev.caseId !== info.caseId) {
                                                         return { ...info, _savedTitle: info.title };
                                                     }
-                                                    return { ...prev, ...info };
+                                                    if (prev._userEdited) {
+                                                        return { ...prev, ...info, title: prev.title, _userEdited: true };
+                                                    }
+                                                    return { ...prev, ...info, _savedTitle: info.title };
                                                 })}
                                                 onCasesLoaded={(cases) => setAllCases(cases)}
                                             />

@@ -92,10 +92,11 @@ export const getConversations = async (req, res) => {
                 };
                 console.log(`🔒 [LEAD Filter] Agent ${req.user.id} can only see assigned leads`);
             } else {
-                // Diğer kanallar: Kendisine atanmış VEYA takımında atanmamış
+                // Diğer kanallar: Kendisine atanmış VEYA kendisinin atadığı VEYA takımında atanmamış
                 accessCondition = {
                     OR: [
                         { assignedToId: req.user.id }, // Kendisine atanmış
+                        { assignedById: req.user.id }, // Kendisinin atadığı
                         ...myTeamIds.map(tid => ({
                             AND: [
                                 { teamIds: { contains: `"${tid}"` } },

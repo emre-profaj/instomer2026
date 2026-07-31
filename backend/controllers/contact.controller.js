@@ -406,13 +406,14 @@ export const getContacts = async (req, res) => {
         let conversationFilter = { workspaceId: workspaceId };
 
         // AGENT role: only see contacts from their assigned conversations + team pool
+        let myTeamIds = [];
         if (role === 'AGENT') {
             // Get agent's team IDs
             const userTeams = await prisma.teamMember.findMany({
                 where: { userId: req.user.id },
                 select: { teamId: true }
             });
-            const myTeamIds = userTeams.map(t => t.teamId);
+            myTeamIds = userTeams.map(t => t.teamId);
 
             // Filter: assigned to me OR (in my team AND not assigned to anyone)
             conversationFilter = {

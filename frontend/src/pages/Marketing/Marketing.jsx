@@ -838,25 +838,26 @@ function AnalyticsTab({ wsId }) {
         const campaignId = selected.id || selected.campaignId;
         
         if (!campaignId && !selected.templateName) return alert('Kampanya ID veya Şablon bulunamadı.');
-        if (!window.confirm('Bu başarısız mesajları tekrar göndermek istediğinize emin misiniz?')) return;
+        
+        const failedMessageIds = filteredRecipients.filter(r => r.status === 'FAILED').map(r => r.messageId);
+        if (failedMessageIds.length === 0) {
+            return alert('Filtrelenmiş sonuçlarda tekrar gönderilecek başarısız mesaj bulunamadı.');
+        }
+
+        if (!window.confirm(`Listelenen ${failedMessageIds.length} başarısız mesaja tekrar göndermek istediğinize emin misiniz?`)) return;
         
         setRetrying(true);
         try {
             if (campaignId) {
-                await api.post(`/marketing/${wsId}/campaigns/${campaignId}/retry`);
+                await api.post(`/marketing/${wsId}/campaigns/${campaignId}/retry`, { messageIds: failedMessageIds });
                 fetchRecipients(campaignId);
             } else if (selected.templateName) {
-                const failedMessageIds = (selected.recipients || []).filter(r => r.status === 'FAILED').map(r => r.messageId);
-                if (failedMessageIds.length === 0) {
-                    setRetrying(false);
-                    return alert('Tekrar gönderilecek başarısız mesaj bulunamadı.');
-                }
                 await api.post(`/marketing/${wsId}/template-analytics/retry`, {
                     templateName: selected.templateName,
                     messageIds: failedMessageIds
                 });
             }
-            alert('Başarısız mesajlar için yeniden gönderim başlatıldı!');
+            alert(`${failedMessageIds.length} kişi için yeniden gönderim başlatıldı!`);
             fetchAnalytics();
         } catch (e) {
             alert('Hata: ' + (e.response?.data?.error || e.message));
@@ -996,16 +997,6 @@ function AnalyticsTab({ wsId }) {
                                     <div className="mkt-detail-title-row">
                                         <span className="mkt-detail-tpl-name">📄 {sel.templateName}</span>
                                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                                            {(sel.failed > 0 || sel.failedCount > 0) && (
-                                                <button 
-                                                    className="mkt-btn-primary" 
-                                                    style={{ background: '#3b82f6', borderColor: '#2563eb' }}
-                                                    onClick={() => handleRetry(sel)}
-                                                    disabled={retrying}
-                                                >
-                                                    {retrying ? '⏳ Bekleyin...' : '🔄 Tekrar Gönder'}
-                                                </button>
-                                            )}
                                             <button className="mkt-clear-tpl-btn" onClick={() => handleClearTemplate(sel.templateName)} disabled={clearing}>🗑️ Geçmişi Temizle</button>
                                             <button className="mkt-close-btn" onClick={() => setSelectedTemplate(null)}>✕</button>
                                         </div>
@@ -1091,6 +1082,22 @@ function AnalyticsTab({ wsId }) {
                                                 {opt.value === 'FAILED' && failedCount > 0 && <span className="mkt-badge-red">{failedCount}</span>}
                                             </button>
                                         ))}
+                                        {(() => {
+                                            const failedToRetry = filteredRecipients.filter(r => r.status === 'FAILED');
+                                            if (failedToRetry.length > 0) {
+                                                return (
+                                                    <button 
+                                                        className="mkt-btn-primary" 
+                                                        style={{ background: '#3b82f6', borderColor: '#2563eb', padding: '4px 12px', fontSize: '0.85rem', marginLeft: '4px', height: '32px' }}
+                                                        onClick={() => handleRetry(sel)}
+                                                        disabled={retrying}
+                                                    >
+                                                        {retrying ? '⏳ Bekleyin...' : `🔄 ${failedToRetry.length} kişiye tekrar gönder`}
+                                                    </button>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                     </div>
                                 </div>
 

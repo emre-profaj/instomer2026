@@ -145,6 +145,7 @@ export const createTeamNotifications = async (workspaceId, teamId, type, title, 
 
         const notifications = [];
         for (const member of teamMembers) {
+            if (!member.userId) continue; // Skip bots/agents without a user account
             const notif = await createNotification(workspaceId, member.userId, type, title, body, data);
             if (notif) notifications.push(notif);
         }

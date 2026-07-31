@@ -1031,6 +1031,7 @@ export const updateCampaignRecipientStatus = async (messageId, status) => {
 export const retryCampaignFailed = async (req, res) => {
     try {
         const { workspaceId, id } = req.params;
+        const { messageIds } = req.body;
 
         const campaign = await prisma.marketingCampaign.findFirst({
             where: { id, workspaceId },
@@ -1039,8 +1040,13 @@ export const retryCampaignFailed = async (req, res) => {
         if (!campaign) return res.status(404).json({ error: 'Kampanya bulunamadı' });
 
         // Başarısız alıcıları bul
+        const whereClause = { campaignId: id, status: 'FAILED' };
+        if (messageIds && Array.isArray(messageIds) && messageIds.length > 0) {
+            whereClause.messageId = { in: messageIds };
+        }
+
         const failedRecipients = await prisma.marketingRecipient.findMany({
-            where: { campaignId: id, status: 'FAILED' }
+            where: whereClause
         });
 
         if (failedRecipients.length === 0) {

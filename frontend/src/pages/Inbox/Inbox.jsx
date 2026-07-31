@@ -3201,9 +3201,6 @@ const Inbox = () => {
                             <button
                                 className="new-conversation-btn"
                                 onClick={() => {
-                                    const now = new Date();
-                                    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-                                    setNewConversationDate(now.toISOString().slice(0, 16));
                                     setShowNewConversationModal(true);
                                 }}
                                 title="Yeni Görüşme Başlat"
