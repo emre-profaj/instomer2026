@@ -3641,7 +3641,8 @@ export const getContactGroupedConversations = async (req, res) => {
 
 export const archiveConversation = async (req, res) => {
     try {
-        const { workspaceId, id } = req.params;
+        const workspaceId = req.params.workspaceId;
+        const id = req.params.conversationId || req.params.id;
         const userId = req.user.id;
         const conversation = await prisma.conversation.findFirst({ where: { id, workspaceId } });
         if (!conversation) return res.status(404).json({ message: 'Konuşma bulunamadı' });
@@ -3663,7 +3664,8 @@ export const archiveConversation = async (req, res) => {
 
 export const unarchiveConversation = async (req, res) => {
     try {
-        const { workspaceId, id } = req.params;
+        const workspaceId = req.params.workspaceId;
+        const id = req.params.conversationId || req.params.id;
         const conversation = await prisma.conversation.findFirst({ where: { id, workspaceId } });
         if (!conversation) return res.status(404).json({ message: 'Konuşma bulunamadı' });
 
