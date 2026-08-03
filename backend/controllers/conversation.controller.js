@@ -2700,9 +2700,10 @@ export const updateFunnel = async (req, res) => {
 
         let conversation = existing;
         const isClearingFunnel = funnelType === null || funnelType === '';
+        let updateData = {}; // defined at higher scope
 
         if (isClearingFunnel) {
-            const updateData = { funnelType: null, funnelStageId: null };
+            updateData = { funnelType: null, funnelStageId: null };
             // Simple update for clearing funnel
             if (suggestedTeamId) {
                 updateData.assignedTeamId = suggestedTeamId;
@@ -2747,7 +2748,6 @@ export const updateFunnel = async (req, res) => {
                     });
                 } else {
                     // Fallback for partial updates if needed
-                    const updateData = {};
                     if (funnelType !== undefined) updateData.funnelType = funnelType || null;
                     if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
                     

@@ -176,11 +176,22 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
       try {
         const { logEvent } = await import('./conversationEvent.service.js');
         const isFunnelChanged = oldFunnelId !== funnelId;
-        
+        const oldFunnelName = oldFunnelId ? await prisma.funnel.findUnique({where:{id:oldFunnelId},select:{name:true}}).then(f=>f?.name||'Genel') : 'Genel';
+        const newFunnelName = funnelId ? await prisma.funnel.findUnique({where:{id:funnelId},select:{name:true}}).then(f=>f?.name||'Genel') : 'Genel';
+        const oldStageName = oldStageId ? await prisma.funnelStage.findUnique({where:{id:oldStageId},select:{name:true}}).then(s=>s?.name||'Belirsiz') : 'Belirsiz';
+        const newStageName = stageId ? await prisma.funnelStage.findUnique({where:{id:stageId},select:{name:true}}).then(s=>s?.name||'Belirsiz') : 'Belirsiz';
+
+        const title = isFunnelChanged 
+            ? `Akış <b>${oldFunnelName}</b> → <b>${newFunnelName}</b> olarak değiştirildi`
+            : `Aşama <b>${oldStageName}</b> → <b>${newStageName}</b> olarak değiştirildi`;
+
         await logEvent({
           conversationId,
+          contactId,
+          workspaceId,
           eventType: isFunnelChanged ? 'FUNNEL_CHANGED' : 'STAGE_CHANGED',
-          payload: {
+          title,
+          details: {
             oldFunnelId,
             oldStageId,
             newFunnelId: funnelId,
@@ -188,7 +199,8 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
             source,
             triggeredBy
           },
-          userId: triggeredBy
+          actorId: triggeredBy,
+          actorType: triggeredBy ? 'USER' : 'SYSTEM'
         });
       } catch (err) {
         console.error('Audit log error:', err);

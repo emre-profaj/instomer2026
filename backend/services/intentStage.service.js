@@ -308,7 +308,7 @@ async function evaluateEntryRules(entryRulesJson, contactId, conversationId) {
       prisma.contact.findUnique({
         where: { id: contactId },
         select: { 
-          name: true, phone: true, email: true, topic: true, source: true,
+          name: true, phone: true, email: true, source: true,
           deals: { select: { status: true }, take: 5 },
           activities: { select: { type: true, status: true, callSuccessful: true }, take: 20 },
           formSubmissions: { select: { id: true }, take: 1 },
