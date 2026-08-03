@@ -411,6 +411,14 @@ const Inbox = () => {
     useEffect(() => {
         localStorage.setItem('inbox_showArchived', showArchived);
     }, [showArchived]);
+
+    // Cevapsızları gizle — müşteri hiç mesaj yazmamış conversation'ları filtrele
+    const [hideUnanswered, setHideUnanswered] = useState(() => {
+        try { return localStorage.getItem('inbox_hideUnanswered') === 'true'; } catch { return false; }
+    });
+    useEffect(() => {
+        localStorage.setItem('inbox_hideUnanswered', hideUnanswered);
+    }, [hideUnanswered]);
     // Resolved post IDs (Facebook/Instagram comments) — persisted in localStorage per workspace
     const [resolvedPostIds, setResolvedPostIds] = useState(() => {
         try {
@@ -820,7 +828,7 @@ const Inbox = () => {
         setCurrentPage(1);
         currentPageRef.current = 1;
         loadInboxItems(true);
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter]);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered]);
 
     // Debounced server-side search: when searchTerm changes, reload from API after 400ms
     useEffect(() => {
@@ -1741,6 +1749,7 @@ const Inbox = () => {
                 params.funnelStageId = statusFilter;
             }
             if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
+            if (hideUnanswered) params.hideUnanswered = 'true';
 
             const response = await conversationAPI.getAll(currentWorkspace.id, params);
             const moreConversations = response.data.conversations || [];
@@ -1882,7 +1891,7 @@ const Inbox = () => {
         } finally {
             setLoadingMore(false);
         }
-    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter]);
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter, hideUnanswered]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -2024,6 +2033,7 @@ const Inbox = () => {
                     params.funnelStageId = statusFilter;
                 }
                 if (searchTerm && searchTerm.trim()) params.search = searchTerm.trim();
+                if (hideUnanswered) params.hideUnanswered = 'true';
 
                 // Advanced Single-Channel Push to Backend (Prevents Filter Pagination Paradox)
                 if (activeChannel) {
@@ -3441,6 +3451,10 @@ const Inbox = () => {
                                         <label className="fp-toggle-item">
                                             <input type="checkbox" checked={showAssignedToMe} onChange={() => setShowAssignedToMe(!showAssignedToMe)} />
                                             <span>Bana Atananlar</span>
+                                        </label>
+                                        <label className="fp-toggle-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
+                                            <input type="checkbox" checked={hideUnanswered} onChange={(e) => setHideUnanswered(e.target.checked)} />
+                                            <span>🔇 Cevapsızları Gizle</span>
                                         </label>
                                     </div>
                                 </div>

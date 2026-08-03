@@ -48,7 +48,11 @@ export const getConversations = async (req, res) => {
             ...(funnelStageId && { funnelStageId }),
             // Keep contactStatus check just in case legacy calls use it
             ...(contactStatus && { contact: { status: contactStatus } }),
-            ...(req.query.showArchived !== 'true' && { isArchived: false })
+            ...(req.query.showArchived !== 'true' && { isArchived: false }),
+            // Cevapsızları gizle: müşteriden en az 1 mesaj gelmiş olmalı
+            ...(req.query.hideUnanswered === 'true' && {
+                messages: { some: { isFromContact: true } }
+            })
         };
 
         // Server-side search: filter by contact name/email/phone

@@ -1234,6 +1234,89 @@ export const sendTemplateDynamic = async (req, res) => {
                 data: { lastMessageAt: new Date() }
             });
 
+            // ─── Auto-Case: Şablon gönderiminde otomatik case oluştur/güncelle ───
+            try {
+                const existingCase = await prisma.case.findFirst({
+                    where: {
+                        contactId: contact.id,
+                        workspaceId,
+                        status: 'ACTIVE',
+                        title: { contains: template.name }
+                    },
+                    orderBy: { createdAt: 'desc' }
+                });
+
+                if (existingCase) {
+                    // Hatırlatma aktivitesi ekle
+                    await prisma.contactActivity.create({
+                        data: {
+                            contactId: contact.id,
+                            workspaceId,
+                            caseId: existingCase.id,
+                            type: 'NOTE',
+                            title: 'Hatırlatma Gönderildi',
+                            description: `[Şablon Gönderim] ${template.name} tekrar gönderildi.`,
+                            status: 'COMPLETED',
+                            completedAt: new Date(),
+                            source: 'AUTOMATION'
+                        }
+                    });
+                    if (!conversation.caseId) {
+                        await prisma.conversation.update({
+                            where: { id: conversation.id },
+                            data: { caseId: existingCase.id }
+                        });
+                    }
+                    console.log(`📦 [SendTemplate-AutoCase] Reminder added to case ${existingCase.caseNumber}`);
+                } else {
+                    // Yeni case oluştur
+                    const year = new Date().getFullYear();
+                    const lastCase = await prisma.case.findFirst({
+                        where: { workspaceId, caseNumber: { startsWith: `CSE-${year}` } },
+                        orderBy: { createdAt: 'desc' }
+                    });
+                    let nextNum = 1;
+                    if (lastCase?.caseNumber) {
+                        const parts = lastCase.caseNumber.split('-');
+                        if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
+                    }
+                    const caseNumber = `CSE-${year}-${String(nextNum).padStart(4, '0')}`;
+
+                    const newCase = await prisma.case.create({
+                        data: {
+                            workspaceId,
+                            contactId: contact.id,
+                            caseNumber,
+                            title: `WA: ${template.name}`,
+                            type: 'FIRSAT',
+                            status: 'ACTIVE',
+                            priority: 'NORMAL'
+                        }
+                    });
+                    await prisma.conversation.update({
+                        where: { id: conversation.id },
+                        data: { caseId: newCase.id }
+                    });
+                    await prisma.contactActivity.create({
+                        data: {
+                            contactId: contact.id,
+                            workspaceId,
+                            caseId: newCase.id,
+                            type: 'NOTE',
+                            title: 'Kayıt Oluşturuldu',
+                            description: `[Şablon Gönderim] ${template.name} gönderildi.`,
+                            status: 'COMPLETED',
+                            completedAt: new Date(),
+                            source: 'AUTOMATION'
+                        }
+                    });
+                    console.log(`📦 [SendTemplate-AutoCase] Created case ${caseNumber} for contact ${contact.id}`);
+                }
+            } catch (caseErr) {
+                console.error(`⚠️ [SendTemplate-AutoCase] Case error:`, caseErr.message);
+            }
+            // ─── End Auto-Case ───
+
             console.log(`✅ [sendTemplateDynamic] Message logged to DB for contact: ${contact.id}`);
         } catch (dbErr) {
             // DB logging failure shouldn't affect the API response

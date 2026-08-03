@@ -580,6 +580,93 @@ export const bulkSendTemplate = async (req, res) => {
                     });
                     await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: new Date() } });
 
+                    // ─── Auto-Case: Toplu gönderimde otomatik case oluştur/güncelle ───
+                    try {
+                        // Bu kişinin bu şablonla ilgili aktif case'i var mı?
+                        const existingCase = await prisma.case.findFirst({
+                            where: {
+                                contactId: contact.id,
+                                workspaceId,
+                                status: 'ACTIVE',
+                                title: { contains: template.name }
+                            },
+                            orderBy: { createdAt: 'desc' }
+                        });
+
+                        if (existingCase) {
+                            // Mevcut case'e hatırlatma aktivitesi ekle
+                            await prisma.contactActivity.create({
+                                data: {
+                                    contactId: contact.id,
+                                    workspaceId,
+                                    caseId: existingCase.id,
+                                    type: 'NOTE',
+                                    title: 'Hatırlatma Gönderildi',
+                                    description: `[Toplu Gönderim] Şablon: ${template.name} tekrar gönderildi.`,
+                                    status: 'COMPLETED',
+                                    completedAt: new Date(),
+                                    source: 'AUTOMATION'
+                                }
+                            });
+                            // Conversation'ı bu case'e bağla
+                            if (!conversation.caseId) {
+                                await prisma.conversation.update({
+                                    where: { id: conversation.id },
+                                    data: { caseId: existingCase.id }
+                                });
+                            }
+                            console.log(`📦 [BulkSend-AutoCase] Reminder added to case ${existingCase.caseNumber} for contact ${contact.id}`);
+                        } else {
+                            // Yeni case oluştur
+                            const year = new Date().getFullYear();
+                            const lastCase = await prisma.case.findFirst({
+                                where: { workspaceId, caseNumber: { startsWith: `CSE-${year}` } },
+                                orderBy: { createdAt: 'desc' }
+                            });
+                            let nextNum = 1;
+                            if (lastCase?.caseNumber) {
+                                const parts = lastCase.caseNumber.split('-');
+                                if (parts[2]) nextNum = parseInt(parts[2], 10) + 1;
+                            }
+                            const caseNumber = `CSE-${year}-${String(nextNum).padStart(4, '0')}`;
+
+                            const newCase = await prisma.case.create({
+                                data: {
+                                    workspaceId,
+                                    contactId: contact.id,
+                                    caseNumber,
+                                    title: `WA: ${template.name}`,
+                                    type: 'FIRSAT',
+                                    status: 'ACTIVE',
+                                    priority: 'NORMAL'
+                                }
+                            });
+                            // Conversation'ı case'e bağla
+                            await prisma.conversation.update({
+                                where: { id: conversation.id },
+                                data: { caseId: newCase.id }
+                            });
+                            // İlk aktiviteyi ekle
+                            await prisma.contactActivity.create({
+                                data: {
+                                    contactId: contact.id,
+                                    workspaceId,
+                                    caseId: newCase.id,
+                                    type: 'NOTE',
+                                    title: 'Kayıt Oluşturuldu',
+                                    description: `[Toplu Gönderim] Şablon: ${template.name} gönderildi.`,
+                                    status: 'COMPLETED',
+                                    completedAt: new Date(),
+                                    source: 'AUTOMATION'
+                                }
+                            });
+                            console.log(`📦 [BulkSend-AutoCase] Created case ${caseNumber} for contact ${contact.id}`);
+                        }
+                    } catch (caseErr) {
+                        console.error(`⚠️ [BulkSend-AutoCase] Case error for contact ${contact.id}:`, caseErr.message);
+                    }
+                    // ─── End Auto-Case ───
+
                     sent++;
                     // Update job progress
                     if (job) { job.sent = sent; job.failed = failed; }
