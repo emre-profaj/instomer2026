@@ -1646,10 +1646,14 @@ export const deleteConversation = async (req, res) => {
             }
         }
 
-        // 6. Delete the conversation
-        await prisma.conversation.delete({
-            where: { id: conversationId }
-        });
+        // 6. Delete the conversation (only if not already cascaded by contact deletion)
+        if (conversation.contactId && otherConversations === 0) {
+            console.log(` - Conversation deleted via cascade with contact`);
+        } else {
+            await prisma.conversation.delete({
+                where: { id: conversationId }
+            });
+        }
 
         console.log(`✅ [Delete Conversation] SUCCESS - ID: ${conversationId}`);
         res.json({ message: 'Conversation and all related data deleted successfully' });
