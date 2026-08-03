@@ -949,3 +949,20 @@
     padding: 8px 0;
 }
 
+.channel-routing-hint {
+    font-size: 11px;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+}
+.channel-routing-hint a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+}
+.channel-routing-hint a:hover {
+    text-decoration: underline;
+}
+

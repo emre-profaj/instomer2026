@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, ChevronRight, ChevronDown, GripVertical } from 'lucide-react';
+import { Settings, ChevronRight, ChevronDown, GripVertical, Bot, Users, User } from 'lucide-react';
 import StagePill from './StagePill';
 
 const FunnelPipeline = ({
@@ -123,6 +123,26 @@ const FunnelPipeline = ({
                                 );
                             })}
                         </div>
+                    )}
+                    {/* Sorumlu ikonları */}
+                    {(funnel.assignedBotId || funnel.assignedTeamId || funnel.assignedUserId) && (
+                    <div className="funnel-responsibility-icons">
+                        {funnel.assignedBotId && (
+                            <span className="responsibility-icon bot" title="Bot atanmış">
+                                <Bot size={13} />
+                            </span>
+                        )}
+                        {funnel.assignedTeamId && (
+                            <span className="responsibility-icon team" title="Takım atanmış">
+                                <Users size={13} />
+                            </span>
+                        )}
+                        {funnel.assignedUserId && (
+                            <span className="responsibility-icon user" title="Kişi atanmış">
+                                <User size={13} />
+                            </span>
+                        )}
+                    </div>
                     )}
                     <div className="funnel-header-right">
                         <span className="funnel-stage-count">

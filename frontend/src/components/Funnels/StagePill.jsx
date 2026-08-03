@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { Settings, Bot, Users, User } from 'lucide-react';
 
 const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick }) => {
     return (
@@ -9,6 +9,14 @@ const StagePill = ({ stage, count = 0, isSelected, onClick, onSettingsClick }) =
         >
             <span className="stage-color-dot" style={{ backgroundColor: stage.color || '#6b7280' }} />
             <span className="stage-name">{stage.name}</span>
+            {/* Sorumlu mini ikonları */}
+            {(stage.assignedBotId || stage.assignedTeamId || stage.assignedUserId) && (
+                <span className="stage-assign-icons">
+                    {stage.assignedBotId && <Bot size={9} />}
+                    {stage.assignedTeamId && <Users size={9} />}
+                    {stage.assignedUserId && <User size={9} />}
+                </span>
+            )}
             {count > 0 && (
                 <span className="stage-count" style={{ backgroundColor: stage.color || '#6b7280' }}>
                     {count > 999 ? '999+' : count}

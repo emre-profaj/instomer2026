@@ -243,6 +243,10 @@ const WorkspaceSettings = () => {
     const [agentDataVisibility, setAgentDataVisibility] = useState('ALL');
     const [agentDataVisibilitySaving, setAgentDataVisibilitySaving] = useState(false);
 
+    // Lead Puanlama
+    const [leadScoringTemplate, setLeadScoringTemplate] = useState('default');
+    const [leadScoringSaving, setLeadScoringSaving] = useState(false);
+
     useEffect(() => {
         if (!currentWorkspace?.id) return;
         // Workspace
@@ -255,6 +259,7 @@ const WorkspaceSettings = () => {
                     if (ws?.realEstateEnabled !== undefined) setRealEstateEnabled(ws.realEstateEnabled);
                     if (ws?.salesEnabled !== undefined) setSalesEnabled(ws.salesEnabled);
                     if (ws?.agentDataVisibility) setAgentDataVisibility(ws.agentDataVisibility);
+                    if (ws?.leadScoringTemplate) setLeadScoringTemplate(ws.leadScoringTemplate);
                 })
                 .catch(() => {});
         });
@@ -539,48 +544,69 @@ const WorkspaceSettings = () => {
                             </div>
                         </div>
 
-                        {/* ══ Temsilci Veri Görünürlüğü ══ */}
-                        <div className="ws-settings-card card-on">
-                            <div className="ws-settings-card-left">
-                                <div className="ws-settings-card-icon icon-on">
-                                    <Bot size={22} />
-                                </div>
-                                <div className="ws-settings-card-info">
-                                    <div className="ws-settings-card-name">Temsilci Veri Görünürlüğü</div>
-                                    <div className="ws-settings-card-desc">
-                                        Temsilcilerin hangi müşteri verilerini görebileceğini seçin.
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="ws-card-actions">
-                                <select 
-                                    value={agentDataVisibility}
-                                    onChange={async (e) => {
-                                        const newVal = e.target.value;
-                                        setAgentDataVisibilitySaving(true);
-                                        try {
-                                            const { default: api } = await import('../../services/api');
-                                            await api.patch(`/workspaces/${currentWorkspace.id}`, { agentDataVisibility: newVal });
-                                            setAgentDataVisibility(newVal);
-                                        } catch (err) { console.error(err); }
-                                        finally { setAgentDataVisibilitySaving(false); }
-                                    }}
-                                    disabled={agentDataVisibilitySaving}
-                                    style={{
-                                        padding: '6px 12px',
-                                        borderRadius: '8px',
-                                        border: '1px solid #e2e8f0',
-                                        outline: 'none',
-                                        cursor: 'pointer',
-                                        fontSize: '0.85rem',
-                                        background: '#fff'
-                                    }}
-                                >
-                                    <option value="ALL">Tümünü Görsün</option>
-                                    <option value="SELF">Sadece Kendi Verisi</option>
-                                    <option value="TEAM">Takım Verisi</option>
-                                </select>
-                            </div>
+                        {/* Agent Veri Görünürlüğü (Yeni Tasarım) */}
+                        <div style={{ marginTop: 20, padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                👁 Agent Veri Görünürlüğü
+                            </label>
+                            <select
+                                value={agentDataVisibility}
+                                onChange={async (e) => {
+                                    const newVal = e.target.value;
+                                    setAgentDataVisibilitySaving(true);
+                                    try {
+                                        const { default: api } = await import('../../services/api');
+                                        await api.patch(`/workspaces/${currentWorkspace.id}`, { agentDataVisibility: newVal });
+                                        setAgentDataVisibility(newVal);
+                                    } catch (err) {
+                                        console.error('Visibility update error:', err);
+                                    } finally {
+                                        setAgentDataVisibilitySaving(false);
+                                    }
+                                }}
+                                disabled={agentDataVisibilitySaving}
+                                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, width: '100%', maxWidth: 300 }}
+                            >
+                                <option value="ALL">Tümü — Agentlar tüm verileri görür</option>
+                                <option value="TEAM">Takım — Sadece kendi takımının verilerini görür</option>
+                                <option value="OWN">Kişisel — Sadece kendine atananları görür</option>
+                            </select>
+                            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                                Agent rolündeki kullanıcıların görebileceği veri kapsamını belirler.
+                            </p>
+                        </div>
+
+                        {/* Lead Puanlama Tipi */}
+                        <div style={{ marginTop: 20, padding: '16px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                                🎯 Lead Puanlama Şablonu
+                            </label>
+                            <select
+                                value={leadScoringTemplate}
+                                onChange={async (e) => {
+                                    const newVal = e.target.value;
+                                    setLeadScoringSaving(true);
+                                    try {
+                                        const { default: api } = await import('../../services/api');
+                                        await api.patch(`/workspaces/${currentWorkspace.id}`, { leadScoringTemplate: newVal });
+                                        setLeadScoringTemplate(newVal);
+                                    } catch (err) {
+                                        console.error('Scoring template update error:', err);
+                                    } finally {
+                                        setLeadScoringSaving(false);
+                                    }
+                                }}
+                                disabled={leadScoringSaving}
+                                style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, width: '100%', maxWidth: 300 }}
+                            >
+                                <option value="default">Varsayılan — Genel puanlama</option>
+                                <option value="sales">Satış — Alım niyeti ağırlıklı</option>
+                                <option value="support">Destek — Etkileşim yoğunluğu ağırlıklı</option>
+                                <option value="appointment">İletişim — Randevu/görüşme ağırlıklı</option>
+                            </select>
+                            <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                                Lead puanlama algoritmalarının ağırlıklarını belirler.
+                            </p>
                         </div>
 
                     </div>

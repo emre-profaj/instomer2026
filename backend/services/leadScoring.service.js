@@ -216,6 +216,55 @@ export async function calculateLeadScore(contactId) {
       breakdown.multiChannel = 5;
     }
 
+    // ── 9. Aşama ilerleme puanı ──────────────────────────────
+    if (contact.funnelStageId && contact.funnelType) {
+      const stage = await prisma.funnelStage.findUnique({ 
+        where: { id: contact.funnelStageId }, 
+        select: { order: true } 
+      });
+      const totalStages = await prisma.funnelStage.count({ 
+        where: { funnelId: contact.funnelType } 
+      });
+      
+      if (stage && totalStages > 0) {
+        const stageScore = Math.min(Math.round((stage.order / totalStages) * 15), 15);
+        score += stageScore;
+        breakdown.stageProgress = stageScore;
+      }
+    }
+
+    // ── 10. Ürün ilgi puanı ───────────────────────────────────
+    const productCase = await prisma.case.findFirst({ 
+      where: { contactId, status: 'ACTIVE', NOT: { products: '[]' } }, 
+      select: { products: true } 
+    });
+    
+    if (productCase && productCase.products) {
+      let hasProducts = false;
+      try {
+        const productsArr = typeof productCase.products === 'string' ? JSON.parse(productCase.products) : productCase.products;
+        if (Array.isArray(productsArr) && productsArr.length > 0) {
+          hasProducts = true;
+        }
+      } catch (e) {}
+      
+      if (hasProducts) {
+        score += 8;
+        breakdown.productInterest = 8;
+      }
+    }
+
+    // ── 11. Kategori eşleşme puanı ────────────────────────────
+    const categoryCase = await prisma.case.findFirst({ 
+      where: { contactId, status: 'ACTIVE', categoryId: { not: null } }, 
+      select: { categoryId: true } 
+    });
+    
+    if (categoryCase && categoryCase.categoryId) {
+      score += 5;
+      breakdown.categoryAssigned = 5;
+    }
+
     // Skor sınırla
     score = Math.min(score, 100);
     score = Math.max(score, 0);

@@ -26,7 +26,15 @@ export const getCategories = async (req, res) => {
             where: { workspaceId },
             orderBy: [{ order: 'asc' }, { name: 'asc' }],
             include: {
-                _count: { select: { conversations: true } }
+                _count: { select: { conversations: true } },
+                children: {
+                    orderBy: [{ order: 'asc' }, { name: 'asc' }],
+                    include: {
+                        _count: { select: { conversations: true } },
+                        products: { where: { isActive: true }, select: { id: true, name: true, price: true } }
+                    }
+                },
+                products: { where: { isActive: true }, select: { id: true, name: true, price: true } }
             }
         });
         res.json(categories);
@@ -39,7 +47,7 @@ export const getCategories = async (req, res) => {
 export const createCategory = async (req, res) => {
     try {
         const { workspaceId } = req.params;
-        const { name, description, icon, color, keywords } = req.body;
+        const { name, description, icon, color, keywords, parentId } = req.body;
 
         const category = await prisma.topicCategory.create({
             data: {
@@ -49,6 +57,7 @@ export const createCategory = async (req, res) => {
                 icon: icon || null,
                 color: color || '#6b7280',
                 keywords: keywords ? JSON.stringify(keywords) : null,
+                parentId: parentId || null,
             }
         });
         res.status(201).json(category);
@@ -61,7 +70,7 @@ export const createCategory = async (req, res) => {
 export const updateCategory = async (req, res) => {
     try {
         const { categoryId } = req.params;
-        const { name, description, icon, color, keywords, isActive } = req.body;
+        const { name, description, icon, color, keywords, isActive, parentId } = req.body;
 
         const data = {};
         if (name !== undefined) data.name = name;
@@ -70,6 +79,7 @@ export const updateCategory = async (req, res) => {
         if (color !== undefined) data.color = color;
         if (keywords !== undefined) data.keywords = JSON.stringify(keywords);
         if (isActive !== undefined) data.isActive = isActive;
+        if (parentId !== undefined) data.parentId = parentId || null;
 
         const category = await prisma.topicCategory.update({
             where: { id: categoryId },

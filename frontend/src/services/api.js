@@ -283,8 +283,8 @@ export const conversationAPI = {
         api.put(`/conversations/${workspaceId}/${conversationId}/assign`, data),
     assignNew: (workspaceId, conversationId, data) =>
         api.post(`/conversations/${workspaceId}/${conversationId}/smart-assign`, data),
-    claim: (workspaceId, conversationId) =>
-        api.post(`/conversations/${workspaceId}/${conversationId}/claim`, {}),
+    claim: (workspaceId, conversationId, data) =>
+        api.post(`/conversations/${workspaceId}/${conversationId}/claim`, data || {}),
     updateStatus: (workspaceId, conversationId, data) =>
         api.put(`/conversations/${workspaceId}/${conversationId}/status`, data),
     delete: (workspaceId, conversationId) =>
@@ -310,7 +310,7 @@ export const conversationAPI = {
     toggleBot: (workspaceId, conversationId, botEnabled) => api.put(`/conversations/${workspaceId}/${conversationId}/bot-toggle`, { botEnabled }),
 
     // Take Over - Agent kendi kendine üstlenir
-    takeOver: (workspaceId, conversationId) => api.post(`/conversations/${workspaceId}/${conversationId}/take-over`),
+    takeOver: (workspaceId, conversationId, data) => api.post(`/conversations/${workspaceId}/${conversationId}/take-over`, data || {}),
 
     // Update aiTopic
     updateTopic: (workspaceId, conversationId, aiTopic) =>
@@ -331,6 +331,12 @@ export const conversationAPI = {
     // Contact-Grouped — Contact bazlı gruplu konuşma listesi
     getContactGrouped: (workspaceId, params) =>
         api.get(`/conversations/${workspaceId}/contact-grouped`, { params }),
+
+    // Archive
+    archive: (workspaceId, conversationId) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/archive`),
+    unarchive: (workspaceId, conversationId) =>
+        api.patch(`/conversations/${workspaceId}/${conversationId}/unarchive`),
 };
 
 // Funnel API (user-defined pipeline categories)
@@ -369,6 +375,7 @@ export const aiAPI = {
     updateConversationAnalysis: (workspaceId, conversationId, data) => api.put(`/ai/${workspaceId}/analysis/${conversationId}`, data),
     extractContactInfo: (workspaceId, conversationId) => api.post(`/ai/${workspaceId}/extract-info`, { conversationId }),
     getSuggestedReplies: (workspaceId, conversationId) => api.post(`/ai/${workspaceId}/suggest-replies`, { conversationId }),
+    detectImportColumns: (workspaceId, headers, sampleRows) => api.post(`/ai/${workspaceId}/detect-import-columns`, { headers, sampleRows }),
 
     // Widget
     getWidgetSettings: (workspaceId) => api.get(`/ai/${workspaceId}/widget`),

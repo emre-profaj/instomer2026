@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
 import NotificationPanel from './NotificationPanel';
+import TeamChat from '../TeamChat/TeamChat';
 import { useTranslation } from 'react-i18next';
 import './Sidebar.css';
 
@@ -427,7 +428,7 @@ const Sidebar = () => {
                                         title={t('settings.title')}
                                     >
                                         <Settings size={20} className="nav-icon" />
-                                        {!isCollapsed && <span>Genel</span>}
+                                        {!isCollapsed && <span>Ayarlar</span>}
                                         {!isCollapsed && <ChevronDown size={16} className={`category-arrow ${isSettingsOpen ? 'open' : ''}`} />}
                                     </button>
                                     {isSettingsOpen && !isCollapsed && (
@@ -456,6 +457,9 @@ const Sidebar = () => {
                         </nav>
                     </div>
                 </div>
+
+                {/* Gmail-style Chat Panel — nav dışında, footer öncesinde */}
+                <TeamChat isCollapsed={isCollapsed} />
 
                 <div className="sidebar-footer">
                     {/* Notifications */}

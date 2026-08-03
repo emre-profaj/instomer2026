@@ -10,6 +10,7 @@ export const ACTION_TYPES = {
     SEND_MESSAGE: 'SEND_MESSAGE',           // Send a WhatsApp/chat message
     SEND_TEMPLATE: 'SEND_TEMPLATE',         // Send a WhatsApp template
     CREATE_TASK: 'CREATE_TASK',             // Create a task/activity
+    CREATE_CALL_TASK: 'CREATE_CALL_TASK',   // Create a call task
     NOTIFY_TEAM: 'NOTIFY_TEAM',             // Notify team/person
     REQUIRE_NOTE: 'REQUIRE_NOTE',           // Require a note entry
     REQUIRE_DEAL: 'REQUIRE_DEAL',           // Require a deal/quote
@@ -198,18 +199,122 @@ async function cancelTimedActions(stageId, contactId, workspaceId) {
 export async function executeSingleAction(action, contactId, workspaceId) {
     switch (action.type) {
         case ACTION_TYPES.CREATE_TASK: {
+            // Sorumluyu belirle — önce action config, yoksa güncel görüşmenin sorumlusu
+            let assigneeId = action.assignToUserId || null;
+            if (!assigneeId) {
+                try {
+                    const latestConv = await prisma.conversation.findFirst({
+                        where: { contactId, workspaceId, status: { not: 'RESOLVED' } },
+                        orderBy: { updatedAt: 'desc' },
+                        select: { assignedToId: true, assignedTeamId: true }
+                    });
+                    assigneeId = latestConv?.assignedToId || null;
+                } catch (_) {}
+            }
+
             await prisma.contactActivity.create({
                 data: {
                     contactId,
                     workspaceId,
-                    type: 'TASK',
+                    type: action.activityType || 'TASK',
                     title: action.title || 'Otomatik görev',
                     description: action.description || '',
-                    assignedToId: action.assignToUserId || null,
-                    status: 'PENDING',
+                    assignedToId: assigneeId,
+                    sourceType: 'STAGE_ACTION',
+                    status: 'PLANNED',
                     dueDate: action.dueDays ? new Date(Date.now() + action.dueDays * 86400000) : null
                 }
             });
+
+            // Bildirim gönder
+            try {
+                const { emitToWorkspace } = await import('../socket.js');
+                emitToWorkspace(workspaceId, 'activity_created', {
+                    contactId,
+                    type: action.activityType || 'TASK',
+                    status: 'PLANNED',
+                    title: action.title || 'Otomatik görev'
+                });
+            } catch (_) {}
+            break;
+        }
+
+        case ACTION_TYPES.CREATE_CALL_TASK: {
+            // Atama önceliği: 1) Aktif Case sorumlusu, 2) Konuşma sorumlusu
+            let callAssigneeId = null;
+            let callTeamId = null;
+            let callCaseId = null;
+
+            // 1. Aktif Case'den sorumluyu al
+            try {
+                const activeCase = await prisma.case.findFirst({
+                    where: { contactId, workspaceId, status: 'ACTIVE' },
+                    orderBy: { updatedAt: 'desc' },
+                    select: { id: true, assignedToId: true, assignedTeamId: true }
+                });
+                if (activeCase) {
+                    callCaseId = activeCase.id;
+                    callAssigneeId = activeCase.assignedToId || null;
+                    callTeamId = activeCase.assignedTeamId || null;
+                    console.log(`📋 [StageAutomation] Arama Case sorumlusuna atandı: case=${callCaseId}, user=${callAssigneeId}, team=${callTeamId}`);
+                }
+            } catch (_) {}
+
+            // 2. Case'de atama yoksa → konuşma sorumlusuna bak
+            if (!callAssigneeId && !callTeamId) {
+                try {
+                    const latestConv = await prisma.conversation.findFirst({
+                        where: { contactId, workspaceId, status: { not: 'RESOLVED' } },
+                        orderBy: { updatedAt: 'desc' },
+                        select: { assignedToId: true, assignedTeamId: true, caseId: true }
+                    });
+                    callAssigneeId = latestConv?.assignedToId || null;
+                    callTeamId = latestConv?.assignedTeamId || null;
+                    if (!callCaseId) callCaseId = latestConv?.caseId || null;
+                    if (callAssigneeId || callTeamId) {
+                        console.log(`💬 [StageAutomation] Arama konuşma sorumlusuna atandı: user=${callAssigneeId}, team=${callTeamId}`);
+                    }
+                } catch (_) {}
+            }
+
+            const contactForCall = await prisma.contact.findUnique({
+                where: { id: contactId },
+                select: { phone: true, name: true, firstName: true }
+            });
+
+            if (!contactForCall?.phone) {
+                console.log(`[StageAutomation] CREATE_CALL_TASK: Kişinin telefonu yok, görev oluşturulamadı`);
+                break;
+            }
+
+            await prisma.contactActivity.create({
+                data: {
+                    contactId,
+                    workspaceId,
+                    type: 'CALL',
+                    title: action.title || '📞 Arama Görevi',
+                    description: action.description || `${contactForCall.firstName || contactForCall.name || 'Müşteri'} aranacak — ${contactForCall.phone}`,
+                    assignedToId: callAssigneeId,
+                    teamId: callTeamId,
+                    caseId: callCaseId,
+                    sourceType: 'STAGE_ACTION',
+                    retellExcluded: false,
+                    status: 'PLANNED',
+                    dueDate: new Date()
+                }
+            });
+
+            try {
+                const { emitToWorkspace } = await import('../socket.js');
+                emitToWorkspace(workspaceId, 'activity_created', {
+                    contactId,
+                    type: 'CALL',
+                    status: 'PLANNED',
+                    title: action.title || '📞 Arama Görevi'
+                });
+            } catch (_) {}
+
+            console.log(`[StageAutomation] CREATE_CALL_TASK: ${contactForCall.phone} için arama görevi oluşturuldu`);
             break;
         }
 
@@ -275,6 +380,11 @@ export async function executeSingleAction(action, contactId, workspaceId) {
             // Import sendTemplateToContact pattern from automation.controller.js
             // That function is NOT exported, so replicate the logic:
             const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+            // Opt-out kontrolü — pazarlama mesajı almak istemeyen kişiye şablon gönderme
+            if (contact?.marketingOptOut) {
+                console.log(`🚫 [StageAutomation] Opt-out kişiye WA şablon gönderilmedi: ${contact.phone}`);
+                break;
+            }
             if (contact?.phone && action.templateId) {
                 const template = await prisma.messageTemplate.findUnique({ where: { id: action.templateId } });
                 if (template) {

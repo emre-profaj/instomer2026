@@ -294,7 +294,7 @@ export const createDeal = async (req, res) => {
         if (['ORDER', 'INVOICE'].includes(stage)) {
             try {
                 const { suggestCaseCloseOnDeal } = await import('../services/noteAnalyzer.service.js');
-                suggestCaseCloseOnDeal(workspaceId, deal.contactId, deal.id).catch(err =>
+                suggestCaseCloseOnDeal(deal.id, workspaceId).catch(err =>
                     console.error('⚠️ [Deal] Case close suggestion error:', err.message)
                 );
             } catch (e) { /* opsiyonel */ }
@@ -450,7 +450,7 @@ export const updateDeal = async (req, res) => {
         if (['ORDER', 'INVOICE'].includes(deal.stage)) {
             try {
                 const { suggestCaseCloseOnDeal } = await import('../services/noteAnalyzer.service.js');
-                suggestCaseCloseOnDeal(workspaceId, deal.contactId, deal.id).catch(err =>
+                suggestCaseCloseOnDeal(deal.id, workspaceId).catch(err =>
                     console.error('⚠️ [Deal] Case close suggestion error:', err.message)
                 );
             } catch (e) { /* opsiyonel */ }
@@ -605,7 +605,7 @@ export const convertDeal = async (req, res) => {
         if (['ORDER', 'INVOICE'].includes(deal.stage)) {
             try {
                 const { suggestCaseCloseOnDeal } = await import('../services/noteAnalyzer.service.js');
-                suggestCaseCloseOnDeal(workspaceId, deal.contactId, deal.id).catch(err =>
+                suggestCaseCloseOnDeal(deal.id, workspaceId).catch(err =>
                     console.error('⚠️ [Deal] Case close suggestion error:', err.message)
                 );
             } catch (e) { /* opsiyonel */ }

@@ -382,6 +382,7 @@ export const AuthProvider = ({ children }) => {
         unreadCount,
         setUnreadCount,
         onlineUsers,
+        socketRef,
         isAuthenticated: !!user
     };
 

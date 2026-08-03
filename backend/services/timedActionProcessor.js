@@ -108,12 +108,18 @@ export async function processTimedActions() {
                     }
                     
                     case 'MOVE_STAGE': {
-                        // Auto-move to next stage if configured
                         if (config.actionConfig?.targetStageId) {
-                            await prisma.contact.update({
-                                where: { id: contactId },
-                                data: { funnelStageId: config.actionConfig.targetStageId }
+                            const targetStage = await prisma.funnelStage.findUnique({
+                                where: { id: config.actionConfig.targetStageId },
+                                select: { funnelId: true }
                             });
+                            if (targetStage) {
+                                const { changeFunnelStage } = await import('./funnelStageManager.service.js');
+                                await changeFunnelStage(contactId, workspaceId, targetStage.funnelId, config.actionConfig.targetStageId, {
+                                    source: 'timed_action',
+                                    skipGuards: true
+                                });
+                            }
                         }
                         break;
                     }

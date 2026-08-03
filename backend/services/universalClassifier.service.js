@@ -33,6 +33,7 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
         confidence: 0,
         extractedData: { name: null, phone: null, email: null, topic: null, preferredCallTime: null, requestedAction: null, requestedDate: null, branchInfo: null, budget: null, city: null, company: null, source: null },
         isQualifiedLead: false,
+        marketingOptOut: false,
         matchedFunnelId: null,
         reasoning: 'Sınıflandırma yapılamadı'
     };
@@ -53,12 +54,12 @@ export const classifyAndExtract = async (conversationId, messages, contact, chan
             }
         });
 
-        // Konu kategorilerini yükle
+        // Konu kategorilerini ve ürünlerini yükle
         let topicCategories = [];
         try {
             topicCategories = await prisma.topicCategory.findMany({
                 where: { workspaceId, isActive: true },
-                select: { id: true, name: true, keywords: true }
+                select: { id: true, name: true, keywords: true, products: { where: { isActive: true }, select: { id: true, name: true, price: true, groupName: true } } }
             });
         } catch { /* Tablo yoksa veya hata varsa atla */ }
         const categoryMap = new Map(topicCategories.map(c => [c.id, c]));
@@ -140,10 +141,14 @@ ${contactInfo}
 ### KONUŞMA ###
 ${chatLog}
 ${customFunnelContext}
-${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ ###\nAşağıdaki kategorilerden en uygun olanını seç:\n${topicCategories.map(c => {
+${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ VE ÜRÜNLER ###\nAşağıdaki kategorilerden en uygun olanını seç. Kategori altındaki ürünlerden müşterinin ilgilendiği ürünleri de eşleştir:\n${topicCategories.map(c => {
     let kws = '';
     try { kws = c.keywords ? JSON.parse(c.keywords).join(', ') : ''; } catch {}
-    return `- "${c.name}" (ID: ${c.id})${kws ? ' → ' + kws : ''}`;
+    let productList = '';
+    if (c.products && c.products.length > 0) {
+        productList = '\n  Ürünler: ' + c.products.map(p => `"${p.name}" (ID: ${p.id}, ${p.price > 0 ? p.price + ' TL' : 'Fiyat belirtilmemiş'}${p.groupName ? ', Grup: ' + p.groupName : ''})`).join(', ');
+    }
+    return `- "${c.name}" (ID: ${c.id})${kws ? ' → ' + kws : ''}${productList}`;
 }).join('\n')}\n` : ''}
 
 ### GÖREV ###
@@ -174,6 +179,8 @@ ${topicCategories.length > 0 ? `\n### KONU KATEGORİLERİ ###\nAşağıdaki kate
 3. matchedFunnelId: ⚠️ ÖNEMLİ — Yukarıdaki MEVCUT AKIŞLAR bölümünden konuşmaya en uygun akışın ID'sini MUTLAKA yaz. Hiçbirine uymuyorsa null yaz ama emin değilsen en yakın olanı seç.
 
 4. topicCategoryId: Yukarıdaki KONU KATEGORİLERİ bölümünden konuşmaya en uygun kategorinin ID'sini yaz. Yoksa null.
+5. matchedProductIds: Yukarıdaki ürünler bölümünden müşterinin ilgilendiği ürünlerin ID'lerini dizi olarak yaz. Konuşmada belirli bir ürün/hizmet geçiyorsa eşleştir. Yoksa boş dizi [].
+6. marketingOptOut: Müşteri açıkça pazarlama/tanıtım mesajı almak istemediğini belirtiyorsa true. Örnekler: "bana yazmayın", "mesaj atmayın", "rahatsız etmeyin", "aranmak istemiyorum", "listeden çıkarın", "üyelikten çıkmak istiyorum". Normal konuşmalarda false.
 SADECE JSON döndür, başka bir şey yazma:
 {
   "classification": "FIRSAT",
@@ -192,9 +199,11 @@ SADECE JSON döndür, başka bir şey yazma:
     "company": null,
     "source": null
   },
-  "matchedFunnelId": null,
-  "topicCategoryId": null,
-  "reasoning": "Müşteri konut tipini belirterek bilgi talep ediyor, aranma zamanı vermiş - satış fırsatı"
+   "matchedFunnelId": null,
+   "topicCategoryId": null,
+   "matchedProductIds": [],
+   "marketingOptOut": false,
+   "reasoning": "Müşteri konut tipini belirterek bilgi talep ediyor, aranma zamanı vermiş - satış fırsatı"
 }`;
 
         const genAI = new GoogleGenerativeAI(aiApiKey);
@@ -236,10 +245,24 @@ SADECE JSON döndür, başka bir şey yazma:
                 const kwMatch = kws.some(kw => topicLower.includes(kw.toLowerCase()));
                 if (nameMatch || kwMatch) {
                     parsed.topicCategoryId = cat.id;
+
+                    // AI ürün eşleştiremediyse, keyword ile bulunan kategorinin ürünleriyle dene
+                    if ((!parsed.matchedProductIds || parsed.matchedProductIds.length === 0) && cat.products?.length > 0) {
+                        const matchedByName = cat.products.filter(p =>
+                            topicLower.includes(p.name.toLowerCase()) ||
+                            p.name.toLowerCase().includes(topicLower)
+                        );
+                        if (matchedByName.length > 0) {
+                            parsed.matchedProductIds = matchedByName.map(p => p.id);
+                        }
+                    }
                     break;
                 }
             }
         }
+
+        // matchedProductIds yoksa boş dizi yap
+        if (!parsed.matchedProductIds) parsed.matchedProductIds = [];
 
         return parsed;
     } catch (error) {
@@ -318,7 +341,7 @@ SADECE JSON döndür:
 // =============================================
 export const executeClassificationActions = async (workspaceId, conversationId, contactId, classificationResult) => {
     try {
-        const { classification, extractedData, matchedFunnelId, isQualifiedLead } = classificationResult;
+        const { classification, extractedData, matchedFunnelId, isQualifiedLead, matchedProductIds, topicCategoryId } = classificationResult;
 
         // Conversation'dan channel bilgisini al
         const convForChannel = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { channel: true } });
@@ -344,6 +367,19 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             if (Object.keys(updateData).length > 0) {
                 await prisma.contact.update({ where: { id: contactId }, data: updateData });
                 console.log(`📝 [Classifier] Kişi bilgileri güncellendi: ${JSON.stringify(updateData)}`);
+            }
+        }
+
+        // --- Marketing Opt-Out algılama ---
+        if (classificationResult.marketingOptOut) {
+            try {
+                await prisma.contact.update({
+                    where: { id: contactId },
+                    data: { marketingOptOut: true, marketingOptOutAt: new Date() }
+                });
+                console.log(`🚫 [Classifier] Kişi pazarlama opt-out olarak işaretlendi (AI algıladı)`);
+            } catch (optErr) {
+                console.error('⚠️ [Classifier] Opt-out güncelleme hatası:', optErr.message);
             }
         }
 
@@ -383,20 +419,23 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                 where: { id: targetFunnelId },
                 include: { stages: { orderBy: { order: 'asc' } } }
             });
+            const isFormChannel = channel === 'FORM';
+            const shouldGoToFirsat = isQualifiedLead || isFormChannel;
+
             if (funnel?.stages?.length > 0) {
-                // isQualifiedLead + qualifiedLeadStageId varsa → oraya at
-                if (isQualifiedLead && funnel.qualifiedLeadStageId) {
+                // Lead veya Form → qualifiedLeadStageId (Fırsat aşaması) varsa oraya at
+                if (shouldGoToFirsat && funnel.qualifiedLeadStageId) {
                     const qualifiedStage = funnel.stages.find(s => s.id === funnel.qualifiedLeadStageId);
                     if (qualifiedStage) {
                         targetStageId = qualifiedStage.id;
-                        console.log(`🎯 [Classifier] Nitelikli Lead → "${funnel.name}" / "${qualifiedStage.name}" (qualifiedLeadStageId)`);
+                        console.log(`🎯 [Classifier] ${isFormChannel ? 'Form' : 'Lead'} → "${funnel.name}" / "${qualifiedStage.name}" (Fırsat aşaması)`);
                     } else {
                         // qualifiedLeadStageId artık geçersiz (silinmiş olabilir) → ilk stage'e fallback
                         targetStageId = funnel.stages[0].id;
                         console.log(`⚠️ [Classifier] qualifiedLeadStageId geçersiz → "${funnel.name}" / "${funnel.stages[0].name}" (fallback)`);
                     }
                 } else {
-                    // Lead değil veya qualifiedLeadStageId yok → ilk stage
+                    // Normal mesaj → ilk stage
                     targetStageId = funnel.stages[0].id;
                     console.log(`📊 [Classifier] AI matchedFunnelId → "${funnel.name}" / "${funnel.stages[0].name}"`);
                 }
@@ -406,8 +445,8 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // --- FALLBACK: AI akışı eşleştiremedi ama isQualifiedLead → qualifiedLeadStageId olan akışı bul ---
-        if (!targetFunnelId && !skipFunnelAssignment && isQualifiedLead) {
+        // --- FALLBACK: AI akışı eşleştiremedi ama Lead/Form → qualifiedLeadStageId olan akışı bul ---
+        if (!targetFunnelId && !skipFunnelAssignment && (isQualifiedLead || channel === 'FORM')) {
             const qualifiedFunnel = await prisma.funnel.findFirst({
                 where: { workspaceId, qualifiedLeadStageId: { not: null } },
                 include: { stages: { orderBy: { order: 'asc' } } }
@@ -449,30 +488,12 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
 
             if (shouldAssign && targetStageId) {
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { funnelType: targetFunnelId, funnelStageId: targetStageId }
+                const { changeFunnelStage } = await import('./funnelStageManager.service.js');
+                await changeFunnelStage(contactId, workspaceId, targetFunnelId, targetStageId, {
+                    source: 'ai_classifier',
+                    conversationId,
+                    skipGuards: false
                 });
-                await prisma.contact.update({
-                    where: { id: contactId },
-                    data: { funnelType: targetFunnelId, funnelStageId: targetStageId }
-                });
-                
-                // ── AUTO-SYNC: Update active cases associated with this contact/conversation ──
-                try {
-                    await prisma.case.updateMany({
-                        where: {
-                            contactId: contactId,
-                            status: 'ACTIVE'
-                        },
-                        data: {
-                            funnelType: targetFunnelId,
-                            funnelStageId: targetStageId
-                        }
-                    });
-                } catch (caseErr) {
-                    console.error('⚠️ [Classifier] Active case funnel update hatası:', caseErr.message);
-                }
                 
                 console.log(`📊 [Classifier] Akış atandı: ${targetFunnelId} / Stage: ${targetStageId}`);
 
@@ -497,94 +518,7 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
                     });
                 } catch (_) {}
 
-                // Stage atamalarını uygula — ancak zaten birine atanmışsa kişi atamasını EZME
-                if (targetStageId) {
-                    const stage = await prisma.funnelStage.findUnique({
-                        where: { id: targetStageId },
-                        select: { assignedTeamId: true, assignedUserId: true, assignedBotId: true }
-                    });
-
-                    // Konuşma zaten birine atanmış mı kontrol et
-                    const currentConv = await prisma.conversation.findUnique({
-                        where: { id: conversationId },
-                        select: { assignedToId: true, botEnabled: true }
-                    });
-                    const alreadyAssigned = !!currentConv?.assignedToId;
-
-                    if (stage) {
-                        const assignUpdate = {};
-                        if (stage.assignedTeamId) {
-                            assignUpdate.assignedTeamId = stage.assignedTeamId;
-                            assignUpdate.teamIds = JSON.stringify([stage.assignedTeamId]);
-                        }
-                        // ⚠️ Kişi ataması: Konuşma zaten birine atanmışsa EZME!
-                        if (stage.assignedUserId && !alreadyAssigned) {
-                            assignUpdate.assignedToId = stage.assignedUserId;
-                        }
-                        if (stage.assignedBotId && !alreadyAssigned) {
-                            assignUpdate.assignedBotId = stage.assignedBotId;
-                            assignUpdate.botEnabled = true;
-                        }
-                        if (Object.keys(assignUpdate).length > 0) {
-                            await prisma.conversation.update({ where: { id: conversationId }, data: assignUpdate });
-                            console.log(`👥 [Classifier] Stage ekip/kişi atandı:`, assignUpdate, alreadyAssigned ? '(kişi atama korundu)' : '');
-                        }
-                        // 🛡️ DB'den güncel atama durumunu tekrar oku (yukardaki update assignedToId yazmış olabilir)
-                        const freshConv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { assignedToId: true } });
-                        const stillAssignedAfterUpdate = !!freshConv?.assignedToId;
-                        if (stage.assignedTeamId && !stage.assignedUserId && !stillAssignedAfterUpdate) {
-                            await assignToTeamMember(stage.assignedTeamId, conversationId);
-                        }
-                    }
-                }
-
-                // Funnel seviyesinde takım ataması (stage'de yoksa ve konuşma henüz atanmamışsa)
-                if (!targetStageId || !(await prisma.funnelStage.findUnique({ where: { id: targetStageId }, select: { assignedTeamId: true } }))?.assignedTeamId) {
-                    // alreadyAssigned yukarıda tanımlı — konuşma zaten birine atanmışsa kişi atamasını ezme
-                    const convCheck2 = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { assignedToId: true } });
-                    const stillAssigned = !!convCheck2?.assignedToId;
-
-                    const funnel = await prisma.funnel.findUnique({
-                        where: { id: targetFunnelId },
-                        select: { assignedTeamId: true, assignedUserId: true }
-                    });
-                    if (funnel?.assignedTeamId) {
-                        const funnelAssign = {
-                            assignedTeamId: funnel.assignedTeamId,
-                            teamIds: JSON.stringify([funnel.assignedTeamId])
-                        };
-                        // ⚠️ Kişi atamasını EZME
-                        if (funnel.assignedUserId && !stillAssigned) {
-                            funnelAssign.assignedToId = funnel.assignedUserId;
-                        }
-                        await prisma.conversation.update({ where: { id: conversationId }, data: funnelAssign });
-                        console.log(`📂 [Classifier] Funnel takım atandı: ${funnel.assignedTeamId}`, stillAssigned ? '(kişi atama korundu)' : '');
-
-                        if (!funnel.assignedUserId && !stillAssigned) {
-                            await assignToTeamMember(funnel.assignedTeamId, conversationId);
-                        }
-                    } else if (funnel?.assignedUserId && !stillAssigned) {
-                        await prisma.conversation.update({
-                            where: { id: conversationId },
-                            data: { assignedToId: funnel.assignedUserId }
-                        });
-                    }
-                }
-
-                // Socket ile ekip atamasını bildir
-                try {
-                    const updatedConv = await prisma.conversation.findUnique({
-                        where: { id: conversationId },
-                        select: { assignedToId: true, assignedTeamId: true, teamIds: true, botEnabled: true }
-                    });
-                    const { emitToWorkspace } = await import('../socket.js');
-                    emitToWorkspace(workspaceId, 'conversation_assigned', {
-                        conversationId,
-                        assignedToId: updatedConv?.assignedToId || null,
-                        teamIds: updatedConv?.teamIds || '[]',
-                        botEnabled: updatedConv?.botEnabled || false
-                    });
-                } catch (_) {}
+                // Takım ve kişi atamaları changeFunnelStage içinde yapılıyor.
             } else {
                 console.log(`ℹ️ [Classifier] Konuşma zaten "${currentFunnelId}" akışında`);
                 
@@ -602,155 +536,90 @@ export const executeClassificationActions = async (workspaceId, conversationId, 
             }
         }
 
-        // --- Telefon numarası varsa → Otomatik arama aktivitesi oluştur ---
-        const contactPhone = extractedData?.phone || (await prisma.contact.findUnique({ where: { id: contactId }, select: { phone: true } }))?.phone;
-        const hasPhoneForActivity = !!contactPhone;
-
-        if (isQualifiedLead) {
-            // Kalifiye Lead → Contact'ı OPPORTUNITY olarak işaretle (sadece category, status entry rules ile yönetilir)
-            await prisma.contact.update({
-                where: { id: contactId },
-                data: {
-                    category: 'OPPORTUNITY'
-                }
-            });
-
-            // Aksiyon türüne göre aktivite oluştur
-            const activityType = extractedData.requestedAction === 'VISIT' ? 'VISIT'
-                : extractedData.requestedAction === 'MEETING' ? 'MEETING'
-                : 'CALL';
-
-            const dueDate = extractedData.requestedDate
-                ? new Date(extractedData.requestedDate)
-                : extractedData.preferredCallTime
-                    ? parsePreferredTime(extractedData.preferredCallTime)
-                    : smartScheduleCall();
-
-            const title = `${extractedData.name || 'İsimsiz'} - ${extractedData.topic || 'Yeni Talep'}`;
-
-            // Takımın round-robin ile atanacak kişisini bul
-            let assignedToId = null;
-            let teamId = null;
-
-            if (targetStageId) {
-                const stage = await prisma.funnelStage.findUnique({
-                    where: { id: targetStageId },
-                    select: { assignedTeamId: true, assignedUserId: true }
+        // --- Lead / Form → OPPORTUNITY olarak işaretle ---
+        // Aşama ataması yukarıda changeFunnelStage ile zaten yapıldı.
+        // Stage entryActions (CREATE_CALL_TASK) arama görevini otomatik oluşturur.
+        if (isQualifiedLead || channel === 'FORM') {
+            try {
+                await prisma.contact.update({
+                    where: { id: contactId },
+                    data: { category: 'OPPORTUNITY' }
                 });
-                teamId = stage?.assignedTeamId;
-                assignedToId = stage?.assignedUserId;
-
-                // Round-robin: takım varsa sırayla ata
-                if (teamId && !assignedToId) {
-                    const team = await prisma.team.findUnique({
-                        where: { id: teamId },
-                        include: { members: { where: { userId: { not: null } }, select: { userId: true } } }
-                    });
-                    if (team && team.members.length > 0) {
-                        const idx = team.roundRobinIndex % team.members.length;
-                        assignedToId = team.members[idx].userId;
-                        await prisma.team.update({
-                            where: { id: teamId },
-                            data: { roundRobinIndex: { increment: 1 } }
-                        });
-                    }
-                }
-            }
-
-            // Duplicate check: aynı kişi + aynı tip + aynı gün
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            const todayEnd = new Date();
-            todayEnd.setHours(23, 59, 59, 999);
-
-            const existingActivity = await prisma.contactActivity.findFirst({
-                where: {
-                    workspaceId,
-                    contactId,
-                    type: activityType,
-                    status: 'PLANNED',
-                    dueDate: { gte: todayStart, lte: todayEnd }
-                }
-            });
-
-            if (!existingActivity) {
-                const activity = await prisma.contactActivity.create({
-                    data: {
-                        type: activityType,
-                        status: 'PLANNED',
-                        priority: 'NORMAL',
-                        title,
-                        description: [
-                            extractedData.topic ? `📌 Konu: ${extractedData.topic}` : null,
-                            extractedData.phone ? `📱 Numara: ${extractedData.phone}` : null,
-                            extractedData.preferredCallTime ? `🕐 Tercih edilen zaman: ${extractedData.preferredCallTime}` : null,
-                            `Kaynak: ${channel || 'UNKNOWN'}`,
-                        ].filter(Boolean).join('\n'),
-                        dueDate,
-                        contactId,
-                        workspaceId,
-                        assignedToId,
-                        teamId,
-                        source: 'AUTOMATION'
-                    }
-                });
-                console.log(`✅ [Classifier] Otomatik ${activityType} aktivitesi oluşturuldu: ${activity.id} | ${title}`);
-            }
+                console.log(`🏷️ [Classifier] Kişi OPPORTUNITY olarak işaretlendi`);
+            } catch (_) {}
         }
 
-        // --- Telefon varsa ama Lead değilse de arama planla ---
-        if (!isQualifiedLead && hasPhoneForActivity) {
-            const todayStart2 = new Date();
-            todayStart2.setHours(0, 0, 0, 0);
-            const todayEnd2 = new Date();
-            todayEnd2.setHours(23, 59, 59, 999);
-
-            const existingCall = await prisma.contactActivity.findFirst({
-                where: {
-                    workspaceId,
-                    contactId,
-                    type: 'CALL',
-                    status: 'PLANNED',
-                    dueDate: { gte: todayStart2, lte: todayEnd2 }
-                }
-            });
-
-            if (!existingCall) {
-                const callTitle = `${extractedData?.name || 'Müşteri'} - ${extractedData?.topic || classification || 'Geri Arama'}`;
-                const callDueDate = smartScheduleCall();
-
-                // Konuşmanın atandığı takım/kişiyi kullan
-                let callAssignedToId = null;
-                let callTeamId = null;
-                try {
-                    const convInfo = await prisma.conversation.findUnique({
-                        where: { id: conversationId },
-                        select: { assignedToId: true, assignedTeamId: true }
-                    });
-                    callAssignedToId = convInfo?.assignedToId || null;
-                    callTeamId = convInfo?.assignedTeamId || null;
-                } catch (_) {}
-
-                await prisma.contactActivity.create({
-                    data: {
-                        type: 'CALL',
-                        status: 'PLANNED',
-                        priority: 'NORMAL',
-                        title: callTitle,
-                        description: [
-                            extractedData?.topic ? `📌 Konu: ${extractedData.topic}` : null,
-                            `📱 Numara: ${contactPhone}`,
-                            `Kaynak: ${channel || 'UNKNOWN'}`,
-                        ].filter(Boolean).join('\n'),
-                        dueDate: callDueDate,
-                        contactId,
-                        workspaceId,
-                        assignedToId: callAssignedToId,
-                        teamId: callTeamId,
-                        source: 'AUTOMATION'
-                    }
+        // --- Case'İ tip, ürün ve kategori ile güncelle ---
+        if (classification || matchedProductIds?.length > 0 || topicCategoryId) {
+            try {
+                let conv = await prisma.conversation.findUnique({
+                    where: { id: conversationId },
+                    select: { caseId: true }
                 });
-                console.log(`✅ [Classifier] Telefon mevcut → Otomatik CALL aktivitesi oluşturuldu: ${callTitle}`);
+
+                // Case henüz yoksa oluştur (race condition fix)
+                if (!conv?.caseId) {
+                    const { ensureCaseForConversation } = await import('../controllers/case.controller.js');
+                    const newCase = await ensureCaseForConversation(workspaceId, conversationId);
+                    if (newCase) {
+                        conv = { caseId: newCase.id };
+                        console.log(`📦 [Classifier] Case otomatik oluşturuldu: ${newCase.caseNumber}`);
+                    }
+                }
+
+                if (conv?.caseId) {
+                    const caseUpdateData = {};
+
+                    // Vaka tipini güncelle (FIRSAT, SIKAYET, RANDEVU, DESTEK, IS_BASVURUSU, GENEL)
+                    if (classification) {
+                        caseUpdateData.type = classification;
+                    }
+
+                    // Kategori eşleştirmesi
+                    if (topicCategoryId) {
+                        caseUpdateData.categoryId = topicCategoryId;
+                    }
+
+                    // Ürün eşleştirmesi — mevcut ürünlerle birleştir (duplicate olmasın)
+                    if (matchedProductIds?.length > 0) {
+                        const existingCase = await prisma.case.findUnique({
+                            where: { id: conv.caseId },
+                            select: { products: true }
+                        });
+                        let existingProducts = [];
+                        try { existingProducts = JSON.parse(existingCase?.products || '[]'); } catch {}
+                        const existingIds = new Set(existingProducts.map(p => p.productId));
+
+                        // Yeni ürünleri ekle
+                        for (const productId of matchedProductIds) {
+                            if (!existingIds.has(productId)) {
+                                const product = await prisma.product.findUnique({
+                                    where: { id: productId },
+                                    select: { name: true, price: true }
+                                });
+                                if (product) {
+                                    existingProducts.push({
+                                        productId,
+                                        name: product.name,
+                                        quantity: 1,
+                                        unitPrice: product.price || 0
+                                    });
+                                }
+                            }
+                        }
+                        caseUpdateData.products = JSON.stringify(existingProducts);
+                    }
+
+                    if (Object.keys(caseUpdateData).length > 0) {
+                        await prisma.case.update({
+                            where: { id: conv.caseId },
+                            data: caseUpdateData
+                        });
+                        console.log(`📦 [Classifier] Case güncellendi: ${matchedProductIds?.length || 0} ürün, kategori: ${topicCategoryId || '-'}`);
+                    }
+                }
+            } catch (caseErr) {
+                console.error('⚠️ [Classifier] Case ürün güncelleme hatası:', caseErr.message);
             }
         }
 

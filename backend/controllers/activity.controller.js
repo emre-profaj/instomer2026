@@ -110,6 +110,19 @@ export const createActivity = async (req, res) => {
 
                 console.log(`✅ [CallNote] Planlanmış arama tamamlandı (${existingPlannedCall.id}) — yeni kayıt oluşturulmadı`);
 
+                try {
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.to(`workspace_${workspaceId}`).emit('activity_completed', {
+                            activityId: existingPlannedCall.id,
+                            type: existingPlannedCall.type,
+                            completedByName: req.user?.name || 'Sistem'
+                        });
+                    }
+                } catch (err) {
+                    console.error('Activity completion socket error:', err);
+                }
+
                 return res.status(201).json({
                     data: updatedActivity,
                     completedPlannedCall: existingPlannedCall.id
@@ -150,6 +163,69 @@ export const createActivity = async (req, res) => {
                 team: { select: { name: true } }
             }
         });
+
+        // ━━━ Aktivite Bildirimleri ━━━
+        try {
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`workspace_${workspaceId}`).emit('activity_created', {
+                    activity: { id: newActivity.id, type: newActivity.type, title: newActivity.title, status: newActivity.status },
+                    contactId,
+                    contactName: contact?.name || 'Bilinmeyen',
+                    createdByName: req.user?.name || 'Sistem',
+                    type: newActivity.type
+                });
+                if (newActivity.assignedToId && newActivity.assignedToId !== req.user?.id) {
+                    io.to(`workspace_${workspaceId}`).emit('activity_assigned', {
+                        activity: { id: newActivity.id, type: newActivity.type, title: newActivity.title },
+                        assignedToId: newActivity.assignedToId,
+                        assignedByName: req.user?.name || 'Sistem',
+                        contactName: contact?.name || 'Bilinmeyen',
+                    });
+                }
+            }
+        } catch (socketErr) {
+            console.error('Activity socket emit error:', socketErr);
+        }
+
+        // Konuşmaya sistem mesajı ekle
+        try {
+            const activeConv = await prisma.conversation.findFirst({
+                where: { contactId, workspaceId, status: { not: 'RESOLVED' } },
+                orderBy: { lastMessageAt: 'desc' }
+            });
+            if (activeConv) {
+                const typeLabels = { CALL: '📞 Arama', TASK: '✅ Görev', MEETING: '🤝 Görüşme', NOTE: '📝 Not', REMINDER: '🔔 Hatırlatıcı', PROPOSAL: '📋 Teklif', ORDER: '🛒 Sipariş', INVOICE: '🧾 Fatura', PAYMENT: '💰 Tahsilat' };
+                const label = typeLabels[newActivity.type] || '📋 Aktivite';
+                await prisma.message.create({
+                    data: {
+                        conversationId: activeConv.id,
+                        content: `${label}: ${newActivity.title || ''}${newActivity.description ? '\n' + newActivity.description.substring(0, 200) : ''}`,
+                        isFromContact: false,
+                        messageType: 'SYSTEM',
+                        isInternal: true,
+                        senderId: req.user?.id || null
+                    }
+                });
+            }
+        } catch (sysMsgErr) {
+            console.error('Activity system message error:', sysMsgErr);
+        }
+
+        if (newActivity.status === 'COMPLETED') {
+            try {
+                const io = req.app.get('io');
+                if (io) {
+                    io.to(`workspace_${workspaceId}`).emit('activity_completed', {
+                        activityId: newActivity.id,
+                        type: newActivity.type,
+                        completedByName: req.user?.name || 'Sistem'
+                    });
+                }
+            } catch (err) {
+                console.error('Activity completion socket error:', err);
+            }
+        }
 
         // ── Akıllı intent algılama: zamanlama anahtar kelimesi varsa otomatik planlama ──
         // NOT: Tamamlanmış arama notları (call notes) için intent parser ÇALIŞTIRILMAZ
@@ -657,7 +733,7 @@ export const getContactTimeline = async (req, res) => {
 export const updateActivity = async (req, res) => {
     try {
         const { activityId } = req.params;
-        const { title, description, dueDate, assignedToId, topicCategoryId, caseId } = req.body;
+        const { title, description, dueDate, assignedToId, teamId, topicCategoryId, caseId } = req.body;
 
         const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
         if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
@@ -669,6 +745,7 @@ export const updateActivity = async (req, res) => {
             dueDate: dueDate !== undefined ? (dueDate ? new Date(dueDate) : null) : existing.dueDate,
             topicCategoryId: topicCategoryId !== undefined ? topicCategoryId : existing.topicCategoryId,
             caseId: caseId !== undefined ? caseId : existing.caseId,
+            teamId: teamId !== undefined ? (teamId || null) : existing.teamId,
         };
 
         // assignedToId değiştiyse atama bilgisini güncelle
@@ -753,6 +830,19 @@ export const completeActivity = async (req, res) => {
                 team: { select: { name: true } }
             }
         });
+
+        try {
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`workspace_${existing.workspaceId}`).emit('activity_completed', {
+                    activityId: existing.id,
+                    type: existing.type,
+                    completedByName: req.user?.name || 'Sistem'
+                });
+            }
+        } catch (err) {
+            console.error('Activity completion socket error:', err);
+        }
 
         res.json(updated);
 

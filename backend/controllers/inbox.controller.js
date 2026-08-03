@@ -402,6 +402,20 @@ async function processPostSave(workspaceId, conversation, contact, messageText, 
  */
 export async function runChannelPostProcessing(workspaceId, conversationId, contactId, messageText, channelType) {
   try {
+    // Otomatik arşivden çıkar — yeni mesaj geldi
+    try {
+        const conversation = await prisma.conversation.findUnique({ where: { id: conversationId } });
+        if (conversation?.isArchived) {
+            await prisma.conversation.update({
+                where: { id: conversationId },
+                data: { isArchived: false, archivedAt: null, archivedById: null }
+            });
+            console.log(`📤 [Auto-Unarchive] Yeni mesaj geldi, arşivden çıkarıldı: ${conversationId}`);
+        }
+    } catch (unarchiveErr) {
+        console.error('Auto-unarchive error:', unarchiveErr);
+    }
+
     // ── 1. Niyet → Aşama geçişi (Madde 1) ──────────────────
     try {
       const classifierModule = await import('../services/universalClassifier.service.js');

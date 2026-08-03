@@ -44,7 +44,8 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 assignedToId: true,
                 assignedTeamId: true,
                 funnelType: true,
-                funnelStageId: true
+                funnelStageId: true,
+                topicCategoryId: true
             }
         });
 
@@ -111,6 +112,7 @@ export const ensureCaseForConversation = async (workspaceId, conversationId) => 
                 assignedTeamId: conv.assignedTeamId || null,
                 funnelType: conv.funnelType || null,
                 funnelStageId: conv.funnelStageId || null,
+                categoryId: conv.topicCategoryId || null,
                 priority: 'NORMAL'
             }
         });
@@ -151,7 +153,8 @@ export const getContactCases = async (req, res) => {
                 funnelType: true,
                 funnelStageId: true,
                 channel: true,
-                createdAt: true
+                createdAt: true,
+                topicCategoryId: true
             }
         });
 
@@ -170,6 +173,7 @@ export const getContactCases = async (req, res) => {
                             assignedTeamId: conv.assignedTeamId || null,
                             funnelType: conv.funnelType || null,
                             funnelStageId: conv.funnelStageId || null,
+                            categoryId: conv.topicCategoryId || null,
                             priority: 'NORMAL'
                         }
                     });
@@ -443,16 +447,34 @@ export const createCase = async (req, res) => {
 export const updateCase = async (req, res) => {
     try {
         const { workspaceId, caseId } = req.params;
-        const { title, description, status, priority, funnelType, funnelStageId, lostReason, assignedToId, assignedTeamId } = req.body;
+        const { title, description, status, priority, type, funnelType, funnelStageId, lostReason, assignedToId, assignedTeamId, products, categoryId } = req.body;
 
         const updateData = {};
         if (title !== undefined) updateData.title = title.trim();
         if (description !== undefined) updateData.description = description;
         if (priority !== undefined) updateData.priority = priority;
+        if (type !== undefined) {
+            const validTypes = ['FIRSAT', 'SIKAYET', 'RANDEVU', 'DESTEK', 'IS_BASVURUSU', 'GENEL'];
+            if (validTypes.includes(type)) updateData.type = type;
+        }
         if (funnelType !== undefined) updateData.funnelType = funnelType;
         if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
         if (assignedToId !== undefined) updateData.assignedToId = assignedToId || null;
         if (assignedTeamId !== undefined) updateData.assignedTeamId = assignedTeamId || null;
+        if (products !== undefined) {
+            // JSON array formatı doğrula
+            if (typeof products === 'string') {
+                try { JSON.parse(products); } catch (_) { return res.status(400).json({ error: 'Geçersiz ürün formatı' }); }
+            }
+            updateData.products = products;
+        }
+        if (categoryId !== undefined) {
+            if (categoryId) {
+                const cat = await prisma.topicCategory.findUnique({ where: { id: categoryId }, select: { id: true } });
+                if (!cat) return res.status(400).json({ error: 'Geçersiz kategori ID' });
+            }
+            updateData.categoryId = categoryId || null;
+        }
 
         // Status değişiklikleri
         if (status !== undefined) {

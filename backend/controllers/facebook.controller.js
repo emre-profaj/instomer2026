@@ -3114,6 +3114,28 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.log(`✅ [LEADGEN] Contact updated as OPPORTUNITY: ${contact.id}`);
         }
 
+        // M10.5: Meta Lead Gen attribution
+        try {
+            const { saveAttribution } = await import('../services/attribution.service.js');
+            if (typeof saveAttribution === 'function') {
+                await saveAttribution({
+                    contactId: contact.id,
+                    workspaceId: facebookPage.workspaceId,
+                    source: 'facebook_leadgen',
+                    medium: 'paid',
+                    campaign: leadData?.ad_name || leadData?.campaign_name || null,
+                    adId: leadData?.ad_id || null,
+                    adsetId: leadData?.adset_id || null,
+                    campaignId: leadData?.campaign_id || null,
+                    formId: leadData?.form_id || null,
+                    formName: leadData?.form_name || null,
+                    pageId: facebookPage.pageId || null,
+                });
+            }
+        } catch (attrErr) {
+            console.error('Lead Gen attribution error:', attrErr);
+        }
+
         // 3. Find or Create Conversation for Inbox (prevent duplicates)
         let conversation = await prisma.conversation.findFirst({
             where: {

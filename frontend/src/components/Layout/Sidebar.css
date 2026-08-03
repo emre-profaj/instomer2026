@@ -172,11 +172,11 @@
 
 /* User Profile / Logout (Optional - matching the aesthetic if we add it back) */
 .sidebar-footer {
-    padding: 6px 0 4px;
+    padding: 6px 0 0;
     background: #f8fafc;
     border-top: none;
     display: flex;
-    flex-direction: column-reverse;
+    flex-direction: column;
 }
 
 /* Profil kartı — sidebar footer içinde */

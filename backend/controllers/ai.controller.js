@@ -1755,6 +1755,37 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             enhancedSystemPrompt += stageQualHint;
         }
 
+        // Add funnel/stage/team context to bot prompt
+        let contextBlock = '';
+        if (conversation?.funnelType) {
+            const funnel = await prisma.funnel.findUnique({
+                where: { id: conversation.funnelType },
+                select: { name: true }
+            }).catch(() => null);
+            
+            if (funnel) contextBlock += `\nMevcut Akış: ${funnel.name}`;
+        }
+        if (conversation?.funnelStageId) {
+            const stage = await prisma.funnelStage.findUnique({
+                where: { id: conversation.funnelStageId },
+                select: { name: true }
+            }).catch(() => null);
+            
+            if (stage) contextBlock += `\nMevcut Aşama: ${stage.name}`;
+        }
+        if (conversation?.assignedTeamId) {
+            const team = await prisma.team.findUnique({
+                where: { id: conversation.assignedTeamId },
+                select: { name: true }
+            }).catch(() => null);
+            
+            if (team) contextBlock += `\nSorumlu Takım: ${team.name}`;
+        }
+
+        if (contextBlock) {
+            enhancedSystemPrompt += `\n\n--- CRM BAĞLAM ---${contextBlock}\n--- CRM BAĞLAM SONU ---\n`;
+        }
+
         // Build enhanced system instruction with clear structure
         // Add critical warning at the VERY TOP if contact info exists
         const contactWarning = hasContactInfo
@@ -2788,121 +2819,159 @@ ${systemPrompt}${appointmentContextPrompt}`;
             await incrementAiUsage(workspaceId);
             releaseAiReplyLock(conversationId);
 
-            // --- AGENT BULMA: 1) Takım üyeleri → 2) Online agent → 3) Herhangi bir workspace üyesi ---
-            let assignedAgent = null;
-            let assignmentSource = '';
-
-            // 1) Conversation'ın takımındaki üyeleri dene (round-robin)
-            if (conversation?.teamIds) {
-                try {
-                    const teamIds = JSON.parse(conversation.teamIds);
-                    if (teamIds.length > 0) {
-                        const teamMembers = await prisma.teamMember.findMany({
-                            where: { teamId: teamIds[0], userId: { not: null } },
-                            include: { user: { select: { id: true, name: true, isOnline: true } } },
-                            orderBy: { createdAt: 'asc' }
+            // --- AGENT BULMA VE ATAMA ---
+            const bot = await prisma.aIBot.findUnique({ where: { id: activeBot.id } });
+            
+            switch (bot?.onHumanRequest || 'HANDOFF') {
+                case 'NOTIFY':
+                    // Just notify the team, don't transfer
+                    try {
+                        const { emitToWorkspace } = await import('../socket.js');
+                        emitToWorkspace(workspaceId, 'bot_notification', {
+                            conversationId, workspaceId,
+                            message: `🔔 Bot yardıma ihtiyaç duyuyor.`
                         });
-                        const validMembers = teamMembers.filter(m => m.user);
-
-                        if (validMembers.length > 0) {
-                            // Online olanları öncelikle dene
-                            const onlineTeamMember = validMembers.find(m => m.user.isOnline);
-                            if (onlineTeamMember) {
-                                assignedAgent = onlineTeamMember.user;
-                                assignmentSource = 'Handoff-TeamOnline';
-                            } else {
-                                // Round-robin: Son atanan kişinin bir sonrakisine at
-                                const lastConv = await prisma.conversation.findFirst({
-                                    where: { workspaceId, teamIds: { contains: teamIds[0] }, assignedToId: { not: null } },
-                                    orderBy: { updatedAt: 'desc' },
-                                    select: { assignedToId: true }
-                                });
-                                if (lastConv?.assignedToId) {
-                                    const lastIdx = validMembers.findIndex(m => m.user.id === lastConv.assignedToId);
-                                    const nextIdx = (lastIdx === -1 || lastIdx === validMembers.length - 1) ? 0 : lastIdx + 1;
-                                    assignedAgent = validMembers[nextIdx].user;
-                                } else {
-                                    assignedAgent = validMembers[0].user;
+                    } catch (e) { console.error('Handoff notify error:', e); }
+                    break;
+                case 'CREATE_TASK':
+                    // Create a task for the team
+                    try {
+                        // userId zorunlu — conversation'ın atanan kişisi veya workspace'in ilk admin'i
+                        const noteUserId = conversation?.assignedToId || (await prisma.workspaceMember.findFirst({
+                            where: { workspaceId, role: { in: ['ADMIN', 'OWNER'] } },
+                            select: { userId: true }
+                        }))?.userId;
+                        
+                        if (noteUserId) {
+                            await prisma.internalNote.create({
+                                data: {
+                                    conversationId,
+                                    userId: noteUserId,
+                                    content: '🤖 Bot bu görüşme için insan yardımı talep etti.',
                                 }
-                                assignmentSource = 'Handoff-TeamRoundRobin';
+                            });
+                        }
+                    } catch (e) { console.error('Handoff task error:', e); }
+                    break;
+                case 'HANDOFF':
+                default:
+                    // Transfer to human (current behavior)
+                    let assignedAgent = null;
+                    let assignmentSource = '';
+
+                    // 1) Conversation'ın takımındaki üyeleri dene (round-robin)
+                    if (conversation?.teamIds) {
+                        try {
+                            const teamIds = JSON.parse(conversation.teamIds);
+                            if (teamIds.length > 0) {
+                                const teamMembers = await prisma.teamMember.findMany({
+                                    where: { teamId: teamIds[0], userId: { not: null } },
+                                    include: { user: { select: { id: true, name: true, isOnline: true } } },
+                                    orderBy: { createdAt: 'asc' }
+                                });
+                                const validMembers = teamMembers.filter(m => m.user);
+
+                                if (validMembers.length > 0) {
+                                    // Online olanları öncelikle dene
+                                    const onlineTeamMember = validMembers.find(m => m.user.isOnline);
+                                    if (onlineTeamMember) {
+                                        assignedAgent = onlineTeamMember.user;
+                                        assignmentSource = 'Handoff-TeamOnline';
+                                    } else {
+                                        // Round-robin: Son atanan kişinin bir sonrakisine at
+                                        const lastConv = await prisma.conversation.findFirst({
+                                            where: { workspaceId, teamIds: { contains: teamIds[0] }, assignedToId: { not: null } },
+                                            orderBy: { updatedAt: 'desc' },
+                                            select: { assignedToId: true }
+                                        });
+                                        if (lastConv?.assignedToId) {
+                                            const lastIdx = validMembers.findIndex(m => m.user.id === lastConv.assignedToId);
+                                            const nextIdx = (lastIdx === -1 || lastIdx === validMembers.length - 1) ? 0 : lastIdx + 1;
+                                            assignedAgent = validMembers[nextIdx].user;
+                                        } else {
+                                            assignedAgent = validMembers[0].user;
+                                        }
+                                        assignmentSource = 'Handoff-TeamRoundRobin';
+                                    }
+                                    console.log(`🎯 [HANDOFF] Takım üyesine atandı: ${assignedAgent.name} (${assignmentSource})`);
+                                }
                             }
-                            console.log(`🎯 [HANDOFF] Takım üyesine atandı: ${assignedAgent.name} (${assignmentSource})`);
+                        } catch (e) { console.error('HANDOFF team parse error:', e); }
+                    }
+
+                    // 2) Takım bulunamadıysa → Online workspace üyesine ata
+                    if (!assignedAgent) {
+                        const onlineMembers = await prisma.workspaceMember.findMany({
+                            where: { workspaceId, user: { isOnline: true } },
+                            include: { user: { select: { id: true, name: true } } }
+                        });
+                        const onlineAgents = onlineMembers.filter(m => m.user);
+                        if (onlineAgents.length > 0) {
+                            assignedAgent = onlineAgents[0].user;
+                            assignmentSource = 'Handoff-OnlineAgent';
+                            console.log(`🎯 [HANDOFF] Online agent'a atandı: ${assignedAgent.name}`);
                         }
                     }
-                } catch (e) { console.error('HANDOFF team parse error:', e); }
-            }
 
-            // 2) Takım bulunamadıysa → Online workspace üyesine ata
-            if (!assignedAgent) {
-                const onlineMembers = await prisma.workspaceMember.findMany({
-                    where: { workspaceId, user: { isOnline: true } },
-                    include: { user: { select: { id: true, name: true } } }
-                });
-                const onlineAgents = onlineMembers.filter(m => m.user);
-                if (onlineAgents.length > 0) {
-                    assignedAgent = onlineAgents[0].user;
-                    assignmentSource = 'Handoff-OnlineAgent';
-                    console.log(`🎯 [HANDOFF] Online agent'a atandı: ${assignedAgent.name}`);
-                }
-            }
-
-            // 3) Hiç online yoksa → Workspace'in ilk üyesine ata (offline bile olsa)
-            if (!assignedAgent) {
-                const anyMember = await prisma.workspaceMember.findFirst({
-                    where: { workspaceId, role: { not: 'VIEWER' } },
-                    include: { user: { select: { id: true, name: true } } },
-                    orderBy: { createdAt: 'asc' }
-                });
-                if (anyMember?.user) {
-                    assignedAgent = anyMember.user;
-                    assignmentSource = 'Handoff-OfflineFallback';
-                    console.log(`⚠️ [HANDOFF] Online agent yok → Offline üyeye atandı: ${assignedAgent.name}`);
-                }
-            }
-
-            // --- ATAMA UYGULA ---
-            if (assignedAgent) {
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: {
-                        botPausedUntil: new Date(Date.now() + 60 * 60 * 1000), // 1 saat bot dursun
-                        handoffPending: false,
-                        assignedToId: assignedAgent.id
+                    // 3) Hiç online yoksa → Workspace'in ilk üyesine ata (offline bile olsa)
+                    if (!assignedAgent) {
+                        const anyMember = await prisma.workspaceMember.findFirst({
+                            where: { workspaceId, role: { not: 'VIEWER' } },
+                            include: { user: { select: { id: true, name: true } } },
+                            orderBy: { createdAt: 'asc' }
+                        });
+                        if (anyMember?.user) {
+                            assignedAgent = anyMember.user;
+                            assignmentSource = 'Handoff-OfflineFallback';
+                            console.log(`⚠️ [HANDOFF] Online agent yok → Offline üyeye atandı: ${assignedAgent.name}`);
+                        }
                     }
-                });
 
-                // Cascade: Case + siblings + activities
-                try {
-                    const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
-                    await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.id, source: assignmentSource });
-                } catch (_) {}
+                    // --- ATAMA UYGULA ---
+                    if (assignedAgent) {
+                        await prisma.conversation.update({
+                            where: { id: conversationId },
+                            data: {
+                                botPausedUntil: new Date(Date.now() + 60 * 60 * 1000), // 1 saat bot dursun
+                                handoffPending: false,
+                                assignedToId: assignedAgent.id
+                            }
+                        });
 
-                // Socket bildirim — tüm workspace'e
-                try {
-                    const { emitToWorkspace } = await import('../socket.js');
-                    emitToWorkspace(workspaceId, 'bot_handoff', {
-                        conversationId, workspaceId,
-                        assignedToId: assignedAgent.id,
-                        assignedToName: assignedAgent.name,
-                        message: `🔔 Müşteri temsilciye aktarıldı → ${assignedAgent.name.trim().split(' ')[0]}`,
-                        botName: activeBot.name
-                    });
-                    emitToWorkspace(workspaceId, 'conversation_updated', {
-                        conversationId,
-                        assignedToId: assignedAgent.id
-                    });
-                } catch (socketErr) {
-                    console.error('Socket emit error for handoff:', socketErr);
-                }
+                        // Cascade: Case + siblings + activities
+                        try {
+                            const { cascadeAssignment } = await import('../services/cascadeAssignment.service.js');
+                            await cascadeAssignment(conversationId, workspaceId, { assignedToId: assignedAgent.id, source: assignmentSource });
+                        } catch (_) {}
 
-                console.log(`✅ [HANDOFF] Tamamlandı: ${assignedAgent.name} (${assignmentSource}) — Bot 1 saat duraklatıldı`);
-            } else {
-                // Workspace'te hiç üye yok (edge case)
-                console.log(`❌ [HANDOFF] Workspace'te hiç atanacak üye bulunamadı!`);
-                await prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { handoffPending: true }
-                });
+                        // Socket bildirim — tüm workspace'e
+                        try {
+                            const { emitToWorkspace } = await import('../socket.js');
+                            emitToWorkspace(workspaceId, 'bot_handoff', {
+                                conversationId, workspaceId,
+                                assignedToId: assignedAgent.id,
+                                assignedToName: assignedAgent.name,
+                                message: `🔔 Müşteri temsilciye aktarıldı → ${assignedAgent.name.trim().split(' ')[0]}`,
+                                botName: activeBot.name
+                            });
+                            emitToWorkspace(workspaceId, 'conversation_updated', {
+                                conversationId,
+                                assignedToId: assignedAgent.id
+                            });
+                        } catch (socketErr) {
+                            console.error('Socket emit error for handoff:', socketErr);
+                        }
+
+                        console.log(`✅ [HANDOFF] Tamamlandı: ${assignedAgent.name} (${assignmentSource}) — Bot 1 saat duraklatıldı`);
+                    } else {
+                        // Workspace'te hiç üye yok (edge case)
+                        console.log(`❌ [HANDOFF] Workspace'te hiç atanacak üye bulunamadı!`);
+                        await prisma.conversation.update({
+                            where: { id: conversationId },
+                            data: { handoffPending: true }
+                        });
+                    }
+                    break;
             }
 
             // Always return the bot's own response (with [HANDOFF] tag removed)
@@ -3312,6 +3381,21 @@ export const autoExtractFromConversation = async (workspaceId, conversationId) =
     try {
         console.log(`🤖 [AI Auto-Extract] Starting for conversation: ${conversationId}`);
 
+        // 🔄 TOKEN OPTİMİZASYONU: Sınıflandırıcı (classifyAndExtract) zaten isim/telefon/email çıkarıyorsa
+        // bu fonksiyonun ayrı bir AI çağrısı yapmasına gerek yok.
+        // Son 2 dk içinde sınıflandırılmışsa atla.
+        const recentConv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { classifiedAt: true }
+        });
+        if (recentConv?.classifiedAt) {
+            const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000);
+            if (recentConv.classifiedAt > twoMinAgo) {
+                console.log(`⏭️ [Auto-Extract] Skipped — classifier already extracted contact info recently`);
+                return null;
+            }
+        }
+
         // 1. Get API Key (workspace key > global key)
         const aiApiKey = await getEffectiveAiApiKey(workspaceId);
         if (!aiApiKey) {
@@ -3643,6 +3727,21 @@ export const autoGenerateTopic = async (workspaceId, conversationId, firstMessag
     try {
         if (!workspaceId || !conversationId) return;
 
+        // 🔄 TOKEN OPTİMİZASYONU: Sınıflandırıcı (classifyAndExtract) zaten topic üretiyorsa
+        // bu fonksiyonun ayrı bir AI çağrısı yapmasına gerek yok.
+        // Son 2 dk içinde sınıflandırılmışsa ve aiTopic set edilmişse atla.
+        const recentConv = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            select: { classifiedAt: true, aiTopic: true }
+        });
+        if (recentConv?.classifiedAt && recentConv?.aiTopic) {
+            const twoMinAgo = new Date(Date.now() - 2 * 60 * 1000);
+            if (recentConv.classifiedAt > twoMinAgo) {
+                console.log(`⏭️ [AutoTopic] Skipped — classifier already set topic recently: "${recentConv.aiTopic}"`);
+                return;
+            }
+        }
+
         // Get API key first
         const aiApiKey = await getEffectiveAiApiKey(workspaceId);
         if (!aiApiKey) return;
@@ -3874,5 +3973,73 @@ ${chatLog.substring(0, 5000)}`;
     } catch (err) {
         console.error('❌ [Sentiment] Error:', err.message);
         return null;
+    }
+};
+
+// ─── AI Excel Column Mapping ─────────────────────────────────────────────────
+// POST /:workspaceId/detect-import-columns
+// Body: { headers: string[], sampleRows: string[][] }
+// Returns: { mapping: { name: number, phone: number, email: number, notes: number }, confidence: string }
+export const detectImportColumns = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { headers, sampleRows } = req.body;
+
+        if (!headers || !Array.isArray(headers) || headers.length === 0) {
+            return res.status(400).json({ error: 'Headers array is required' });
+        }
+
+        const aiApiKey = await getEffectiveAiApiKey(workspaceId);
+        if (!aiApiKey) {
+            return res.status(400).json({ error: 'AI API Key not configured' });
+        }
+
+        // Build a clear representation of the data
+        const headerList = headers.map((h, i) => `  Sütun ${i}: "${h}"`).join('\n');
+        const sampleList = (sampleRows || []).slice(0, 5).map((row, ri) =>
+            `  Satır ${ri + 1}: ${row.map((c, ci) => `[${ci}]="${c}"`).join(' | ')}`
+        ).join('\n');
+
+        const prompt = `Aşağıdaki Excel tablosunun sütun başlıklarını ve örnek verileri analiz et.
+Her sütunun hangi bilgiyi içerdiğini tespit et.
+
+SÜTUN BAŞLIKLARI:
+${headerList}
+
+ÖRNEK VERİLER:
+${sampleList}
+
+GÖREV: Her sütunun aşağıdaki alanlardan hangisine karşılık geldiğini belirle:
+- name: Kişi adı, ad soyad, müşteri adı
+- phone: Telefon numarası, GSM, cep telefonu
+- email: E-posta adresi
+- notes: Notlar, açıklama, mesaj, detay
+- date: Tarih, oluşturulma tarihi
+- company: Şirket, firma adı
+- city: Şehir, il, lokasyon
+- skip: Bu sütun kişi içe aktarma için gereksiz (ID, sıra no, vs.)
+
+SADECE şu JSON formatında yanıt ver, başka hiçbir şey yazma:
+{"mapping": {"0": "field_type", "1": "field_type", ...}, "confidence": "high|medium|low"}
+
+Örnek: {"mapping": {"0": "skip", "1": "name", "2": "phone", "3": "email"}, "confidence": "high"}`;
+
+        const genAI = new GoogleGenerativeAI(aiApiKey);
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            generationConfig: { responseMimeType: 'application/json' }
+        });
+        const result = await model.generateContent(prompt);
+        let responseText = result.response.text().trim();
+
+        // Parse AI response
+        responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const parsed = JSON.parse(responseText);
+
+        console.log(`🧠 [AI Import] Column mapping detected:`, JSON.stringify(parsed));
+        res.json(parsed);
+    } catch (error) {
+        console.error('❌ [AI Import] Column detection error:', error.message);
+        res.status(500).json({ error: 'Sütun algılama başarısız', details: error.message });
     }
 };

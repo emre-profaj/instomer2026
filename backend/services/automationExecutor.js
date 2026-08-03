@@ -210,27 +210,40 @@ async function handleSendMarketing(automation, context) {
 
 // ─── CHANGE_FLOW ─────────────────────────────────────────────────
 async function handleChangeFlow(automation, context) {
-    const { conversationId, workspaceId } = context;
+    const { conversationId, workspaceId, contactId } = context;
     if (!automation.targetFlowId) return { success: false, error: 'Hedef akış seçilmedi' };
     if (!conversationId) return { success: false, error: 'Conversation ID eksik' };
 
-    // Find target funnel stage
+    // Find target funnel's first stage
     const targetStage = await prisma.funnelStage.findFirst({
-        where: { funnelId: automation.targetFlowId }
+        where: { funnelId: automation.targetFlowId },
+        orderBy: { order: 'asc' }
     });
 
     if (targetStage) {
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: {
-                funnelId: automation.targetFlowId,
-                funnelStageId: targetStage.id
-            }
-        });
+        // Merkezi fonksiyonu kullan — conv + contact + case cascade
+        const { changeFunnelStage } = await import('./funnelStageManager.service.js');
+        
+        // contactId context'ten gelebilir, yoksa conversation'dan al
+        let resolvedContactId = contactId;
+        if (!resolvedContactId) {
+            const conv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { contactId: true }
+            });
+            resolvedContactId = conv?.contactId;
+        }
+
+        if (resolvedContactId) {
+            await changeFunnelStage(resolvedContactId, workspaceId, automation.targetFlowId, targetStage.id, {
+                source: 'automation',
+                conversationId,
+                skipGuards: true
+            });
+        }
     }
 
     console.log(`🔀 [AutomationExecutor] CHANGE_FLOW: Conversation ${conversationId} → Flow ${automation.targetFlowId}`);
-    emitToWorkspace(workspaceId, 'conversation_updated', { conversationId });
     return { success: true, action: 'CHANGE_FLOW' };
 }
 

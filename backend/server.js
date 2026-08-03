@@ -66,6 +66,7 @@ import caseRoutes from './routes/case.routes.js';
 import productRoutes from './routes/product.routes.js';
 import marketingRoutes from './routes/marketing.routes.js';
 import contactGroupRoutes from './routes/contactGroup.routes.js';
+import unsubscribeRoutes from './routes/unsubscribe.routes.js';
 
 // Import passport config
 import './config/passport.js';
@@ -163,6 +164,9 @@ app.use(passport.initialize());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Public routes (no auth)
+app.use('/unsubscribe', unsubscribeRoutes);
 
 // Routes
 app.use('/api/auth', authRoutes);

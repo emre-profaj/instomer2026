@@ -178,6 +178,7 @@ model Workspace {
   defaultFunnelId String? // Varsayılan satış akışı ID'si
 
   agentDataVisibility String @default("ALL") // SELF, TEAM, ALL
+  leadScoringTemplate String @default("default") // default, sales, support, appointment
 
   @@index([companyId])
   @@map("workspaces")
@@ -265,6 +266,9 @@ model AIBot {
   routingConditionalEnabled Boolean @default(false)
   routingRules              String? // JSON: [{ id, field, operator, value, teamId, userId, priority }]
 
+  // Human request behavior
+  onHumanRequest String @default("NOTIFY") // NOTIFY | CREATE_TASK | HANDOFF
+
   // Linked Automations
   automations String? // JSON array of automation IDs: ["id1", "id2"]
 
@@ -273,6 +277,7 @@ model AIBot {
 
   // Health System API integrations assigned to this bot
   apiIntegrations ApiIntegration[] @relation("ApiIntegrationBot")
+  funnels         Funnel[]         @relation("FunnelBot")
   funnelStages    FunnelStage[]    @relation("FunnelStageBot")
 
   @@index([workspaceId])
@@ -356,11 +361,14 @@ model Contact {
   category          String               @default("NEW") // NEW, CUSTOMER, OPPORTUNITY, SPAM, VIP, PARTNER, BLACKLIST
   funnelType        String? // Global stage category (e.g. Fırsat)
   funnelStageId     String? // Exact stage ID (e.g. Sıcak Fırsat)
+  funnelStage       FunnelStage?         @relation(fields: [funnelStageId], references: [id], onDelete: SetNull)
   stageManuallySet  Boolean              @default(false) // Manuel aşama değişikliği yapıldı mı
   lastContactedAt   DateTime?
   isBlocked         Boolean              @default(false)
   blockedAt         DateTime?
   blockedReason     String?
+  marketingOptOut   Boolean              @default(false) // Pazarlama mesajlarını istemiyorum
+  marketingOptOutAt DateTime?            // Opt-out tarihi
   isArchived        Boolean              @default(false)
   archivedAt        DateTime?
   isDeleted         Boolean              @default(false)
@@ -450,6 +458,10 @@ model Conversation {
   // Case (talep akışı) bağlantısı
   caseId                String?
   case                  Case?                  @relation(fields: [caseId], references: [id], onDelete: SetNull)
+  // Arşivleme
+  isArchived            Boolean                @default(false)
+  archivedAt            DateTime?
+  archivedById          String?
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   transfers             ConversationTransfer[]
@@ -475,6 +487,7 @@ model Conversation {
   @@index([workspaceId, funnelType, funnelStageId, lastMessageAt(sort: Desc)]) // Inbox funnel filter
   @@index([topicCategoryId]) // Topic category analytics
   @@index([caseId])
+  @@index([workspaceId, isArchived]) // Archive filter
   @@map("conversations")
 }
 
@@ -513,6 +526,9 @@ model Message {
   updatedAt         DateTime     @updatedAt
   emailMessageId    String?      @unique
   emailSubject      String?
+  // Dahili mesajlar (ekip içi, müşteri görmez)
+  isInternal        Boolean      @default(false)
+  mentionedIds      String? // JSON: ["userId1", "userId2"]
   sender            User?        @relation(fields: [senderId], references: [id])
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -1278,15 +1294,19 @@ model TopicCategory {
   keywords    String?  @db.Text // JSON: ["obezite", "mide küçültme", "sleeve"]
   order       Int      @default(0)
   isActive    Boolean  @default(true)
+  parentId    String? // Alt kategori için üst kategori referansı
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent        TopicCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      TopicCategory[] @relation("CategoryHierarchy")
   conversations Conversation[]
   cases         Case[]
   products      Product[]
 
   @@index([workspaceId])
+  @@index([parentId])
   @@map("topic_categories")
 }
 
@@ -1306,6 +1326,8 @@ model Funnel {
   assignedTeamId         String?
   qualifiedLeadStageId   String? // Nitelikli talepler (telefonu olan lead'ler) bu aşamaya düşer
   classificationCriteria String?          @db.Text // JSON: {keywords, sourcePages, formFields, aiDescription}
+  assignedBotId          String?
+  assignedBot            AIBot?           @relation("FunnelBot", fields: [assignedBotId], references: [id], onDelete: SetNull)
   isDefault              Boolean          @default(false) // true = silinemez varsayılan akış
   createdAt              DateTime         @default(now())
   workspace              Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1338,6 +1360,7 @@ model FunnelStage {
   requiredFields  String?          @db.Text // JSON: Zorunlu alanlar/kayıtlar (not, teklif vb.)
   createdAt       DateTime         @default(now())
   funnel          Funnel           @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+  contacts        Contact[]
   channelRoutings ChannelRouting[] @relation("ChannelRoutingStage")
 
   @@index([funnelId])
@@ -1612,6 +1635,9 @@ model ContactActivity {
   creator   User?     @relation("ActivityCreator", fields: [createdBy], references: [id])
   team      Team?     @relation(fields: [teamId], references: [id])
 
+  sourceType     String? // STAGE_ACTION | HUMAN | RETELL
+  retellExcluded Boolean @default(false) // true = Retell cannot pick up this task
+
   @@index([contactId, createdAt])
   @@index([workspaceId])
   @@index([status])
@@ -1750,6 +1776,7 @@ model Case {
   description String?
   status      String  @default("ACTIVE") // ACTIVE, WON, LOST, CLOSED
   priority    String  @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
+  type        String  @default("GENEL") // FIRSAT, SIKAYET, RANDEVU, DESTEK, IS_BASVURUSU, GENEL
 
   // Pipeline aşaması
   funnelType    String? // Pipeline ID (Funnel)
@@ -1777,11 +1804,11 @@ model Case {
   deals         Deal[]
 
   // Ürün / Kategori
-  categoryId String?
-  category   TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  products   String         @default("[]") // JSON array [{productId, name, quantity, unitPrice}]
-  leadScore       Int      @default(0)
-  leadTemperature String   @default("COLD")
+  categoryId      String?
+  category        TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  products        String         @default("[]") // JSON array [{productId, name, quantity, unitPrice}]
+  leadScore       Int            @default(0)
+  leadTemperature String         @default("COLD")
 
   @@index([workspaceId])
   @@index([contactId])

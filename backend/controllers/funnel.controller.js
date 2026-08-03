@@ -41,10 +41,32 @@ const DEFAULT_FUNNELS = [
         order: 2,
         stages: [
             { name: 'Yeni Başvuru',         color: '#3b82f6', order: 0 },
-            { name: 'Fırsat',               color: '#8b5cf6', order: 1 },
+            {
+                name: 'Fırsat',
+                color: '#8b5cf6',
+                order: 1,
+                entryActions: JSON.stringify([
+                    { type: 'CREATE_CALL_TASK', title: '📞 Müşteriyi Ara', description: 'Fırsat aşamasına giren müşteri aranacak' },
+                    { type: 'WA_SEND_TEMPLATE', templateName: 'konum_gonder', fallbackMessage: '📍 Konumumuz: {location_url}' }
+                ])
+            },
             { name: 'Bilgi Verildi',        color: '#06b6d4', order: 2 },
-            { name: 'Sıcak Fırsat',         color: '#f97316', order: 3 },
-            { name: 'Görüşme Planlandı',    color: '#14b8a6', order: 4 },
+            {
+                name: 'Sıcak Fırsat',
+                color: '#f97316',
+                order: 3,
+                entryActions: JSON.stringify([
+                    { type: 'WA_SEND_TEMPLATE', templateName: 'katalog_gonder', fallbackMessage: '📋 Katalogumuz: {catalog_url}' }
+                ])
+            },
+            {
+                name: 'Görüşme Planlandı',
+                color: '#14b8a6',
+                order: 4,
+                entryActions: JSON.stringify([
+                    { type: 'CREATE_TASK', activityType: 'MEETING', title: '🤝 Görüşme Görevi', description: 'Planlanan görüşme için görev oluşturuldu' }
+                ])
+            },
             { name: 'Teklif Aşaması',       color: '#ec4899', order: 5 },
             { name: 'Satış',                color: '#10b981', order: 6, isClosing: true, statusType: 'WON' },
             { name: 'Ulaşılamadı',          color: '#94a3b8', order: 7 },
@@ -590,7 +612,7 @@ export const createFunnel = async (req, res) => {
 export const updateFunnel = async (req, res) => {
     try {
         const { workspaceId, funnelId } = req.params;
-        const { name, color, icon, order, assignedUserId, assignedTeamId, qualifiedLeadStageId, classificationCriteria, categoryIds } = req.body;
+        const { name, color, icon, order, assignedUserId, assignedTeamId, assignedBotId, qualifiedLeadStageId, classificationCriteria, categoryIds } = req.body;
         const existing = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!existing) return res.status(404).json({ error: 'Akış bulunamadı' });
 
@@ -611,6 +633,7 @@ export const updateFunnel = async (req, res) => {
             ...(order !== undefined && { order }),
             ...(assignedUserId !== undefined && { assignedUserId }),
             ...(assignedTeamId !== undefined && { assignedTeamId }),
+            ...(assignedBotId !== undefined && { assignedBotId: assignedBotId || null }),
             ...(qualifiedLeadStageId !== undefined && { qualifiedLeadStageId: qualifiedLeadStageId || null }),
             ...(finalClassCriteria !== undefined && { classificationCriteria: finalClassCriteria })
         };

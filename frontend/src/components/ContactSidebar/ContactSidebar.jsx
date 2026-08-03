@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Phone, Mail, User, Users, Clock, MapPin, Tag, Plus, ExternalLink, Loader, Trash2, StickyNote, ArrowRight, Sparkles, Brain, UserCheck, ChevronDown, ChevronRight, Ban, ShieldCheck, FileText, TrendingUp, Save, Bell, Check, CheckCircle2, PhoneCall, MessageSquare, Zap, Calendar, CalendarDays, History, Pencil, UserPlus, Banknote, Briefcase } from 'lucide-react';
-import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
+import { facebookAPI, aiAPI, contactAPI, dealAPI, conversationAPI, appointmentAPI, retellAPI, funnelAPI, caseAPI, productAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import { activityAPI } from '../../services/activity.api';
 import CaseCards from './CaseCards';
@@ -214,6 +214,11 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
     const categoryBtnRef = useRef(null);
     const [categoryDropdownPos, setCategoryDropdownPos] = useState({ top: 0, right: 0 });
     const [creatingCase, setCreatingCase] = useState(false);
+    const [catalogProducts, setCatalogProducts] = useState([]);
+    const [productSearchText, setProductSearchText] = useState('');
+    const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+    const productBtnRef = useRef(null);
+    const [productDropdownPos, setProductDropdownPos] = useState({ top: 0, left: 0 });
     const [showExtraFields, setShowExtraFields] = useState(false);
     const [caseStatusDropdownOpenCaseId, setCaseStatusDropdownOpenCaseId] = useState(null);
     const [expandedCases, setExpandedCases] = useState({});
@@ -386,6 +391,14 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                 .then(res => setAllGroups(res.data.groups || []))
                 .catch(() => {});
         });
+    }, [isOpen, currentWorkspace?.id]);
+
+    // Ürün kataloğunu yükle
+    useEffect(() => {
+        if (!isOpen || !currentWorkspace?.id) return;
+        productAPI.getAll(currentWorkspace.id, { limit: 500 }).then(res => {
+            setCatalogProducts(res.data?.products || res.data || []);
+        }).catch(() => {});
     }, [isOpen, currentWorkspace?.id]);
 
     // Kişinin gruplarını yükle
@@ -765,7 +778,7 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         if (activityForm.type === 'TASK' && (!activityForm.title.trim() || !activityForm.assignedToId)) {
             return alert('Görev başlığı ve atanacak kişi zorunludur.');
         }
-        if (!activityForm.caseId) {
+        if (!activityForm.caseId && !editingActivityId) {
             return alert('Lütfen bu işlem için bir Case seçiniz (Zorunlu).');
         }
 
@@ -1810,6 +1823,26 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                     );
                                                 })()}
 
+                                                {/* Marketing Opt-Out Badge */}
+                                                {profile.marketingOptOut && (
+                                                    <div 
+                                                        className="unified-tag" 
+                                                        style={{ backgroundColor: '#fef2f2', color: '#dc2626', cursor: 'pointer', border: '1px solid #fecaca' }}
+                                                        title="Pazarlama mesajlarından çıkmış — tıklayarak değiştirebilirsiniz"
+                                                        onClick={async () => {
+                                                            if (window.confirm('Kişiyi tekrar pazarlama listesine eklemek istiyor musunuz?')) {
+                                                                try {
+                                                                    await contactAPI.update(currentWorkspace.id, profile.id, { marketingOptOut: false, marketingOptOutAt: null });
+                                                                    setProfile(prev => ({ ...prev, marketingOptOut: false, marketingOptOutAt: null }));
+                                                                } catch {}
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Ban size={12} />
+                                                        <span>Pazarlama Kapalı</span>
+                                                    </div>
+                                                )}
+
                                                 {/* Normal Tags */}
                                                 {(() => {
                                                     let safeTags = profile.tags;
@@ -2102,275 +2135,166 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                     return (
                                 <div key={c.id || index} className="customer-journey-timeline" style={{ marginBottom: 16, paddingBottom: isExpanded ? 14 : 6 }}>
                                     <div className="journey-header" style={{ paddingBottom: 0 }}>
-                                        {/* ── Satır 1: Case ID + Kategori etiketi ── */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2, gap: 8, flexDirection: 'row-reverse' }}>
-                                            <button 
-                                                onClick={() => setExpandedCases(prev => ({ ...prev, [c.id]: !isExpanded }))}
-                                                style={{ 
-                                                    background: 'none', border: 'none', cursor: 'pointer',
-                                                    fontSize: '0.8rem', fontWeight: 600, color: '#6b7280', 
-                                                    flex: 1, textAlign: 'right', marginTop: 2, padding: '4px' 
-                                                }}>
-                                                {isExpanded ? '▼' : '▶'}
-                                            </button>
-                                            {c?.caseNumber && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, flexShrink: 0 }}>
-                                                {/* Kategori etiketi — tıklanabilir */}
-                                                <div style={{ position: 'relative', minWidth: 0, flexShrink: 1 }}>
-                                                    <button
-                                                        onClick={async () => {
-                                                             if (!categoryDropdownOpen && availableCategories.length === 0) {
-                                                                 try {
-                                                                     const res = await getTopicCategories(currentWorkspace.id);
-                                                                     setAvailableCategories(res.data || []);
-                                                                 } catch (e) { console.error(e); }
-                                                             }
-                                                             if (categoryBtnRef.current) {
-                                                                 const rect = categoryBtnRef.current.getBoundingClientRect();
-                                                                 setCategoryDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                                                             }
-                                                             setCategoryDropdownOpen(v => !v);
-                                                             setCategorySearch('');
-                                                         }}
-                                                        ref={categoryBtnRef}
-                                                        style={{
-                                                            background: activeConv?.topicCategory?.name
-                                                                ? (activeConv.topicCategory.color || '#6366f1') + '18'
-                                                                : '#f1f5f9',
-                                                            color: activeConv?.topicCategory?.color || '#64748b',
-                                                            border: `1px solid ${activeConv?.topicCategory?.name ? (activeConv.topicCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
-                                                            borderRadius: 4,
-                                                            padding: '1px 6px',
-                                                            fontSize: '0.55rem',
-                                                            fontWeight: 600,
-                                                            whiteSpace: 'nowrap',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: 3,
-                                                            cursor: 'pointer',
-                                                            transition: 'all 0.15s',
-                                                            maxWidth: '180px'
-                                                        }}
-                                                    >
-                                                        {activeConv?.topicCategory?.icon && <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{activeConv.topicCategory.icon}</span>}
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                            {activeConv?.topicCategory?.name || 'Kategori Seç'}
-                                                        </span>
-                                                        <ChevronDown size={8} style={{ opacity: 0.5, flexShrink: 0 }} />
-                                                    </button>
 
-                                                    {categoryDropdownOpen && (
-                                                        <>
-                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryDropdownOpen(false)} />
-                                                        <div style={{
-                                                            position: 'fixed',
-                                                            top: categoryDropdownPos.top,
-                                                            right: categoryDropdownPos.right,
-                                                            zIndex: 9999,
+                                        {/* ═══ SATIR 1: Case Type — Case ID — Puan — Genişletme İkonu ═══ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 4px' }}>
+                                            {/* Case Type Badge */}
+                                            {(() => {
+                                                const rawType = activeCaseInfo?.type || c?.type || 'GENEL';
+                                                // Map both Turkish schema values AND English values
+                                                const typeConfig = {
+                                                    // Turkish schema values
+                                                    GENEL:         { label: 'Genel', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+                                                    FIRSAT:        { label: 'Fırsat', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
+                                                    SIKAYET:       { label: 'Şikayet', bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' },
+                                                    RANDEVU:       { label: 'Randevu', bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' },
+                                                    DESTEK:        { label: 'Destek', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+                                                    IS_BASVURUSU:  { label: 'İş Başvurusu', bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' },
+                                                    // English values
+                                                    LEAD:          { label: 'Lead', bg: '#fef3c7', color: '#b45309', border: '#fcd34d' },
+                                                    SUPPORT:       { label: 'Destek', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+                                                    SALE:          { label: 'Satış', bg: '#d1fae5', color: '#047857', border: '#6ee7b7' },
+                                                    PROJECT:       { label: 'Proje', bg: '#ede9fe', color: '#6d28d9', border: '#c4b5fd' },
+                                                    COMPLAINT:     { label: 'Şikayet', bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' },
+                                                    OTHER:         { label: 'Diğer', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+                                                };
+
+                                                // Smart fallback: if GENEL, try to infer from context
+                                                let resolvedType = rawType;
+                                                if (rawType === 'GENEL') {
+                                                    // Check funnelType name or conversations for clues
+                                                    const title = (activeCaseInfo?.title || c?.title || '').toLowerCase();
+                                                    const hasLeadKeywords = ['lead', 'talep', 'bilgi', 'başvuru', 'form', 'teklif', 'fırsat'].some(k => title.includes(k));
+                                                    const hasComplaintKeywords = ['şikayet', 'sorun', 'hata', 'iade'].some(k => title.includes(k));
+                                                    const hasSupportKeywords = ['destek', 'yardım', 'arıza', 'problem'].some(k => title.includes(k));
+
+                                                    if (hasLeadKeywords) resolvedType = 'FIRSAT';
+                                                    else if (hasComplaintKeywords) resolvedType = 'SIKAYET';
+                                                    else if (hasSupportKeywords) resolvedType = 'DESTEK';
+                                                }
+
+                                                const cfg = typeConfig[resolvedType] || typeConfig.GENEL;
+                                                return (
+                                                    <span style={{
+                                                        background: cfg.bg,
+                                                        color: cfg.color,
+                                                        border: `1px solid ${cfg.border}`,
+                                                        borderRadius: 4,
+                                                        padding: '2px 6px',
+                                                        fontSize: '0.6rem',
+                                                        fontWeight: 700,
+                                                        letterSpacing: '0.03em',
+                                                        lineHeight: 1,
+                                                        whiteSpace: 'nowrap',
+                                                        textTransform: 'uppercase'
+                                                    }}>
+                                                        {cfg.label}
+                                                    </span>
+                                                );
+                                            })()}
+                                            {/* Case ID dropdown */}
+                                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                                                <button
+                                                    onClick={() => { setCaseIdDropdownOpen(v => !v); setShowNewCaseInline(false); }}
+                                                    style={{
+                                                        background: '#f8fafc',
+                                                        border: '1px solid #e2e8f0',
+                                                        borderRadius: 5,
+                                                        padding: '2px 6px',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 3,
+                                                        color: '#94a3b8',
+                                                        fontSize: '0.55rem',
+                                                        fontWeight: 500,
+                                                        fontFamily: 'monospace',
+                                                        cursor: 'pointer',
+                                                        whiteSpace: 'nowrap',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                    onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#64748b'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.color = '#94a3b8'; }}
+                                                >
+                                                    <Briefcase size={8} />
+                                                    <span>{activeCaseInfo?.caseNumber || c?.caseNumber || 'Case'}</span>
+                                                    <ChevronDown size={7} style={{
+                                                        transition: 'transform 0.2s',
+                                                        transform: caseIdDropdownOpen ? 'rotate(180deg)' : 'none',
+                                                        opacity: 0.4
+                                                    }} />
+                                                </button>
+
+                                                {caseIdDropdownOpen && (
+                                                    <>
+                                                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => { setCaseIdDropdownOpen(false); setShowNewCaseInline(false); }} />
+                                                    <div
+                                                        style={{
+                                                            position: 'absolute', top: '100%', left: 0, zIndex: 9999,
                                                             background: '#fff', border: '1px solid #e5e7eb',
                                                             borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                                                            minWidth: 220, maxHeight: 280, overflow: 'hidden',
-                                                        }}>
-                                                            <div style={{ padding: '6px 8px', borderBottom: '1px solid #f1f5f9' }}>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Kategori ara..."
-                                                                    value={categorySearch}
-                                                                    onChange={e => setCategorySearch(e.target.value)}
-                                                                    autoFocus
-                                                                    style={{
-                                                                        width: '100%', padding: '5px 8px', fontSize: '0.72rem',
-                                                                        border: '1px solid #e2e8f0', borderRadius: 6, outline: 'none'
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                                                                {/* Kategoriyi kaldır seçeneği */}
-                                                                <button
+                                                            minWidth: 240, marginTop: 4, overflow: 'hidden',
+                                                            maxHeight: 300, overflowY: 'auto'
+                                                        }}
+                                                        onClick={e => e.stopPropagation()}
+                                                    >
+                                                        <div style={{ padding: '8px 12px 4px', fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                                                            Case Seç
+                                                        </div>
+                                                        {allCases.map(cc => {
+                                                            const statusInfo = { ACTIVE: '🟢', CLOSED: '🔴', WON: '🏆', LOST: '❌' };
+                                                            const isActiveCase = cc.id === (activeCaseInfo?.caseId || conversationData?.caseId);
+                                                            return (
+                                                                <div
+                                                                    key={cc.id}
                                                                     onClick={async () => {
                                                                         try {
-                                                                            await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null });
-                                                                            setLocalConvOverride(prev => ({ ...(prev || activeConv), topicCategory: null }));
-                                                                            setCategoryDropdownOpen(false);
-                                                                        } catch (e) { console.error(e); }
+                                                                            const { default: api } = await import('../../services/api');
+                                                                            await api.put(`/conversations/${currentWorkspace.id}/${conversationId}/link-case`, { caseId: cc.id });
+                                                                            setActiveCaseInfo(prev => ({ ...prev, caseId: cc.id }));
+                                                                            window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                        } catch (err) { console.error(err); }
+                                                                        setCaseIdDropdownOpen(false);
                                                                     }}
                                                                     style={{
-                                                                        width: '100%', padding: '6px 10px', background: 'transparent',
-                                                                        border: 'none', borderBottom: '1px solid #f1f5f9',
-                                                                        fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
-                                                                        textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
+                                                                        padding: '7px 12px', cursor: 'pointer',
+                                                                        display: 'flex', alignItems: 'center', gap: 6,
+                                                                        fontSize: '0.72rem', fontWeight: isActiveCase ? 600 : 400,
+                                                                        background: isActiveCase ? '#f5f3ff' : 'transparent',
+                                                                        transition: 'background 0.1s'
                                                                     }}
+                                                                    onMouseEnter={e => { if (!isActiveCase) e.currentTarget.style.background = '#fafafa'; }}
+                                                                    onMouseLeave={e => { e.currentTarget.style.background = isActiveCase ? '#f5f3ff' : 'transparent'; }}
                                                                 >
-                                                                    <X size={12} /> Kategoriyi Kaldır
-                                                                </button>
-                                                                {availableCategories
-                                                                    .filter(c => !categorySearch || c.name.toLowerCase().includes(categorySearch.toLowerCase()))
-                                                                    .map(cat => (
-                                                                        <button
-                                                                            key={cat.id}
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id });
-                                                                                    setLocalConvOverride(prev => ({
-                                                                                        ...(prev || activeConv),
-                                                                                        topicCategory: res.data.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
-                                                                                    }));
-                                                                                    setCategoryDropdownOpen(false);
-                                                                                } catch (e) { console.error(e); }
-                                                                            }}
-                                                                            style={{
-                                                                                width: '100%', padding: '6px 10px',
-                                                                                background: activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent',
-                                                                                border: 'none', fontSize: '0.72rem',
-                                                                                color: '#374151', cursor: 'pointer',
-                                                                                textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
-                                                                                transition: 'background 0.1s'
-                                                                            }}
-                                                                            onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
-                                                                            onMouseLeave={e => { e.currentTarget.style.background = activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent'; }}
-                                                                        >
-                                                                            <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
-                                                                            <span style={{ flex: 1 }}>{cat.name}</span>
-                                                                            {activeConv?.topicCategory?.id === cat.id && <Check size={12} style={{ color: '#22c55e' }} />}
-                                                                        </button>
-                                                                    ))
-                                                                }
-                                                            </div>
-                                                        </div>
-                                                        </>
-                                                    )}
-                                                </div>
-                                                <div style={{ position: 'relative' }}>
-                                                    <button
-                                                        onClick={() => { setCaseIdDropdownOpen(v => !v); setShowNewCaseInline(false); }}
-                                                        style={{
-                                                            background: '#f5f3ff',
-                                                            border: '1px solid #ddd6fe',
-                                                            borderRadius: 5,
-                                                            padding: '2px 5px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: 3,
-                                                            color: '#8b5cf6',
-                                                            fontSize: '0.58rem',
-                                                            fontWeight: 500,
-                                                            fontFamily: 'monospace',
-                                                            cursor: 'pointer',
-                                                            whiteSpace: 'nowrap',
-                                                            opacity: 0.8,
-                                                            transition: 'opacity 0.15s'
-                                                        }}
-                                                        onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.opacity = '0.8'; }}
-                                                    >
-                                                        <Briefcase size={9} />
-                                                        <span>{activeCaseInfo?.caseNumber}</span>
-                                                        <ChevronDown size={8} style={{
-                                                            transition: 'transform 0.2s',
-                                                            transform: caseIdDropdownOpen ? 'rotate(180deg)' : 'none',
-                                                            opacity: 0.5
-                                                        }} />
-                                                    </button>
-
-                                                    {caseIdDropdownOpen && (
-                                                        <>
-                                                        <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => { setCaseIdDropdownOpen(false); setShowNewCaseInline(false); }} />
-                                                        <div
-                                                            style={{
-                                                                position: 'absolute', top: '100%', right: 0, zIndex: 9999,
-                                                                background: '#fff', border: '1px solid #e5e7eb',
-                                                                borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                                                                minWidth: 240, marginTop: 4, overflow: 'hidden',
-                                                                maxHeight: 300, overflowY: 'auto'
-                                                            }}
-                                                            onClick={e => e.stopPropagation()}
-                                                        >
-                                                            <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', padding: '8px 12px 4px' }}>
-                                                                Case'ler
-                                                            </div>
-                                                            {allCases.map(c => {
-                                                                const isActive = c.id === c.id;
-                                                                const statusInfo = { ACTIVE: '🟢', WON: '✅', LOST: '⚪', CLOSED: '🔴' };
-                                                                return (
-                                                                    <div
-                                                                        key={c.id}
-                                                                        onClick={async () => {
-                                                                            if (isActive) { setCaseIdDropdownOpen(false); return; }
-                                                                            try {
-                                                                                await caseAPI.linkConversation(currentWorkspace.id, c.id, conversationId);
-                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                setCaseIdDropdownOpen(false);
-                                                                            } catch (err) { console.error('Case switch error:', err); }
-                                                                        }}
-                                                                        style={{
-                                                                            padding: '7px 12px', cursor: 'pointer',
-                                                                            display: 'flex', alignItems: 'center', gap: 6,
-                                                                            fontSize: '0.72rem', fontWeight: isActive ? 700 : 500,
-                                                                            color: isActive ? '#7c3aed' : '#374151',
-                                                                            background: isActive ? '#f5f3ff' : 'transparent',
-                                                                            transition: 'background 0.1s'
-                                                                        }}
-                                                                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#f9fafb'; }}
-                                                                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = isActive ? '#f5f3ff' : 'transparent'; }}
-                                                                    >
-                                                                        <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{statusInfo[c.status] || '⚪'}</span>
-                                                                        <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#a1a1aa', flexShrink: 0 }}>{c?.caseNumber}</span>
-                                                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title || '—'}</span>
-                                                                        {isActive && <span style={{ fontSize: '0.65rem', color: '#7c3aed', marginLeft: 'auto' }}>✓</span>}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                            <div style={{ borderTop: '1px solid #f1f5f9', padding: '4px 0' }}>
-                                                                {!showNewCaseInline ? (
-                                                                    <div
-                                                                        onClick={() => setShowNewCaseInline(true)}
-                                                                        style={{
-                                                                            padding: '7px 12px', cursor: 'pointer',
-                                                                            display: 'flex', alignItems: 'center', gap: 4,
-                                                                            fontSize: '0.72rem', fontWeight: 600, color: '#8b5cf6',
-                                                                            transition: 'background 0.1s'
-                                                                        }}
-                                                                        onMouseEnter={e => { e.currentTarget.style.background = '#faf5ff'; }}
-                                                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                                    >
-                                                                        <Plus size={12} /> Yeni Case
-                                                                    </div>
-                                                                ) : (
-                                                                    <div style={{ padding: '6px 10px', display: 'flex', gap: 4 }}>
-                                                                        <input
-                                                                            type="text"
-                                                                            value={newCaseTitle}
-                                                                            onChange={e => setNewCaseTitle(e.target.value)}
-                                                                            onKeyDown={async e => {
-                                                                                if (e.key === 'Enter' && newCaseTitle.trim()) {
-                                                                                    setCreatingCase(true);
-                                                                                    try {
-                                                                                        await caseAPI.create(currentWorkspace.id, profile.id, {
-                                                                                            title: newCaseTitle.trim(),
-                                                                                            conversationId: conversationId || null
-                                                                                        });
-                                                                                        setNewCaseTitle('');
-                                                                                        setShowNewCaseInline(false);
-                                                                                        setCaseIdDropdownOpen(false);
-                                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
-                                                                                    } catch (err) { console.error('Case create error:', err); }
-                                                                                    setCreatingCase(false);
-                                                                                } else if (e.key === 'Escape') {
-                                                                                    setShowNewCaseInline(false);
-                                                                                    setNewCaseTitle('');
-                                                                                }
-                                                                            }}
-                                                                            placeholder="Case başlığı..."
-                                                                            autoFocus
-                                                                            style={{
-                                                                                flex: 1, fontSize: '0.7rem', padding: '4px 6px',
-                                                                                border: '1px solid #e2e8f0', borderRadius: 5, outline: 'none',
-                                                                                minWidth: 0
-                                                                            }}
-                                                                        />
-                                                                        <button
-                                                                            onClick={async () => {
-                                                                                if (!newCaseTitle.trim()) return;
+                                                                    <span style={{ fontSize: '0.6rem', flexShrink: 0 }}>{statusInfo[cc.status] || '⚪'}</span>
+                                                                    <span style={{ fontFamily: 'monospace', fontSize: '0.6rem', color: '#a1a1aa', flexShrink: 0 }}>{cc?.caseNumber}</span>
+                                                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cc.title || '—'}</span>
+                                                                    {isActiveCase && <span style={{ fontSize: '0.65rem', color: '#7c3aed', marginLeft: 'auto' }}>✓</span>}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        <div style={{ borderTop: '1px solid #f1f5f9', padding: '4px 0' }}>
+                                                            {!showNewCaseInline ? (
+                                                                <div
+                                                                    onClick={() => setShowNewCaseInline(true)}
+                                                                    style={{
+                                                                        padding: '7px 12px', cursor: 'pointer',
+                                                                        display: 'flex', alignItems: 'center', gap: 4,
+                                                                        fontSize: '0.72rem', fontWeight: 600, color: '#8b5cf6',
+                                                                        transition: 'background 0.1s'
+                                                                    }}
+                                                                    onMouseEnter={e => { e.currentTarget.style.background = '#faf5ff'; }}
+                                                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                                >
+                                                                    <Plus size={12} /> Yeni Case
+                                                                </div>
+                                                            ) : (
+                                                                <div style={{ padding: '6px 10px', display: 'flex', gap: 4 }}>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={newCaseTitle}
+                                                                        onChange={e => setNewCaseTitle(e.target.value)}
+                                                                        onKeyDown={async e => {
+                                                                            if (e.key === 'Enter' && newCaseTitle.trim()) {
                                                                                 setCreatingCase(true);
                                                                                 try {
                                                                                     await caseAPI.create(currentWorkspace.id, profile.id, {
@@ -2383,77 +2307,158 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                                     window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                 } catch (err) { console.error('Case create error:', err); }
                                                                                 setCreatingCase(false);
-                                                                            }}
-                                                                            disabled={creatingCase || !newCaseTitle.trim()}
-                                                                            style={{
-                                                                                background: '#8b5cf6', color: '#fff', border: 'none',
-                                                                                borderRadius: 5, padding: '4px 8px', cursor: 'pointer',
-                                                                                fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
-                                                                                opacity: creatingCase ? 0.6 : 1
-                                                                            }}
-                                                                        >
-                                                                            {creatingCase ? '...' : '✓'}
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                                                                            } else if (e.key === 'Escape') {
+                                                                                setShowNewCaseInline(false);
+                                                                                setNewCaseTitle('');
+                                                                            }
+                                                                        }}
+                                                                        placeholder="Case başlığı..."
+                                                                        autoFocus
+                                                                        style={{
+                                                                            flex: 1, fontSize: '0.7rem', padding: '4px 6px',
+                                                                            border: '1px solid #e2e8f0', borderRadius: 5, outline: 'none',
+                                                                            minWidth: 0
+                                                                        }}
+                                                                    />
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (!newCaseTitle.trim()) return;
+                                                                            setCreatingCase(true);
+                                                                            try {
+                                                                                await caseAPI.create(currentWorkspace.id, profile.id, {
+                                                                                    title: newCaseTitle.trim(),
+                                                                                    conversationId: conversationId || null
+                                                                                });
+                                                                                setNewCaseTitle('');
+                                                                                setShowNewCaseInline(false);
+                                                                                setCaseIdDropdownOpen(false);
+                                                                                window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                            } catch (err) { console.error('Case create error:', err); }
+                                                                            setCreatingCase(false);
+                                                                        }}
+                                                                        disabled={creatingCase || !newCaseTitle.trim()}
+                                                                        style={{
+                                                                            background: '#8b5cf6', color: '#fff', border: 'none',
+                                                                            borderRadius: 5, padding: '4px 8px', cursor: 'pointer',
+                                                                            fontSize: '0.68rem', fontWeight: 600, flexShrink: 0,
+                                                                            opacity: creatingCase ? 0.6 : 1
+                                                                        }}
+                                                                    >
+                                                                        {creatingCase ? '...' : '✓'}
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        </>
-                                                    )}
-                                                </div>
+                                                    </div>
+                                                    </>
+                                                )}
                                             </div>
-                                        )}
+
+                                            {/* Puan (Lead Score) — Case ID'nin yanında */}
+                                            {(() => {
+                                                const score = activeCaseInfo?.leadScore ?? c?.leadScore;
+                                                const temp = activeCaseInfo?.leadTemperature ?? c?.leadTemperature;
+                                                if (score == null && !temp) return null;
+                                                const scoreColorMap = { COLD: '#3b82f6', COOL: '#22c55e', WARM: '#eab308', HOT: '#f97316', FIRE: '#ef4444' };
+                                                const scoreBgMap = { COLD: '#eff6ff', COOL: '#f0fdf4', WARM: '#fefce8', HOT: '#fff7ed', FIRE: '#fef2f2' };
+                                                const scoreEmojiMap = { COLD: '🔵', COOL: '🟢', WARM: '🟡', HOT: '🟠', FIRE: '🔴' };
+                                                const sColor = scoreColorMap[temp] || '#94a3b8';
+                                                const sBg = scoreBgMap[temp] || '#f1f5f9';
+                                                const sEmoji = scoreEmojiMap[temp] || '';
+                                                return (
+                                                    <div style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                        padding: '2px 8px', borderRadius: 10,
+                                                        background: sBg, border: `1px solid ${sColor}25`,
+                                                        fontSize: '0.62rem', fontWeight: 700, color: sColor, flexShrink: 0
+                                                    }}>
+                                                        {sEmoji && <span style={{ fontSize: '0.55rem' }}>{sEmoji}</span>}
+                                                        <span>{score ?? '—'}</span>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {/* Spacer */}
+                                            <div style={{ flex: 1 }} />
+
+                                            {/* Genişletme ikonu */}
+                                            <button 
+                                                onClick={() => setExpandedCases(prev => ({ ...prev, [c.id]: !isExpanded }))}
+                                                style={{ 
+                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                    color: '#9ca3af', padding: '4px',
+                                                    flexShrink: 0, transition: 'color 0.15s',
+                                                    display: 'flex', alignItems: 'center'
+                                                }}
+                                                onMouseEnter={e => { e.currentTarget.style.color = '#6b7280'; }}
+                                                onMouseLeave={e => { e.currentTarget.style.color = '#9ca3af'; }}
+                                            >
+                                                <ChevronDown size={14} style={{
+                                                    transition: 'transform 0.2s',
+                                                    transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+                                                }} />
+                                            </button>
                                         </div>
 
-                                        {/* ── Satır 2: Editable başlık (çizgisiz) ── */}
-                                        {activeCaseInfo && (() => {
-                                            // Generic kanal etiketleri ve dekoratif başlıklar - bunlar gerçek başlık sayılmaz
-                                            const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', '-', '—', ''];
-                                            const rawTitle = activeCaseInfo.title || '';
-                                            const isGeneric = GENERIC.includes(rawTitle.trim()) || rawTitle.includes('━') || rawTitle.includes('═');
-                                            // Eğer title generic/dekoratif ise, conversation'ın aiTopic'ini fallback olarak kullan
-                                            const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || '';
-                                            
-                                            // activeCaseInfo.title kullanıcı tarafından değiştirilmişse onu kullan
-                                            // _userEdited flag'i ile generic fallback'i takip et
-                                            const displayTitle = activeCaseInfo._userEdited 
-                                                ? activeCaseInfo.title 
-                                                : (isGeneric && convTopic ? convTopic : rawTitle);
-                                            
-                                            // Title boş VE fallback da yoksa input gösterme (düz çizgi olmasın)
-                                            if (!displayTitle && !rawTitle) return null;
-                                            
-                                            return (
-                                                <input
-                                                    type="text"
-                                                    value={displayTitle}
-                                                    onChange={(e) => setActiveCaseInfo(prev => ({ ...prev, title: e.target.value, _userEdited: true }))}
-                                                    onBlur={async (e) => {
-                                                        const newTitle = e.target.value.trim();
-                                                        if (!newTitle || newTitle === activeCaseInfo._savedTitle) return;
-                                                        try {
-                                                            await caseAPI.update(currentWorkspace.id, activeCaseInfo.caseId, { title: newTitle });
-                                                            setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle, _userEdited: false }));
-                                                            window.dispatchEvent(new CustomEvent('case_title_updated', {
-                                                                detail: { caseId: activeCaseInfo.caseId, title: newTitle, conversationId }
-                                                            }));
-                                                        } catch (err) { console.error('Title update error:', err); }
-                                                    }}
-                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                                                    placeholder="Konu başlığı..."
-                                                    style={{
-                                                        fontSize: '1.05rem', fontWeight: 700, color: '#1f2937',
-                                                        border: 'none', outline: 'none', background: 'transparent',
-                                                        padding: '2px 0', width: '100%', lineHeight: 1.3
-                                                    }}
-                                                />
-                                            );
-                                        })()}
+                                        {/* ═══ SATIR 2: Konu Başlığı (tam genişlik) ═══ */}
+                                        <div style={{ padding: '0 12px 6px' }}>
+                                            {(() => {
+                                                const caseInfo = activeCaseInfo;
+                                                if (!caseInfo && c.id === 'default') {
+                                                    const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || '';
+                                                    if (!convTopic) return null;
+                                                    return (
+                                                        <div style={{
+                                                            fontSize: '0.88rem', fontWeight: 700, color: '#1f2937',
+                                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                                                        }}>
+                                                            {convTopic}
+                                                        </div>
+                                                    );
+                                                }
+                                                if (!caseInfo) return null;
+                                                const GENERIC = ['💬 WhatsApp', '💬 Facebook', '💬 Instagram', '📧 E-posta', '📞 Telefon', '🌐 Web Widget', '📝 Form', 'Yeni İletişim', 'Yeni Case', '-', '—', ''];
+                                                const rawTitle = caseInfo.title || '';
+                                                const isGeneric = GENERIC.includes(rawTitle.trim()) || rawTitle.includes('━') || rawTitle.includes('═');
+                                                const convTopic = activeConv?.aiTopic || conversationData?.aiTopic || '';
+                                                const displayTitle = caseInfo._userEdited 
+                                                    ? caseInfo.title 
+                                                    : (isGeneric && convTopic ? convTopic : rawTitle);
+                                                if (!displayTitle && !rawTitle) return null;
+                                                return (
+                                                    <input
+                                                        type="text"
+                                                        value={displayTitle}
+                                                        onChange={(e) => setActiveCaseInfo(prev => ({ ...prev, title: e.target.value, _userEdited: true }))}
+                                                        onBlur={async (e) => {
+                                                            const newTitle = e.target.value.trim();
+                                                            if (!newTitle || newTitle === caseInfo._savedTitle) return;
+                                                            try {
+                                                                await caseAPI.update(currentWorkspace.id, caseInfo.caseId, { title: newTitle });
+                                                                setActiveCaseInfo(prev => ({ ...prev, title: newTitle, _savedTitle: newTitle, _userEdited: false }));
+                                                                window.dispatchEvent(new CustomEvent('case_title_updated', {
+                                                                    detail: { caseId: caseInfo.caseId, title: newTitle, conversationId }
+                                                                }));
+                                                            } catch (err) { console.error('Title update error:', err); }
+                                                        }}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                                        placeholder="Konu başlığı..."
+                                                        style={{
+                                                            fontSize: '0.88rem', fontWeight: 700, color: '#1f2937',
+                                                            border: 'none', outline: 'none', background: 'transparent',
+                                                            padding: 0, width: '100%', lineHeight: 1.3
+                                                        }}
+                                                    />
+                                                );
+                                            })()}
+                                        </div>
 
                                         {isExpanded && (
                                             <>
-                                        {/* ── Satır 3: Akış/Aşama (sol) + Durum (sağ) ── */}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px 0' }}>
+
+                                        {/* ═══ SATIR 3: Akış / Aşama — Durum ═══ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 12px' }}>
+                                            {/* Akış / Aşama (CaseCards) */}
                                             <div style={{ flex: 1, minWidth: 0 }}>
                                                 {profile?.id && currentWorkspace?.id && (
                                                     <CaseCards
@@ -2469,7 +2474,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             if (!prev || prev.caseId !== info.caseId) {
                                                                 return { ...info, _savedTitle: info.title };
                                                             }
-                                                            // Kullanıcı düzenliyorsa, title'ı ezme
                                                             if (prev._userEdited) {
                                                                 return { ...prev, ...info, title: prev.title, _userEdited: true };
                                                             }
@@ -2489,9 +2493,10 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 )}
                                             </div>
 
+
+                                            {/* Durum (Açık/Kapalı) */}
                                             <div style={{ flexShrink: 0 }}>
                                                 {(activeCaseInfo?.status || conversationData?.status) && (() => {
-                                                    // closingStages ve openStages'ı funnelOptions'dan dinamik hesapla
                                                     const currentFunnelType = c.funnelType;
                                                     const currentFunnel = currentFunnelType ? funnelOptions.find(f => f.value === currentFunnelType) : null;
                                                     const closingStages = currentFunnel?.stages
@@ -2502,7 +2507,6 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                         ?.filter(s => !s.isClosing)
                                                         ?.map(s => ({ id: s.value, name: s.label, color: s.color }))
                                                         || c.openStages || [];
-                                                    // Case VEYA conversation kapalıysa pill kapalı göster
                                                     const isClosed = (activeCaseInfo?.status && c.status !== 'ACTIVE') || conversationData?.status === 'RESOLVED';
 
                                                     const currentOpt = isClosed
@@ -2514,14 +2518,13 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                             <button
                                                                 onClick={() => setCaseStatusDropdownOpenCaseId(prev => prev === c.id ? null : c.id)}
                                                                 style={{
-                                                                    display: 'inline-flex', alignItems: 'center', gap: 2,
-                                                                    padding: '0 5px', height: 22, borderRadius: 11,
+                                                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                                    padding: '2px 8px', height: 22, borderRadius: 10,
                                                                     border: `1px solid ${currentOpt.border}`,
                                                                     background: currentOpt.bg, color: currentOpt.color,
-                                                                    fontSize: '0.55rem', fontWeight: 600,
+                                                                    fontSize: '0.6rem', fontWeight: 600,
                                                                     cursor: 'pointer', whiteSpace: 'nowrap',
-                                                                    transition: 'all 0.15s',
-                                                                    minWidth: 0, justifyContent: 'center'
+                                                                    transition: 'all 0.15s'
                                                                 }}
                                                             >
                                                                 <span style={{ width: 5, height: 5, borderRadius: '50%', background: currentOpt.dotColor, flexShrink: 0 }} />
@@ -2544,14 +2547,12 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                     }}
                                                                     onClick={e => e.stopPropagation()}
                                                                 >
-                                                                    {/* Başlık */}
                                                                     <div style={{ padding: '8px 14px 4px', fontSize: '0.65rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                                                         {isClosed ? 'Tekrar Aç' : 'Nasıl kapandı?'}
                                                                     </div>
                                                                     <div style={{ height: 1, background: '#f3f4f6', margin: '4px 0' }} />
 
                                                                     {isClosed ? (
-                                                                        /* KAPALI → Açık aşamaları göster */
                                                                         openStages.length > 0 ? openStages.map((stage) => (
                                                                             <div
                                                                                 key={stage.id}
@@ -2616,24 +2617,23 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                             </div>
                                                                         )
                                                                     ) : (
-                                                                        /* AÇIK → Kapanış aşamalarını göster */
                                                                         closingStages.length > 0 ? closingStages.map((cs) => (
                                                                             <div
                                                                                 key={cs.id}
                                                                                 onClick={async () => {
                                                                                     try {
-                                                                                        const newStatus = cs.statusType || 'CLOSED';
+                                                                                        const statusType = cs.statusType || 'CLOSED';
                                                                                         await caseAPI.update(currentWorkspace.id, c.id, {
-                                                                                            status: newStatus,
+                                                                                            status: statusType,
                                                                                             funnelStageId: cs.id
                                                                                         });
-                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: newStatus, funnelStageId: cs.id }));
+                                                                                        setActiveCaseInfo(prev => ({ ...prev, status: statusType, funnelStageId: cs.id }));
                                                                                         window.dispatchEvent(new CustomEvent('websocket:case_updated', {
-                                                                                            detail: { caseId: c.id, changes: { status: newStatus, funnelStageId: cs.id } }
+                                                                                            detail: { caseId: c.id, changes: { status: statusType, funnelStageId: cs.id } }
                                                                                         }));
                                                                                         window.dispatchEvent(new CustomEvent('case_cards_refresh'));
                                                                                         if (onConversationStatusChange && conversationId) {
-                                                                                            onConversationStatusChange(conversationId, 'RESOLVED', cs.id);
+                                                                                            onConversationStatusChange(conversationId, 'RESOLVED');
                                                                                         }
                                                                                     } catch (err) { console.error('Status update error:', err); }
                                                                                     setCaseStatusDropdownOpenCaseId(null);
@@ -2690,229 +2690,541 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                 })()}
                                             </div>
                                         </div>
+
+                                        {/* ═══ SATIR 4: Takım / Kişi — Üstlen ═══ */}
+                                        {!readOnly && (() => {
+                                            let effectiveTeamId = null;
+                                            let effectiveAgentId = null;
+                                            let effectiveAgentObj = null;
+
+                                            if (activeCaseInfo?.assignedTeamId || activeCaseInfo?.assignedToId) {
+                                                effectiveTeamId = activeCaseInfo.assignedTeamId;
+                                                effectiveAgentId = activeCaseInfo.assignedToId;
+                                                effectiveAgentObj = activeCaseInfo.assignedTo;
+                                            } else {
+                                                let convTeamIds = [];
+                                                try { convTeamIds = JSON.parse(activeConv?.teamIds || '[]'); } catch {}
+                                                effectiveTeamId = convTeamIds[0] || activeConv?.assignedTeamId || null;
+                                                effectiveAgentId = activeConv?.assignedToId || null;
+                                                effectiveAgentObj = activeConv?.assignedTo || null;
+                                            }
+
+                                            const assignedTeam = effectiveTeamId ? teams.find(t => t.id === effectiveTeamId) : null;
+                                            const assignedAgent = effectiveAgentObj || (effectiveAgentId ? (members.find(m => (m.user?.id || m.userId) === effectiveAgentId) || members.find(m => m.id === effectiveAgentId)) : null);
+
+                                            let pillLabel = 'Atanmadı';
+                                            const agentName = assignedAgent?.user?.name || assignedAgent?.name;
+                                            if (assignedTeam && agentName) pillLabel = `${agentName} / ${assignedTeam.name}`;
+                                            else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
+                                            else if (agentName) pillLabel = agentName;
+
+                                            const canClaim = !effectiveAgentId || effectiveAgentId !== (currentUserId || user?.id);
+
+                                            return (
+                                                <div style={{ display: 'flex', gap: 6, padding: '2px 12px', alignItems: 'center' }}>
+                                                    <div ref={assignMegaMenuRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                                                        <button
+                                                            className="stage-mega-trigger"
+                                                            style={{
+                                                                width: '100%', display: 'flex', justifyContent: 'space-between',
+                                                                alignItems: 'center', fontSize: '0.72rem', height: 28,
+                                                                padding: '0 10px', borderRadius: 8,
+                                                                background: '#f8fafc', border: '1px solid #e2e8f0',
+                                                                fontWeight: 600, color: '#374151', cursor: 'pointer',
+                                                                transition: 'all 0.15s'
+                                                            }}
+                                                            onClick={e => {
+                                                                const rect = e.currentTarget.getBoundingClientRect();
+                                                                setAssignMegaMenuPos({ top: rect.bottom + 6, left: Math.max(10, rect.right - 342) });
+                                                                setAssignSelectedTeam(assignedTeam?.id || null);
+                                                                setAssignMegaMenuOpenCaseId(prev => prev === c.id ? null : c.id);
+                                                            }}
+                                                            title="Atama"
+                                                        >
+                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                                                <Users size={11} style={{ flexShrink: 0 }} />
+                                                                {pillLabel}
+                                                            </span>
+                                                            <ChevronDown size={10} style={{ flexShrink: 0 }} />
+                                                        </button>
+
+                                                        {(assignMegaMenuOpenCaseId === c.id) && (() => {
+                                                            const menuTeam = assignSelectedTeam ? teams.find(t => t.id === assignSelectedTeam) : null;
+                                                            const teamMembers = menuTeam?.members || [];
+                                                            const ruleLabel = { POOL: 'Havuza At', ROUND_ROBIN: 'Sırayla At', LEAST_BUSY: 'En Az Yüklüye', ONLINE_ROUND_ROBIN: "Online'a Sırayla" };
+
+                                                            return ReactDOM.createPortal(
+                                                                <>
+                                                                    <div
+                                                                        style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+                                                                        onClick={() => setAssignMegaMenuOpenCaseId(null)}
+                                                                    />
+                                                                    <div ref={assignMenuDivRef}
+                                                                        style={{
+                                                                            position: 'fixed',
+                                                                            top: assignMegaMenuPos.top,
+                                                                            left: assignMegaMenuPos.left,
+                                                                            zIndex: 99999,
+                                                                            background: '#fff',
+                                                                            border: '1px solid #e2e8f0',
+                                                                            borderRadius: 12,
+                                                                            boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                                                                            padding: 8,
+                                                                            display: 'flex',
+                                                                            flexDirection: 'row',
+                                                                            gap: 4,
+                                                                            minWidth: 340,
+                                                                        }}
+                                                                    >
+                                                                        {/* Sol panel: Takımlar */}
+                                                                        <div style={{ minWidth: 160, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
+                                                                            <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Takım</div>
+                                                                            <button
+                                                                                onClick={() => handleAssign(null, null)}
+                                                                                style={{
+                                                                                    display: 'block', width: '100%', textAlign: 'left',
+                                                                                    padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                    fontSize: '0.72rem', fontWeight: 500,
+                                                                                    background: !assignSelectedTeam ? '#f0fdf4' : 'transparent',
+                                                                                    color: !assignSelectedTeam ? '#166534' : '#374151'
+                                                                                }}
+                                                                            >
+                                                                                🚫 Atamasız
+                                                                            </button>
+                                                                            {teams.map(t => (
+                                                                                <button
+                                                                                    key={t.id}
+                                                                                    onClick={() => setAssignSelectedTeam(t.id)}
+                                                                                    style={{
+                                                                                        display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                                        padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                        fontSize: '0.72rem', fontWeight: 500,
+                                                                                        background: assignSelectedTeam === t.id ? '#eff6ff' : 'transparent',
+                                                                                        color: assignSelectedTeam === t.id ? '#1d4ed8' : '#374151'
+                                                                                    }}
+                                                                                >
+                                                                                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color || '#3b82f6', flexShrink: 0 }} />
+                                                                                    {t.name}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+
+                                                                        {/* Sağ panel: Üyeler */}
+                                                                        {assignSelectedTeam && (
+                                                                            <div style={{ minWidth: 180 }}>
+                                                                                <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Atama</div>
+                                                                                <button
+                                                                                    onClick={() => handleAssign(assignSelectedTeam, null)}
+                                                                                    style={{
+                                                                                        display: 'block', width: '100%', textAlign: 'left',
+                                                                                        padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                        fontSize: '0.72rem', fontWeight: 600,
+                                                                                        background: '#fef3c7', color: '#92400e', marginBottom: 4
+                                                                                    }}
+                                                                                >
+                                                                                    {ruleLabel[menuTeam?.assignmentRule] || 'Takıma At'} →
+                                                                                </button>
+                                                                                <div style={{ fontSize: '0.6rem', color: '#94a3b8', padding: '2px 6px 4px' }}>veya kişiye ata:</div>
+                                                                                {teamMembers.length === 0 && (
+                                                                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '4px 8px' }}>Üye yok</div>
+                                                                                )}
+                                                                                {teamMembers.map(m => {
+                                                                                    const uid = m.user?.id || m.id;
+                                                                                    const uname = m.user?.name || m.name || '?';
+                                                                                    const uOnline = m.user?.isOnline || false;
+                                                                                    return (
+                                                                                        <button
+                                                                                            key={uid}
+                                                                                            onClick={() => handleAssign(assignSelectedTeam, uid)}
+                                                                                            style={{
+                                                                                                display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                                                                                                padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                                                                                                fontSize: '0.72rem',
+                                                                                                background: activeConv?.assignedToId === uid ? '#eff6ff' : 'transparent',
+                                                                                                color: activeConv?.assignedToId === uid ? '#1d4ed8' : '#374151'
+                                                                                            }}
+                                                                                        >
+                                                                                            <span style={{
+                                                                                                width: 20, height: 20, borderRadius: '50%', background: '#3b82f6',
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                                                fontSize: '0.6rem', color: '#fff', fontWeight: 700, flexShrink: 0
+                                                                                            }}>
+                                                                                                {uname[0].toUpperCase()}
+                                                                                            </span>
+                                                                                            {uname}
+                                                                                            {uOnline && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', marginLeft: 'auto' }} />}
+                                                                                            {activeConv?.assignedToId === uid && <span style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>✓</span>}
+                                                                                        </button>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </>,
+                                                                document.body
+                                                            );
+                                                        })()}
+                                                    </div>
+
+                                                    {/* Üstlen butonu */}
+                                                    {canClaim && (
+                                                        <button
+                                                            className="assign-claim-btn"
+                                                            onClick={handleClaim}
+                                                            disabled={takingOver}
+                                                            title="Bu konuşmayı üstlen"
+                                                            style={{
+                                                                flexShrink: 0, whiteSpace: 'nowrap',
+                                                                fontSize: '0.6rem', padding: '0 8px',
+                                                                height: 28, borderRadius: 8
+                                                            }}
+                                                        >
+                                                            <UserCheck size={10} />
+                                                            Üstlen
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* ═══ SATIR 5: Kategori — Ürün ═══ */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 12px 4px', flexWrap: 'wrap' }}>
+                                            {/* Kategori etiketi */}
+                                            <div style={{ position: 'relative', flexShrink: 0 }}>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!categoryDropdownOpen && availableCategories.length === 0) {
+                                                            try {
+                                                                const res = await getTopicCategories(currentWorkspace.id);
+                                                                setAvailableCategories(res.data || []);
+                                                            } catch (e) { console.error(e); }
+                                                        }
+                                                        if (categoryBtnRef.current) {
+                                                            const rect = categoryBtnRef.current.getBoundingClientRect();
+                                                            setCategoryDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                                        }
+                                                        setCategoryDropdownOpen(v => !v);
+                                                        setCategorySearch('');
+                                                    }}
+                                                    ref={categoryBtnRef}
+                                                    style={{
+                                                        background: activeConv?.topicCategory?.name
+                                                            ? (activeConv.topicCategory.color || '#6366f1') + '18'
+                                                            : '#f1f5f9',
+                                                        color: activeConv?.topicCategory?.color || '#64748b',
+                                                        border: `1px solid ${activeConv?.topicCategory?.name ? (activeConv.topicCategory.color || '#6366f1') + '40' : '#e2e8f0'}`,
+                                                        borderRadius: 6,
+                                                        padding: '2px 8px',
+                                                        fontSize: '0.62rem',
+                                                        fontWeight: 600,
+                                                        whiteSpace: 'nowrap',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.15s',
+                                                        height: 22
+                                                    }}
+                                                >
+                                                    <span style={{ fontSize: '0.65rem' }}>
+                                                        {activeConv?.topicCategory?.icon || '📁'}
+                                                    </span>
+                                                    {activeConv?.topicCategory?.name || 'Kategori'}
+                                                    <ChevronDown size={8} style={{ opacity: 0.5 }} />
+                                                </button>
+
+                                                {categoryDropdownOpen && (
+                                                    <>
+                                                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setCategoryDropdownOpen(false)} />
+                                                    <div style={{
+                                                        position: 'fixed',
+                                                        top: categoryDropdownPos.top,
+                                                        right: categoryDropdownPos.right,
+                                                        zIndex: 9999,
+                                                        background: '#fff',
+                                                        border: '1px solid #e5e7eb',
+                                                        borderRadius: 12,
+                                                        boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                        width: 260,
+                                                        maxHeight: 320,
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{ padding: '8px' }}>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Kategori ara..."
+                                                                value={categorySearch}
+                                                                onChange={e => setCategorySearch(e.target.value)}
+                                                                autoFocus
+                                                                style={{
+                                                                    width: '100%', padding: '6px 10px',
+                                                                    border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                    fontSize: '0.75rem', outline: 'none'
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: null });
+                                                                        setLocalConvOverride(prev => ({
+                                                                            ...(prev || activeConv),
+                                                                            topicCategory: null
+                                                                        }));
+                                                                        setCategoryDropdownOpen(false);
+                                                                    } catch (e) { console.error(e); }
+                                                                }}
+                                                                style={{
+                                                                    width: '100%', padding: '7px 12px',
+                                                                    background: 'none',
+                                                                    border: 'none', borderBottom: '1px solid #f1f5f9',
+                                                                    fontSize: '0.72rem', color: '#94a3b8', cursor: 'pointer',
+                                                                    textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6
+                                                                }}
+                                                            >
+                                                                <X size={12} /> Kategoriyi Kaldır
+                                                            </button>
+                                                            {availableCategories
+                                                                .filter(catItem => !categorySearch || catItem.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                                                                .map(cat => (
+                                                                    <button
+                                                                        key={cat.id}
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                const res = await aiAPI.updateConversationAnalysis(currentWorkspace.id, activeConv.id, { topicCategoryId: cat.id });
+                                                                                setLocalConvOverride(prev => ({
+                                                                                    ...(prev || activeConv),
+                                                                                    topicCategory: res.data.topicCategory || { id: cat.id, name: cat.name, icon: cat.icon, color: cat.color }
+                                                                                }));
+                                                                                setCategoryDropdownOpen(false);
+                                                                            } catch (e) { console.error(e); }
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%', padding: '6px 10px',
+                                                                            background: activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent',
+                                                                            border: 'none', fontSize: '0.72rem',
+                                                                            color: '#374151', cursor: 'pointer',
+                                                                            textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6,
+                                                                            transition: 'background 0.1s'
+                                                                        }}
+                                                                        onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                                                                        onMouseLeave={e => { e.currentTarget.style.background = activeConv?.topicCategory?.id === cat.id ? '#f0fdf4' : 'transparent'; }}
+                                                                    >
+                                                                        <span style={{ fontSize: '0.75rem', width: 18, textAlign: 'center' }}>{cat.icon || '📁'}</span>
+                                                                        <span style={{ flex: 1 }}>{cat.name}</span>
+                                                                        {activeConv?.topicCategory?.id === cat.id && <Check size={12} style={{ color: '#22c55e' }} />}
+                                                                    </button>
+                                                                ))
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Ürünler (case'den) */}
+                                            {(() => {
+                                                try {
+                                                    let rawProducts = activeCaseInfo?.products;
+                                                    if (!rawProducts && allCases?.length > 0 && activeCaseInfo?.caseId) {
+                                                        const matchCase = allCases.find(ac => ac.id === activeCaseInfo.caseId);
+                                                        rawProducts = matchCase?.products;
+                                                    }
+                                                    if (!rawProducts && allCases?.length > 0) {
+                                                        rawProducts = allCases[0]?.products;
+                                                    }
+                                                    const prods = typeof rawProducts === 'string'
+                                                        ? JSON.parse(rawProducts || '[]')
+                                                        : rawProducts || [];
+                                                    if (prods.length === 0) return null;
+                                                    return prods.map((p, i) => (
+                                                        <span key={'p' + i} style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                            padding: '2px 8px', borderRadius: 6, height: 22,
+                                                            background: '#fef3c7', color: '#92400e',
+                                                            border: '1px solid #fde68a',
+                                                            fontSize: '0.6rem', fontWeight: 600, whiteSpace: 'nowrap'
+                                                        }}>
+                                                            📦 {p.name}
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    const caseId = activeCaseInfo?.caseId;
+                                                                    if (!caseId) return;
+                                                                    try {
+                                                                        const newProducts = prods.filter(pp => pp.productId !== p.productId);
+                                                                        await caseAPI.update(currentWorkspace.id, caseId, { products: JSON.stringify(newProducts) });
+                                                                        setActiveCaseInfo(prev => ({ ...prev, products: JSON.stringify(newProducts) }));
+                                                                        window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                    } catch (err) { console.error('Ürün silme hatası:', err); }
+                                                                }}
+                                                                style={{
+                                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                                    color: '#92400e', padding: 0, display: 'flex', alignItems: 'center',
+                                                                    opacity: 0.5, transition: 'opacity 0.15s'
+                                                                }}
+                                                                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                                                                onMouseLeave={e => { e.currentTarget.style.opacity = '0.5'; }}
+                                                            >
+                                                                <X size={10} />
+                                                            </button>
+                                                        </span>
+                                                    ));
+                                                } catch { return null; }
+                                            })()}
+
+                                            {/* Ürün ekle butonu */}
+                                            <div style={{ position: 'relative', flexShrink: 0 }} ref={productBtnRef}>
+                                                <button
+                                                    onClick={() => {
+                                                        if (productBtnRef.current) {
+                                                            const rect = productBtnRef.current.getBoundingClientRect();
+                                                            setProductDropdownPos({ top: rect.bottom + 4, left: rect.left });
+                                                        }
+                                                        setProductDropdownOpen(v => !v);
+                                                        setProductSearchText('');
+                                                    }}
+                                                    style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 2,
+                                                        padding: '2px 8px', borderRadius: 6, height: 22,
+                                                        background: '#f8fafc', color: '#94a3b8',
+                                                        border: '1px dashed #cbd5e1',
+                                                        fontSize: '0.58rem', fontWeight: 600,
+                                                        cursor: 'pointer', transition: 'all 0.15s',
+                                                        whiteSpace: 'nowrap'
+                                                    }}
+                                                    onMouseEnter={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#94a3b8'; }}
+                                                >
+                                                    <Plus size={10} /> Ürün
+                                                </button>
+
+                                                {productDropdownOpen && ReactDOM.createPortal(
+                                                    <>
+                                                    <div style={{ position: 'fixed', inset: 0, zIndex: 999 }} onClick={() => setProductDropdownOpen(false)} />
+                                                    <div style={{
+                                                        position: 'fixed',
+                                                        top: productDropdownPos.top,
+                                                        left: Math.min(productDropdownPos.left, window.innerWidth - 260),
+                                                        zIndex: 9999,
+                                                        background: '#fff',
+                                                        border: '1px solid #e5e7eb',
+                                                        borderRadius: 12,
+                                                        boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                                                        width: 250,
+                                                        maxHeight: 280,
+                                                        overflow: 'hidden'
+                                                    }}>
+                                                        <div style={{ padding: '8px' }}>
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Ürün ara..."
+                                                                value={productSearchText}
+                                                                onChange={e => setProductSearchText(e.target.value)}
+                                                                autoFocus
+                                                                style={{
+                                                                    width: '100%', padding: '6px 10px',
+                                                                    border: '1px solid #e5e7eb', borderRadius: 8,
+                                                                    fontSize: '0.75rem', outline: 'none',
+                                                                    boxSizing: 'border-box'
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                                                            {catalogProducts
+                                                                .filter(p => !productSearchText || p.name?.toLowerCase().includes(productSearchText.toLowerCase()))
+                                                                .slice(0, 20)
+                                                                .map(product => {
+                                                                    let existingProducts = [];
+                                                                    try {
+                                                                        const rawP = activeCaseInfo?.products;
+                                                                        existingProducts = typeof rawP === 'string' ? JSON.parse(rawP || '[]') : rawP || [];
+                                                                    } catch {}
+                                                                    const isAdded = existingProducts.some(ep => ep.productId === product.id);
+                                                                    return (
+                                                                        <div
+                                                                            key={product.id}
+                                                                            onClick={async () => {
+                                                                                if (isAdded) return;
+                                                                                const caseId = activeCaseInfo?.caseId;
+                                                                                if (!caseId) return;
+                                                                                try {
+                                                                                    const newProducts = [...existingProducts, {
+                                                                                        productId: product.id,
+                                                                                        name: product.name,
+                                                                                        groupName: product.groupName || null,
+                                                                                        quantity: 1,
+                                                                                        unitPrice: product.price || 0
+                                                                                    }];
+                                                                                    await caseAPI.update(currentWorkspace.id, caseId, { products: JSON.stringify(newProducts) });
+                                                                                    setActiveCaseInfo(prev => ({ ...prev, products: JSON.stringify(newProducts) }));
+                                                                                    window.dispatchEvent(new CustomEvent('case_cards_refresh'));
+                                                                                    setProductSearchText('');
+                                                                                } catch (err) { console.error('Ürün ekleme hatası:', err); }
+                                                                            }}
+                                                                            style={{
+                                                                                padding: '6px 10px', cursor: isAdded ? 'default' : 'pointer',
+                                                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                                                fontSize: '0.72rem', color: isAdded ? '#94a3b8' : '#374151',
+                                                                                background: 'transparent',
+                                                                                transition: 'background 0.1s',
+                                                                                opacity: isAdded ? 0.5 : 1
+                                                                            }}
+                                                                            onMouseEnter={e => { if (!isAdded) e.currentTarget.style.background = '#f8fafc'; }}
+                                                                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                                        >
+                                                                            <span style={{ fontSize: '0.7rem' }}>📦</span>
+                                                                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.name}</span>
+                                                                            {product.price > 0 && <span style={{ fontSize: '0.6rem', color: '#94a3b8', flexShrink: 0 }}>₺{product.price}</span>}
+                                                                            {isAdded && <Check size={12} style={{ color: '#22c55e', flexShrink: 0 }} />}
+                                                                        </div>
+                                                                    );
+                                                                })
+                                                            }
+                                                            {catalogProducts.filter(p => !productSearchText || p.name?.toLowerCase().includes(productSearchText.toLowerCase())).length === 0 && (
+                                                                <div style={{ padding: '12px', textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                                    Ürün bulunamadı
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    </>,
+                                                    document.body
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Hidden CaseCards for data sync */}
+                                        {profile?.id && currentWorkspace?.id && (
+                                            <div style={{ display: 'none' }}>
+                                                <CaseCards
+                                                    workspaceId={currentWorkspace.id}
+                                                    contactId={profile.id}
+                                                    members={members}
+                                                    teams={teams}
+                                                    conversationId={conversationId}
+                                                    activeCaseId={conversationData?.caseId || null}
+                                                    inline={true}
+                                                    showOnly="actions"
+                                                    onCaseInfo={(info) => setActiveCaseInfo(prev => {
+                                                        if (!prev || prev.caseId !== info.caseId) {
+                                                            return { ...info, _savedTitle: info.title };
+                                                        }
+                                                        if (prev._userEdited) {
+                                                            return { ...prev, ...info, title: prev.title, _userEdited: true };
+                                                        }
+                                                        return { ...prev, ...info, _savedTitle: info.title };
+                                                    })}
+                                                    onCasesLoaded={(cases) => setAllCases(cases)}
+                                                />
+                                            </div>
+                                        )}
+
                                         </>
                                         )}
                                     </div>
 
-
-                                    {isExpanded && (
-                                        <>
-                                    {/* Hidden CaseCards for data sync (actions removed from view) */}
-                                    {profile?.id && currentWorkspace?.id && (
-                                        <div style={{ display: 'none' }}>
-                                            <CaseCards
-                                                workspaceId={currentWorkspace.id}
-                                                contactId={profile.id}
-                                                members={members}
-                                                teams={teams}
-                                                conversationId={conversationId}
-                                                activeCaseId={conversationData?.caseId || null}
-                                                inline={true}
-                                                showOnly="actions"
-                                                onCaseInfo={(info) => setActiveCaseInfo(prev => {
-                                                    if (!prev || prev.caseId !== info.caseId) {
-                                                        return { ...info, _savedTitle: info.title };
-                                                    }
-                                                    if (prev._userEdited) {
-                                                        return { ...prev, ...info, title: prev.title, _userEdited: true };
-                                                    }
-                                                    return { ...prev, ...info, _savedTitle: info.title };
-                                                })}
-                                                onCasesLoaded={(cases) => setAllCases(cases)}
-                                            />
-                                        </div>
-                                    )}
-
-
-                                    {/* ── Atama / Üstlen Widget ── */}
-                                    {!readOnly && (() => {
-                                        // Case'den oku (source of truth), yoksa conversation'a fallback
-                                        let effectiveTeamId = null;
-                                        let effectiveAgentId = null;
-                                        let effectiveAgentObj = null;
-
-                                        if (activeCaseInfo?.assignedTeamId || activeCaseInfo?.assignedToId) {
-                                            // Case'den
-                                            effectiveTeamId = activeCaseInfo.assignedTeamId;
-                                            effectiveAgentId = activeCaseInfo.assignedToId;
-                                            effectiveAgentObj = activeCaseInfo.assignedTo;
-                                        } else {
-                                            // Conversation fallback
-                                            let convTeamIds = [];
-                                            try { convTeamIds = JSON.parse(activeConv?.teamIds || '[]'); } catch {}
-                                            effectiveTeamId = convTeamIds[0] || activeConv?.assignedTeamId || null;
-                                            effectiveAgentId = activeConv?.assignedToId || null;
-                                            effectiveAgentObj = activeConv?.assignedTo || null;
-                                        }
-
-                                        const assignedTeam = effectiveTeamId ? teams.find(t => t.id === effectiveTeamId) : null;
-                                        const assignedAgent = effectiveAgentObj || (effectiveAgentId ? (members.find(m => (m.user?.id || m.userId) === effectiveAgentId) || members.find(m => m.id === effectiveAgentId)) : null);
-
-                                        let pillLabel = 'Atanmadı';
-                                        const agentName = assignedAgent?.user?.name || assignedAgent?.name;
-                                        if (assignedTeam && agentName) pillLabel = `${agentName} / ${assignedTeam.name}`;
-                                        else if (assignedTeam) pillLabel = `${assignedTeam.name} (Havuz)`;
-                                        else if (agentName) pillLabel = agentName;
-
-                                        const canClaim = !effectiveAgentId || effectiveAgentId !== (currentUserId || user?.id);
-
-                                        return (
-                                            <div style={{ display: 'flex', gap: '4px', padding: '4px 12px 4px', alignItems: 'center' }}>
-                                                <div ref={assignMegaMenuRef} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                                                    <button
-                                                        className="stage-mega-trigger"
-                                                        style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', height: 32, padding: '0 10px', borderRadius: 10, background: '#f8fafc', border: '1px solid #e2e8f0', fontWeight: 600, color: '#374151', cursor: 'pointer' }}
-                                                        onClick={e => {
-                                                            const rect = e.currentTarget.getBoundingClientRect();
-                                                            setAssignMegaMenuPos({ top: rect.bottom + 6, left: Math.max(10, rect.right - 342) });
-                                                            setAssignSelectedTeam(assignedTeam?.id || null);
-                                                            setAssignMegaMenuOpenCaseId(prev => prev === c.id ? null : c.id);
-                                                        }}
-                                                        title="Atama"
-                                                    >
-                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
-                                                            <Users size={11} style={{ flexShrink: 0 }} />
-                                                            {pillLabel}
-                                                        </span>
-                                                        <ChevronDown size={10} style={{ flexShrink: 0 }} />
-                                                    </button>
-
-                                                    {(assignMegaMenuOpenCaseId === c.id) && (() => {
-                                                        const menuTeam = assignSelectedTeam ? teams.find(t => t.id === assignSelectedTeam) : null;
-                                                        const teamMembers = menuTeam?.members || [];
-                                                        const ruleLabel = { POOL: 'Havuza At', ROUND_ROBIN: 'Sırayla At', LEAST_BUSY: 'En Az Yüklüye', ONLINE_ROUND_ROBIN: "Online'a Sırayla" };
-
-                                                        return ReactDOM.createPortal(
-                                                            <>
-                                                                <div
-                                                                    style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
-                                                                    onClick={() => setAssignMegaMenuOpenCaseId(null)}
-                                                                />
-                                                                <div ref={assignMenuDivRef}
-                                                                    style={{
-                                                                        position: 'fixed',
-                                                                        top: assignMegaMenuPos.top,
-                                                                        left: assignMegaMenuPos.left,
-                                                                        zIndex: 99999,
-                                                                        background: '#fff',
-                                                                        border: '1px solid #e2e8f0',
-                                                                        borderRadius: 12,
-                                                                        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-                                                                        padding: 8,
-                                                                        display: 'flex',
-                                                                        flexDirection: 'row',
-                                                                        gap: 4,
-                                                                        minWidth: 340,
-                                                                    }}
-                                                                >
-                                                                    {/* Sol panel: Takımlar */}
-                                                                    <div style={{ minWidth: 160, borderRight: '1px solid #f1f5f9', paddingRight: 8 }}>
-                                                                        <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Takım</div>
-                                                                        <button
-                                                                            onClick={() => handleAssign(null, null)}
-                                                                            style={{
-                                                                                display: 'block', width: '100%', textAlign: 'left',
-                                                                                padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                                                                                fontSize: '0.72rem', fontWeight: 500,
-                                                                                background: !assignSelectedTeam ? '#f0fdf4' : 'transparent',
-                                                                                color: !assignSelectedTeam ? '#166534' : '#374151'
-                                                                            }}
-                                                                        >
-                                                                            🚫 Atamasız
-                                                                        </button>
-                                                                        {teams.map(t => (
-                                                                            <button
-                                                                                key={t.id}
-                                                                                onClick={() => setAssignSelectedTeam(t.id)}
-                                                                                style={{
-                                                                                    display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
-                                                                                    padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                                                                                    fontSize: '0.72rem', fontWeight: 500,
-                                                                                    background: assignSelectedTeam === t.id ? '#eff6ff' : 'transparent',
-                                                                                    color: assignSelectedTeam === t.id ? '#1d4ed8' : '#374151'
-                                                                                }}
-                                                                            >
-                                                                                <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color || '#3b82f6', flexShrink: 0 }} />
-                                                                                {t.name}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-
-                                                                    {/* Sağ panel: Üyeler */}
-                                                                    {assignSelectedTeam && (
-                                                                        <div style={{ minWidth: 180 }}>
-                                                                            <div style={{ fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', padding: '4px 6px 6px' }}>Atama</div>
-                                                                            <button
-                                                                                onClick={() => handleAssign(assignSelectedTeam, null)}
-                                                                                style={{
-                                                                                    display: 'block', width: '100%', textAlign: 'left',
-                                                                                    padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                                                                                    fontSize: '0.72rem', fontWeight: 600,
-                                                                                    background: '#fef3c7', color: '#92400e', marginBottom: 4
-                                                                                }}
-                                                                            >
-                                                                                {ruleLabel[menuTeam?.assignmentRule] || 'Takıma At'} →
-                                                                            </button>
-                                                                            <div style={{ fontSize: '0.6rem', color: '#94a3b8', padding: '2px 6px 4px' }}>veya kişiye ata:</div>
-                                                                            {teamMembers.length === 0 && (
-                                                                                <div style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '4px 8px' }}>Üye yok</div>
-                                                                            )}
-                                                                            {teamMembers.map(m => {
-                                                                                const uid = m.user?.id || m.id;
-                                                                                const uname = m.user?.name || m.name || '?';
-                                                                                const uOnline = m.user?.isOnline || false;
-                                                                                return (
-                                                                                    <button
-                                                                                        key={uid}
-                                                                                        onClick={() => handleAssign(assignSelectedTeam, uid)}
-                                                                                        style={{
-                                                                                            display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
-                                                                                            padding: '5px 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                                                                                            fontSize: '0.72rem',
-                                                                                            background: activeConv?.assignedToId === uid ? '#eff6ff' : 'transparent',
-                                                                                            color: activeConv?.assignedToId === uid ? '#1d4ed8' : '#374151'
-                                                                                        }}
-                                                                                    >
-                                                                                        <span style={{
-                                                                                            width: 20, height: 20, borderRadius: '50%', background: '#3b82f6',
-                                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                                                            fontSize: '0.6rem', color: '#fff', fontWeight: 700, flexShrink: 0
-                                                                                        }}>
-                                                                                            {uname[0].toUpperCase()}
-                                                                                        </span>
-                                                                                        {uname}
-                                                                                        {uOnline && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', marginLeft: 'auto' }} />}
-                                                                                        {activeConv?.assignedToId === uid && <span style={{ marginLeft: 'auto', fontSize: '0.65rem' }}>✓</span>}
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </>,
-                                                            document.body
-                                                        );
-                                                    })()}
-                                                </div>
-
-                                                {/* Üstlen butonu */}
-                                                {canClaim && (
-                                                    <button
-                                                        className="assign-claim-btn"
-                                                        onClick={handleClaim}
-                                                        disabled={takingOver}
-                                                        title="Bu konuşmayı üstlen"
-                                                        style={{ flexShrink: 0, whiteSpace: 'nowrap', minWidth: 0, justifyContent: 'center', fontSize: '0.55rem', padding: '0 5px', height: 22, borderRadius: 11 }}
-                                                    >
-                                                        <UserCheck size={9} />
-                                                        Üstlen
-                                                    </button>
-                                                )}
-                                            </div>
-                                        );
-                                    })()}
-                                        </>
-                                    )}
 
                                     {/* ── Timeline Steps ── */}
                                     {isExpanded && !timelineLoading && (caseTimeline.length > 0 || profile?.createdAt) && (() => {
@@ -3665,9 +3977,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                         </div>
                                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
                                                                             {(item.dueDate || item.date) && (
-                                                                                <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
-                                                                                    {new Date(item.dueDate || item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                                                </span>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem' }}>
+                                                                                    {/* Planlandı vs Yapıldı gösterimi */}
+                                                                                    {item.dueDate && (
+                                                                                        <span style={{ fontSize: 11, color: '#64748b' }}>
+                                                                                            📅 {new Date(item.dueDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {item.completedAt && item.dueDate && (
+                                                                                        <span style={{ fontSize: 11, color: '#10b981', marginLeft: 6 }}>
+                                                                                            ✅ {new Date(item.completedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {!item.dueDate && item.date && (
+                                                                                        <span style={{ fontSize: '0.68rem', color: '#6b7280' }}>
+                                                                                            {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             )}
                                                                             {item.result && (
                                                                                 <span style={{ fontSize: '0.68rem', color: '#475569', fontStyle: 'italic' }}>— {item.result.substring(0, 60)}{item.result.length > 60 ? '…' : ''}</span>
@@ -3763,9 +4090,24 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                                                 )}
                                                             </div>
                                                             {(item.dueDate || item.date) && (
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', color: '#6b7280', marginBottom: '4px' }}>
-                                                                    <Clock size={12} />
-                                                                    {new Date(item.dueDate || item.date).toLocaleString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.76rem', marginBottom: '4px' }}>
+                                                                    {/* Planlandı vs Yapıldı gösterimi */}
+                                                                    {item.dueDate && (
+                                                                        <span style={{ fontSize: 11, color: '#64748b' }}>
+                                                                            📅 {new Date(item.dueDate).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    )}
+                                                                    {item.completedAt && item.dueDate && (
+                                                                        <span style={{ fontSize: 11, color: '#10b981', marginLeft: 6 }}>
+                                                                            ✅ {new Date(item.completedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    )}
+                                                                    {!item.dueDate && item.date && (
+                                                                        <span style={{ fontSize: 11, color: '#64748b' }}>
+                                                                            <Clock size={12} style={{ display: 'inline', marginRight: 4 }} />
+                                                                            {new Date(item.date).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                             {item.assignedToName && (
@@ -4161,6 +4503,59 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
                                         </div>
                                         <div className="reminder-modal-footer">
                                             <button className="reminder-btn-cancel" onClick={() => { setShowActivityModal(false); setEditingActivityId(null); }}>İptal</button>
+                                            {/* Şimdi AI ile Ara butonu — yalnızca CALL düzenlemesinde ve telefon varsa */}
+                                            {editingActivityId && (activityForm.type === 'CALL' || activityForm.type === 'NOTE') && profile?.phone && (
+                                                <button
+                                                    className="reminder-btn-save"
+                                                    style={{
+                                                        background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                                                        border: 'none',
+                                                        color: '#fff',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 6,
+                                                        fontSize: '0.82rem',
+                                                        fontWeight: 700,
+                                                        padding: '8px 16px',
+                                                        borderRadius: 8,
+                                                        cursor: activitySaving ? 'not-allowed' : 'pointer',
+                                                        opacity: activitySaving ? 0.6 : 1
+                                                    }}
+                                                    disabled={activitySaving}
+                                                    onClick={async () => {
+                                                        if (!confirm('🤖 AI ile hemen arama başlatılacak. Devam edilsin mi?')) return;
+                                                        setActivitySaving(true);
+                                                        try {
+                                                            // Önce atama bilgisini kaydet
+                                                            if (editingActivityId) {
+                                                                const rawId = editingActivityId.replace(/^act_/, '');
+                                                                await activityAPI.updateActivity(rawId, {
+                                                                    assignedToId: activityForm.assignedToId || null,
+                                                                    teamId: activityForm.teamId || null,
+                                                                    ...(activityForm.caseId ? { caseId: activityForm.caseId } : {})
+                                                                });
+                                                            }
+                                                            // Sonra AI arama başlat
+                                                            await retellAPI.makeCall(currentWorkspace.id, {
+                                                                toNumber: profile.phone,
+                                                                contactId: profile.id,
+                                                                contactName: profile.name || profile.firstName || 'Müşteri',
+                                                                conversationId: conversationId || null
+                                                            });
+                                                            setShowActivityModal(false);
+                                                            setEditingActivityId(null);
+                                                            fetchTimeline(profile.id);
+                                                            alert('✅ AI arama başlatıldı!');
+                                                        } catch (err) {
+                                                            alert(err.response?.data?.error || 'AI arama başlatılamadı.');
+                                                        } finally {
+                                                            setActivitySaving(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    🤖 Şimdi AI ile Ara
+                                                </button>
+                                            )}
                                             <button className="reminder-btn-save" onClick={handleSaveActivity} disabled={activitySaving}>
                                                 {activitySaving ? <Loader className="spin" size={16} /> : <Save size={16} />}
                                                 Kaydet

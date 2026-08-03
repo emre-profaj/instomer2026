@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI } from '../../services/api';
+import { contactAPI, automationAPI, emailAPI, retellAPI, funnelAPI, teamAPI, workspaceAPI, conversationAPI, leadsAPI, aiAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
 import * as XLSX from 'xlsx';
 import {
@@ -53,7 +53,8 @@ import {
     KanbanSquare,
     List,
     FileText,
-    ShoppingCart
+    ShoppingCart,
+    Sparkles
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -248,6 +249,12 @@ const Customers = () => {
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState(null);
     const [importFileName, setImportFileName] = useState('');
+    // AI Column Mapping state
+    const [importRawHeaders, setImportRawHeaders] = useState([]);
+    const [importRawRows, setImportRawRows] = useState([]);
+    const [importColMapping, setImportColMapping] = useState(null); // { name: 1, phone: 2, ... }
+    const [detectingColumns, setDetectingColumns] = useState(false);
+    const [mappingConfirmed, setMappingConfirmed] = useState(false);
 
     // Tag filter state
     const [tagFilter, setTagFilter] = useState(sf.tagFilter || 'ALL');
@@ -434,11 +441,9 @@ const Customers = () => {
                 hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
             });
             let filtered = response.data.contacts;
-            if (scoreFilter !== 'ALL') {
-                const ranges = { COLD: [0,20], COOL: [21,40], WARM: [41,60], HOT: [61,80], FIRE: [81,100] };
-                const [min, max] = ranges[scoreFilter];
-                filtered = filtered.filter(c => (c.leadScore || 0) >= min && (c.leadScore || 0) <= max);
-            }
+            if (scoreFilter === 'hot') filtered = filtered.filter(c => (c.leadScore || 0) >= 70);
+            if (scoreFilter === 'warm') filtered = filtered.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70);
+            if (scoreFilter === 'cold') filtered = filtered.filter(c => (c.leadScore || 0) < 40);
             setContacts(filtered);
             setTotal(response.data.total);
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
@@ -583,11 +588,9 @@ const Customers = () => {
                 hasSales: quickFilterMode === 'SALES' ? 'true' : undefined,
             });
             let filtered = response.data.contacts;
-            if (scoreFilter !== 'ALL') {
-                const ranges = { COLD: [0,20], COOL: [21,40], WARM: [41,60], HOT: [61,80], FIRE: [81,100] };
-                const [min, max] = ranges[scoreFilter];
-                filtered = filtered.filter(c => (c.leadScore || 0) >= min && (c.leadScore || 0) <= max);
-            }
+            if (scoreFilter === 'hot') filtered = filtered.filter(c => (c.leadScore || 0) >= 70);
+            if (scoreFilter === 'warm') filtered = filtered.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70);
+            if (scoreFilter === 'cold') filtered = filtered.filter(c => (c.leadScore || 0) < 40);
             setContacts(filtered);
             setTotal(response.data.total);
             if (response.data.quickStats) setQuickStats(response.data.quickStats);
@@ -1222,59 +1225,113 @@ const Customers = () => {
         }
     };
 
-    // Excel Import handler
+    // Excel Import handler — AI-Powered Column Detection
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
         setImportFileName(file.name);
         setImportResult(null);
+        setImportData([]);
+        setImportColMapping(null);
+        setMappingConfirmed(false);
 
         const reader = new FileReader();
-        reader.onload = (evt) => {
+        reader.onload = async (evt) => {
             try {
                 const workbook = XLSX.read(evt.target.result, { type: 'binary' });
                 const sheetName = workbook.SheetNames[0];
                 const sheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-                // Smart column detection from headers
-                const headers = (jsonData[0] || []).map(h => (h || '').toString().toLowerCase().trim());
+                const headers = (jsonData[0] || []).map(h => (h || '').toString().trim());
+                const dataRows = jsonData.slice(1).filter(r => r && r.length > 0);
+                const sampleRows = dataRows.slice(0, 5).map(r =>
+                    r.map(c => (c || '').toString().trim())
+                );
 
-                const findCol = (keywords) => headers.findIndex(h => keywords.some(k => h.includes(k)));
+                setImportRawHeaders(headers);
+                setImportRawRows(dataRows);
 
-                const nameCol = findCol(['adı', 'ad', 'isim', 'name', 'müşteri', 'kişi']);
-                const phoneCol = findCol(['telefon', 'phone', 'cep', 'gsm', 'tel', 'numara', 'whatsapp']);
-                const emailCol = findCol(['e-posta', 'email', 'mail', 'eposta']);
-                const notesCol = findCol(['not', 'note', 'açıklama', 'mesaj']);
-                const dateCol = findCol(['tarih', 'date', 'oluşturulma', 'created']);
-
-                // Fallback: if no phone found in main headers, check for secondary phone columns
-                const phone2Col = phoneCol >= 0 ? findCol(['ikinci', 'whatsapp', '2. telefon'].filter(k => headers.indexOf(k) !== phoneCol)) : -1;
-
-                console.log(`📊 [Import] Column mapping: name=${nameCol}, phone=${phoneCol}, email=${emailCol}, notes=${notesCol}, date=${dateCol}`);
-
-                const contacts = [];
-                for (let i = 1; i < jsonData.length; i++) {
-                    const row = jsonData[i];
-                    if (!row || row.length === 0) continue;
-                    const name = nameCol >= 0 ? (row[nameCol] || '').toString().trim() : '';
-                    const phone = phoneCol >= 0 ? (row[phoneCol] || '').toString().trim() : '';
-                    const email = emailCol >= 0 ? (row[emailCol] || '').toString().trim() : '';
-                    const notes = notesCol >= 0 ? (row[notesCol] || '').toString().trim() : '';
-                    const createdAt = dateCol >= 0 ? (row[dateCol] || '').toString().trim() : '';
-                    // Use phone2 (e.g. WhatsApp number) as fallback if primary phone is empty
-                    const finalPhone = phone || (phone2Col >= 0 ? (row[phone2Col] || '').toString().trim() : '');
-                    if (name || finalPhone || email) {
-                        contacts.push({ name, phone: finalPhone, email, notes, createdAt });
+                // 🧠 AI Column Detection
+                setDetectingColumns(true);
+                try {
+                    const res = await aiAPI.detectImportColumns(currentWorkspace.id, headers, sampleRows);
+                    const aiMapping = res.data?.mapping || {};
+                    
+                    // Convert AI mapping to our format: { name: colIndex, phone: colIndex, ... }
+                    const colMap = {};
+                    for (const [colIdx, fieldType] of Object.entries(aiMapping)) {
+                        if (fieldType !== 'skip') {
+                            colMap[fieldType] = parseInt(colIdx);
+                        }
                     }
+                    setImportColMapping(colMap);
+                    console.log('🧠 [AI Import] Column mapping:', colMap);
+
+                    // Auto-apply mapping to build preview
+                    applyMappingToData(colMap, dataRows);
+                } catch (aiErr) {
+                    console.warn('⚠️ [AI Import] AI detection failed, using keyword fallback:', aiErr.message);
+                    // Fallback to keyword-based detection
+                    const lowerHeaders = headers.map(h => h.toLowerCase());
+                    const findCol = (keywords) => lowerHeaders.findIndex(h => keywords.some(k => h.includes(k)));
+                    const fallbackMap = {};
+                    const nameCol = findCol(['adı', 'ad', 'isim', 'name', 'müşteri', 'kişi']);
+                    const phoneCol = findCol(['telefon', 'phone', 'cep', 'gsm', 'tel', 'numara']);
+                    const emailCol = findCol(['e-posta', 'email', 'mail', 'eposta']);
+                    const notesCol = findCol(['not', 'note', 'açıklama', 'mesaj']);
+                    if (nameCol >= 0) fallbackMap.name = nameCol;
+                    if (phoneCol >= 0) fallbackMap.phone = phoneCol;
+                    if (emailCol >= 0) fallbackMap.email = emailCol;
+                    if (notesCol >= 0) fallbackMap.notes = notesCol;
+                    setImportColMapping(fallbackMap);
+                    applyMappingToData(fallbackMap, dataRows);
+                } finally {
+                    setDetectingColumns(false);
                 }
-                setImportData(contacts);
             } catch (err) {
                 console.error('Excel parse error:', err);
                 setImportData([]);
+                setDetectingColumns(false);
             }
         };
         reader.readAsBinaryString(file);
+    };
+
+    // Apply column mapping to raw data and build importData
+    const applyMappingToData = (colMap, dataRows) => {
+        const rows = dataRows || importRawRows;
+        const contacts = [];
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length === 0) continue;
+            const name = colMap.name >= 0 ? (row[colMap.name] || '').toString().trim() : '';
+            const phone = colMap.phone >= 0 ? (row[colMap.phone] || '').toString().trim() : '';
+            const email = colMap.email >= 0 ? (row[colMap.email] || '').toString().trim() : '';
+            const notes = colMap.notes >= 0 ? (row[colMap.notes] || '').toString().trim() : '';
+            const createdAt = colMap.date >= 0 ? (row[colMap.date] || '').toString().trim() : '';
+            if (name || phone || email) {
+                contacts.push({ name, phone, email, notes, createdAt });
+            }
+        }
+        setImportData(contacts);
+    };
+
+    // Handle user changing a column mapping dropdown
+    const handleMappingChange = (fieldType, colIndex) => {
+        const newMapping = { ...importColMapping };
+        // Remove old assignment of this field
+        delete newMapping[fieldType];
+        // Remove any other field assigned to this column
+        for (const [key, val] of Object.entries(newMapping)) {
+            if (val === colIndex) delete newMapping[key];
+        }
+        // Assign
+        if (colIndex >= 0) {
+            newMapping[fieldType] = colIndex;
+        }
+        setImportColMapping(newMapping);
+        applyMappingToData(newMapping);
     };
 
     const handleImportExcel = async () => {
@@ -1751,6 +1808,43 @@ const Customers = () => {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Skor Filtresi */}
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <button 
+                                    onClick={() => setScoreFilter(scoreFilter === 'hot' ? 'ALL' : 'hot')}
+                                    style={{
+                                        padding: '4px 12px', borderRadius: 16, fontSize: 12, border: 'none', cursor: 'pointer',
+                                        background: scoreFilter === 'hot' ? '#fee2e2' : '#f8fafc',
+                                        color: scoreFilter === 'hot' ? '#ef4444' : '#64748b',
+                                        fontWeight: scoreFilter === 'hot' ? 600 : 400
+                                    }}
+                                >
+                                    🔥 Sıcak ({contacts.filter(c => (c.leadScore || 0) >= 70).length})
+                                </button>
+                                <button 
+                                    onClick={() => setScoreFilter(scoreFilter === 'warm' ? 'ALL' : 'warm')}
+                                    style={{
+                                        padding: '4px 12px', borderRadius: 16, fontSize: 12, border: 'none', cursor: 'pointer',
+                                        background: scoreFilter === 'warm' ? '#fef3c7' : '#f8fafc',
+                                        color: scoreFilter === 'warm' ? '#f59e0b' : '#64748b',
+                                        fontWeight: scoreFilter === 'warm' ? 600 : 400
+                                    }}
+                                >
+                                    🟡 Ilık ({contacts.filter(c => (c.leadScore || 0) >= 40 && (c.leadScore || 0) < 70).length})
+                                </button>
+                                <button 
+                                    onClick={() => setScoreFilter(scoreFilter === 'cold' ? 'ALL' : 'cold')}
+                                    style={{
+                                        padding: '4px 12px', borderRadius: 16, fontSize: 12, border: 'none', cursor: 'pointer',
+                                        background: scoreFilter === 'cold' ? '#dbeafe' : '#f8fafc',
+                                        color: scoreFilter === 'cold' ? '#3b82f6' : '#64748b',
+                                        fontWeight: scoreFilter === 'cold' ? 600 : 400
+                                    }}
+                                >
+                                    ❄️ Soğuk ({contacts.filter(c => (c.leadScore || 0) < 40).length})
+                                </button>
                             </div>
                         </div>
                         {/* Date Preset Buttons — horizontal inline */}
@@ -3313,19 +3407,21 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                     </div>
                 )}
 
-                {/* Excel Import Modal */}
+                {/* Excel Import Modal — AI-Powered */}
                 {showImportModal && (
                     <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-                        <div className="modal-content modal-lg" onClick={e => e.stopPropagation()}>
+                        <div className="modal-content modal-lg" onClick={e => e.stopPropagation()} style={{ maxWidth: '720px' }}>
                             <div className="modal-header">
-                                <h2><Upload size={20} /> Excel İçe Aktar</h2>
+                                <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Sparkles size={20} style={{ color: '#a855f7' }} /> AI Excel İçe Aktar
+                                </h2>
                                 <button className="btn-icon" onClick={() => setShowImportModal(false)}>
                                     <X size={18} />
                                 </button>
                             </div>
                             <div className="modal-body">
                                 <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '16px' }}>
-                                    Excel dosyanızdaki <strong>B</strong> (Ad Soyad), <strong>C</strong> (Cep Tel), <strong>D</strong> (Email), <strong>E</strong> (Notlar) sütunları aktarılacaktır.
+                                    Herhangi bir Excel dosyası yükleyin — <strong>AI sütunları otomatik algılar</strong>. İsterseniz eşleştirmeyi düzenleyebilirsiniz.
                                 </p>
 
                                 {/* Tag Input */}
@@ -3357,8 +3453,82 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                     )}
                                 </div>
 
+                                {/* AI Detecting Animation */}
+                                {detectingColumns && (
+                                    <div style={{
+                                        padding: '20px',
+                                        textAlign: 'center',
+                                        background: 'linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%)',
+                                        borderRadius: '12px',
+                                        border: '1px solid #e9d5ff',
+                                        marginBottom: '16px'
+                                    }}>
+                                        <Loader size={24} className="spin" style={{ color: '#a855f7', marginBottom: '8px' }} />
+                                        <p style={{ fontSize: '14px', fontWeight: 600, color: '#7c3aed', margin: '8px 0 4px' }}>
+                                            🧠 AI Sütunları Algılıyor...
+                                        </p>
+                                        <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>
+                                            Excel dosyanız analiz ediliyor, sütun eşleştirmesi yapılıyor
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* AI Column Mapping */}
+                                {importColMapping && !detectingColumns && importRawHeaders.length > 0 && (
+                                    <div style={{
+                                        marginBottom: '16px',
+                                        padding: '14px',
+                                        background: 'linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%)',
+                                        borderRadius: '12px',
+                                        border: '1px solid #e9d5ff'
+                                    }}>
+                                        <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Sparkles size={14} /> AI Sütun Eşleştirmesi
+                                        </h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                            {[
+                                                { field: 'name', label: '👤 Ad Soyad', required: true },
+                                                { field: 'phone', label: '📱 Telefon', required: true },
+                                                { field: 'email', label: '📧 E-posta', required: false },
+                                                { field: 'notes', label: '📝 Notlar', required: false },
+                                                { field: 'date', label: '📅 Tarih', required: false },
+                                                { field: 'company', label: '🏢 Şirket', required: false },
+                                                { field: 'city', label: '📍 Şehir', required: false },
+                                            ].map(({ field, label, required }) => (
+                                                <div key={field} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <span style={{ fontSize: '12px', fontWeight: 500, minWidth: '90px', color: '#334155' }}>
+                                                        {label}{required && <span style={{ color: '#ef4444' }}>*</span>}
+                                                    </span>
+                                                    <select
+                                                        className="form-input"
+                                                        style={{
+                                                            fontSize: '12px',
+                                                            padding: '4px 8px',
+                                                            flex: 1,
+                                                            borderColor: importColMapping[field] !== undefined ? '#a855f7' : '#e2e8f0',
+                                                            background: importColMapping[field] !== undefined ? '#faf5ff' : '#fff'
+                                                        }}
+                                                        value={importColMapping[field] !== undefined ? importColMapping[field] : -1}
+                                                        onChange={(e) => handleMappingChange(field, parseInt(e.target.value))}
+                                                    >
+                                                        <option value={-1}>— Seçilmedi —</option>
+                                                        {importRawHeaders.map((header, idx) => (
+                                                            <option key={idx} value={idx}>
+                                                                {header || `Sütun ${idx + 1}`}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
+                                            ✨ AI otomatik algıladı. Gerekirse dropdown'lardan değiştirebilirsiniz.
+                                        </p>
+                                    </div>
+                                )}
+
                                 {/* Preview */}
-                                {importData.length > 0 && (
+                                {importData.length > 0 && !detectingColumns && (
                                     <div style={{ marginBottom: '16px' }}>
                                         <h4 style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#334155' }}>Önizleme ({importData.length} kişi)</h4>
                                         <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
@@ -3416,7 +3586,7 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                 <button
                                     className="btn-primary"
                                     onClick={handleImportExcel}
-                                    disabled={importing || importData.length === 0 || !importTag.trim()}
+                                    disabled={importing || importData.length === 0 || !importTag.trim() || detectingColumns}
                                     style={{ background: '#16a34a' }}
                                 >
                                     {importing ? (

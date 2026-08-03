@@ -410,8 +410,59 @@
 .cal-activity-filters-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
     flex-wrap: wrap;
+}
+
+.cal-type-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.cal-type-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1.5px solid #e2e8f0;
+    background: #fff;
+    color: #64748b;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.cal-type-btn:hover {
+    border-color: var(--type-color, #3b82f6);
+    color: var(--type-color, #3b82f6);
+    background: color-mix(in srgb, var(--type-color, #3b82f6) 6%, #fff);
+}
+
+.cal-type-btn.active {
+    border-color: var(--type-color, #3b82f6);
+    background: color-mix(in srgb, var(--type-color, #3b82f6) 10%, #fff);
+    color: var(--type-color, #3b82f6);
+    font-weight: 600;
+}
+
+.cal-type-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--type-color, #3b82f6);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 1;
 }
 
 /* Satır 3: view switcher solda (takvim hizası), tarih nav sağda */

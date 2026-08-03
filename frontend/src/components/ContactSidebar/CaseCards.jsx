@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { caseAPI, funnelAPI, conversationAPI, contactAPI } from '../../services/api';
+import { caseAPI, funnelAPI, conversationAPI, contactAPI, productAPI } from '../../services/api';
 import { Briefcase, Plus, ChevronDown, ChevronRight, User, Users, Loader, X, Check, AlertTriangle } from 'lucide-react';
 
 const STATUS_LABELS = {
@@ -61,6 +61,11 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const [showCaseSwitch, setShowCaseSwitch] = useState(false);
     const [categories, setCategories] = useState([]);
 
+    // Ürün Seçici State
+    const [catalogProducts, setCatalogProducts] = useState([]);
+    const [showProductPicker, setShowProductPicker] = useState(null);
+    const [productSearch, setProductSearch] = useState('');
+
     // Mega menü state (inline mode) — must be before any early returns to respect Rules of Hooks
     const [megaOpen, setMegaOpen] = useState(false);
     const [megaPos, setMegaPos] = useState({ top: 0, left: 0 });
@@ -70,7 +75,7 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
     const loadCategories = async () => {
         try {
             const { default: api } = await import('../../services/api');
-            const res = await api.get(`/workspaces/${workspaceId}/topic-categories`);
+            const res = await api.get(`/topic-categories/${workspaceId}`);
             setCategories(res.data || []);
         } catch (e) { /* opsiyonel */ }
     };
@@ -82,6 +87,24 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
             loadCategories();
         }
     }, [workspaceId, contactId]);
+
+    useEffect(() => {
+        if (workspaceId) {
+            productAPI.getAll(workspaceId, { limit: 500 }).then(res => {
+                setCatalogProducts(res.data?.products || res.data || []);
+            }).catch(() => {});
+        }
+    }, [workspaceId]);
+
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (!e.target.closest('.product-search-wrapper')) {
+                setShowProductPicker(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Listen for funnel stage updates from Inbox header or socket to keep local case state in sync
     useEffect(() => {
@@ -194,12 +217,17 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                         caseId: linkedCase.id,
                         caseNumber: linkedCase?.caseNumber,
                         title: linkedCase.title,
+                        type: linkedCase.type || null,
                         status: linkedCase.status,
                         funnelType: linkedCase.funnelType,
                         funnelStageId: linkedCase.funnelStageId,
                         assignedToId: linkedCase.assignedToId,
                         assignedTeamId: linkedCase.assignedTeamId,
                         assignedTo: linkedCase.assignedTo || null,
+                        leadScore: linkedCase.leadScore ?? null,
+                        leadTemperature: linkedCase.leadTemperature ?? null,
+                        products: linkedCase.products || null,
+                        categoryId: linkedCase.categoryId || null,
                         closingStages,
                         openStages,
                     });
@@ -425,6 +453,38 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
         }
     };
 
+    const handleAddProduct = async (caseItem, product) => {
+        try {
+            const currentProducts = typeof caseItem.products === 'string' ? JSON.parse(caseItem.products || '[]') : caseItem.products || [];
+            if (currentProducts.some(p => p.productId === product.id)) return;
+            const newProducts = [...currentProducts, {
+                productId: product.id,
+                name: product.name,
+                groupName: product.groupName || null,
+                quantity: 1,
+                unitPrice: product.price || 0
+            }];
+            await caseAPI.update(workspaceId, caseItem.id, { products: JSON.stringify(newProducts) });
+            setCases(prev => prev.map(c => c.id === caseItem.id ? { ...c, products: JSON.stringify(newProducts) } : c));
+            if (onCaseInfo) onCaseInfo({ caseId: caseItem.id, products: JSON.stringify(newProducts) });
+            setProductSearch('');
+        } catch (err) {
+            console.error('Ürün ekleme hatası:', err);
+        }
+    };
+
+    const handleRemoveProduct = async (caseItem, productId) => {
+        try {
+            const currentProducts = typeof caseItem.products === 'string' ? JSON.parse(caseItem.products || '[]') : caseItem.products || [];
+            const newProducts = currentProducts.filter(p => p.productId !== productId);
+            await caseAPI.update(workspaceId, caseItem.id, { products: JSON.stringify(newProducts) });
+            setCases(prev => prev.map(c => c.id === caseItem.id ? { ...c, products: JSON.stringify(newProducts) } : c));
+            if (onCaseInfo) onCaseInfo({ caseId: caseItem.id, products: JSON.stringify(newProducts) });
+        } catch (err) {
+            console.error('Ürün silme hatası:', err);
+        }
+    };
+
     const handleSplitCase = async (caseIdToSplit = null) => {
         const targetCaseId = typeof caseIdToSplit === 'string' ? caseIdToSplit : displayCase?.id;
         if (!targetCaseId || !conversationId) return;
@@ -446,16 +506,21 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                 caseNumber: displayCase.caseNumber,
                 caseId: displayCase.id,
                 title: displayCase.title,
+                type: displayCase.type || null,
                 status: displayCase.status,
                 funnelType: displayCase.funnelType || null,
                 funnelStageId: displayCase.funnelStageId || null,
                 assignedToId: displayCase.assignedToId || null,
                 assignedTeamId: displayCase.assignedTeamId || null,
                 assignedTo: displayCase.assignedTo || null,
-                team: displayCase.team || null
+                team: displayCase.team || null,
+                leadScore: displayCase.leadScore ?? null,
+                leadTemperature: displayCase.leadTemperature ?? null,
+                products: displayCase.products || null,
+                categoryId: displayCase.categoryId || null,
             });
         }
-    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title, displayCase?.assignedToId, displayCase?.assignedTeamId, displayCase?.funnelType, displayCase?.funnelStageId]);
+    }, [inline, displayCase?.caseNumber, displayCase?.id, displayCase?.status, displayCase?.title, displayCase?.assignedToId, displayCase?.assignedTeamId, displayCase?.funnelType, displayCase?.funnelStageId, displayCase?.products]);
 
     if (loading) {
         if (showOnly === 'actions') return null;
@@ -623,7 +688,105 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                     </div>
                 )}
 
-                {/* ── Yeni Case / Case Değiştir ── */}
+                {/* ── Kategori + Ürün ── */}
+                {!showOnly && displayCase && (
+                    <div style={{ padding: '4px 0 0' }}>
+                        {/* Kategori Seçimi — sadece tam modda (header'da zaten badge olarak var) */}
+                        {!showOnly && (
+                            <select
+                                value={displayCase.categoryId || ''}
+                                onChange={async (e) => {
+                                    try {
+                                        await caseAPI.update(workspaceId, displayCase.id, { categoryId: e.target.value || null });
+                                        fetchCases();
+                                    } catch (err) { console.error('Kategori güncelleme hatası:', err); }
+                                }}
+                                style={{
+                                    width: '100%', padding: '4px 8px', fontSize: '0.72rem',
+                                    border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer',
+                                    color: displayCase.categoryId ? '#3730a3' : '#9ca3af',
+                                    background: displayCase.categoryId ? '#eef2ff' : '#fff', outline: 'none',
+                                    marginBottom: 4
+                                }}
+                            >
+                                <option value="">📁 Kategori seç...</option>
+                                {categories.map(cat => (
+                                    <option key={cat.id} value={cat.id}>{cat.icon || '📁'} {cat.name}</option>
+                                ))}
+                            </select>
+                        )}
+
+                        {/* Ürün Ekleme */}
+                        <div style={{ position: 'relative' }}>
+                            <label style={{ fontSize: 10, color: '#64748b', fontWeight: 500 }}>📦 Ürünler</label>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 3 }}>
+                                {(() => {
+                                    try {
+                                        const prods = typeof displayCase.products === 'string' ? JSON.parse(displayCase.products || '[]') : displayCase.products || [];
+                                        return prods.map((p, i) => (
+                                            <span key={i} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                padding: '1px 6px', borderRadius: 10, background: '#fef3c7',
+                                                border: '1px solid #fde68a', fontSize: '0.68rem', fontWeight: 600, color: '#92400e'
+                                            }}>
+                                                📦 {p.name}
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleRemoveProduct(displayCase, p.productId); }}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', fontSize: 12, padding: 0, lineHeight: 1 }}
+                                                >×</button>
+                                            </span>
+                                        ));
+                                    } catch { return null; }
+                                })()}
+                            </div>
+                            <div className="product-search-wrapper">
+                                <input
+                                    type="text"
+                                    placeholder="Ürün ara ve ekle..."
+                                    value={showProductPicker === displayCase.id ? productSearch : ''}
+                                    onFocus={() => setShowProductPicker(displayCase.id)}
+                                    onChange={e => { setShowProductPicker(displayCase.id); setProductSearch(e.target.value); }}
+                                    style={{
+                                        width: '100%', padding: '3px 8px', fontSize: '0.72rem',
+                                        border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none'
+                                    }}
+                                />
+                                {showProductPicker === displayCase.id && productSearch.length > 0 && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, right: 0,
+                                        background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: 160, overflowY: 'auto'
+                                    }}>
+                                        {catalogProducts
+                                            .filter(cp => cp.name.toLowerCase().includes(productSearch.toLowerCase()))
+                                            .slice(0, 6)
+                                            .map(cp => (
+                                                <div
+                                                    key={cp.id}
+                                                    onClick={() => handleAddProduct(displayCase, cp)}
+                                                    style={{
+                                                        padding: '5px 10px', cursor: 'pointer', fontSize: '0.72rem',
+                                                        display: 'flex', justifyContent: 'space-between',
+                                                        borderBottom: '1px solid #f1f5f9'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                                                >
+                                                    <span>{cp.name}</span>
+                                                    {cp.price > 0 && <span style={{ color: '#16a34a', fontWeight: 600 }}>{cp.price.toLocaleString('tr-TR')} ₺</span>}
+                                                </div>
+                                            ))
+                                        }
+                                        {catalogProducts.filter(cp => cp.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                                            <div style={{ padding: '8px 10px', fontSize: '0.72rem', color: '#9ca3af' }}>Ürün bulunamadı</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {(!showOnly || showOnly === 'actions') && (
                     <>
                         <div style={{ padding: showOnly === 'actions' ? '0' : '0 12px 4px', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -901,25 +1064,28 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                 <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 6 }}>
                                     {c.title}
                                 </div>
-                                {c.categoryId && (
-                                    <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500, display: 'inline-block', marginBottom: '4px' }}>
-                                        📁 {c.category?.name || c.categoryId}
-                                    </span>
+                                {/* Kategori Badge */}
+                                {c.categoryId && categories?.find(cat => cat.id === c.categoryId) && (
+                                    <div style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                        padding: '2px 6px', borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb',
+                                        fontSize: '10px', fontWeight: 600, color: '#4b5563', whiteSpace: 'nowrap',
+                                        marginBottom: 6, marginRight: 4
+                                    }}>
+                                        <span>📁</span> {categories.find(cat => cat.id === c.categoryId)?.name}
+                                    </div>
                                 )}
-                                {c.products && (() => {
-                                    try {
-                                        const parsed = typeof c.products === 'string' ? JSON.parse(c.products) : c.products;
-                                        return parsed.length > 0 ? (
-                                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                                                {parsed.map((p, i) => (
-                                                    <span key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '8px', fontSize: '10px' }}>
-                                                        🏷️ {p.name} {p.quantity > 1 ? `×${p.quantity}` : ''}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        ) : null;
-                                    } catch (e) { return null; }
-                                })()}
+                                {/* Ürün Badgeleri */}
+                                {c.products && (typeof c.products === 'string' ? JSON.parse(c.products) : c.products).map((p, i) => (
+                                    <div key={i} style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                        padding: '2px 6px', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                        fontSize: '10px', fontWeight: 600, color: '#166534', whiteSpace: 'nowrap',
+                                        marginBottom: 6, marginRight: 4
+                                    }}>
+                                        <span>📦</span> {p.name}
+                                    </div>
+                                ))}
 
                                 {/* Skorlama (Case bazlı) */}
                                 {(c.leadScore != null && c.leadScore > 0) && (
@@ -1009,6 +1175,61 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         <option key={cat.id} value={cat.id}>{cat.icon || '📁'} {cat.name}</option>
                                     ))}
                                 </select>
+
+                                {/* Ürün Seçimi */}
+                                <div className="case-product-picker">
+                                    <label style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>🏷️ Ürünler</label>
+                                    {/* Mevcut ürünler */}
+                                    <div className="case-product-tags">
+                                        {(() => {
+                                            try {
+                                                const prods = typeof c.products === 'string' ? JSON.parse(c.products || '[]') : c.products || [];
+                                                return prods.map((p, i) => (
+                                                    <span key={i} className="case-product-tag">
+                                                        {p.name}
+                                                        {p.quantity > 1 && <span className="product-qty">×{p.quantity}</span>}
+                                                        <button
+                                                            className="product-remove-btn"
+                                                            onClick={(e) => { e.stopPropagation(); handleRemoveProduct(c, p.productId); }}
+                                                        >×</button>
+                                                    </span>
+                                                ));
+                                            } catch { return null; }
+                                        })()}
+                                    </div>
+                                    {/* Ürün arama/ekleme */}
+                                    <div className="product-search-wrapper">
+                                        <input
+                                            type="text"
+                                            placeholder="Ürün ara ve ekle..."
+                                            value={showProductPicker === c.id ? productSearch : ''}
+                                            onFocus={() => setShowProductPicker(c.id)}
+                                            onChange={e => { setShowProductPicker(c.id); setProductSearch(e.target.value); }}
+                                            className="product-search-input"
+                                        />
+                                        {showProductPicker === c.id && productSearch.length > 0 && (
+                                            <div className="product-search-dropdown">
+                                                {catalogProducts
+                                                    .filter(cp => cp.name.toLowerCase().includes(productSearch.toLowerCase()))
+                                                    .slice(0, 8)
+                                                    .map(cp => (
+                                                        <div
+                                                            key={cp.id}
+                                                            className="product-search-item"
+                                                            onClick={() => handleAddProduct(c, cp)}
+                                                        >
+                                                            <span>{cp.name}</span>
+                                                            {cp.price > 0 && <span className="product-price">{cp.price.toLocaleString('tr-TR')} ₺</span>}
+                                                        </div>
+                                                    ))
+                                                }
+                                                {catalogProducts.filter(cp => cp.name.toLowerCase().includes(productSearch.toLowerCase())).length === 0 && (
+                                                    <div className="product-search-empty">Ürün bulunamadı</div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
 
                                 {/* Assignment */}
                                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
@@ -1133,25 +1354,28 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#1f2937', lineHeight: 1.3, marginBottom: 6 }}>
                                         {c.title}
                                     </div>
-                                    {c.categoryId && (
-                                        <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 500, display: 'inline-block', marginBottom: '4px' }}>
-                                            📁 {c.category?.name || c.categoryId}
-                                        </span>
+                                    {/* Kategori Badge */}
+                                    {c.categoryId && categories?.find(cat => cat.id === c.categoryId) && (
+                                        <div style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '2px 6px', borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb',
+                                            fontSize: '10px', fontWeight: 600, color: '#4b5563', whiteSpace: 'nowrap',
+                                            marginBottom: 6, marginRight: 4
+                                        }}>
+                                            <span>📁</span> {categories.find(cat => cat.id === c.categoryId)?.name}
+                                        </div>
                                     )}
-                                    {c.products && (() => {
-                                        try {
-                                            const parsed = typeof c.products === 'string' ? JSON.parse(c.products) : c.products;
-                                            return parsed.length > 0 ? (
-                                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                                                    {parsed.map((p, i) => (
-                                                        <span key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '8px', fontSize: '10px' }}>
-                                                            🏷️ {p.name} {p.quantity > 1 ? `×${p.quantity}` : ''}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            ) : null;
-                                        } catch (e) { return null; }
-                                    })()}
+                                    {/* Ürün Badgeleri */}
+                                    {c.products && (typeof c.products === 'string' ? JSON.parse(c.products) : c.products).map((p, i) => (
+                                        <div key={i} style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '2px 6px', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                            fontSize: '10px', fontWeight: 600, color: '#166534', whiteSpace: 'nowrap',
+                                            marginBottom: 6, marginRight: 4
+                                        }}>
+                                            <span>📦</span> {p.name}
+                                        </div>
+                                    ))}
                                     <div style={{ display: 'flex', gap: 8, fontSize: '0.7rem', color: '#9ca3af' }}>
                                         <span>💬 {c._conversationCount || 0}</span>
                                         <span>📋 {c._totalActivityCount || 0}</span>
@@ -1209,25 +1433,28 @@ const CaseCards = ({ workspaceId, contactId, members = [], teams = [], conversat
                                         <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
                                             {c.title}
                                         </div>
-                                        {c.categoryId && (
-                                            <span style={{ background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 500, display: 'inline-block', marginTop: '2px', marginBottom: '2px' }}>
-                                                📁 {c.category?.name || c.categoryId}
-                                            </span>
+                                        {/* Kategori Badge */}
+                                        {c.categoryId && categories?.find(cat => cat.id === c.categoryId) && (
+                                            <div style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '2px 6px', borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb',
+                                                fontSize: '10px', fontWeight: 600, color: '#4b5563', whiteSpace: 'nowrap',
+                                                marginBottom: 4, marginRight: 4
+                                            }}>
+                                                <span>📁</span> {categories.find(cat => cat.id === c.categoryId)?.name}
+                                            </div>
                                         )}
-                                        {c.products && (() => {
-                                            try {
-                                                const parsed = typeof c.products === 'string' ? JSON.parse(c.products) : c.products;
-                                                return parsed.length > 0 ? (
-                                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '2px', marginBottom: '4px' }}>
-                                                        {parsed.map((p, i) => (
-                                                            <span key={i} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '8px', fontSize: '9px' }}>
-                                                                🏷️ {p.name} {p.quantity > 1 ? `×${p.quantity}` : ''}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                ) : null;
-                                            } catch (e) { return null; }
-                                        })()}
+                                        {/* Ürün Badgeleri */}
+                                        {c.products && (typeof c.products === 'string' ? JSON.parse(c.products) : c.products).map((p, i) => (
+                                            <div key={i} style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                padding: '2px 6px', borderRadius: 12, background: '#f0fdf4', border: '1px solid #bbf7d0',
+                                                fontSize: '10px', fontWeight: 600, color: '#166534', whiteSpace: 'nowrap',
+                                                marginBottom: 4, marginRight: 4
+                                            }}>
+                                                <span>📦</span> {p.name}
+                                            </div>
+                                        ))}
                                     </div>
                                 );
                             })}

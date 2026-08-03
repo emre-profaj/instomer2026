@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import './Inbox.css';
 import PipelineView from '../Pipeline/Pipeline';
 import NewConversationModal from '../../components/NewConversationModal/NewConversationModal';
+import OnlineUsersWidget from '../../components/OnlineUsersWidget/OnlineUsersWidget';
 
 // Inbox item types
 const INBOX_TYPES = {
@@ -392,6 +393,10 @@ const Inbox = () => {
         } catch {
             return false;
         }
+    });
+
+    const [showArchived, setShowArchived] = useState(() => {
+        try { return localStorage.getItem('inbox_showArchived') === 'true'; } catch { return false; }
     }); // Hide resolved conversations by default
     
     // Persist showResolved to localStorage when it changes
@@ -402,6 +407,10 @@ const Inbox = () => {
             console.error('Error saving showResolved state', e);
         }
     }, [showResolved]);
+
+    useEffect(() => {
+        localStorage.setItem('inbox_showArchived', showArchived);
+    }, [showArchived]);
     // Resolved post IDs (Facebook/Instagram comments) — persisted in localStorage per workspace
     const [resolvedPostIds, setResolvedPostIds] = useState(() => {
         try {
@@ -670,6 +679,10 @@ const Inbox = () => {
     const [messages, setMessages] = useState([]);
     const [selectedActivityPopup, setSelectedActivityPopup] = useState(null);
     const [newMessage, setNewMessage] = useState('');
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+    const [mentionCursorPos, setMentionCursorPos] = useState(0);
+    const [ownershipWarning, setOwnershipWarning] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const emojiPickerRef = useRef(null);
     const textareaRef = useRef(null);
@@ -802,14 +815,12 @@ const Inbox = () => {
 
     // Load inbox items after pages are loaded
     useEffect(() => {
-        if (currentWorkspace) {
-            // Reset to page 1 when filters change
-            setCurrentPage(1);
-            currentPageRef.current = 1;
-            loadInboxItems();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter]);
+        if (!currentWorkspace) return;
+        // Reset to page 1 when filters change
+        setCurrentPage(1);
+        currentPageRef.current = 1;
+        loadInboxItems(true);
+    }, [currentWorkspace, activeFilters, activeChannel, assignmentTab, pages, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, statusFilter, funnelFilter, agentFilter, quickFilter]);
 
     // Debounced server-side search: when searchTerm changes, reload from API after 400ms
     useEffect(() => {
@@ -1551,6 +1562,10 @@ const Inbox = () => {
         // Listen for backend-created activities (auto call planning, etc.)
         // Updates the inbox badge icons in real-time without page refresh
         socket.on('activity_created', (data) => {
+            const labels = { CALL: '📞 Arama notu', TASK: '✅ Görev', MEETING: '🤝 Görüşme', NOTE: '📝 Not', REMINDER: '🔔 Hatırlatıcı' };
+            const label = labels[data.type] || '📋 Aktivite';
+            console.log(`🔔 [Aktivite] ${label}: ${data.createdByName} → ${data.contactName}`);
+
             const { contactId, type, status, dueDate } = data;
             if (!contactId || !type) return;
             setPlannedActivityMap(prev => {
@@ -1569,6 +1584,26 @@ const Inbox = () => {
                     [contactId]: [...existing, { type, status: status || 'PLANNED', dueDate }]
                 };
             });
+        });
+
+        socket.on('activity_assigned', (data) => {
+            if (data.assignedToId === user?.id) {
+                console.log(`🔔 [Atama] ${data.assignedByName} size görev atadı: ${data.contactName}`);
+            }
+        });
+
+        socket.on('activity_completed', (data) => {
+            console.log(`✅ [Tamamlandı] ${data.completedByName}: ${data.type}`);
+        });
+
+        socket.on('conversation_archived', (data) => {
+            if (!showArchived) {
+                loadInboxItems(false);
+            }
+        });
+
+        socket.on('conversation_unarchived', (data) => {
+            loadInboxItems(false);
         });
 
         // Listen for contact deletion - remove from inbox immediately (no page refresh needed)
@@ -1595,9 +1630,14 @@ const Inbox = () => {
         });
 
         return () => {
+            socket.off('activity_created');
+            socket.off('activity_assigned');
+            socket.off('activity_completed');
+            socket.off('conversation_archived');
+            socket.off('conversation_unarchived');
             socket.disconnect();
         };
-    }, [currentWorkspace, user]); // NOTE: selectedItem/selectedItemType are accessed via refs to prevent socket reconnection on every conversation change
+    }, [currentWorkspace, user, showArchived]); // NOTE: selectedItem/selectedItemType are accessed via refs to prevent socket reconnection on every conversation change
 
     // Keep selectedItem/selectedItemType refs in sync with state (must be after the socket useEffect)
     useEffect(() => {
@@ -1730,6 +1770,9 @@ const Inbox = () => {
                     if (!showResolved && conv.status === 'RESOLVED') {
                         return false;
                     }
+                    if (!showArchived && conv.isArchived) {
+                        return false;
+                    }
 
                     // Check if "only unassigned" filter applies
                     const isAssigned = (conv.assignedToId && conv.assignedToId !== '') || conv.assignedTo;
@@ -1839,7 +1882,7 @@ const Inbox = () => {
         } finally {
             setLoadingMore(false);
         }
-    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter]);
+    }, [hasMore, loadingMore, currentPage, assignmentTab, currentWorkspace, activeFilters, allFilters, showResolved, showArchived, showOnlyAssigned, showAssignedToMe, activeChannel, statusFilter, funnelFilter, agentFilter, quickFilter]);
 
     // Mark all conversations as read
     const handleMarkAllAsRead = async () => {
@@ -2839,6 +2882,26 @@ const Inbox = () => {
     };
 
     // Konuşmayı üstlenme fonksiyonu
+    const handleMessageChange = (e) => {
+        const value = e.target.value;
+        setNewMessage(value);
+        
+        if (isInternalNoteMode) {
+            const cursorPos = e.target.selectionStart;
+            const textBeforeCursor = value.substring(0, cursorPos);
+            const atMatch = textBeforeCursor.match(/@(\w*)$/);
+            if (atMatch) {
+                setMentionQuery(atMatch[1].toLowerCase());
+                setShowMentionDropdown(true);
+                setMentionCursorPos(cursorPos);
+            } else {
+                setShowMentionDropdown(false);
+            }
+        } else {
+            setShowMentionDropdown(false);
+        }
+    };
+
     const handleTakeOver = async () => {
         if (!selectedItem || takingOver) return;
 
@@ -2846,6 +2909,13 @@ const Inbox = () => {
 
         try {
             const response = await conversationAPI.takeOver(currentWorkspace.id, selectedItem.id);
+            if (response.data?.requiresConfirmation) {
+                setOwnershipWarning({
+                    ...response.data,
+                    conversationId: selectedItem.id
+                });
+                return;
+            }
             console.log(`👤 Conversation ${selectedItem.id} taken over by ${user.name}`);
 
             // UI'ı güncelle
@@ -2952,6 +3022,13 @@ const Inbox = () => {
         setTakingOver(true);
         try {
             const res = await conversationAPI.claim(currentWorkspace.id, selectedItem.id);
+            if (res.data?.requiresConfirmation) {
+                setOwnershipWarning({
+                    ...res.data,
+                    conversationId: selectedItem.id
+                });
+                return;
+            }
             const conv = res.data.conversation;
             const assignData = { assignedToId: user.id, assignedTo: { id: user.id, name: user.name } };
             setSelectedItem(prev => ({
@@ -3103,6 +3180,20 @@ const Inbox = () => {
         }
     };
 
+    const handleArchiveConversation = async (conversationId, archive = true) => {
+        try {
+            if (archive) {
+                await conversationAPI.archive(currentWorkspace.id, conversationId);
+            } else {
+                await conversationAPI.unarchive(currentWorkspace.id, conversationId);
+            }
+            loadInboxItems(false);
+            if (typeof setContextMenu === 'function') setContextMenu(null);
+        } catch (error) {
+            console.error('Archive error:', error);
+        }
+    };
+
     const formatTime = (date) => {
         if (!date) return '';
         const d = new Date(date);
@@ -3216,6 +3307,7 @@ const Inbox = () => {
                             >
                                 <RefreshCw size={16} className={loading ? 'spin' : ''} />
                             </button>
+                            <OnlineUsersWidget onlineUsers={Array.from(onlineUsers.values())} />
                             <button
                                 className={`inbox-view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
                                 onClick={() => setViewMode(v => v === 'chat' ? 'pipeline' : 'chat')}
@@ -3337,6 +3429,10 @@ const Inbox = () => {
                                         <label className="fp-toggle-item">
                                             <input type="checkbox" checked={showResolved} onChange={() => setShowResolved(!showResolved)} />
                                             <span>Kapatılanları Göster</span>
+                                        </label>
+                                        <label className="fp-toggle-item" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#64748b' }}>
+                                            <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+                                            <span>Arşivlenenler</span>
                                         </label>
                                         <label className="fp-toggle-item">
                                             <input type="checkbox" checked={showOnlyAssigned} onChange={() => setShowOnlyAssigned(!showOnlyAssigned)} />
@@ -3611,6 +3707,9 @@ const Inbox = () => {
                         if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
                             return false;
                         }
+                        if (!showArchived && item.isArchived) {
+                            return false; // Skip archived conversations
+                        }
                         // Hide assigned conversations if showOnlyAssigned is true (show only unassigned)
                         if (showOnlyAssigned) {
                             const isAssigned = (item.assignedToId && item.assignedToId !== '') || item.assignedTo;
@@ -3642,6 +3741,9 @@ const Inbox = () => {
                                 // Hide resolved conversations unless showResolved is true
                                 if (!showResolved && item.inboxType === INBOX_TYPES.MESSAGE && item.status === 'RESOLVED') {
                                     return false;
+                                }
+                                if (!showArchived && item.isArchived) {
+                                    return false; // Skip archived conversations
                                 }
                                 // Hide assigned conversations if showOnlyAssigned is true (show only unassigned)
                                 if (showOnlyAssigned) {
@@ -3795,6 +3897,7 @@ const Inbox = () => {
                                         <div className="inbox-item-header">
                                             <span className="inbox-item-name">
                                                 {getItemName(item)}
+                                                {item.isArchived && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>📥</span>}
                                             </span>
                                             <div className="inbox-item-header-right">
                                                 {(item.unreadCount || 0) > 0 && (
@@ -4592,6 +4695,13 @@ const Inbox = () => {
                                                             );
                                                         })()}
                                                     </div>
+                                                    <button
+                                                        className="profile-action-btn archive"
+                                                        onClick={() => handleArchiveConversation(selectedItem.id, !selectedItem.isArchived)}
+                                                        title={selectedItem.isArchived ? "Arşivden Çıkar" : "Arşivle"}
+                                                    >
+                                                        {selectedItem.isArchived ? '📤' : '📥'}
+                                                    </button>
                                                     <button
                                                         className="profile-action-btn delete"
                                                         onClick={() => handleDeleteItem(selectedItem)}
@@ -5692,10 +5802,49 @@ const Inbox = () => {
                                                 </div>
                                             )}
                                             <div className="textarea-wrapper">
+                                                {showMentionDropdown && isInternalNoteMode && (
+                                                    <div style={{
+                                                        position: 'absolute', bottom: '100%', left: 0, right: 0,
+                                                        background: 'white', border: '1px solid #e2e8f0', borderRadius: 8,
+                                                        boxShadow: '0 -4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto',
+                                                        zIndex: 100, marginBottom: 4
+                                                    }}>
+                                                        {(members || []).filter(m => {
+                                                            const name = m.user?.name || m.name || '';
+                                                            const email = m.user?.email || m.email || '';
+                                                            return name.toLowerCase().includes(mentionQuery) || email.toLowerCase().includes(mentionQuery);
+                                                        }).slice(0, 5).map(member => {
+                                                            const memberName = member.user?.name || member.name || 'Bilinmiyor';
+                                                            const memberId = member.user?.id || member.userId || member.id;
+                                                            return (
+                                                                <button key={memberId}
+                                                                    onClick={() => {
+                                                                        const before = newMessage.substring(0, mentionCursorPos).replace(/@\w*$/, '');
+                                                                        const after = newMessage.substring(mentionCursorPos);
+                                                                        setNewMessage(`${before}@${memberName} ${after}`);
+                                                                        setShowMentionDropdown(false);
+                                                                    }}
+                                                                    style={{
+                                                                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                                                                        width: '100%', border: 'none', background: 'none', cursor: 'pointer',
+                                                                        fontSize: 13, textAlign: 'left'
+                                                                    }}
+                                                                    onMouseEnter={(e) => e.target.style.background = '#f1f5f9'}
+                                                                    onMouseLeave={(e) => e.target.style.background = 'none'}
+                                                                >
+                                                                    <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#e0e7ff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#4f46e5' }}>
+                                                                        {memberName.charAt(0).toUpperCase()}
+                                                                    </span>
+                                                                    <span>{memberName}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                                 <textarea
                                                     ref={textareaRef}
                                                     value={newMessage}
-                                                    onChange={(e) => setNewMessage(e.target.value)}
+                                                    onChange={handleMessageChange}
                                                     placeholder={isInternalNoteMode ? '📝 Dahili not yazın...' : 'Yanıtınızı yazın...'}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -6551,6 +6700,69 @@ const Inbox = () => {
 
 
             {/* New Conversation Modal */}
+            {ownershipWarning && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', zIndex: 10000
+                }} onClick={() => setOwnershipWarning(null)}>
+                    <div style={{
+                        background: 'white', borderRadius: 16, padding: 24, maxWidth: 440,
+                        width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+                    }} onClick={e => e.stopPropagation()}>
+                        <div style={{ fontSize: 20, marginBottom: 8 }}>⚠️ Bu Kişiyle Zaten İlgileniliyor</div>
+                        <p style={{ color: '#64748b', fontSize: 14, margin: '8px 0 16px' }}>
+                            <strong>{ownershipWarning.activeAgent}</strong> bu kişi için çalışıyor
+                            ({ownershipWarning.openTasks} açık görev, {ownershipWarning.recentNotes} son not)
+                        </p>
+                        
+                        {ownershipWarning.openTaskList?.length > 0 && (
+                            <div style={{ marginBottom: 16 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Açık Görevler:</div>
+                                {ownershipWarning.openTaskList.map(task => (
+                                    <div key={task.id} style={{
+                                        display: 'flex', alignItems: 'center', gap: 8,
+                                        padding: '6px 10px', background: '#f8fafc', borderRadius: 8,
+                                        fontSize: 12, marginBottom: 4
+                                    }}>
+                                        <span>{task.type === 'CALL' ? '📞' : task.type === 'MEETING' ? '🤝' : task.type === 'TASK' ? '✅' : '📋'}</span>
+                                        <span style={{ flex: 1 }}>{task.title || 'Görev'}</span>
+                                        {task.dueDate && <span style={{ color: '#94a3b8' }}>{new Date(task.dueDate).toLocaleDateString('tr-TR')}</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {ownershipWarning.openTasks > 0 && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#eff6ff', borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 16 }}>
+                                <input type="checkbox" id="takeOverTasks" defaultChecked />
+                                Açık görevleri de devral ({ownershipWarning.openTasks} görev)
+                            </label>
+                        )}
+                        
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <button onClick={() => setOwnershipWarning(null)}
+                                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', fontSize: 13 }}>
+                                Vazgeç
+                            </button>
+                            <button onClick={async () => {
+                                const takeOverTasks = document.getElementById('takeOverTasks')?.checked ?? false;
+                                try {
+                                    await conversationAPI.takeOver(currentWorkspace.id, ownershipWarning.conversationId, { force: true, takeOverTasks });
+                                    setOwnershipWarning(null);
+                                    loadInboxItems(false);
+                                } catch (err) {
+                                    console.error('Force take over error:', err);
+                                }
+                            }}
+                                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#f59e0b', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                                Devral
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <NewConversationModal
                 workspaceId={currentWorkspace?.id}
                 isOpen={showNewConversationModal}

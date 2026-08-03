@@ -47,7 +47,8 @@ export const getConversations = async (req, res) => {
             // Direct conversation funnelStageId filter (no fallback to contact)
             ...(funnelStageId && { funnelStageId }),
             // Keep contactStatus check just in case legacy calls use it
-            ...(contactStatus && { contact: { status: contactStatus } })
+            ...(contactStatus && { contact: { status: contactStatus } }),
+            ...(req.query.showArchived !== 'true' && { isArchived: false })
         };
 
         // Server-side search: filter by contact name/email/phone
@@ -560,7 +561,7 @@ export const sendMessage = async (req, res) => {
         }
 
         const { conversationId } = req.params;
-        let { content, cc, bcc } = req.body;
+        let { content, cc, bcc, isInternal, mentionedIds } = req.body;
 
         // Cancel any pending auto-reply and message batch since human is replying
         try {
@@ -633,6 +634,8 @@ export const sendMessage = async (req, res) => {
                 senderId: req.user.id,
                 isFromContact: false,
                 messageType,
+                isInternal: isInternal || false,
+                mentionedIds: mentionedIds || null,
                 status: 'SENT' // Initial status - will be updated to DELIVERED/READ by webhook
             },
             include: {
@@ -647,107 +650,131 @@ export const sendMessage = async (req, res) => {
         });
 
         // Send message via Facebook/Instagram API
-        if (conversation.facebookPage && conversation.contact.facebookId) {
-            try {
-                const isInstagram = !!conversation.instagramBusinessId;
-                console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}`);
-
-                const fbResponse = await axios.post(
-                    `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
-                    {
-                        recipient: { id: String(conversation.contact.facebookId) },
-                        message: { text: content }
-                    },
-                    {
-                        params: {
-                            access_token: conversation.facebookPage.pageAccessToken
-                        }
-                    }
-                );
-
-                // Save Facebook message ID and set status to SENT
-                const fbMessageId = fbResponse.data?.message_id;
-                if (fbMessageId) {
-                    await prisma.message.update({
-                        where: { id: message.id },
-                        data: {
-                            facebookMessageId: fbMessageId,
-                            status: 'SENT'
-                        }
-                    });
-                    console.log(`✅ ${isInstagram ? 'Instagram' : 'Facebook'} message sent, ID: ${fbMessageId}`);
-                }
-            } catch (error) {
-                console.error(`${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} send message error:`, error.response?.data || error.message);
-            }
-        }
-
-        // Send message via WhatsApp API
-        if (conversation.whatsappPhoneNumber && (conversation.contact.phone || conversation.contact.email)) {
-            const targetPhone = conversation.contact.phone;
-            if (targetPhone) {
-                // Sanitize phone number (remove +, spaces, etc.) - Meta expects only digits
-                const sanitizedPhone = targetPhone.replace(/\D/g, '');
-
-                // Use System User Token if available, otherwise use stored token
-                const whatsappToken = process.env.WHATSAPP_SYSTEM_USER_TOKEN || conversation.whatsappPhoneNumber.accessToken;
-
+        if (!isInternal) {
+            if (conversation.facebookPage && conversation.contact.facebookId) {
                 try {
-                    console.log(`📤 Sending WhatsApp message to ${sanitizedPhone} using Waba ${conversation.whatsappPhoneNumber.phoneNumberId}`);
-
-                    const waResponse = await axios.post(
-                        `https://graph.facebook.com/${GRAPH_API_VERSION}/${conversation.whatsappPhoneNumber.phoneNumberId}/messages`,
+                    const isInstagram = !!conversation.instagramBusinessId;
+                    console.log(`📤 Sending ${isInstagram ? 'Instagram' : 'Facebook'} message to ${conversation.contact.facebookId}`);
+    
+                    const fbResponse = await axios.post(
+                        `https://graph.facebook.com/${GRAPH_API_VERSION}/me/messages`,
                         {
-                            messaging_product: 'whatsapp',
-                            to: sanitizedPhone,
-                            type: 'text',
-                            text: { body: content }
+                            recipient: { id: String(conversation.contact.facebookId) },
+                            message: { text: content }
                         },
                         {
-                            headers: {
-                                Authorization: `Bearer ${whatsappToken}`
+                            params: {
+                                access_token: conversation.facebookPage.pageAccessToken
                             }
                         }
                     );
-
-                    console.log('✅ WhatsApp API Success:', waResponse.data);
-
-                    // Get WhatsApp message ID from response
-                    const wamid = waResponse.data?.messages?.[0]?.id;
-
-                    // Update message with WhatsApp ID and status
-                    await prisma.message.update({
-                        where: { id: message.id },
-                        data: {
-                            messageType: 'WHATSAPP',
-                            whatsappMessageId: wamid || null,
-                            status: 'SENT'
-                        }
-                    });
+    
+                    // Save Facebook message ID and set status to SENT
+                    const fbMessageId = fbResponse.data?.message_id;
+                    if (fbMessageId) {
+                        await prisma.message.update({
+                            where: { id: message.id },
+                            data: {
+                                facebookMessageId: fbMessageId,
+                                status: 'SENT'
+                            }
+                        });
+                        console.log(`✅ ${isInstagram ? 'Instagram' : 'Facebook'} message sent, ID: ${fbMessageId}`);
+                    }
                 } catch (error) {
-                    console.error('❌ WhatsApp Send Error Details:', {
-                        data: error.response?.data,
-                        status: error.response?.status,
-                        message: error.message
-                    });
+                    console.error(`${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} send message error:`, error.response?.data || error.message);
                 }
             }
-        }
-
-        // Send message via Email API
-        if (conversation.emailChannelId && conversation.contact.email) {
-            try {
-                const subject = `Re: ${conversation.messages[0]?.emailSubject || 'Hesabınız hakkında'}`;
-                await sendEmailReply(
-                    conversation.emailChannelId,
-                    conversation.contact.email,
-                    subject,
-                    content,
-                    { cc, bcc }
-                );
-                console.log('✅ Email sent successfully');
-            } catch (error) {
-                console.error('❌ Email Send Error:', error.message);
+    
+            // Send message via WhatsApp API
+            if (conversation.whatsappPhoneNumber && (conversation.contact.phone || conversation.contact.email)) {
+                const targetPhone = conversation.contact.phone;
+                if (targetPhone) {
+                    // Sanitize phone number (remove +, spaces, etc.) - Meta expects only digits
+                    const sanitizedPhone = targetPhone.replace(/\D/g, '');
+    
+                    // Use System User Token if available, otherwise use stored token
+                    const whatsappToken = process.env.WHATSAPP_SYSTEM_USER_TOKEN || conversation.whatsappPhoneNumber.accessToken;
+    
+                    try {
+                        console.log(`📤 Sending WhatsApp message to ${sanitizedPhone} using Waba ${conversation.whatsappPhoneNumber.phoneNumberId}`);
+    
+                        const waResponse = await axios.post(
+                            `https://graph.facebook.com/${GRAPH_API_VERSION}/${conversation.whatsappPhoneNumber.phoneNumberId}/messages`,
+                            {
+                                messaging_product: 'whatsapp',
+                                to: sanitizedPhone,
+                                type: 'text',
+                                text: { body: content }
+                            },
+                            {
+                                headers: {
+                                    Authorization: `Bearer ${whatsappToken}`
+                                }
+                            }
+                        );
+    
+                        console.log('✅ WhatsApp API Success:', waResponse.data);
+    
+                        // Get WhatsApp message ID from response
+                        const wamid = waResponse.data?.messages?.[0]?.id;
+    
+                        // Update message with WhatsApp ID and status
+                        await prisma.message.update({
+                            where: { id: message.id },
+                            data: {
+                                messageType: 'WHATSAPP',
+                                whatsappMessageId: wamid || null,
+                                status: 'SENT'
+                            }
+                        });
+                    } catch (error) {
+                        console.error('❌ WhatsApp Send Error Details:', {
+                            data: error.response?.data,
+                            status: error.response?.status,
+                            message: error.message
+                        });
+                    }
+                }
+            }
+    
+            // Send message via Email API
+            if (conversation.emailChannelId && conversation.contact.email) {
+                try {
+                    const subject = `Re: ${conversation.messages[0]?.emailSubject || 'Hesabınız hakkında'}`;
+                    await sendEmailReply(
+                        conversation.emailChannelId,
+                        conversation.contact.email,
+                        subject,
+                        content,
+                        { cc, bcc }
+                    );
+                    console.log('✅ Email sent successfully');
+                } catch (error) {
+                    console.error('❌ Email Send Error:', error.message);
+                }
+            }
+        } else {
+            if (mentionedIds) {
+                try {
+                    const mentionedUserIds = JSON.parse(mentionedIds);
+                    if (Array.isArray(mentionedUserIds) && mentionedUserIds.length > 0) {
+                        const io = req.app.get('io');
+                        if (io) {
+                            mentionedUserIds.forEach(uid => {
+                                io.to(`workspace_${conversation.workspaceId}`).emit('mention_notification', {
+                                    mentionedUserId: uid,
+                                    conversationId,
+                                    senderName: req.user?.name || 'Bilinmeyen',
+                                    preview: (content || '').substring(0, 80),
+                                    contactName: conversation?.contact?.name || ''
+                                });
+                            });
+                        }
+                    }
+                } catch (mentionErr) {
+                    console.error('Mention notification error:', mentionErr);
+                }
             }
         }
 
@@ -1167,11 +1194,79 @@ export const takeOverConversation = async (req, res) => {
 
         // Konuşmayı bul
         const conversation = await prisma.conversation.findFirst({
-            where: { id: conversationId, workspaceId }
+            where: { id: conversationId, workspaceId },
+            include: { contact: true }
         });
 
         if (!conversation) {
             return res.status(404).json({ error: 'Konuşma bulunamadı' });
+        }
+
+        // === Sahiplik Uyarısı ===
+        if (conversation.contactId) {
+            const contactId = conversation.contactId;
+            try {
+                let activeWork = await prisma.contactActivity.findMany({
+                    where: {
+                        contactId,
+                        status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                        createdAt: { gte: new Date(Date.now() - 7 * 86400000) }
+                    },
+                    include: { assignee: { select: { name: true } } }
+                });
+                activeWork = activeWork.filter(t => t.assignedToId && t.assignedToId !== userId).slice(0, 5);
+
+                let recentNotes = await prisma.contactActivity.findMany({
+                    where: {
+                        contactId,
+                        type: { in: ['CALL', 'NOTE'] },
+                        status: 'COMPLETED',
+                        createdAt: { gte: new Date(Date.now() - 3 * 86400000) }
+                    },
+                    include: { assignee: { select: { name: true } }, creator: { select: { name: true } } }
+                });
+                recentNotes = recentNotes.filter(t => t.createdBy && t.createdBy !== userId).slice(0, 3);
+
+                if ((activeWork.length > 0 || recentNotes.length > 0) && !req.body.force) {
+                    return res.json({
+                        requiresConfirmation: true,
+                        activeAgent: activeWork[0]?.assignee?.name || recentNotes[0]?.creator?.name || recentNotes[0]?.assignee?.name,
+                        activeAgentId: activeWork[0]?.assignedToId,
+                        openTasks: activeWork.length,
+                        openTaskList: activeWork.map(t => ({ id: t.id, title: t.title, type: t.type, dueDate: t.dueDate })),
+                        recentNotes: recentNotes.length,
+                        warning: `Bu kişi için ${activeWork[0]?.assignee?.name || 'başka biri'} çalışıyor (${activeWork.length} açık görev, ${recentNotes.length} son not)`
+                    });
+                }
+
+                // force=true → devral
+                if (req.body.force && req.body.takeOverTasks && activeWork.length > 0) {
+                    await prisma.contactActivity.updateMany({
+                        where: { id: { in: activeWork.map(t => t.id) } },
+                        data: {
+                            assignedToId: userId,
+                            assignedById: userId,
+                            assignedByType: 'USER',
+                            assignedAt: new Date()
+                        }
+                    });
+                    console.log(`📋 [Sahiplik] ${activeWork.length} görev ${userId}'ye devredildi`);
+                }
+
+                if (req.body.force && (activeWork.length > 0 || recentNotes.length > 0)) {
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.to(`workspace_${workspaceId}`).emit('contact_taken_over', {
+                            contactName: conversation?.contact?.name,
+                            takenByName: req.user?.name,
+                            previousAgentId: activeWork[0]?.assignedToId,
+                            tasksTakenOver: req.body.takeOverTasks ? activeWork.length : 0
+                        });
+                    }
+                }
+            } catch (ownershipErr) {
+                console.error('Ownership check error:', ownershipErr);
+            }
         }
 
         // Zaten başka birine atanmışsa kontrol et
@@ -1303,6 +1398,8 @@ export const updateConversationStatus = async (req, res) => {
             updateData.resolvedById = null;
         }
 
+        // TODO: Consider using changeFunnelStage() for the funnel/stage cascade part.
+        // Currently kept separate because closing logic has special Case status handling (WON/LOST/closedAt).
         // ── Closing Stage Logic: kapanış aşaması seçildiyse cascade uygula ──
         let closingStage = null;
         // closingStageId bazen doğrudan status string'i olarak gelir (WON/LOST/CLOSED)
@@ -2601,115 +2698,72 @@ export const updateFunnel = async (req, res) => {
             });
         }
 
-        const updateData = {};
-        if (funnelType !== undefined) updateData.funnelType = funnelType || null;
-        if (funnelStageId !== undefined && funnelStageId !== null) {
-            // Accept both UUID and CUID format stage IDs (FunnelStage uses cuid)
-            updateData.funnelStageId = (typeof funnelStageId === 'string' && funnelStageId.length > 5) ? funnelStageId : null;
-        } else if (funnelStageId === null) {
-            updateData.funnelStageId = null;
-        }
+        let conversation = existing;
+        const isClearingFunnel = funnelType === null || funnelType === '';
 
-        // ─── Takım + Kişi Atamasını SENKRON Yap (res.json öncesi) ───
-        if (funnelChanged && !hasValidStageId) {
-            let targetFunnel = null;
-            if (funnelType && funnelType !== '') {
-                try {
-                    targetFunnel = await prisma.funnel.findFirst({
-                        where: { id: funnelType, workspaceId }
+        if (isClearingFunnel) {
+            const updateData = { funnelType: null, funnelStageId: null };
+            // Simple update for clearing funnel
+            if (suggestedTeamId) {
+                updateData.assignedTeamId = suggestedTeamId;
+                updateData.teamIds = JSON.stringify([suggestedTeamId]);
+            }
+            if (!isAlreadyAssigned || confirmAssignmentUpdate === true || !currentUserInNewTeam) {
+                if (suggestedUserId) updateData.assignedToId = suggestedUserId;
+            }
+
+            try {
+                conversation = await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: updateData
+                });
+            } catch (updateErr) {
+                console.warn('⚠️ fallback clearing funnel:', updateErr.message);
+                conversation = await prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { funnelType: null }
+                });
+            }
+        } else {
+            const { changeFunnelStage } = await import('../services/funnelStageManager.service.js');
+            const contactId = existing.contactId || existing.contact?.id;
+            
+            if (funnelType !== undefined || funnelStageId !== undefined) {
+                const targetFunnelId = funnelType !== undefined ? (funnelType || null) : existing.funnelType;
+                const targetStageId = (funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length > 5) ? funnelStageId : existing.funnelStageId;
+                
+                if (targetFunnelId && targetStageId) {
+                    await changeFunnelStage(contactId, workspaceId, targetFunnelId, targetStageId, {
+                        source: 'ui_manual',
+                        isManual: true,
+                        skipGuards: true,
+                        conversationId,
+                        triggeredBy: req.user?.id
                     });
-                } catch {}
-            }
-
-            if (!funnelType || funnelType === '') {
-                // Akış kaldırıldı (Genel'e döndü, funnelType null)
-                // Sadece funnel referansını temizle, takım atamasına dokunma
-                console.log('📂 [FunnelSwitch] Funnel cleared (no funnelType) — keeping team assignments');
-            } else if (targetFunnel) {
-                // Takım atamasını HER ZAMAN güncelle (Genel akış dahil)
-                if (targetFunnel.assignedTeamId) {
-                    updateData.assignedTeamId = targetFunnel.assignedTeamId;
-                    updateData.teamIds = JSON.stringify([targetFunnel.assignedTeamId]);
-                    console.log(`📂 [FunnelSwitch] Funnel-level takım: ${targetFunnel.assignedTeamId} (funnel: "${targetFunnel.name}")`);
-                }
-                // Kişi ataması: confirm true ise, henüz atanmamışsa VEYA mevcut kişi yeni takımda değilse
-                if (!isAlreadyAssigned || confirmAssignmentUpdate === true || !currentUserInNewTeam) {
-                    if (suggestedUserId) {
-                        updateData.assignedToId = suggestedUserId;
-                        if (!currentUserInNewTeam) {
-                            console.log(`🔄 [FunnelSwitch] Mevcut kişi yeni takımda değil → ${suggestedUserId}'ye yeniden atandı`);
-                        }
-                    }
+                    
+                    // Re-fetch conversation for response
+                    conversation = await prisma.conversation.findUnique({
+                        where: { id: conversationId }
+                    });
                 } else {
-                    console.log(`🔒 [FunnelSwitch] Konuşma zaten ${currentAssignedToId}'ye atanmış ve takımda — kişi ataması korunuyor`);
+                    // Fallback for partial updates if needed
+                    const updateData = {};
+                    if (funnelType !== undefined) updateData.funnelType = funnelType || null;
+                    if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
+                    
+                    conversation = await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: updateData
+                    });
                 }
             }
-        } else if (stageChanged || (funnelChanged && hasValidStageId)) {
-            // Stage-level atama — stage takımı veya funnel fallback
-            const newStageRec = await prisma.funnelStage.findUnique({ where: { id: funnelStageId } }).catch(() => null);
-            if (newStageRec) {
-                let effectiveTeamId = newStageRec.assignedTeamId || null;
-                let effectiveUserId = newStageRec.assignedUserId || null;
-
-                if (!effectiveTeamId) {
-                    try {
-                        const parentFunnel = await prisma.funnel.findUnique({
-                            where: { id: newStageRec.funnelId },
-                            select: { assignedTeamId: true, assignedUserId: true }
-                        });
-                        if (parentFunnel) {
-                            effectiveTeamId = parentFunnel.assignedTeamId || null;
-                            if (!effectiveUserId) effectiveUserId = parentFunnel.assignedUserId || null;
-                        }
-                    } catch {}
-                }
-
-                // Takımı HER ZAMAN güncelle
-                if (effectiveTeamId) {
-                    updateData.assignedTeamId = effectiveTeamId;
-                    updateData.teamIds = JSON.stringify([effectiveTeamId]);
-                }
-
-                // Bot atama
-                if (newStageRec.assignedBotId) {
-                    updateData.assignedBotId = newStageRec.assignedBotId;
-                    updateData.botEnabled = true;
-                }
-
-                // Kişi ataması — henüz atanmamışsa, onaylanmışsa VEYA mevcut kişi yeni takımda değilse
-                if (!isAlreadyAssigned || confirmAssignmentUpdate === true || !currentUserInNewTeam) {
-                    if (suggestedUserId) {
-                        updateData.assignedToId = suggestedUserId;
-                        if (!currentUserInNewTeam) {
-                            console.log(`🔄 [StageSwitch] Mevcut kişi yeni takımda değil → ${suggestedUserId}'ye yeniden atandı`);
-                        }
-                    }
-                } else {
-                    console.log(`🔒 [StageSwitch] Konuşma zaten ${currentAssignedToId}'ye atanmış ve takımda — kişi ataması korunuyor`);
-                }
-            }
-        }
-
-        let conversation;
-        try {
-            conversation = await prisma.conversation.update({
-                where: { id: conversationId },
-                data: updateData
-            });
-        } catch (updateErr) {
-            // funnelStageId column may not exist yet — fall back to funnelType only
-            console.warn('⚠️ funnelStageId column not available, falling back:', updateErr.message);
-            conversation = await prisma.conversation.update({
-                where: { id: conversationId },
-                data: { ...(funnelType !== undefined && { funnelType: funnelType || null }) }
-            });
         }
 
         // Atanan kişinin ismini bul (UI için)
         let assignedToName = null;
-        if (updateData.assignedToId) {
+        if (conversation && conversation.assignedToId) {
             try {
-                const u = await prisma.user.findUnique({ where: { id: updateData.assignedToId }, select: { name: true } });
+                const u = await prisma.user.findUnique({ where: { id: conversation.assignedToId }, select: { name: true } });
                 assignedToName = u?.name || null;
             } catch (_) {}
         }
@@ -2723,89 +2777,6 @@ export const updateFunnel = async (req, res) => {
             assignedToName,
             teamIds: conversation.teamIds || '[]'
         });
-
-        // ═══════════════════════════════════════════════════════════
-        // UPWARD CASCADE: Conversation funnelStage → Case → Sibling Conversations
-        // Case = master entity. Conversation'da aşama değiştiğinde Case'i de günceller.
-        // ═══════════════════════════════════════════════════════════
-        if (conversation.caseId && (funnelChanged || stageChanged)) {
-            try {
-                const caseFunnelUpdate = {};
-                if (funnelType !== undefined) caseFunnelUpdate.funnelType = conversation.funnelType;
-                if (conversation.funnelStageId !== undefined) caseFunnelUpdate.funnelStageId = conversation.funnelStageId;
-
-                // ─── Atama cascade: Conversation = Case = aynı sorumlular ───
-                const newAssignedToId = updateData.assignedToId || null;
-                const newAssignedTeamId = updateData.assignedTeamId || null;
-                if (newAssignedToId) caseFunnelUpdate.assignedToId = newAssignedToId;
-                if (newAssignedTeamId) caseFunnelUpdate.assignedTeamId = newAssignedTeamId;
-
-                if (Object.keys(caseFunnelUpdate).length > 0) {
-                    // 1. Case'i güncelle (funnel + atama)
-                    await prisma.case.update({
-                        where: { id: conversation.caseId },
-                        data: caseFunnelUpdate
-                    });
-                    console.log(`🔄 [FunnelCascade] Case ${conversation.caseId} synced:`, caseFunnelUpdate);
-
-                    // 2. Kardeş conversation'ları güncelle (bu conversation hariç)
-                    const siblingUpdate = {};
-                    if (caseFunnelUpdate.funnelType !== undefined) siblingUpdate.funnelType = caseFunnelUpdate.funnelType;
-                    if (caseFunnelUpdate.funnelStageId !== undefined) siblingUpdate.funnelStageId = caseFunnelUpdate.funnelStageId;
-                    if (newAssignedToId) siblingUpdate.assignedToId = newAssignedToId;
-                    if (newAssignedTeamId) {
-                        siblingUpdate.assignedTeamId = newAssignedTeamId;
-                        siblingUpdate.teamIds = JSON.stringify([newAssignedTeamId]);
-                    }
-
-                    if (Object.keys(siblingUpdate).length > 0) {
-                        await prisma.conversation.updateMany({
-                            where: {
-                                caseId: conversation.caseId,
-                                id: { not: conversationId },
-                                status: { not: 'RESOLVED' }
-                            },
-                            data: siblingUpdate
-                        });
-                        console.log(`🔄 [FunnelCascade] Sibling conversations synced:`, siblingUpdate);
-                    }
-
-                    // 3. Açık görevleri (aktiviteleri) yeni kişiye ata
-                    if (newAssignedToId) {
-                        try {
-                            const updatedActivities = await prisma.contactActivity.updateMany({
-                                where: {
-                                    caseId: conversation.caseId,
-                                    status: { in: ['PLANNED', 'IN_PROGRESS'] }
-                                },
-                                data: { assignedToId: newAssignedToId }
-                            });
-                            if (updatedActivities.count > 0) {
-                                console.log(`🔄 [FunnelCascade] ${updatedActivities.count} açık görev ${newAssignedToId}'ye atandı`);
-                            }
-                        } catch (actErr) {
-                            console.error('⚠️ [FunnelCascade] Activity update error:', actErr.message);
-                        }
-                    }
-
-                    // 4. Socket: Case güncellemesini bildir
-                    try {
-                        emitToWorkspace(workspaceId, 'case_updated', {
-                            caseId: conversation.caseId,
-                            changes: caseFunnelUpdate
-                        });
-                        if (newAssignedToId) {
-                            emitToWorkspace(workspaceId, 'case_assignment_updated', {
-                                caseId: conversation.caseId,
-                                assignedToId: newAssignedToId
-                            });
-                        }
-                    } catch (_) {}
-                }
-            } catch (cascadeErr) {
-                console.error('⚠️ [FunnelCascade] Error (non-blocking):', cascadeErr.message);
-            }
-        }
 
         // Emit socket events AFTER response
         try {
@@ -3159,9 +3130,77 @@ export const claimConversation = async (req, res) => {
         const userId = req.user.id;
 
         const conversation = await prisma.conversation.findFirst({
-            where: { id: conversationId, workspaceId }
+            where: { id: conversationId, workspaceId },
+            include: { contact: true }
         });
         if (!conversation) return res.status(404).json({ error: 'Konuşma bulunamadı' });
+
+        // === Sahiplik Uyarısı ===
+        if (conversation.contactId) {
+            const contactId = conversation.contactId;
+            try {
+                let activeWork = await prisma.contactActivity.findMany({
+                    where: {
+                        contactId,
+                        status: { in: ['PLANNED', 'IN_PROGRESS'] },
+                        createdAt: { gte: new Date(Date.now() - 7 * 86400000) }
+                    },
+                    include: { assignee: { select: { name: true } } }
+                });
+                activeWork = activeWork.filter(t => t.assignedToId && t.assignedToId !== userId).slice(0, 5);
+
+                let recentNotes = await prisma.contactActivity.findMany({
+                    where: {
+                        contactId,
+                        type: { in: ['CALL', 'NOTE'] },
+                        status: 'COMPLETED',
+                        createdAt: { gte: new Date(Date.now() - 3 * 86400000) }
+                    },
+                    include: { assignee: { select: { name: true } }, creator: { select: { name: true } } }
+                });
+                recentNotes = recentNotes.filter(t => t.createdBy && t.createdBy !== userId).slice(0, 3);
+
+                if ((activeWork.length > 0 || recentNotes.length > 0) && !req.body.force) {
+                    return res.json({
+                        requiresConfirmation: true,
+                        activeAgent: activeWork[0]?.assignee?.name || recentNotes[0]?.creator?.name || recentNotes[0]?.assignee?.name,
+                        activeAgentId: activeWork[0]?.assignedToId,
+                        openTasks: activeWork.length,
+                        openTaskList: activeWork.map(t => ({ id: t.id, title: t.title, type: t.type, dueDate: t.dueDate })),
+                        recentNotes: recentNotes.length,
+                        warning: `Bu kişi için ${activeWork[0]?.assignee?.name || 'başka biri'} çalışıyor (${activeWork.length} açık görev, ${recentNotes.length} son not)`
+                    });
+                }
+
+                // force=true → devral
+                if (req.body.force && req.body.takeOverTasks && activeWork.length > 0) {
+                    await prisma.contactActivity.updateMany({
+                        where: { id: { in: activeWork.map(t => t.id) } },
+                        data: {
+                            assignedToId: userId,
+                            assignedById: userId,
+                            assignedByType: 'USER',
+                            assignedAt: new Date()
+                        }
+                    });
+                    console.log(`📋 [Sahiplik] ${activeWork.length} görev ${userId}'ye devredildi`);
+                }
+
+                if (req.body.force && (activeWork.length > 0 || recentNotes.length > 0)) {
+                    const io = req.app.get('io');
+                    if (io) {
+                        io.to(`workspace_${workspaceId}`).emit('contact_taken_over', {
+                            contactName: conversation?.contact?.name,
+                            takenByName: req.user?.name,
+                            previousAgentId: activeWork[0]?.assignedToId,
+                            tasksTakenOver: req.body.takeOverTasks ? activeWork.length : 0
+                        });
+                    }
+                }
+            } catch (ownershipErr) {
+                console.error('Ownership check error:', ownershipErr);
+            }
+        }
 
         // Build update data — sadece assignedToId değiştir, teamIds'e dokunma
         const updateData = {
@@ -3593,5 +3632,48 @@ export const getContactGroupedConversations = async (req, res) => {
     } catch (error) {
         console.error('Contact Grouped Error:', error);
         res.status(500).json({ error: 'Gruplu konuşmalar yüklenirken hata oluştu' });
+    }
+};
+
+export const archiveConversation = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const userId = req.user.id;
+        const conversation = await prisma.conversation.findFirst({ where: { id, workspaceId } });
+        if (!conversation) return res.status(404).json({ message: 'Konuşma bulunamadı' });
+
+        const updated = await prisma.conversation.update({
+            where: { id },
+            data: { isArchived: true, archivedAt: new Date(), archivedById: userId }
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(`workspace_${workspaceId}`).emit('conversation_archived', { conversationId: id, archivedById: userId });
+        console.log(`📥 [Archive] Konuşma arşivlendi: ${id}`);
+        res.json({ success: true, conversation: updated });
+    } catch (error) {
+        console.error('Archive conversation error:', error);
+        res.status(500).json({ message: 'Arşivleme hatası' });
+    }
+};
+
+export const unarchiveConversation = async (req, res) => {
+    try {
+        const { workspaceId, id } = req.params;
+        const conversation = await prisma.conversation.findFirst({ where: { id, workspaceId } });
+        if (!conversation) return res.status(404).json({ message: 'Konuşma bulunamadı' });
+
+        const updated = await prisma.conversation.update({
+            where: { id },
+            data: { isArchived: false, archivedAt: null, archivedById: null }
+        });
+
+        const io = req.app.get('io');
+        if (io) io.to(`workspace_${workspaceId}`).emit('conversation_unarchived', { conversationId: id });
+        console.log(`📤 [Unarchive] Konuşma arşivden çıkarıldı: ${id}`);
+        res.json({ success: true, conversation: updated });
+    } catch (error) {
+        console.error('Unarchive conversation error:', error);
+        res.status(500).json({ message: 'Arşivden çıkarma hatası' });
     }
 };

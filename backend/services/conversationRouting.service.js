@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { getIO, emitToWorkspace } from '../socket.js';
+import { changeFunnelStage } from './funnelStageManager.service.js';
 
 
 /**
@@ -50,68 +51,18 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
                 return null;
             }
 
-            const updateData = {
-                funnelType: funnelId,
-                funnelStageId: firstStage.id
-            };
-
-            await prisma.conversation.update({
-                where: { id: conversationId },
-                data: updateData
-            });
-
-            // Contact'ı da güncelle (Customers sayfasında akış/aşama gösterilmesi için)
             if (conv.contactId) {
-                try {
-                    await prisma.contact.update({
-                        where: { id: conv.contactId },
-                        data: { funnelType: funnelId, funnelStageId: firstStage.id }
-                    });
-                } catch (contactErr) {
-                    console.error('⚠️ [AutoFunnel] Contact update error:', contactErr.message);
-                }
+                await changeFunnelStage(conv.contactId, workspaceId, funnelId, firstStage.id, {
+                    source: 'channel_routing',
+                    skipGuards: true,
+                    conversationId
+                });
             }
 
             console.log(`✅ [AutoFunnel] "${defaultFunnel.name}" / "${firstStage.name}" → conversation ${conversationId}`);
         }
 
-        // 2) Akışın takımını OVERRIDE et (her zaman çalışır)
-        const funnel = await prisma.funnel.findUnique({
-            where: { id: funnelId },
-            select: { assignedTeamId: true, name: true }
-        });
-
-        // Aşama seviyesinde takım var mı?
-        let funnelTeamId = null;
-        const currentConv = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { funnelStageId: true }
-        });
-        if (currentConv?.funnelStageId) {
-            const stage = await prisma.funnelStage.findUnique({
-                where: { id: currentConv.funnelStageId },
-                select: { assignedTeamId: true }
-            });
-            funnelTeamId = stage?.assignedTeamId || null;
-        }
-
-        // Aşamada yoksa akış seviyesinden al
-        if (!funnelTeamId) {
-            funnelTeamId = funnel?.assignedTeamId || null;
-        }
-
-        if (funnelTeamId) {
-            await prisma.conversation.update({
-                where: { id: conversationId },
-                data: {
-                    assignedTeamId: funnelTeamId,
-                    teamIds: JSON.stringify([funnelTeamId])
-                }
-            });
-            console.log(`✅ [AutoFunnel] Team override: ${funnelTeamId} for "${funnel?.name}" → conversation ${conversationId}`);
-        }
-
-        return { funnelId, funnelTeamId };
+        return { funnelId, funnelTeamId: null };
     } catch (err) {
         console.error('❌ [AutoFunnel] Error:', err.message);
         return null;
@@ -261,25 +212,26 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
                     const targetStage = routing.stageId 
                         ? funnel.stages.find(s => s.id === routing.stageId) || funnel.stages[0]
                         : funnel.stages[0];
-                    await prisma.conversation.update({
-                        where: { id: conversationId },
-                        data: { funnelType: funnel.id, funnelStageId: targetStage.id }
-                    });
-                    // Contact'ı da güncelle
                     const conv = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { contactId: true } });
                     if (conv?.contactId) {
-                        await prisma.contact.update({
-                            where: { id: conv.contactId },
-                            data: { funnelType: funnel.id, funnelStageId: targetStage.id }
+                        await changeFunnelStage(conv.contactId, workspaceId, funnel.id, targetStage.id, {
+                            source: 'channel_routing',
+                            skipGuards: true,
+                            conversationId
                         });
                     }
                 }
             } else {
-                const funnelResult = await assignDefaultFunnel(workspaceId, conversationId);
-                if (funnelResult?.funnelTeamId) {
-                    // Akışın takımı varsa, son durumu güncelle
-                    updatedConversation.assignedTeamId = funnelResult.funnelTeamId;
-                }
+                await assignDefaultFunnel(workspaceId, conversationId);
+            }
+
+            // Re-fetch conversation to get latest assignedTeamId after funnel assignments
+            const latestConv = await prisma.conversation.findUnique({
+                where: { id: conversationId },
+                select: { assignedTeamId: true }
+            });
+            if (latestConv?.assignedTeamId) {
+                updatedConversation.assignedTeamId = latestConv.assignedTeamId;
             }
         }
 

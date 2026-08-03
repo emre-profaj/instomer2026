@@ -33,6 +33,7 @@ router.post('/:workspaceId/translate', authenticateJWT, requireWorkspaceAccess, 
 router.put('/:workspaceId/analysis/:conversationId', authenticateJWT, requireWorkspaceAccess, aiController.updateConversationAnalysis);
 router.post('/:workspaceId/extract-info', authenticateJWT, requireWorkspaceAccess, aiController.extractContactInfo);
 router.post('/:workspaceId/suggest-replies', authenticateJWT, requireWorkspaceAccess, aiController.getSuggestedReplies);
+router.post('/:workspaceId/detect-import-columns', authenticateJWT, requireWorkspaceAccess, aiController.detectImportColumns);
 
 // Widget Settings (Admin)
 router.get('/:workspaceId/widget', authenticateJWT, requireWorkspaceAccess, widgetController.getWidgetSettings);

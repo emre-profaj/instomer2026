@@ -421,7 +421,7 @@ export const bulkSendTemplate = async (req, res) => {
         if (!whatsappPhone) return res.status(400).json({ error: 'WhatsApp numarası bağlı değil' });
 
         // Build contact query
-        let contactWhere = { workspaceId, isDeleted: false, isBlocked: false, phone: { not: null } };
+        let contactWhere = { workspaceId, isDeleted: false, isBlocked: false, marketingOptOut: false, phone: { not: null } };
 
         if (selectAll) {
             // Filter-based: fetch all matching contacts (no pagination)

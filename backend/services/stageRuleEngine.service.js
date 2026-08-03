@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { changeFunnelStage } from './funnelStageManager.service.js';
 
 const prisma = new PrismaClient();
 
@@ -361,116 +362,12 @@ function _parseRules(entryRulesStr) {
 export async function applyStageChange(contactId, workspaceId, stageResult) {
     if (!stageResult) return;
 
-    const { stageId, funnelId } = stageResult;
-
-    // Capture previous stage ID before updates (for exit actions)
-    let previousStageId = null;
-    try {
-        const currentContact = await prisma.contact.findUnique({
-            where: { id: contactId },
-            select: { funnelStageId: true }
-        });
-        previousStageId = currentContact?.funnelStageId || null;
-    } catch (_) {}
-
-    // Contact güncelle
-    await prisma.contact.update({
-        where: { id: contactId },
-        data: {
-            funnelType: funnelId,
-            funnelStageId: stageId,
-            // stageManuallySet = false kalır (otomatik atama)
-        }
+    await changeFunnelStage(contactId, workspaceId, stageResult.funnelId, stageResult.stageId, {
+        source: 'stage_rules',
+        skipGuards: true
     });
-
-    // Tüm aktif konuşmaları güncelle
-    await prisma.conversation.updateMany({
-        where: {
-            contactId,
-            workspaceId,
-            status: { not: 'RESOLVED' }
-        },
-        data: {
-            funnelType: funnelId,
-            funnelStageId: stageId,
-        }
-    });
-
-    // Aktif case'leri de güncelle
-    await prisma.case.updateMany({
-        where: {
-            contactId,
-            workspaceId,
-            status: { notIn: ['CLOSED', 'CANCELLED'] }
-        },
-        data: {
-            funnelStageId: stageId,
-            funnelType: funnelId,
-        }
-    });
-
-    // Execute stage automations
-    try {
-        const { executeEntryActions, scheduleTimedActions, executeExitActions } = await import('./stageAutomation.service.js');
-        
-        // Exit actions for old stage
-        if (previousStageId && previousStageId !== stageId) {
-            await executeExitActions(previousStageId, contactId, workspaceId);
-        }
-        
-        // Entry actions for new stage
-        await executeEntryActions(stageId, contactId, workspaceId);
-        
-        // Schedule timed actions
-        await scheduleTimedActions(stageId, contactId, workspaceId);
-    } catch (automationErr) {
-        console.error('[StageRuleEngine] Automation execution error:', automationErr.message);
-    }
-
-    // Socket ile UI güncelle
-    try {
-        const { emitToWorkspace } = await import('../socket.js');
-        emitToWorkspace(workspaceId, 'funnel_stage_updated', {
-            contactId,
-            funnelType: funnelId,
-            funnelStageId: stageId,
-        });
-    } catch (_) {}
-
-    // Stage atamalarını uygula (assignedUserId, assignedTeamId, assignedBotId)
-    await _applyStageAssignments(contactId, workspaceId, stageId);
 
     console.log(`✅ [RuleEngine] ${contactId}: Aşama güncellendi → ${stageResult.stageName}`);
-}
-
-/**
- * Aşamanın assignedUserId/assignedTeamId/assignedBotId'sini uygular.
- * @private
- */
-async function _applyStageAssignments(contactId, workspaceId, stageId) {
-    const stage = await prisma.funnelStage.findUnique({
-        where: { id: stageId },
-        select: { assignedUserId: true, assignedTeamId: true, assignedBotId: true }
-    });
-
-    if (!stage) return;
-
-    const updateData = {};
-    if (stage.assignedTeamId) updateData.assignedTeamId = stage.assignedTeamId;
-    if (stage.assignedUserId) updateData.assignedToId = stage.assignedUserId;
-
-    if (Object.keys(updateData).length > 0) {
-        // Sadece atanmamış konuşmaları güncelle
-        await prisma.conversation.updateMany({
-            where: {
-                contactId,
-                workspaceId,
-                status: { not: 'RESOLVED' },
-                ...(updateData.assignedToId ? { assignedToId: null } : {})
-            },
-            data: updateData
-        });
-    }
 }
 
 // ============================================

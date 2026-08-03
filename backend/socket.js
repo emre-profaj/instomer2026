@@ -9,6 +9,8 @@ const log = (...args) => isDev && console.log(...args);
 const onlineUsers = new Map();
 // Track socket -> userId mapping for disconnect cleanup
 const socketToUser = new Map();
+// Online users widget tracking
+const widgetOnlineUsers = new Map();
 
 // Allowed origins for Socket.io
 const allowedOrigins = [
@@ -46,6 +48,37 @@ export const initializeSocket = (server) => {
 
     io.on('connection', (socket) => {
         log('✅ Client connected:', socket.id);
+
+        // === Online Users Widget ===
+        const authUserId = socket.handshake.auth?.userId;
+        const authWorkspaceId = socket.handshake.auth?.workspaceId;
+        const authUserName = socket.handshake.auth?.userName;
+        const authUserAvatar = socket.handshake.auth?.userAvatar;
+
+        if (authUserId && authWorkspaceId) {
+            const key = `${authWorkspaceId}_${authUserId}_${socket.id}`; // Handle multiple tabs
+            widgetOnlineUsers.set(key, {
+                userId: authUserId,
+                socketId: socket.id,
+                name: authUserName || 'Bilinmeyen',
+                avatar: authUserAvatar || null,
+                workspaceId: authWorkspaceId,
+                lastSeen: new Date()
+            });
+
+            const wsOnline = [...widgetOnlineUsers.values()]
+                .filter(u => u.workspaceId === authWorkspaceId)
+                .reduce((acc, current) => {
+                    const x = acc.find(item => item.userId === current.userId);
+                    if (!x) {
+                        return acc.concat([current]);
+                    } else {
+                        return acc;
+                    }
+                }, []);
+            io.to(`workspace_${authWorkspaceId}`).emit('online_users', wsOnline);
+            io.to(`workspace:${authWorkspaceId}`).emit('online_users', wsOnline);
+        }
 
         // Join user room for personal notifications + track online status
         socket.on('join_user', async (userId) => {
@@ -109,8 +142,35 @@ export const initializeSocket = (server) => {
             }
         });
 
+        // Team direct messaging — forward to target user's room
+        socket.on('team_direct_message', (data) => {
+            if (data?.to) {
+                const targetRoom = `user:${data.to}`;
+                io.to(targetRoom).emit('team_direct_message', data);
+                log(`💬 Team DM from ${data.from} to ${data.to}`);
+            }
+        });
+
         socket.on('disconnect', async () => {
             log('❌ Client disconnected:', socket.id);
+
+            // === Online Users Widget Cleanup ===
+            if (authUserId && authWorkspaceId) {
+                const key = `${authWorkspaceId}_${authUserId}_${socket.id}`;
+                widgetOnlineUsers.delete(key);
+                const wsOnline = [...widgetOnlineUsers.values()]
+                    .filter(u => u.workspaceId === authWorkspaceId)
+                    .reduce((acc, current) => {
+                        const x = acc.find(item => item.userId === current.userId);
+                        if (!x) {
+                            return acc.concat([current]);
+                        } else {
+                            return acc;
+                        }
+                    }, []);
+                io.to(`workspace_${authWorkspaceId}`).emit('online_users', wsOnline);
+                io.to(`workspace:${authWorkspaceId}`).emit('online_users', wsOnline);
+            }
 
             const userId = socketToUser.get(socket.id);
             if (userId) {

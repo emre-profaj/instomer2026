@@ -3,11 +3,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { funnelAPI, teamAPI, workspaceAPI, aiAPI, channelRoutingAPI, automationAPI } from '../../services/api';
 import { getTopicCategories } from '../../services/topicCategory.api';
-import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Map } from 'lucide-react';
+import { Plus, Trash2, X, Loader, Kanban, ChevronDown, Settings, Workflow } from 'lucide-react';
 import { useToast } from '../../components/Toast/Toast';
 import EntryRulesModal from '../../components/Funnels/EntryRulesModal';
 import FunnelPipeline from '../../components/Funnels/FunnelPipeline';
-import FunnelFlowMap from '../../components/Funnels/FunnelFlowMap';
+import FlowBuilder from '../../components/Funnels/FlowBuilder';
 import './Funnels.css';
 
 // Colors cycle automatically — no user selection needed
@@ -28,7 +28,7 @@ const Funnels = () => {
     const [funnels, setFunnels] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'flowmap'
+    const [viewMode, setViewMode] = useState('pipeline'); // 'pipeline' | 'flowbuilder'
     const [stageSaving, setStageSaving] = useState(false);
 
     // Teams and Members loaded for dropdowns
@@ -154,6 +154,7 @@ const Funnels = () => {
                 icon: funnelPanel.icon || null,
                 assignedTeamId: funnelPanel.assignedTeamId || null,
                 assignedUserId: funnelPanel.assignedUserId || null,
+                assignedBotId: funnelPanel.assignedBotId || null,
                 qualifiedLeadStageId: funnelPanel.qualifiedLeadStageId || null,
                 classificationCriteria: funnelPanel.classificationCriteria || null,
                 categoryIds: funnelPanel.categoryIds || [],
@@ -453,10 +454,10 @@ const Funnels = () => {
                         <Kanban size={14} /> Pipeline
                     </button>
                     <button
-                        className={`flow-map-toggle${viewMode === 'flowmap' ? ' active' : ''}`}
-                        onClick={() => setViewMode('flowmap')}
+                        className={`flow-map-toggle${viewMode === 'flowbuilder' ? ' active' : ''}`}
+                        onClick={() => setViewMode('flowbuilder')}
                     >
-                        <Map size={14} /> Harita
+                        <Workflow size={14} /> Flow Builder
                     </button>
                     <button className="btn-primary" onClick={() => setShowAddForm(prev => !prev)}>
                         <Plus size={15} />
@@ -535,12 +536,15 @@ const Funnels = () => {
                     <Kanban size={40} />
                     <p>{t('funnels.empty')}</p>
                 </div>
-            ) : viewMode === 'flowmap' ? (
-                <FunnelFlowMap
+            ) : viewMode === 'flowbuilder' ? (
+                <FlowBuilder
                     funnels={funnels}
                     channelRoutings={allChannelRoutings}
                     stageCounts={stageCounts}
                     templates={templates}
+                    teams={teams}
+                    members={members}
+                    bots={bots}
                     onStageUpdate={async (funnelId, stageId, updates) => {
                         try {
                             const res = await funnelAPI.updateStage(currentWorkspace.id, funnelId, stageId, updates);
@@ -549,10 +553,12 @@ const Funnels = () => {
                                 return { ...f, stages: f.stages.map(s => s.id === stageId ? res.data.stage : s) };
                             }));
                         } catch (err) {
-                            console.error('Flow map stage update error:', err);
+                            console.error('Flow builder stage update error:', err);
                         }
                     }}
                     onStageSettingsClick={(stage, funnelId) => openStagePanel(stage, funnelId)}
+                    onFunnelSettingsClick={openFunnelPanel}
+                    onAddStageClick={(f) => { setAddStageFunnelId(f.id); setNewStageName(''); setNewStageColor(STAGE_COLORS[0]); }}
                 />
             ) : (
                 mainFunnel ? renderFunnelTree(mainFunnel) : funnels.filter(f => !f.parentId).map(f => renderFunnelTree(f))
@@ -1188,6 +1194,16 @@ const Funnels = () => {
                                     >
                                         <option value="">Kişi Ata</option>
                                         {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="settings-field">
+                                    <label>Bot</label>
+                                    <select
+                                        value={funnelPanel.assignedBotId || ''}
+                                        onChange={e => setFunnelPanel(p => ({ ...p, assignedBotId: e.target.value }))}
+                                    >
+                                        <option value="">Bot Ata (Miras alınır)</option>
+                                        {bots.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                     </select>
                                 </div>
                             </div>

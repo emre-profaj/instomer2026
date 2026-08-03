@@ -838,17 +838,9 @@ const Channels2 = () => {
                                                     {funnel.funnelType === 'MAIN' && <span className="ch2-main-badge">ANA</span>}
                                                     {dragOverChannel === funnel.id && <span style={{fontSize: '12px', color: '#6366f1'}}> (Buraya bağla)</span>}
                                                 </div>
-                                                <select
-                                                    className="ch2-funnel-bot-select"
-                                                    value={funnel.assignedBotId || ''}
-                                                    onChange={(e) => handleAssignBotToFunnel(e.target.value || null, funnel.id)}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    <option value="">Bot Seç...</option>
-                                                    {aiBots.map(bot => (
-                                                        <option key={bot.id} value={bot.id}>{bot.name}</option>
-                                                    ))}
-                                                </select>
+                                                <span className="channel-routing-hint">
+                                                    🤖 Bot ataması → <a href="#" onClick={e => { e.preventDefault(); /* navigate to funnels */ }}>Akışlar</a>
+                                                </span>
                                             </div>
                                             <div className="ch2-funnel-stages">
                                                 {funnel.stages?.sort((a,b)=>a.order - b.order).map((stage) => {
@@ -1120,18 +1112,11 @@ const Channels2 = () => {
                                     </div>
                                 )}
 
-                                {teams.length > 0 && (
-                                    <div className="ch2-routing-row">
-                                        <label><Users size={14} /> Ekip</label>
-                                        <select
-                                            value={existingRouting?.teamId || ''}
-                                            onChange={(e) => handleSaveRouting(ch.routingChannel, 'teamId', e.target.value)}
-                                        >
-                                            <option value="">Ekip seçin</option>
-                                            {teams.map(team => (<option key={team.id} value={team.id}>{team.name}</option>))}
-                                        </select>
-                                    </div>
-                                )}
+                                <div className="ch2-routing-row">
+                                    <span className="channel-routing-hint">
+                                        👥 Takım ataması → <a href="#" onClick={e => { e.preventDefault(); /* navigate to funnels */ }}>Akışlar</a>
+                                    </span>
+                                </div>
 
                                 {savingRouting === ch.routingChannel && (
                                     <div className="ch2-routing-saving">

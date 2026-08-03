@@ -1087,6 +1087,27 @@ const Calendar = () => {
 
                     {/* Orta+Sağ: Aktivite tip filtreleri + Status filtreleri yan yana */}
                     <div className="cal-activity-filters-group">
+                        {/* Aktivite tip butonları */}
+                        <div className="cal-type-filters">
+                            {[
+                                { key: 'calls',        icon: <PhoneCall size={13} />, label: 'Aramalar',    count: activityCounts.calls,        color: '#f59e0b' },
+                                { key: 'appointments', icon: <CalendarClock size={13} />, label: 'Randevular',  count: activityCounts.appointments,  color: '#3b82f6' },
+                                { key: 'meetings',     icon: <Handshake size={13} />, label: 'Görüşmeler',  count: activityCounts.meetings,      color: '#10b981' },
+                                { key: 'tasks',        icon: <ListTodo size={13} />,  label: 'Görevler',    count: activityCounts.tasks,         color: '#8b5cf6' },
+                            ].map(f => (
+                                <button
+                                    key={f.key}
+                                    className={`cal-type-btn${isFilterActive(f.key) ? ' active' : ''}`}
+                                    style={{ '--type-color': f.color }}
+                                    onClick={() => toggleActivityFilter(f.key)}
+                                >
+                                    {f.icon}
+                                    <span>{f.label}</span>
+                                    {f.count > 0 && <span className="cal-type-count">{f.count}</span>}
+                                </button>
+                            ))}
+                        </div>
+
                         {/* Tamamlananları göster toggle */}
                         <label className="show-completed-toggle" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#64748b', userSelect: 'none' }}>
                             <div
@@ -1212,6 +1233,11 @@ const Calendar = () => {
                                                 }
                                                 return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
                                             })()}
+                                            {act.completedAt && (
+                                                <span style={{ fontSize: 10, color: '#10b981', display: 'block' }}>
+                                                    ✅ Yapıldı: {new Date(act.completedAt).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 );

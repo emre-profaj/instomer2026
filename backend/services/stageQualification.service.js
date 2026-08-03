@@ -125,22 +125,21 @@ export const tryAutoAdvance = async (conversationId) => {
 
         const conv = await prisma.conversation.findUnique({
             where: { id: conversationId },
-            select: { funnelStageId: true, funnelType: true }
+            select: { funnelStageId: true, funnelType: true, contactId: true, workspaceId: true }
         });
 
         if (!conv?.funnelStageId) return null;
 
-        // Hedef aşama: nextStageId varsa o, yoksa sıradaki
         let nextStageId = result.nextStageId;
 
+        const currentStage = await prisma.funnelStage.findUnique({
+            where: { id: conv.funnelStageId },
+            select: { order: true, funnelId: true }
+        });
+
+        if (!currentStage) return null;
+
         if (!nextStageId) {
-            const currentStage = await prisma.funnelStage.findUnique({
-                where: { id: conv.funnelStageId },
-                select: { order: true, funnelId: true }
-            });
-
-            if (!currentStage) return null;
-
             const nextStage = await prisma.funnelStage.findFirst({
                 where: {
                     funnelId: currentStage.funnelId,
@@ -155,9 +154,11 @@ export const tryAutoAdvance = async (conversationId) => {
         }
 
         // İlerlet
-        await prisma.conversation.update({
-            where: { id: conversationId },
-            data: { funnelStageId: nextStageId }
+        const { changeFunnelStage } = await import('./funnelStageManager.service.js');
+        await changeFunnelStage(conv.contactId, conv.workspaceId, currentStage.funnelId, nextStageId, {
+            source: 'auto_advance',
+            conversationId,
+            skipGuards: true
         });
 
         console.log(`🚀 [AutoAdvance] ${conversationId}: Aşama ilerletildi → ${nextStageId}`);

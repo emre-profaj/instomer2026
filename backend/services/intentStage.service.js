@@ -157,22 +157,13 @@ export async function applyIntentStageTransition(workspaceId, conversationId, co
       };
     }
 
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
-        funnelStageId: targetStage.id,
-        ...(matchedFunnelId && matchedFunnelId !== conversation.funnelType ? { funnelType: matchedFunnelId } : {})
-      }
+    const { changeFunnelStage } = await import('./funnelStageManager.service.js');
+    const result = await changeFunnelStage(contactId, workspaceId, targetFunnelId, targetStage.id, {
+      source: 'intent_stage',
+      conversationId,
+      skipGuards: false
     });
-
-    // Contact'ı da güncelle
-    await prisma.contact.update({
-      where: { id: contactId },
-      data: {
-        funnelStageId: targetStage.id,
-        ...(matchedFunnelId && matchedFunnelId !== conversation.funnelType ? { funnelType: matchedFunnelId } : {})
-      }
-    });
+    if (!result.changed) return { oldStage: oldStageName, suggestedStage: targetStage.name, changed: false };
 
     // ConversationEvent oluştur
     try {

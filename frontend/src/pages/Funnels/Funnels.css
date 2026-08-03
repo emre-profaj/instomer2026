@@ -943,3 +943,54 @@ select.action-param {
 .funnel-channel-badge:hover {
     transform: scale(1.15);
 }
+
+/* ── Funnel Responsibility Icons ── */
+.funnel-responsibility-icons {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.responsibility-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    cursor: default;
+    transition: transform 0.15s ease;
+}
+
+.responsibility-icon.bot {
+    background: #8b5cf618;
+    color: #8b5cf6;
+    border: 1px solid #8b5cf640;
+}
+
+.responsibility-icon.team {
+    background: #3b82f618;
+    color: #3b82f6;
+    border: 1px solid #3b82f640;
+}
+
+.responsibility-icon.user {
+    background: #10b98118;
+    color: #10b981;
+    border: 1px solid #10b98140;
+}
+
+.responsibility-icon:hover {
+    transform: scale(1.15);
+}
+
+/* ── Stage Assignment Mini Icons ── */
+.stage-assign-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: 2px;
+    color: #94a3b8;
+    opacity: 0.7;
+}

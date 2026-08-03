@@ -27,7 +27,9 @@ import {
     claimConversation,
     smartAssignConversation,
     getUnifiedTimeline,
-    getContactGroupedConversations
+    getContactGroupedConversations,
+    archiveConversation,
+    unarchiveConversation
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -125,5 +127,8 @@ router.patch('/:workspaceId/:conversationId/funnel', requireWorkspaceAccess, upd
 router.patch('/:workspaceId/:conversationId/mark-unread', requireWorkspaceAccess, markUnread);
 router.post('/:workspaceId/:conversationId/claim', requireWorkspaceAccess, claimConversation);
 router.post('/:workspaceId/:conversationId/smart-assign', requireWorkspaceAccess, smartAssignConversation);
+
+router.patch('/:workspaceId/:conversationId/archive', requireWorkspaceAccess, archiveConversation);
+router.patch('/:workspaceId/:conversationId/unarchive', requireWorkspaceAccess, unarchiveConversation);
 
 export default router;

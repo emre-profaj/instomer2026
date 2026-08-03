@@ -451,6 +451,8 @@ function safeParseJSON(str, fallback) {
  *   3. Create CALL activity (15 min from now, or customer-stated time)
  */
 export const executeSalesPhoneCallRule = async (workspaceId, conversationId, messageContent) => {
+    // DEPRECATED: Bu fonksiyon kaldırılacak. Aşama motoru + giriş aksiyonları aynı işi yapar.
+    // TODO: executeSalesPhoneCallRule yerine changeFunnelStage() + stage entry actions kullanılacak.
     try {
         // 1. Check if rule is active
         const rule = await prisma.workspaceRule.findUnique({
@@ -574,8 +576,8 @@ export const executeSalesPhoneCallRule = async (workspaceId, conversationId, mes
 
         // 9. Update conversation: funnel stage + team + agent
         const updateData = {
+            funnelType: salesFunnel.id,
             funnelStageId: firstStage.id,
-            botEnabled: false,
         };
         if (salesTeamId) {
             updateData.teamIds = JSON.stringify([salesTeamId]);
