@@ -4184,7 +4184,7 @@ const Inbox = () => {
                                                             }}
                                                         />
                                                         {/* Fixed-position dropdown rendered via portal logic */}
-                                                        {topicDropdownOpen && pastTopics.length > 0 && (
+                                                        {topicDropdownOpen && pastTopics.length > 0 && ReactDOM.createPortal(
                                                             <div
                                                                 className="topic-dropdown-fixed"
                                                                 style={{
@@ -4217,7 +4217,8 @@ const Inbox = () => {
                                                                         {topic}
                                                                     </div>
                                                                 ))}
-                                                            </div>
+                                                            </div>,
+                                                            document.body
                                                         )}
                                                     </div>
                                                 );
@@ -4271,7 +4272,7 @@ const Inbox = () => {
                                                         </button>
 
                                                         {/* Case Link Dropdown */}
-                                                        {caseLinkDropdownOpen && (
+                                                        {caseLinkDropdownOpen && ReactDOM.createPortal(
                                                             <div
                                                                 style={{
                                                                     position: 'fixed',
@@ -4456,7 +4457,8 @@ const Inbox = () => {
                                                                         </div>
                                                                     </>
                                                                 )}
-                                                            </div>
+                                                            </div>,
+                                                            document.body
                                                         )}
                                                     </div>
                                                 );
@@ -4503,7 +4505,7 @@ const Inbox = () => {
                                                                             opacity: 0.6
                                                                         }} />
                                                                     </button>
-                                                                    {closingDropdownOpen && (
+                                                                    {closingDropdownOpen && ReactDOM.createPortal(
                                                                         <div
                                                                             style={{
                                                                                 position: 'fixed',
@@ -4703,7 +4705,8 @@ const Inbox = () => {
                                                                                     </div>
                                                                                 )
                                                                             )}
-                                                                        </div>
+                                                                        </div>,
+                                                                        document.body
                                                                     )}
                                                                 </>
                                                             );
