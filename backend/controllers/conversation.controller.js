@@ -686,7 +686,7 @@ export const sendMessage = async (req, res) => {
                         console.log(`✅ ${isInstagram ? 'Instagram' : 'Facebook'} message sent, ID: ${fbMessageId}`);
                     }
                 } catch (error) {
-                    console.error(`${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} send message error:`, error.response?.data || error.message);
+                    console.log(`⚠️ [Send Message] ${conversation.instagramBusinessId ? 'Instagram' : 'Facebook'} error:`, error.response?.data?.error?.message || error.message);
                 }
             }
     
@@ -1600,8 +1600,9 @@ export const deleteConversation = async (req, res) => {
         }
 
         // 5. Contact: başka sohbeti yoksa tamamen sil, varsa sadece notları temizle
+        let otherConversations = 0;
         if (conversation.contactId) {
-            const otherConversations = await prisma.conversation.count({
+            otherConversations = await prisma.conversation.count({
                 where: {
                     contactId: conversation.contactId,
                     id: { not: conversationId }

@@ -449,6 +449,11 @@ export const updateCase = async (req, res) => {
         const { workspaceId, caseId } = req.params;
         const { title, description, status, priority, type, funnelType, funnelStageId, lostReason, assignedToId, assignedTeamId, products, categoryId } = req.body;
 
+        const existing = await prisma.case.findUnique({ where: { id: caseId } });
+        if (!existing) {
+            return res.status(404).json({ error: 'Case bulunamadı' });
+        }
+
         const updateData = {};
         if (title !== undefined) updateData.title = title.trim();
         if (description !== undefined) updateData.description = description;
