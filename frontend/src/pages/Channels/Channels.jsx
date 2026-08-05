@@ -2,11 +2,12 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
+import DisaoSettingsModal from '../../components/Settings/DisaoSettingsModal';
 import './Channels.css';
 
 
@@ -66,6 +67,7 @@ const Channels = () => {
     const [newFormName, setNewFormName] = useState('');
     const [newSiteUrl, setNewSiteUrl] = useState('');
     const [copiedUrl, setCopiedUrl] = useState(null);
+    const [showDisaoModal, setShowDisaoModal] = useState(false);
 
     // Email provider modal states
     const [showEmailModal, setShowEmailModal] = useState(false);
@@ -751,6 +753,23 @@ const Channels = () => {
             });
         }
 
+        // Disao CRM
+        if (currentWorkspace?.disaoCrmEnabled) {
+            channels.push({
+                id: 'disao-crm',
+                type: 'disao-crm',
+                routingChannel: 'DISAO_CRM',
+                icon: Database,
+                color: '#eab308',
+                bgColor: '#fef3c7',
+                name: 'Disao CRM',
+                subtitle: 'Entegrasyon Aktif',
+                data: null,
+                hasRouting: false,
+                hasChatBot: false
+            });
+        }
+
         return channels;
     };
 
@@ -798,6 +817,13 @@ const Channels = () => {
                     <button className="quick-add-btn health-system" onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }}>
                         <Activity size={16} />
                         Sağlık Sistemi
+                    </button>
+                    <button className="quick-add-btn custom" style={{backgroundColor: currentWorkspace?.disaoCrmEnabled ? '#22c55e' : '#eab308', color: '#fff'}} onClick={() => setShowDisaoModal(true)}>
+                        <Database size={16} />
+                        Disao CRM
+                        {currentWorkspace?.disaoCrmEnabled && (
+                            <span style={{ width: '8px', height: '8px', background: '#fff', borderRadius: '50%', display: 'inline-block', marginLeft: '6px' }}></span>
+                        )}
                     </button>
                 </div>
             </div>
@@ -887,7 +913,17 @@ const Channels = () => {
                                                     <Settings size={14} />
                                                 </button>
                                             )}
-                                            {channel.type !== 'retell' && channel.type !== 'health-system' && (
+                                            {channel.type === 'disao-crm' && (
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    onClick={() => setShowDisaoModal(true)}
+                                                    title="Disao CRM Ayarları"
+                                                    style={{ background: '#fef3c7', color: '#eab308' }}
+                                                >
+                                                    <Settings size={14} />
+                                                </button>
+                                            )}
+                                            {channel.type !== 'retell' && channel.type !== 'health-system' && channel.type !== 'disao-crm' && (
                                                 <button
                                                     className="channel-delete-btn"
                                                     style={{
@@ -1679,6 +1715,15 @@ const Channels = () => {
                     widget={selectedWidget}
                     onClose={() => { setShowWidgetModal(false); setSelectedWidget(null); }}
                     onSave={() => { setShowWidgetModal(false); loadAllChannels(); }}
+                />
+            )}
+
+            {/* Disao CRM Settings Modal */}
+            {showDisaoModal && (
+                <DisaoSettingsModal
+                    isOpen={showDisaoModal}
+                    onClose={() => setShowDisaoModal(false)}
+                    onSaved={() => loadAllChannels()}
                 />
             )}
         </div>

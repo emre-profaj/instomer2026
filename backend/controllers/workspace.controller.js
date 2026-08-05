@@ -4,9 +4,11 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { getAiUsageStats } from '../services/aiUsage.service.js';
 import { logAdminActivity } from '../services/activityLog.service.js';
 import { seedDefaultTeams } from '../utils/teamSeeder.js';
+import { disaoService } from '../services/disao.service.js';
 
 
 // Configure multer for logo upload
@@ -892,5 +894,42 @@ export const toggleSalesModuleWS = async (req, res) => {
     } catch (error) {
         console.error('toggleSalesModuleWS error:', error);
         res.status(500).json({ error: 'Satış modülü güncellenemedi.' });
+    }
+};
+
+export const updateDisaoCrmSettings = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { enabled, settings } = req.body;
+
+        const workspace = await prisma.workspace.update({
+            where: { id: workspaceId },
+            data: {
+                disaoCrmEnabled: Boolean(enabled),
+                disaoCrmSettings: settings || null
+            },
+            select: { id: true, name: true, disaoCrmEnabled: true, disaoCrmSettings: true }
+        });
+
+        res.json({ success: true, workspace });
+    } catch (error) {
+        console.error('updateDisaoCrmSettings error:', error);
+        res.status(500).json({ error: 'Disao CRM ayarları güncellenemedi.' });
+    }
+};
+
+export const testDisaoCrmConnection = async (req, res) => {
+    try {
+        const { settings } = req.body;
+        const result = await disaoService.testConnection(settings);
+        
+        if (result.success) {
+            res.json({ success: true, message: 'Bağlantı başarılı!' });
+        } else {
+            res.json({ success: false, error: result.error });
+        }
+    } catch (error) {
+        console.error('testDisaoCrmConnection error:', error);
+        res.status(500).json({ error: 'Bağlantı test edilemedi.' });
     }
 };

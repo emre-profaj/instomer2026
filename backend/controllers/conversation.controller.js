@@ -2915,6 +2915,29 @@ export const updateFunnel = async (req, res) => {
                         });
                         console.log(`✅ [StatusSync] Contact ${existing.contactId} status updated to ${newStatus} (Stage: ${stageName})`);
 
+                        // --- Disao CRM Integration ---
+                        if (workspaceId === '0c128f78-d034-4704-af57-18bd9215affe' && stageName === 'Sıcak Fırsat') {
+                            try {
+                                const contactData = await prisma.contact.findUnique({
+                                    where: { id: existing.contactId },
+                                    select: { name: true, phone: true, email: true }
+                                });
+                                
+                                if (contactData && contactData.phone) {
+                                    console.log(`🚀 [DisaoService] Stage changed to Sıcak Fırsat. Triggering Disao CRM for contact ${contactData.name}`);
+                                    const { disaoService } = await import('../services/disao.service.js');
+                                    await disaoService.addCustomer(workspaceId, {
+                                        fullName: contactData.name,
+                                        phoneNumber: contactData.phone,
+                                        mail: contactData.email
+                                    });
+                                }
+                            } catch (disaoErr) {
+                                console.error('❌ [DisaoService] Failed to send Sıcak Fırsat to Disao CRM:', disaoErr);
+                            }
+                        }
+                        // -----------------------------
+
                         // Emit contact update so UI refreshes
                         try {
                             emitToWorkspace(workspaceId, 'contact_updated', {

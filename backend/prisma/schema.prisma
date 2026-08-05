@@ -167,6 +167,11 @@ model Workspace {
   // Satış Modülü (Teklifler, Siparişler, Faturalar, Ürünler)
   salesEnabled Boolean @default(false)
 
+  // Disao CRM
+  disaoCrmEnabled  Boolean @default(false)
+  disaoCrmSettings Json?
+
+
   // Randevu Modülü (false = workspace'de randevu botu devre dışı)
   appointmentEnabled  Boolean @default(true)
   // Randevu saatleri: [{ day: 0-6, enabled: bool, start: "09:00", end: "18:00" }]

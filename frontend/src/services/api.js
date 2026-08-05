@@ -180,7 +180,9 @@ export const workspaceAPI = {
     deleteSubWorkspace: (workspaceId, subWorkspaceId) =>
         api.delete(`/workspaces/${workspaceId}/sub-workspaces/${subWorkspaceId}`),
     // AI Usage
-    getAiUsage: (workspaceId) => api.get(`/workspaces/${workspaceId}/ai-usage`)
+    getAiUsage: (workspaceId) => api.get(`/workspaces/${workspaceId}/ai-usage`),
+    updateDisaoCrmSettings: (workspaceId, data) => api.patch(`/workspaces/${workspaceId}/disao-crm`, data),
+    testDisaoCrmConnection: (workspaceId, data) => api.post(`/workspaces/${workspaceId}/disao-crm/test`, data)
 };
 
 // Facebook API
