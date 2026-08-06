@@ -296,6 +296,9 @@ export const conversationAPI = {
     createManual: (workspaceId, data) =>
         api.post(`/conversations/${workspaceId}/manual`, data),
 
+    createInternal: (workspaceId, data) =>
+        api.post(`/conversations/${workspaceId}/internal`, data),
+
     // Internal Notes
     addNote: (workspaceId, conversationId, data) => api.post(`/conversations/${workspaceId}/${conversationId}/notes`, data),
     getNotes: (workspaceId, conversationId) => api.get(`/conversations/${workspaceId}/${conversationId}/notes`),

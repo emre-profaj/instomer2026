@@ -3139,17 +3139,15 @@ async function handleLeadgenEvent(leadValue, entryId) {
         }
 
         // --- Disao CRM Integration ---
-        if (facebookPage.workspaceId === '0c128f78-d034-4704-af57-18bd9215affe') {
-            try {
-                const { disaoService } = await import('../services/disao.service.js');
-                await disaoService.addCustomer(facebookPage.workspaceId, {
-                    fullName: leadName,
-                    phoneNumber: leadPhone,
-                    mail: leadEmail
-                });
-            } catch (disaoErr) {
-                console.error('❌ [DisaoService] Failed to send leadgen to Disao CRM:', disaoErr);
-            }
+        try {
+            const { disaoService } = await import('../services/disao.service.js');
+            await disaoService.addCustomer(facebookPage.workspaceId, {
+                fullName: leadName,
+                phoneNumber: leadPhone,
+                mail: leadEmail
+            });
+        } catch (disaoErr) {
+            console.error('❌ [DisaoService] Failed to send leadgen to Disao CRM:', disaoErr);
         }
         // -----------------------------
 

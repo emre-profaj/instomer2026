@@ -438,6 +438,10 @@ model Conversation {
   assignedByType String    @default("USER") // USER | SYSTEM | AUTOMATION | BOT
   assignedAt     DateTime? // Son atama zamanı
 
+  // Internal Chat (Temsilciler Arası Sohbet)
+  isInternalChat Boolean   @default(false)
+  participantIds String    @default("[]") // JSON array of userIds: ["userId1", "userId2"]
+
   // UTM Takibi (reklam kaynağı)
   utmSource   String? // google, facebook, instagram
   utmMedium   String? // cpc, social, email, referral

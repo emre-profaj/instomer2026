@@ -312,8 +312,7 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
             <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 }}>
                 {[
                     { id: 'general', icon: <Phone size={15} />, label: '⚙️ Genel Ayarlar' },
-                    { id: 'agents',  icon: <Bot size={15} />,   label: '🤖 Agent Yönetimi' },
-                    { id: 'kb',      icon: <BookOpen size={15} />, label: '📚 Bilgi Bankası' },
+                    { id: 'agents',  icon: <BookOpen size={15} />,   label: '📚 Bilgi Bankası' },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -335,10 +334,6 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
 
             {activeTab === 'agents' && (
                 <RetellAgentManager workspaceId={workspaceId} />
-            )}
-
-            {activeTab === 'kb' && (
-                <RetellKnowledgeBaseSync workspaceId={workspaceId} />
             )}
 
             {activeTab === 'general' && (<>

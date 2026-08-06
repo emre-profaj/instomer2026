@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import {
     Bot, Save, Loader, RefreshCw, CheckCircle, AlertCircle,
     ChevronDown, ChevronRight, BookOpen, Zap, Settings, Link,
@@ -71,7 +71,7 @@ export function RetellAgentManager({ workspaceId }) {
 
     const fetchAgents = async () => {
         try {
-            const res = await axios.get(`${API_BASE}/retell/${workspaceId}/agents`);
+            const res = await api.get(`/retell/${workspaceId}/agents`);
             setAgents(res.data.agents || []);
         } catch (e) {
             console.error(e);
@@ -81,7 +81,7 @@ export function RetellAgentManager({ workspaceId }) {
     const fetchVoices = async () => {
         setVoicesLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/retell/${workspaceId}/voices`);
+            const res = await api.get(`/retell/${workspaceId}/voices`);
             setVoices(res.data.voices || res.data || []);
         } catch (e) {
             console.error('Error fetching voices:', e);
@@ -97,7 +97,7 @@ export function RetellAgentManager({ workspaceId }) {
         setLoading(true);
         setMessage(null);
         try {
-            const res = await axios.get(`${API_BASE}/retell/${workspaceId}/agents/${agentId}`);
+            const res = await api.get(`/retell/${workspaceId}/agents/${agentId}`);
             const agent = res.data.agent;
             setAgentDetail(agent);
             setLlmDetail(res.data.llm);
@@ -179,7 +179,7 @@ export function RetellAgentManager({ workspaceId }) {
             payload.endCallAfterSilenceMs = endCallAfterSilenceMs ? Number(endCallAfterSilenceMs) : undefined;
             payload.boostedKeywords = boostedKeywords ? boostedKeywords.split(',').map(k => k.trim()).filter(Boolean) : undefined;
 
-            await axios.patch(`${API_BASE}/retell/${workspaceId}/agents/${selectedAgentId}/prompt`, payload);
+            await api.patch(`/retell/${workspaceId}/agents/${selectedAgentId}/prompt`, payload);
             setMessage({ type: 'success', text: '✅ Agent başarıyla kaydedildi!' });
         } catch (e) {
             setMessage({ type: 'error', text: e.response?.data?.error || 'Kayıt başarısız' });
@@ -412,7 +412,7 @@ export function RetellAgentManager({ workspaceId }) {
                             </div>
                             <div>
                                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: 5 }}>
-                                    Sistem Prompt'u <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Agent'ın davranış kuralları)</span>
+                                    Bilgi Bankası Metni <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Agent'ın davranış kuralları ve prompt bilgileri)</span>
                                 </label>
                                 <textarea
                                     value={prompt}
@@ -592,12 +592,11 @@ export function RetellAgentManager({ workspaceId }) {
 
 // ─── Bilgi Bankası Sync Sekmesi ──────────────────────────────────────────────
 export function RetellKnowledgeBaseSync({ workspaceId }) {
-    const [instomerKbs, setInstomerKbs] = useState([]);
     const [retellKbs, setRetellKbs] = useState([]);
     const [syncedKbId, setSyncedKbId] = useState(null);
+    const [syncedKbText, setSyncedKbText] = useState('');
     const [agents, setAgents] = useState([]);
     const [selectedAgentId, setSelectedAgentId] = useState('');
-    const [selectedKbIds, setSelectedKbIds] = useState([]);
     const [syncing, setSyncing] = useState(false);
     const [loading, setLoading] = useState(true);
     const [message, setMessage] = useState(null);
@@ -610,18 +609,14 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
     const loadAll = async () => {
         setLoading(true);
         try {
-            const [kbRes, retellKbRes, agentRes] = await Promise.all([
-                axios.get(`${API_BASE}/ai/${workspaceId}/knowledge-bases`).catch(() => ({ data: { knowledgeBases: [] } })),
-                axios.get(`${API_BASE}/retell/${workspaceId}/knowledge-bases`).catch(() => ({ data: { knowledgeBases: [], syncedKbId: null } })),
-                axios.get(`${API_BASE}/retell/${workspaceId}/agents`).catch(() => ({ data: { agents: [] } }))
+            const [retellKbRes, agentRes] = await Promise.all([
+                api.get(`/retell/${workspaceId}/knowledge-bases`).catch(() => ({ data: { knowledgeBases: [], syncedKbId: null, syncedKbText: '' } })),
+                api.get(`/retell/${workspaceId}/agents`).catch(() => ({ data: { agents: [] } }))
             ]);
-            const kbs = kbRes.data.knowledgeBases || kbRes.data || [];
-            setInstomerKbs(Array.isArray(kbs) ? kbs : []);
             setRetellKbs(retellKbRes.data.knowledgeBases || []);
             setSyncedKbId(retellKbRes.data.syncedKbId);
+            setSyncedKbText(retellKbRes.data.syncedKbText || '');
             setAgents(agentRes.data.agents || []);
-            // Varsayılan olarak tüm KB'leri seç
-            if (kbs.length > 0) setSelectedKbIds(kbs.map(k => k.id));
         } catch (e) {
             console.error('loadAll error:', e);
         } finally {
@@ -629,33 +624,23 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
         }
     };
 
-    const toggleKb = (id) => {
-        setSelectedKbIds(prev =>
-            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-        );
-    };
-
     const handleSync = async () => {
-        if (selectedKbIds.length === 0) {
-            setMessage({ type: 'error', text: 'En az bir bilgi bankası seçin' });
-            return;
-        }
         setSyncing(true);
         setMessage(null);
         try {
-            const res = await axios.post(`${API_BASE}/retell/${workspaceId}/knowledge-bases/sync`, {
+            const res = await api.post(`/retell/${workspaceId}/knowledge-bases/sync`, {
                 agentId: selectedAgentId || undefined,
-                instomerKbIds: selectedKbIds
+                kbText: syncedKbText
             });
             setSyncedKbId(res.data.knowledgeBaseId);
             setLastSynced(new Date());
             setMessage({
                 type: 'success',
-                text: res.data.message
+                text: 'Bilgi bankası Retell\'e başarıyla kaydedildi'
             });
             loadAll();
         } catch (e) {
-            setMessage({ type: 'error', text: e.response?.data?.error || 'Sync başarısız' });
+            setMessage({ type: 'error', text: e.response?.data?.error || 'Kayıt başarısız' });
         } finally {
             setSyncing(false);
         }
@@ -692,48 +677,28 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                         <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#166534' }}>Bilgi Bankası Bağlı</div>
                         <code style={{ fontSize: '0.78rem', color: '#6b7280' }}>{syncedKbId}</code>
                         {syncedKbInfo && <span style={{ fontSize: '0.78rem', color: '#6b7280', marginLeft: 8 }}>— {syncedKbInfo.knowledge_base_name}</span>}
-                        {lastSynced && <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 2 }}>Son sync: {lastSynced.toLocaleString('tr-TR')}</div>}
+                        {lastSynced && <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 2 }}>Son senkronizasyon: {lastSynced.toLocaleString('tr-TR')}</div>}
                     </div>
                 </div>
             )}
 
-            {/* Instomer KB Seçimi */}
+            {/* Metin Editörü */}
             <div>
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <BookOpen size={15} style={{ color: '#6366f1' }} />
-                    Instomer Bilgi Bankalarım
-                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 400 }}>— Ses Agent'a gönderilecekleri seçin</span>
+                    Bilgi Bankası Metni
+                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 400 }}>— Agent'ın yararlanacağı tüm ek bilgiler</span>
                 </div>
-                {instomerKbs.length === 0 ? (
-                    <div style={{ padding: '20px 16px', background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, fontSize: '0.82rem', color: '#92400e' }}>
-                        ⚠️ Henüz bilgi bankası oluşturulmamış. <strong>Bilgi Bankası</strong> sayfasından ekleyebilirsiniz.
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {instomerKbs.map(kb => (
-                            <label key={kb.id} style={{
-                                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                                background: selectedKbIds.includes(kb.id) ? '#f5f3ff' : '#f9fafb',
-                                border: `1.5px solid ${selectedKbIds.includes(kb.id) ? '#c4b5fd' : '#e5e7eb'}`,
-                                borderRadius: 8, cursor: 'pointer', transition: 'all 0.15s'
-                            }}>
-                                <input
-                                    type="checkbox"
-                                    checked={selectedKbIds.includes(kb.id)}
-                                    onChange={() => toggleKb(kb.id)}
-                                    style={{ width: 15, height: 15 }}
-                                />
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: '0.87rem', fontWeight: 600, color: '#1f2937' }}>{kb.title || kb.name || 'İsimsiz KB'}</div>
-                                    {kb.description && <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{kb.description}</div>}
-                                    {kb._count?.entries !== undefined && (
-                                        <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>{kb._count.entries} giriş</div>
-                                    )}
-                                </div>
-                            </label>
-                        ))}
-                    </div>
-                )}
+                <textarea
+                    value={syncedKbText}
+                    onChange={e => setSyncedKbText(e.target.value)}
+                    rows={12}
+                    placeholder="Örn: Özel Sağlık Hastanesi 2005 yılında kurulmuştur. Dahiliye bölümünde Dr. Ali Yılmaz görev yapmaktadır..."
+                    style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', fontFamily: 'inherit', lineHeight: 1.6, boxSizing: 'border-box', resize: 'vertical' }}
+                />
+                <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
+                    Kaydettiğinizde bu metin doğrudan Retell üzerindeki bilgi bankasıyla eşitlenir.
+                </div>
             </div>
 
             {/* Agent Seçimi */}
@@ -754,50 +719,24 @@ export function RetellKnowledgeBaseSync({ workspaceId }) {
                         </option>
                     ))}
                 </select>
-                <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>
-                    Boş bırakırsanız Genel Ayarlar'daki varsayılan agent kullanılır.
-                </div>
             </div>
 
             {/* Sync Butonu */}
             <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
                 <button
                     onClick={handleSync}
-                    disabled={syncing || selectedKbIds.length === 0}
+                    disabled={syncing}
                     style={{
                         display: 'flex', alignItems: 'center', gap: 8, padding: '11px 24px',
                         background: syncing ? '#9ca3af' : '#6366f1', color: '#fff', border: 'none',
                         borderRadius: 8, fontSize: '0.9rem', fontWeight: 600,
-                        cursor: (syncing || selectedKbIds.length === 0) ? 'not-allowed' : 'pointer'
+                        cursor: syncing ? 'not-allowed' : 'pointer'
                     }}
                 >
                     {syncing ? <Loader size={16} className="spin" /> : <RefreshCw size={16} />}
-                    {syncing ? 'Gönderiliyor...' : `${selectedKbIds.length} KB'yi Sync Et`}
+                    {syncing ? 'Kaydediliyor...' : `Retell'e Kaydet`}
                 </button>
             </div>
-
-            {/* Mevcut Bilgi Bankaları */}
-            {retellKbs.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#9ca3af', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Mevcut Bilgi Bankaları
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {retellKbs.map(kb => (
-                            <div key={kb.knowledge_base_id} style={{
-                                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                                background: kb.knowledge_base_id === syncedKbId ? '#f0fdf4' : '#f9fafb',
-                                border: `1px solid ${kb.knowledge_base_id === syncedKbId ? '#bbf7d0' : '#e5e7eb'}`,
-                                borderRadius: 6, fontSize: '0.82rem'
-                            }}>
-                                {kb.knowledge_base_id === syncedKbId && <CheckCircle size={13} style={{ color: '#16a34a', flexShrink: 0 }} />}
-                                <span style={{ fontWeight: 500 }}>{kb.knowledge_base_name}</span>
-                                <code style={{ fontSize: '0.72rem', color: '#9ca3af', marginLeft: 'auto' }}>{kb.knowledge_base_id}</code>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

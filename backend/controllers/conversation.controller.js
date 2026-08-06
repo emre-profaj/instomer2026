@@ -186,6 +186,48 @@ export const getConversations = async (req, res) => {
             }
         }
 
+        // --- Internal Chat Visibility Rules ---
+        const internalChatCondition = { 
+            isInternalChat: true, 
+            participantIds: { contains: `"${req.user.id}"` } 
+        };
+
+        const assignmentRules = {};
+        if (where.assignedToId !== undefined) assignmentRules.assignedToId = where.assignedToId;
+        if (where.teamIds !== undefined) assignmentRules.teamIds = where.teamIds;
+        if (where.AND !== undefined) assignmentRules.AND = where.AND;
+        if (where.OR !== undefined) assignmentRules.OR = where.OR;
+
+        delete where.assignedToId;
+        delete where.teamIds;
+        delete where.AND;
+        delete where.OR;
+
+        if (assignedToId === 'mine' || assignedToId === 'mine_or_unassigned' || assignedToId === 'my_teams' || (!assignedToId && !teamId)) {
+            where.AND = [
+                {
+                    OR: [
+                        { isInternalChat: false, ...assignmentRules },
+                        internalChatCondition
+                    ]
+                }
+            ];
+        } else if (assignedToId === 'unassigned' || (assignedToId && assignedToId.startsWith('team:'))) {
+             where.AND = [
+                 { isInternalChat: false, ...assignmentRules }
+             ];
+        } else {
+             where.AND = [
+                 {
+                     OR: [
+                         { isInternalChat: false, ...assignmentRules },
+                         internalChatCondition
+                     ]
+                 }
+             ];
+        }
+        // --------------------------------------
+
         const conversations = await prisma.conversation.findMany({
             where,
             include: {
@@ -2916,7 +2958,7 @@ export const updateFunnel = async (req, res) => {
                         console.log(`✅ [StatusSync] Contact ${existing.contactId} status updated to ${newStatus} (Stage: ${stageName})`);
 
                         // --- Disao CRM Integration ---
-                        if (workspaceId === '0c128f78-d034-4704-af57-18bd9215affe' && stageName === 'Sıcak Fırsat') {
+                        if (stageName === 'Sıcak Fırsat') {
                             try {
                                 const contactData = await prisma.contact.findUnique({
                                     where: { id: existing.contactId },
@@ -2931,6 +2973,8 @@ export const updateFunnel = async (req, res) => {
                                         phoneNumber: contactData.phone,
                                         mail: contactData.email
                                     });
+                                } else {
+                                    console.log(`⚠️ [DisaoService] Stage changed to Sıcak Fırsat but contact ${existing.contactId} has NO phone number in the database. Disao requires a phone number.`);
                                 }
                             } catch (disaoErr) {
                                 console.error('❌ [DisaoService] Failed to send Sıcak Fırsat to Disao CRM:', disaoErr);
@@ -3709,5 +3753,77 @@ export const unarchiveConversation = async (req, res) => {
     } catch (error) {
         console.error('Unarchive conversation error:', error);
         res.status(500).json({ message: 'Arşivden çıkarma hatası' });
+    }
+};
+
+export const createInternalConversation = async (req, res) => {
+    try {
+        const { workspaceId } = req.params;
+        const { targetUserId } = req.body;
+        const currentUserId = req.user.id;
+
+        if (!targetUserId) {
+            return res.status(400).json({ error: 'targetUserId is required' });
+        }
+
+        // 1. Find if an internal conversation already exists between these two users
+        const existingConvs = await prisma.conversation.findMany({
+            where: {
+                workspaceId,
+                isInternalChat: true
+            }
+        });
+
+        const existing = existingConvs.find(c => {
+            try {
+                const parts = JSON.parse(c.participantIds);
+                return parts.includes(currentUserId) && parts.includes(targetUserId);
+            } catch (e) {
+                return false;
+            }
+        });
+
+        if (existing) {
+            return res.status(200).json(existing);
+        }
+
+        // 2. If not, create a dummy contact for internal chats (if it doesn't exist)
+        let dummyContact = await prisma.contact.findFirst({
+            where: {
+                workspaceId,
+                source: 'INTERNAL_SYSTEM'
+            }
+        });
+
+        if (!dummyContact) {
+            dummyContact = await prisma.contact.create({
+                data: {
+                    workspaceId,
+                    name: 'Sistem: İç Sohbet',
+                    fullName: 'Sistem: İç Sohbet',
+                    source: 'INTERNAL_SYSTEM',
+                    status: 'NEW'
+                }
+            });
+        }
+
+        // 3. Create new internal conversation
+        const participants = [currentUserId, targetUserId];
+        const newConv = await prisma.conversation.create({
+            data: {
+                workspaceId,
+                contactId: dummyContact.id,
+                channel: 'INTERNAL_CHAT',
+                isInternalChat: true,
+                participantIds: JSON.stringify(participants),
+                status: 'OPEN',
+                botEnabled: false // Bots shouldn't interfere with internal agent chats
+            }
+        });
+
+        return res.status(201).json(newConv);
+    } catch (error) {
+        console.error('Create internal conversation error:', error);
+        res.status(500).json({ error: 'İç sohbet oluşturulamadı' });
     }
 };

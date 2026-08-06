@@ -3999,9 +3999,25 @@ export const listKnowledgeBases = async (req, res) => {
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const knowledgeBases = await client.knowledgeBase.list();
 
+        let syncedKbText = '';
+        if (workspace.retellKnowledgeBaseId) {
+            try {
+                const kb = await client.knowledgeBase.retrieve(workspace.retellKnowledgeBaseId);
+                const source = kb.knowledge_base_sources?.[0];
+                if (source && source.type === 'text' && source.content_url) {
+                    const axios = (await import('axios')).default;
+                    const result = await axios.get(source.content_url);
+                    syncedKbText = typeof result.data === 'string' ? result.data : JSON.stringify(result.data);
+                }
+            } catch (e) {
+                console.warn('⚠️ [RetellKB] KB text fetch failed (may be deleted):', e.message);
+            }
+        }
+
         res.json({
             knowledgeBases: knowledgeBases || [],
-            syncedKbId: workspace.retellKnowledgeBaseId
+            syncedKbId: workspace.retellKnowledgeBaseId,
+            syncedKbText
         });
     } catch (error) {
         console.error('❌ [RetellKB] listKnowledgeBases error:', error.message);

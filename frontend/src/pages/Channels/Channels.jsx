@@ -255,6 +255,20 @@ const Channels = () => {
         }
     };
 
+    const handleDeleteDisaoCrm = async () => {
+        if (!confirm('Disao CRM bağlantısını silmek istediğinize emin misiniz?')) return;
+        try {
+            await workspaceAPI.updateDisaoCrmSettings(currentWorkspace.id, {
+                enabled: false,
+                settings: null
+            });
+            window.location.reload();
+        } catch (error) {
+            console.error('Error deleting disao crm:', error);
+            alert('Disao CRM bağlantısı silinemedi.');
+        }
+    };
+
     // Chat History Sync for individual channel
     const handleChannelSync = async (channel) => {
         const channelId = channel.id;
@@ -923,7 +937,7 @@ const Channels = () => {
                                                     <Settings size={14} />
                                                 </button>
                                             )}
-                                            {channel.type !== 'retell' && channel.type !== 'health-system' && channel.type !== 'disao-crm' && (
+                                            {channel.type !== 'retell' && channel.type !== 'health-system' && (
                                                 <button
                                                     className="channel-delete-btn"
                                                     style={{
@@ -950,11 +964,13 @@ const Channels = () => {
                                                             handleDeleteWhatsapp(channel.id);
                                                         } else if (channel.type === 'webwidget') {
                                                             handleDeleteWebWidget(channel.id);
+                                                        } else if (channel.type === 'disao-crm') {
+                                                            handleDeleteDisaoCrm();
                                                         }
                                                     }}
-                                                    title="Kaldır"
+                                                    title="Sil / Kopar"
                                                 >
-                                                    <Trash2 size={14} color="#ef4444" />
+                                                    <Trash2 size={14} color="#dc2626" />
                                                 </button>
                                             )}
                                         </div>

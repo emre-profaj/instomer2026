@@ -1259,8 +1259,8 @@ const Inbox = () => {
                 const currentSelectedItem = selectedItemRef.current;
                 const currentSelectedItemType = selectedItemTypeRef.current;
                 if (currentSelectedItem?.id === data.conversationId && currentSelectedItemType === INBOX_TYPES.MESSAGE) {
-                    // Add message if it's from contact OR if it's a bot/system message (not from a human sender)
-                    if (data.message?.isFromContact || !data.message?.senderId) {
+                    // Add message if it's from contact OR if it's a bot/system message OR if it's from another agent
+                    if (data.message?.isFromContact || !data.message?.senderId || data.message?.senderId !== user?.id) {
                         setMessages(prev => {
                             if (prev.some(m => m.id === data.message.id)) return prev;
                             return [...prev, data.message];
@@ -1957,8 +1957,13 @@ const Inbox = () => {
 
     const loadInboxItems = async (showLoading = true) => {
         const requestId = ++loadRequestIdRef.current;
+        let safetyTimer = null;
         try {
-            if (showLoading) setLoading(true);
+            if (showLoading) {
+                setLoading(true);
+                // Failsafe: if the API hangs or the interceptor swallows the error, clear spinner after 10s
+                safetyTimer = setTimeout(() => setLoading(false), 10000);
+            }
 
             // Refresh activity badges on every inbox load (real-time icon updates)
             activityAPI.getPlannedActivities(currentWorkspace.id)
@@ -2084,6 +2089,31 @@ const Inbox = () => {
                             conv.closingStatus = conv.case.status; // WON, LOST, CLOSED
                         }
                     }
+
+                    // --- Internal Chat Contact Swapping ---
+                    if (conv.isInternalChat && conv.participantIds) {
+                        try {
+                            const pIds = JSON.parse(conv.participantIds);
+                            const otherId = pIds.find(id => id !== user.id);
+                            if (otherId) {
+                                const otherMember = members.find(m => m.userId === otherId);
+                                if (otherMember && otherMember.user) {
+                                    conv.contact = {
+                                        ...conv.contact,
+                                        id: otherMember.user.id,
+                                        name: otherMember.user.name || otherMember.user.email,
+                                        fullName: otherMember.user.name || otherMember.user.email,
+                                        avatar: otherMember.user.avatar,
+                                        email: otherMember.user.email,
+                                        status: 'INTERNAL_AGENT'
+                                    };
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error parsing participantIds', e);
+                        }
+                    }
+                    // ----------------------------------------
                 });
 
                 // Check if there are more pages
@@ -2258,8 +2288,9 @@ const Inbox = () => {
         } catch (error) {
             console.error('Error loading inbox items:', error);
         } finally {
+            if (safetyTimer) clearTimeout(safetyTimer);
             // Only clear loading if this is still the latest request
-            if (showLoading && requestId === loadRequestIdRef.current) {
+            if (requestId === loadRequestIdRef.current) {
                 setLoading(false);
             }
         }
@@ -2288,7 +2319,33 @@ const Inbox = () => {
 
             // Call API - this marks conversation as read in backend
             const response = await conversationAPI.getById(currentWorkspace.id, conversationId);
-            setSelectedItem(response.data.conversation);
+            const conv = response.data.conversation;
+
+            // --- Internal Chat Contact Swapping ---
+            if (conv.isInternalChat && conv.participantIds) {
+                try {
+                    const pIds = JSON.parse(conv.participantIds);
+                    const otherId = pIds.find(id => id !== user.id);
+                    if (otherId) {
+                        const otherMember = members.find(m => m.userId === otherId);
+                        if (otherMember && otherMember.user) {
+                            conv.contact = {
+                                ...conv.contact,
+                                id: otherMember.user.id,
+                                name: otherMember.user.name || otherMember.user.email,
+                                fullName: otherMember.user.name || otherMember.user.email,
+                                avatar: otherMember.user.avatar,
+                                email: otherMember.user.email,
+                                status: 'INTERNAL_AGENT'
+                            };
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error parsing participantIds', e);
+                }
+            }
+
+            setSelectedItem(conv);
 
             // Set botEnabled state from conversation data
             setBotEnabled(response.data.conversation.botEnabled !== false);
@@ -3317,7 +3374,6 @@ const Inbox = () => {
                             >
                                 <RefreshCw size={16} className={loading ? 'spin' : ''} />
                             </button>
-                            <OnlineUsersWidget onlineUsers={Array.from(onlineUsers.values())} />
                             <button
                                 className={`inbox-view-toggle-btn ${viewMode === 'pipeline' ? 'active' : ''}`}
                                 onClick={() => setViewMode(v => v === 'chat' ? 'pipeline' : 'chat')}

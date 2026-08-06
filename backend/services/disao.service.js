@@ -48,9 +48,10 @@ class DisaoService {
             console.log(`🔄 [DisaoService] Authenticating with Disao CRM for workspace ${workspaceId}...`);
             const response = await axios.post(`${this.baseURL}/login`, {
                 email: settings.username.trim(),
+                username: settings.username.trim(),
                 password: settings.password.trim()
             }, {
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'lang': '2' }
             });
 
             const data = response.data;
@@ -59,7 +60,7 @@ class DisaoService {
             if (token) {
                 this.tokens.set(workspaceId, token);
                 // expires in seconds, subtract a minute for safety
-                const expiresIn = data.expiresIn || data.expires_in || 3600;
+                const expiresIn = parseInt(data.expiresIn || data.expires_in || 3600);
                 const expiresInMs = (expiresIn - 60) * 1000;
                 this.tokenExpiries.set(workspaceId, Date.now() + expiresInMs);
                 console.log(`✅ [DisaoService] Authentication successful for workspace ${workspaceId}.`);
@@ -89,9 +90,10 @@ class DisaoService {
         try {
             const response = await axios.post(`${this.baseURL}/login`, {
                 email: settings.username.trim(),
+                username: settings.username.trim(),
                 password: settings.password.trim()
             }, {
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'lang': '2' }
             });
 
             const data = response.data;
@@ -157,29 +159,30 @@ class DisaoService {
             
             phone = phone.replace(/\s+/g, '');
 
+            const emailVal = data.mail || `${phone || 'musteri'}@bilinmeyen.com`;
             const payload = {
                 name: name,
+                firstName: name,
                 surname: surname,
+                lastName: surname,
                 phoneNumber: phone,
-                mail: data.mail || '',
-                job: "",
-                idAdvice: 21,
-                note: "Otomatik Sistem Kaydı",
+                mail: emailVal,
+                email: emailVal,
                 phoneCode: phoneCode,
-                nationality: settings.nationality,
-                recordType: settings.recordType,
-                idProject: settings.projectId,
-                housingUnitType: "",
-                customerStatus: 1,
-                idUser: settings.userId
+                nationality: parseInt(settings.nationality) || 1,
+                recordType: parseInt(settings.recordType) || 2,
+                idProject: parseInt(settings.projectId) || 131,
+                idUser: parseInt(settings.userId) || 0
             };
 
             console.log(`📤 [DisaoService] Sending customer data: ${name} ${surname} (Workspace: ${workspaceId})`);
+            console.log(`🔍 [DisaoService] PAYLOAD: ${JSON.stringify(payload)}`);
             
             const response = await axios.post(`${this.baseURL}/customer/add`, payload, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token}`,
+                    'lang': '2'
                 }
             });
 
