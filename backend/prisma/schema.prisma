@@ -143,6 +143,7 @@ model Workspace {
   products             Product[]
   marketingCampaigns   MarketingCampaign[]
   topicCategories      TopicCategory[]
+  classifierRules      ClassifierRule[]
 
   // Retell AI Voice
   retellApiKey          String?
@@ -182,8 +183,13 @@ model Workspace {
 
   defaultFunnelId String? // Varsayılan satış akışı ID'si
 
-  agentDataVisibility String @default("ALL") // SELF, TEAM, ALL
-  leadScoringTemplate String @default("default") // default, sales, support, appointment
+  agentDataVisibility String          @default("ALL") // SELF, TEAM, ALL
+  leadScoringTemplate String          @default("default") // default, sales, support, appointment
+  CaseType            CaseType[]
+  EmailTemplate       EmailTemplate[]
+  SmsTemplate         SmsTemplate[]
+  disaoCrmEnabled     Boolean?        @default(false)
+  disaoCrmSettings    String?         @db.Text
 
   @@index([companyId])
   @@map("workspaces")
@@ -373,7 +379,7 @@ model Contact {
   blockedAt         DateTime?
   blockedReason     String?
   marketingOptOut   Boolean              @default(false) // Pazarlama mesajlarını istemiyorum
-  marketingOptOutAt DateTime?            // Opt-out tarihi
+  marketingOptOutAt DateTime? // Opt-out tarihi
   isArchived        Boolean              @default(false)
   archivedAt        DateTime?
   isDeleted         Boolean              @default(false)
@@ -432,6 +438,8 @@ model Conversation {
   funnelType            String? // Funnel category (e.g., SATIS, DESTEK, SIKAYET)
   funnelStageId         String? // Current stage within the funnel
   handoffPending        Boolean        @default(false) // Bot awaiting user confirmation for handoff
+  isInternalChat        Boolean?       @default(false)
+  participantIds        String?        @db.Text
 
   // Atama Takibi
   assignedById   String? // Son atamayı yapan kişi
@@ -1307,8 +1315,11 @@ model TopicCategory {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent        TopicCategory? @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  caseTypeId String?
+  caseType   CaseType? @relation(fields: [caseTypeId], references: [id], onDelete: SetNull)
+
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent        TopicCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children      TopicCategory[] @relation("CategoryHierarchy")
   conversations Conversation[]
   cases         Case[]
@@ -1316,7 +1327,30 @@ model TopicCategory {
 
   @@index([workspaceId])
   @@index([parentId])
+  @@index([caseTypeId])
   @@map("topic_categories")
+}
+
+// CaseType: Vaka tipleri (Fırsat, Şikayet, İş Başvurusu vb.)
+model CaseType {
+  id          String  @id @default(uuid())
+  workspaceId String
+  name        String // "Fırsat", "Şikayet"
+  systemCode  String? // Geriye dönük uyumluluk (FIRSAT, SIKAYET)
+  color       String  @default("#eab308")
+  icon        String?
+  isActive    Boolean @default(true)
+  order       Int     @default(0)
+
+  categories TopicCategory[]
+  cases      Case[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("case_types")
 }
 
 // Funnel: User-defined pipeline categories
@@ -1785,7 +1819,11 @@ model Case {
   description String?
   status      String  @default("ACTIVE") // ACTIVE, WON, LOST, CLOSED
   priority    String  @default("NORMAL") // LOW, NORMAL, HIGH, URGENT
-  type        String  @default("GENEL") // FIRSAT, SIKAYET, RANDEVU, DESTEK, IS_BASVURUSU, GENEL
+  type        String  @default("GENEL") // (Legacy) FIRSAT, SIKAYET, RANDEVU, DESTEK, IS_BASVURUSU, GENEL
+
+  // Vaka Tipi Referansı
+  caseTypeId String?
+  caseType   CaseType? @relation(fields: [caseTypeId], references: [id], onDelete: SetNull)
 
   // Pipeline aşaması
   funnelType    String? // Pipeline ID (Funnel)
@@ -1845,16 +1883,45 @@ model Product {
   tax2Type        String?
   tax2Rate        Float    @default(0)
   isActive        Boolean  @default(true)
+  aiContext       String?  @db.Text // Bot için satış notları
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  category  TopicCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  category  TopicCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  features  ProductFeature[]
+  media     ProductMedia[]
 
   @@index([workspaceId])
   @@index([workspaceId, groupName])
   @@index([categoryId])
   @@map("products")
+}
+
+model ProductFeature {
+  id           String   @id @default(uuid())
+  productId    String
+  featureKey   String // Örn: "Renk", "Metrekare", "Ameliyat Süresi"
+  featureValue String // Örn: "Kırmızı", "120", "2 Saat"
+  createdAt    DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_features")
+}
+
+model ProductMedia {
+  id        String   @id @default(uuid())
+  productId String
+  mediaUrl  String
+  mediaType String? // Örn: "IMAGE", "PDF", "VIDEO"
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_media")
 }
 
 model MarketingCampaign {
@@ -1928,4 +1995,68 @@ model ContactGroupMember {
   @@index([groupId])
   @@index([contactId])
   @@map("contact_group_members")
+}
+
+model ClassifierRule {
+  id          String  @id @default(uuid())
+  workspaceId String
+  name        String // "Obezite Formu → Satış"
+  priority    Int     @default(0) // Lower = higher priority (checked first)
+  isActive    Boolean @default(true)
+
+  // Condition
+  conditionType String // FORM | CHANNEL | SUB_CHANNEL | KEYWORD | AI | DEFAULT
+  conditions    String @default("{}") // JSON: { formIds:[], channels:[], subChannels:[], keywords:[], matchMode:'ANY', aiDescription:'' }
+
+  // Target
+  targetFunnelId String?
+  targetStageId  String?
+  targetTeamId   String?
+
+  // Optional automation to trigger
+  automationId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, priority])
+  @@index([workspaceId, isActive])
+  @@map("classifier_rules")
+}
+
+// ==========================================
+// TEMPLATES (Email & SMS)
+// ==========================================
+
+model EmailTemplate {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  subject     String
+  bodyHtml    String    @db.Text
+  bodyText    String?   @db.Text
+  variables   String? // JSON: ["{{ad}}", "{{firma}}"]
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("email_templates")
+}
+
+model SmsTemplate {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  bodyText    String    @db.Text
+  variables   String? // JSON: ["{{ad}}", "{{tarih}}"]
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("sms_templates")
 }

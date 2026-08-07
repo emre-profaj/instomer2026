@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { productAPI } from '../../services/api';
 import { Plus, Search, X, Edit2, Trash2, Package, Filter, Download, Upload, ChevronDown } from 'lucide-react';
-import TopicCategories from '../Settings/TopicCategories';
+
 import { importFromExcel, getTopicCategories } from '../../services/topicCategory.api';
 import './Sales.css';
 
@@ -58,6 +58,8 @@ const Products = () => {
         tax1Rate: 0,
         tax2Type: '',
         tax2Rate: 0,
+        aiContext: '',
+        features: [],
     });
 
     // Toast
@@ -116,6 +118,7 @@ const Products = () => {
             name: '', description: '', groupName: '', categoryId: '', unit: 'Adet',
             price: '', priceUSD: '', priceEUR: '', priceGBP: '',
             discountedPrice: '', tax1Type: '', tax1Rate: 0, tax2Type: '', tax2Rate: 0,
+            aiContext: '', features: [],
         });
         setEditingProduct(null);
     };
@@ -142,6 +145,8 @@ const Products = () => {
             tax1Rate: product.tax1Rate || 0,
             tax2Type: product.tax2Type || '',
             tax2Rate: product.tax2Rate || 0,
+            aiContext: product.aiContext || '',
+            features: product.features || [],
         });
         setShowModal(true);
     };
@@ -163,6 +168,8 @@ const Products = () => {
                 discountedPrice: formData.discountedPrice ? parseFloat(formData.discountedPrice) : null,
                 tax1Rate: parseFloat(formData.tax1Rate) || 0,
                 tax2Rate: parseFloat(formData.tax2Rate) || 0,
+                aiContext: formData.aiContext,
+                features: formData.features,
             };
             if (editingProduct) {
                 await productAPI.update(currentWorkspace.id, editingProduct.id, data);
@@ -203,6 +210,22 @@ const Products = () => {
         } else {
             setFormData(prev => ({ ...prev, tax2Type: value, tax2Rate: tax ? tax.rate : 0 }));
         }
+    };
+
+    const addFeature = () => {
+        setFormData(prev => ({ ...prev, features: [...prev.features, { featureKey: '', featureValue: '' }] }));
+    };
+
+    const updateFeature = (index, field, value) => {
+        const newFeatures = [...formData.features];
+        newFeatures[index][field] = value;
+        setFormData(prev => ({ ...prev, features: newFeatures }));
+    };
+
+    const removeFeature = (index) => {
+        const newFeatures = [...formData.features];
+        newFeatures.splice(index, 1);
+        setFormData(prev => ({ ...prev, features: newFeatures }));
     };
 
     const totalPages = Math.ceil(total / pageSize);
@@ -371,18 +394,6 @@ const Products = () => {
                     }}
                 >
                     Ürünler
-                </button>
-                <button
-                    onClick={() => setActiveTab('categories')}
-                    style={{
-                        padding: '12px 0', border: 'none', background: 'none',
-                        fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
-                        color: activeTab === 'categories' ? '#6366f1' : '#64748b',
-                        borderBottom: activeTab === 'categories' ? '2px solid #6366f1' : '2px solid transparent',
-                        transition: 'all 0.2s'
-                    }}
-                >
-                    Kategoriler
                 </button>
             </div>
 
@@ -593,10 +604,6 @@ const Products = () => {
                 </>
             )}
 
-            {activeTab === 'categories' && (
-                <TopicCategories />
-            )}
-
             {/* Delete Confirm */}
             {deleteConfirm && (
                 <div style={{
@@ -716,6 +723,25 @@ const Products = () => {
                                         width: '100%', padding: '9px 12px', borderRadius: '8px',
                                         border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
                                         resize: 'vertical', boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
+
+                            {/* AI Satış Notları */}
+                            <div style={{ marginBottom: '14px' }}>
+                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '4px' }}>
+                                    🤖 AI Satış Notları <span style={{ fontWeight: 400, color: '#9ca3af' }}>(Botlara özel bilgiler)</span>
+                                </label>
+                                <textarea
+                                    value={formData.aiContext}
+                                    onChange={e => setFormData(prev => ({ ...prev, aiContext: e.target.value }))}
+                                    placeholder="Yapay zekanın bu ürünü satarken bilmesi gereken kilit özellikler, itiraz karşılama taktikleri veya teknik detaylar..."
+                                    rows={3}
+                                    style={{
+                                        width: '100%', padding: '9px 12px', borderRadius: '8px',
+                                        border: '1px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
+                                        resize: 'vertical', boxSizing: 'border-box',
+                                        background: '#f8fafc'
                                     }}
                                 />
                             </div>
@@ -868,6 +894,70 @@ const Products = () => {
                                         {TAX_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                     </select>
                                 </div>
+                            </div>
+
+                            {/* Özellikler */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151' }}>
+                                        Dinamik Özellikler
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={addFeature}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                            padding: '4px 8px', borderRadius: '6px',
+                                            border: '1px solid #e2e8f0', background: '#fff',
+                                            fontSize: '0.72rem', fontWeight: 600, color: '#6366f1',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <Plus size={12} /> Özellik Ekle
+                                    </button>
+                                </div>
+                                
+                                {formData.features.map((feature, index) => (
+                                    <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                                        <input
+                                            type="text"
+                                            value={feature.featureKey}
+                                            onChange={e => updateFeature(index, 'featureKey', e.target.value)}
+                                            placeholder="Örn: Renk, Beden, Çözünürlük"
+                                            style={{
+                                                flex: 1, padding: '8px 10px', borderRadius: '6px',
+                                                border: '1px solid #d1d5db', fontSize: '0.8rem', outline: 'none'
+                                            }}
+                                        />
+                                        <input
+                                            type="text"
+                                            value={feature.featureValue}
+                                            onChange={e => updateFeature(index, 'featureValue', e.target.value)}
+                                            placeholder="Örn: Kırmızı, L, 4K"
+                                            style={{
+                                                flex: 1, padding: '8px 10px', borderRadius: '6px',
+                                                border: '1px solid #d1d5db', fontSize: '0.8rem', outline: 'none'
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => removeFeature(index)}
+                                            style={{
+                                                width: '32px', height: '32px', borderRadius: '6px',
+                                                border: '1px solid #fecaca', background: '#fef2f2',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                cursor: 'pointer', color: '#dc2626', flexShrink: 0
+                                            }}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                                {formData.features.length === 0 && (
+                                    <div style={{ textAlign: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', fontSize: '0.78rem', color: '#64748b' }}>
+                                        Bu ürün için sektöre özel özellikler ekleyebilirsiniz. (Örn: İnşaat için: <em>Ağırlık</em>, Giyim için: <em>Beden</em>)
+                                    </div>
+                                )}
                             </div>
 
                             {/* Submit */}

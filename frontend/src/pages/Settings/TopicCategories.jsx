@@ -13,7 +13,7 @@ import {
 } from '../../services/topicCategory.api';
 import './TopicCategories.css';
 
-const TopicCategories = () => {
+const TopicCategories = ({ caseTypeId }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
     const [categories, setCategories] = useState([]);
@@ -39,7 +39,7 @@ const TopicCategories = () => {
         setChatInput('');
         setChatLoading(true);
         try {
-            const res = await aiChatCategories(workspaceId, msg);
+            const res = await aiChatCategories(workspaceId, msg, caseTypeId);
             setChatHistory(prev => [...prev, { role: 'ai', reply: res.data.reply, changes: res.data.changes }]);
             if (res.data.changes?.length > 0) await fetchCategories();
         } catch (err) {
@@ -52,7 +52,7 @@ const TopicCategories = () => {
     const fetchCategories = useCallback(async () => {
         try {
             setLoading(true);
-            const res = await getTopicCategories(workspaceId);
+            const res = await getTopicCategories(workspaceId, caseTypeId);
             setCategories(res.data);
         } catch (err) {
             console.error('Kategoriler yüklenemedi:', err);
@@ -170,7 +170,8 @@ const TopicCategories = () => {
                 name: newCategory.name.trim(),
                 description: newCategory.description.trim() || null,
                 icon: newCategory.icon || null,
-                keywords
+                keywords,
+                caseTypeId: caseTypeId || null
             });
             setNewCategory({ name: '', description: '', icon: '', keywords: '' });
             setShowAddForm(false);

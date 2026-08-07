@@ -62,8 +62,11 @@ import activityRoutes from './routes/activity.routes.js';
 import appointmentConfigRoutes from './routes/appointmentConfig.routes.js';
 import healthSystemRoutes from './routes/probel_proxy.routes.js';
 import routerRuleRoutes from './routes/routerRule.routes.js';
+import classifierRuleRoutes from './routes/classifierRule.routes.js';
 import caseRoutes from './routes/case.routes.js';
 import productRoutes from './routes/product.routes.js';
+import caseTypeRoutes from './routes/caseType.routes.js';
+import templateRoutes from './routes/template.routes.js';
 import marketingRoutes from './routes/marketing.routes.js';
 import contactGroupRoutes from './routes/contactGroup.routes.js';
 import unsubscribeRoutes from './routes/unsubscribe.routes.js';
@@ -203,11 +206,13 @@ app.use('/api/activities', activityRoutes);
 app.use('/api/appointment-config', appointmentConfigRoutes);
 app.use('/api/health-system', healthSystemRoutes);
 app.use('/api/workspaces', routerRuleRoutes);
+app.use('/api/classifier', classifierRuleRoutes);
 app.use('/api/contact-cases', caseRoutes);
 app.use('/api/workspaces', productRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/contact-groups', contactGroupRoutes);
-
+app.use('/api/casetypes', caseTypeRoutes);
+app.use('/api/templates', templateRoutes);
 // Serve Frontend in Production
 if (process.env.NODE_ENV === 'production') {
   const buildPath = path.join(__dirname, '../frontend/dist');

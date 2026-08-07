@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin } from 'lucide-react';
+import { Settings, Bot, ChevronDown, ChevronLeft, ChevronRight, LayoutDashboard, LogOut, Radio, Contact, Inbox, Database, BarChart3, Calendar, Activity, Zap, FileText, ShoppingCart, Receipt, Search, Phone, Kanban, Layers, Building2, ClipboardList, FileSignature, Home, Tag, Users, Wrench, UserCheck, Clock, InboxIcon, UserPlus, Handshake, ListTodo, CalendarClock, PhoneCall, Package, Megaphone, MapPin, GitBranch } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { workspaceAPI } from '../../services/api';
@@ -62,8 +62,10 @@ const Sidebar = () => {
 
     const settingsSubItems = [
         { path: '/channels', icon: Radio, label: t('channels.title') },
-        { path: '/channels2', icon: Radio, label: 'Kanallar 2' },
-
+        { path: '/classifier', icon: GitBranch, label: 'Sınıflandırıcı' },
+        { path: '/casetypes', icon: Layers, label: 'Vaka Tipleri ve Konular' },
+        { path: '/templates', icon: FileSignature, label: 'Şablonlar (Mesaj/E-posta)' },
+        { path: '/integrations', icon: Wrench, label: 'Entegrasyonlar' },
         { path: '/teams', icon: Users, label: 'Takımlar ve Temsilciler' },
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },

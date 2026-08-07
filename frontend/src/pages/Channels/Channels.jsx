@@ -631,11 +631,11 @@ const Channels = () => {
                 name: page.pageName,
                 subtitle: `${page._count?.conversations || 0} Sohbet`,
                 data: page,
-                hasChatBot: true,
-                chatBotId: page.assignedBotId,
-                hasCommentBot: true,
-                commentBotId: page.commentBotId,
-                hasRouting: true
+                subchannels: [
+                    { id: 'FACEBOOK', label: 'Mesajlar', icon: MessageCircle },
+                    { id: 'FACEBOOK_COMMENT', label: 'Yorumlar', icon: MessageCircle },
+                    { id: 'LEAD', label: 'Lead Form', icon: FileText }
+                ]
             });
 
             // If has Instagram, add as separate channel
@@ -651,11 +651,10 @@ const Channels = () => {
                     name: `@${page.instagramUsername}`,
                     subtitle: `Facebook: ${page.pageName}`,
                     data: page,
-                    hasChatBot: true,
-                    chatBotId: page.instagramBotId,
-                    hasCommentBot: true,
-                    commentBotId: page.instagramCommentBotId,
-                    hasRouting: true
+                    subchannels: [
+                        { id: 'INSTAGRAM', label: 'DM (Mesajlar)', icon: MessageCircle },
+                        { id: 'INSTAGRAM_COMMENT', label: 'Yorumlar', icon: MessageCircle }
+                    ]
                 });
             }
         });
@@ -981,74 +980,23 @@ const Channels = () => {
                                         <p className="channel-subtitle">{channel.subtitle}</p>
                                     </div>
 
-                                    {/* Chat Bot for Facebook/Instagram */}
-                                    {channel.hasChatBot && (
-                                        <div className="channel-card-footer">
-                                            <label className="footer-label">
-                                                <Bot size={12} />
-                                                Sohbet Botu
-                                            </label>
-                                            <select
-                                                className="bot-select-mini"
-                                                value={channel.chatBotId || ''}
-                                                onChange={(e) => handleAssignBot(
-                                                    channel.type, // 'facebook' or 'instagram'
-                                                    channel.type === 'instagram' ? channel.pageId : channel.id,
-                                                    e.target.value
-                                                )}
-                                                disabled={assigningBot === (channel.type === 'instagram' ? channel.pageId : channel.id)}
-                                            >
-                                                <option value="">Manuel</option>
-                                                {aiBots.map(bot => (
-                                                    <option key={bot.id} value={bot.id}>{bot.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    {/* Comment Bot for Facebook/Instagram */}
-                                    {channel.hasCommentBot && (
-                                        <div className="channel-card-footer">
-                                            <label className="footer-label">
-                                                <MessageCircle size={12} />
-                                                Yorum Botu
-                                            </label>
-                                            <select
-                                                className="bot-select-mini"
-                                                value={channel.commentBotId || ''}
-                                                onChange={(e) => handleAssignBot(
-                                                    channel.type === 'instagram' ? 'instagram_comment' : 'comment',
-                                                    channel.type === 'instagram' ? channel.pageId : channel.id,
-                                                    e.target.value
-                                                )}
-                                                disabled={assigningBot === channel.id}
-                                            >
-                                                <option value="">Manuel</option>
-                                                {aiBots.map(bot => (
-                                                    <option key={bot.id} value={bot.id}>{bot.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    {/* Auto Reply Bot for Email */}
-                                    {channel.hasAutoReplyBot && (
-                                        <div className="channel-card-footer">
-                                            <label className="footer-label">
-                                                <Bot size={12} />
-                                                Otomatik Yanıt Botu
-                                            </label>
-                                            <select
-                                                className="bot-select-mini"
-                                                value={channel.botId || ''}
-                                                onChange={(e) => handleAssignBot('email', channel.id, e.target.value)}
-                                                disabled={assigningBot === channel.id}
-                                            >
-                                                <option value="">Manuel</option>
-                                                {aiBots.map(bot => (
-                                                    <option key={bot.id} value={bot.id}>{bot.name}</option>
-                                                ))}
-                                            </select>
+                                    {/* Sub-channels Display for FB/IG */}
+                                    {channel.subchannels && channel.subchannels.length > 0 && (
+                                        <div className="channel-subchannels">
+                                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '8px', padding: '0 16px' }}>
+                                                Sınıflandırıcı Kanalları
+                                            </div>
+                                            <div style={{ padding: '0 16px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                {channel.subchannels.map(sub => {
+                                                    const SubIcon = sub.icon;
+                                                    return (
+                                                        <div key={sub.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', color: '#475569' }}>
+                                                            <SubIcon size={14} />
+                                                            {sub.label}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     )}
 
@@ -1070,57 +1018,6 @@ const Channels = () => {
                                                     {copiedUrl === channel.id ? <Check size={14} /> : <Copy size={14} />}
                                                 </button>
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {/* Routing Settings - Akış + Aşama + Takım + Bot */}
-                                    {channel.hasRouting && (
-                                        <div className="channel-routing-section">
-                                            <div className="routing-section-header">
-                                                <GitBranch size={12} />
-                                                <span>Yönlendirme</span>
-                                            </div>
-                                            {(() => {
-                                                const existingRouting = channelRoutings.find(r => r.channel === channel.routingChannel);
-                                                const selectedFunnel = funnels.find(f => f.id === existingRouting?.funnelId);
-                                                const funnelStages = selectedFunnel?.stages || [];
-                                                return (
-                                                    <div className="routing-section-body">
-                                                        <div className="routing-row">
-                                                            <label><GitBranch size={12} /> Akış</label>
-                                                            <select value={existingRouting?.funnelId || ''} onChange={(e) => handleSaveRouting(channel.routingChannel, 'funnelId', e.target.value)} className="routing-select-inline">
-                                                                <option value="">Akış seçin</option>
-                                                                {funnels.map(f => (<option key={f.id} value={f.id}>{f.icon || '📁'} {f.name}</option>))}
-                                                            </select>
-                                                        </div>
-                                                        {existingRouting?.funnelId && funnelStages.length > 0 && (
-                                                            <div className="routing-row">
-                                                                <label><ChevronRight size={12} /> Aşama</label>
-                                                                <select value={existingRouting?.stageId || ''} onChange={(e) => handleSaveRouting(channel.routingChannel, 'stageId', e.target.value)} className="routing-select-inline">
-                                                                    <option value="">İlk aşama (varsayılan)</option>
-                                                                    {funnelStages.sort((a, b) => a.order - b.order).map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                                                                </select>
-                                                            </div>
-                                                        )}
-                                                        {teams.length > 0 && (
-                                                            <div className="routing-row">
-                                                                <label><Users size={12} /> Ekip</label>
-                                                                <select value={existingRouting?.teamId || ''} onChange={(e) => handleSaveRouting(channel.routingChannel, 'teamId', e.target.value)} className="routing-select-inline">
-                                                                    <option value="">Ekip seçin</option>
-                                                                    {teams.map(team => (<option key={team.id} value={team.id}>{team.name}</option>))}
-                                                                </select>
-                                                            </div>
-                                                        )}
-                                                        <div className="routing-row routing-row-toggle">
-                                                            <label><Bot size={12} /> Bot</label>
-                                                            <button className={`routing-bot-toggle ${existingRouting?.botEnabled !== false ? 'active' : ''}`} onClick={() => handleSaveRouting(channel.routingChannel, 'botEnabled', existingRouting?.botEnabled === false)}>
-                                                                {existingRouting?.botEnabled !== false ? '🟢 Aktif' : '🔴 Kapalı'}
-                                                            </button>
-                                                        </div>
-                                                        {savingRouting === channel.routingChannel && (<div className="routing-saving-inline">Kaydediliyor...</div>)}
-                                                    </div>
-                                                );
-                                            })()}
                                         </div>
                                     )}
 
