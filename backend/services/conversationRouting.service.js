@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { getIO, emitToWorkspace } from '../socket.js';
 import { changeFunnelStage } from './funnelStageManager.service.js';
+import { evaluateClassifierRules } from './classifier.service.js';
 
 
 /**
@@ -69,7 +70,6 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
     }
 }
 
-
 /**
  * Kanal yönlendirmesine göre konuşmayı ekibe ata ve bot gecikmesini ayarla
  * + Varsayılan akışı ata (akışın takımı kanal yönlendirmesini ezer)
@@ -77,9 +77,11 @@ export async function assignDefaultFunnel(workspaceId, conversationId) {
  * @param {string} conversationId - Conversation ID
  * @param {string} channel - Kanal (INSTAGRAM, FACEBOOK, WHATSAPP, etc.)
  * @param {boolean} isNewConversation - Yeni konuşma mı?
+ * @param {string} pageId - Sayfa ID (opsiyonel)
+ * @param {object} options - Ekstra parametreler { messageText, formId } vb.
  * @returns {Object} - Yönlendirme bilgisi
  */
-export async function applyChannelRouting(workspaceId, conversationId, channel, isNewConversation = true, pageId = null) {
+export async function applyChannelRouting(workspaceId, conversationId, channel, isNewConversation = true, pageId = null, options = {}) {
     try {
         console.log(`📡 [Routing] Applying routing for channel ${channel} in workspace ${workspaceId} (isNew: ${isNewConversation})`);
 
@@ -105,7 +107,47 @@ export async function applyChannelRouting(workspaceId, conversationId, channel, 
             };
         }
 
-        // Kanal yönlendirmesini bul - önce sayfa bazlı, sonra genel
+        // 1. Önce Classifier Kurallarını kontrol et (Sadece yeni konuşmalarda çalıştır - Faz 1)
+        if (isNewConversation) {
+            const matchedRule = await evaluateClassifierRules(workspaceId, channel, { ...options, pageId });
+            
+            if (matchedRule) {
+                console.log(`📡 [Classifier] Rule matched: ${matchedRule.name}`);
+                const updateData = {};
+                if (matchedRule.targetTeamId) updateData.assignedTeamId = matchedRule.targetTeamId;
+                if (matchedRule.targetFunnelId) updateData.funnelType = matchedRule.targetFunnelId; // Not: funnelType'ı funnelId olarak kullanıyoruz veya ayrıca eşleştiriyoruz.
+                if (matchedRule.targetStageId) updateData.funnelStageId = matchedRule.targetStageId;
+                
+                // Bot ataması
+                if (matchedRule.targetBotId) {
+                    updateData.assignedBotId = matchedRule.targetBotId;
+                    updateData.botEnabled = true;
+                }
+
+                // Eger herhangi bir atama varsa, güncelle:
+                if (Object.keys(updateData).length > 0) {
+                    await prisma.conversation.update({
+                        where: { id: conversationId },
+                        data: updateData
+                    });
+                }
+                
+                // Otomasyon çağrısı (Opsiyonel)
+                if (matchedRule.automationId) {
+                    console.log(`🤖 [Classifier] Triggering automation: ${matchedRule.automationId}`);
+                    // TODO: trigger automation
+                }
+                
+                return {
+                    classifierMatched: true,
+                    ruleId: matchedRule.id,
+                    teamId: matchedRule.targetTeamId,
+                    botEnabled: !!matchedRule.targetBotId
+                };
+            }
+        }
+
+        // 2. Classifier kuralı yoksa veya mevcut konuşmaysa, ESKİ ChannelRouting mantığına fallback
         let routing = null;
         if (pageId) {
             routing = await prisma.channelRouting.findFirst({

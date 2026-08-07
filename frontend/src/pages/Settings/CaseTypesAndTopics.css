@@ -1,0 +1,7 @@
+.case-types-container {
+    width: 100%;
+}
+
+.case-types-container input[type="color"] {
+    cursor: pointer;
+}

@@ -10,10 +10,13 @@ import Inbox from './pages/Inbox/Inbox';
 import Conversations from './pages/Conversations/Conversations';
 import Settings from './pages/Settings/Settings';
 import WorkspaceSettings from './pages/Settings/WorkspaceSettings';
-// TopicCategories moved to Products page as tab
+// TopicCategories is now inside CaseTypesAndTopics
+import CaseTypesAndTopics from './pages/Settings/CaseTypesAndTopics';
+import Templates from './pages/Settings/Templates';
+import Integrations from './pages/Settings/Integrations';
 import Comments from './pages/Comments/Comments';
 import Channels from './pages/Channels/Channels';
-import Channels2 from './pages/Channels/Channels2';
+import Classifier from './pages/Classifier/Classifier';
 
 
 import Users from './pages/Users/Users';
@@ -102,14 +105,17 @@ function App() {
               <Route path="leads" element={<Navigate to="/inbox" replace />} />
               <Route path="customers" element={<Customers />} />
               <Route path="channels" element={<Channels />} />
-              <Route path="channels2" element={<Channels2 />} />
+              <Route path="classifier" element={<Classifier />} />
 
 
               <Route path="teams" element={<Users />} />
               <Route path="users" element={<Navigate to="/teams" replace />} />
               <Route path="settings" element={<Settings />} />
               <Route path="workspace-settings" element={<WorkspaceSettings />} />
-              <Route path="topic-categories" element={<Navigate to="/products" replace />} />
+              <Route path="topic-categories" element={<Navigate to="/casetypes" replace />} />
+              <Route path="casetypes" element={<CaseTypesAndTopics />} />
+              <Route path="templates" element={<Templates />} />
+              <Route path="integrations" element={<Integrations />} />
               <Route path="knowledge-base" element={<KnowledgeBase />} />
               <Route path="general-report" element={<CeoReport />} />
               <Route path="general-report/general" element={<GeneralReport />} />

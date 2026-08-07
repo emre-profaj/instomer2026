@@ -1,7 +1,7 @@
 import api from './api';
 
-export const getTopicCategories = (workspaceId) =>
-    api.get(`/topic-categories/${workspaceId}`);
+export const getTopicCategories = (workspaceId, caseTypeId = null) =>
+    api.get(`/topic-categories/${workspaceId}${caseTypeId ? `?caseTypeId=${caseTypeId}` : ''}`);
 
 export const createTopicCategory = (workspaceId, data) =>
     api.post(`/topic-categories/${workspaceId}`, data);

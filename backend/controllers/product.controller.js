@@ -51,7 +51,11 @@ export const getProduct = async (req, res) => {
         const { workspaceId, productId } = req.params;
 
         const product = await prisma.product.findFirst({
-            where: { id: productId, workspaceId }
+            where: { id: productId, workspaceId },
+            include: {
+                features: true,
+                media: true
+            }
         });
 
         if (!product) {
@@ -73,7 +77,7 @@ export const createProduct = async (req, res) => {
             name, description, groupName, categoryId, unit,
             price, priceUSD, priceEUR, priceGBP,
             discountedPrice, tax1Type, tax1Rate,
-            tax2Type, tax2Rate, isActive
+            tax2Type, tax2Rate, isActive, aiContext, features
         } = req.body;
 
         if (!name) {
@@ -97,7 +101,19 @@ export const createProduct = async (req, res) => {
                 tax1Rate: tax1Rate ? parseFloat(tax1Rate) : 0,
                 tax2Type: tax2Type || null,
                 tax2Rate: tax2Rate ? parseFloat(tax2Rate) : 0,
-                isActive: isActive !== undefined ? isActive : true
+                isActive: isActive !== undefined ? isActive : true,
+                aiContext: aiContext || null,
+                ...(features && Array.isArray(features) && features.length > 0 && {
+                    features: {
+                        create: features.map(f => ({
+                            featureKey: f.featureKey,
+                            featureValue: f.featureValue
+                        }))
+                    }
+                })
+            },
+            include: {
+                features: true
             }
         });
 
@@ -125,7 +141,7 @@ export const updateProduct = async (req, res) => {
         const updateData = {};
         const fields = [
             'name', 'description', 'groupName', 'categoryId', 'unit',
-            'tax1Type', 'tax2Type', 'isActive'
+            'tax1Type', 'tax2Type', 'isActive', 'aiContext'
         ];
         const floatFields = [
             'price', 'priceUSD', 'priceEUR', 'priceGBP',
@@ -146,7 +162,32 @@ export const updateProduct = async (req, res) => {
             data: updateData
         });
 
-        res.json({ success: true, data: product });
+        // Update features if provided
+        if (req.body.features && Array.isArray(req.body.features)) {
+            // First delete existing
+            await prisma.productFeature.deleteMany({
+                where: { productId }
+            });
+            
+            // Then create new ones
+            if (req.body.features.length > 0) {
+                await prisma.productFeature.createMany({
+                    data: req.body.features.map(f => ({
+                        productId,
+                        featureKey: f.featureKey,
+                        featureValue: f.featureValue
+                    }))
+                });
+            }
+        }
+
+        // Fetch updated product with relations
+        const updatedProduct = await prisma.product.findFirst({
+            where: { id: productId },
+            include: { features: true, media: true }
+        });
+
+        res.json({ success: true, data: updatedProduct });
     } catch (error) {
         console.error('updateProduct error:', error);
         res.status(500).json({ success: false, error: 'Ürün güncellenirken hata oluştu' });

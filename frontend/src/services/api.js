@@ -711,6 +711,16 @@ export const routerAPI = {
     toggle:  (workspaceId, ruleId)         => api.patch(`/workspaces/${workspaceId}/router-rules/${ruleId}/toggle`)
 };
 
+// Classifier API
+export const classifierAPI = {
+    getRules: (workspaceId) => api.get(`/classifier/${workspaceId}/classifier-rules`),
+    createRule: (workspaceId, data) => api.post(`/classifier/${workspaceId}/classifier-rules`, data),
+    updateRule: (workspaceId, ruleId, data) => api.put(`/classifier/${workspaceId}/classifier-rules/${ruleId}`, data),
+    deleteRule: (workspaceId, ruleId) => api.delete(`/classifier/${workspaceId}/classifier-rules/${ruleId}`),
+    toggleRule: (workspaceId, ruleId) => api.patch(`/classifier/${workspaceId}/classifier-rules/${ruleId}/toggle`),
+    reorderRules: (workspaceId, rules) => api.patch(`/classifier/${workspaceId}/classifier-rules/reorder`, { rules }),
+};
+
 // Real Estate API
 export const realEstateAPI = {
     // Modül Ayarları
