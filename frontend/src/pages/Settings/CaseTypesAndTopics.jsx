@@ -70,91 +70,91 @@ const CaseTypesAndTopics = () => {
         }
     };
 
-    if (loading) return <div className="p-8 text-center text-gray-500">Yükleniyor...</div>;
+    if (loading) return <div className="ct-empty-selection">Yükleniyor...</div>;
 
     return (
-        <div className="case-types-container flex h-full h-[calc(100vh-64px)] overflow-hidden bg-gray-50">
+        <div className="case-types-container">
             {/* LEFT PANEL: Case Types */}
-            <div className="w-1/3 min-w-[300px] border-r border-gray-200 bg-white flex flex-col h-full overflow-y-auto">
-                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 sticky top-0 z-10">
-                    <h2 className="text-lg font-semibold text-gray-800">Vaka Tipleri</h2>
-                    <button onClick={() => setShowAddForm(!showAddForm)} className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition">
+            <div className="case-types-sidebar">
+                <div className="ct-sidebar-header">
+                    <h2>Vaka Tipleri</h2>
+                    <button onClick={() => setShowAddForm(!showAddForm)} className="btn-add-ct">
                         {showAddForm ? '✕' : '+'}
                     </button>
                 </div>
                 
                 {showAddForm && (
-                    <div className="p-4 bg-blue-50 border-b border-blue-100 flex flex-col gap-2">
+                    <div className="ct-add-form">
                         <input 
                             type="text" 
                             placeholder="Vaka Tipi Adı (Örn. Fırsat)" 
                             value={newCaseType.name}
                             onChange={e => setNewCaseType({...newCaseType, name: e.target.value})}
-                            className="p-2 border rounded border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="ct-input"
                         />
-                        <div className="flex gap-2">
+                        <div className="ct-form-row">
                             <input 
                                 type="text" 
-                                placeholder="İkon (Örn. 💼)" 
+                                placeholder="İkon" 
                                 value={newCaseType.icon}
                                 onChange={e => setNewCaseType({...newCaseType, icon: e.target.value})}
-                                className="p-2 border rounded w-16 text-center"
+                                className="ct-input-icon"
                             />
                             <input 
                                 type="color" 
                                 value={newCaseType.color}
                                 onChange={e => setNewCaseType({...newCaseType, color: e.target.value})}
-                                className="p-1 border rounded w-12 h-10"
+                                className="ct-input-color"
                             />
-                            <button onClick={handleCreate} className="bg-blue-600 text-white px-4 py-2 rounded flex-1">Ekle</button>
+                            <button onClick={handleCreate} className="btn-submit-ct">Ekle</button>
                         </div>
                     </div>
                 )}
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="ct-list">
                     {caseTypes.map(ct => (
                         <div 
                             key={ct.id} 
                             onClick={() => setSelectedCaseTypeId(ct.id)}
-                            className={`p-4 border-b border-gray-100 cursor-pointer flex items-center justify-between group transition ${selectedCaseTypeId === ct.id ? 'bg-blue-50 border-l-4 border-blue-500' : 'hover:bg-gray-50 border-l-4 border-transparent'}`}
+                            className={`ct-item ${selectedCaseTypeId === ct.id ? 'active' : ''}`}
                         >
                             {editingId === ct.id ? (
-                                <div className="flex flex-col gap-2 w-full" onClick={e => e.stopPropagation()}>
+                                <div className="ct-add-form" onClick={e => e.stopPropagation()}>
                                     <input 
                                         type="text" 
                                         value={editForm.name}
                                         onChange={e => setEditForm({...editForm, name: e.target.value})}
-                                        className="p-1 border rounded"
+                                        className="ct-input"
                                     />
-                                    <div className="flex gap-2">
-                                        <input type="text" value={editForm.icon} onChange={e => setEditForm({...editForm, icon: e.target.value})} className="w-10 p-1 border rounded" />
-                                        <input type="color" value={editForm.color} onChange={e => setEditForm({...editForm, color: e.target.value})} className="w-8 h-8 p-0 border-0" />
-                                        <button onClick={() => handleUpdate(ct.id)} className="text-xs bg-green-500 text-white px-2 rounded">Kaydet</button>
-                                        <button onClick={() => setEditingId(null)} className="text-xs bg-gray-300 px-2 rounded">İptal</button>
+                                    <div className="ct-form-row">
+                                        <input type="text" value={editForm.icon} onChange={e => setEditForm({...editForm, icon: e.target.value})} className="ct-input-icon" />
+                                        <input type="color" value={editForm.color} onChange={e => setEditForm({...editForm, color: e.target.value})} className="ct-input-color" />
+                                        <button onClick={() => handleUpdate(ct.id)} className="btn-submit-ct">Kaydet</button>
+                                        <button onClick={() => setEditingId(null)} className="btn-cancel">İptal</button>
                                     </div>
                                 </div>
                             ) : (
                                 <>
-                                    <div className="flex items-center gap-3">
-                                        <span className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: ct.color }}>
+                                    <div className="ct-item-content">
+                                        <span className="ct-icon-badge" style={{ backgroundColor: ct.color }}>
                                             {ct.icon}
                                         </span>
                                         <div>
-                                            <div className="font-medium text-gray-800">{ct.name}</div>
-                                            {ct.systemCode && <div className="text-xs text-gray-400">Sistem: {ct.systemCode}</div>}
+                                            <div className="ct-title">{ct.name}</div>
+                                            {ct.systemCode && <div className="ct-subtitle">Sistem: {ct.systemCode}</div>}
                                         </div>
                                     </div>
-                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                                    <div className="ct-actions">
                                         <button 
                                             onClick={(e) => { e.stopPropagation(); setEditingId(ct.id); setEditForm(ct); }}
-                                            className="text-gray-400 hover:text-blue-600"
+                                            className="icon-btn"
                                         >
                                             ✏️
                                         </button>
                                         {!ct.systemCode && (
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleDelete(ct.id); }}
-                                                className="text-gray-400 hover:text-red-600"
+                                                className="icon-btn"
                                             >
                                                 🗑️
                                             </button>
@@ -165,7 +165,7 @@ const CaseTypesAndTopics = () => {
                         </div>
                     ))}
                     {caseTypes.length === 0 && !showAddForm && (
-                        <div className="p-8 text-center text-gray-500 text-sm">
+                        <div className="ct-empty-selection">
                             Henüz vaka tipi tanımlanmamış.
                         </div>
                     )}
@@ -173,11 +173,11 @@ const CaseTypesAndTopics = () => {
             </div>
 
             {/* RIGHT PANEL: Topics (TopicCategory) */}
-            <div className="w-2/3 h-full bg-white relative">
+            <div className="ct-main-content">
                 {selectedCaseTypeId ? (
                     <TopicCategories caseTypeId={selectedCaseTypeId} />
                 ) : (
-                    <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="ct-empty-selection">
                         Sol taraftan bir vaka tipi seçin
                     </div>
                 )}

@@ -4,6 +4,7 @@ import {
     getIntegrations, createIntegration, updateIntegration, deleteIntegration,
     getBotTools, createBotTool, updateBotTool, deleteBotTool
 } from '../../services/apiIntegration.api';
+import './Integrations.css';
 
 const Integrations = () => {
     const { currentWorkspace } = useAuth();
@@ -103,7 +104,7 @@ const Integrations = () => {
         try {
             const data = { ...toolForm };
             if (data.parametersSchema) {
-                try { JSON.parse(data.parametersSchema); } catch(e) { return alert('Parametre şeması geçerli bir JSON olmalıdır.'); }
+                try { JSON.parse(data.parametersSchema); } catch(e) { return alert('Parametreler geçerli bir JSON Schema olmalıdır.'); }
             }
             
             if (editToolId) {
@@ -142,219 +143,189 @@ const Integrations = () => {
         }
     };
 
-    const renderApiForm = () => (
-        <form onSubmit={handleApiSave} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 grid grid-cols-2 gap-4">
-            <div className="col-span-2 border-b pb-2 mb-2">
-                <h3 className="font-semibold text-gray-800 text-lg">{editApiId ? 'API Düzenle' : 'Yeni API Bağlantısı'}</h3>
-            </div>
-            
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bağlantı Adı</label>
-                <input required type="text" value={apiForm.name} onChange={e => setApiForm({...apiForm, name: e.target.value})} className="w-full p-2 border rounded" placeholder="Örn: Muhasebe Sistemi" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Base URL</label>
-                <input required type="url" value={apiForm.baseUrl} onChange={e => setApiForm({...apiForm, baseUrl: e.target.value})} className="w-full p-2 border rounded" placeholder="https://api.example.com/v1" />
-            </div>
-            
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Yetkilendirme Tipi (Auth Type)</label>
-                <select value={apiForm.authType} onChange={e => setApiForm({...apiForm, authType: e.target.value})} className="w-full p-2 border rounded">
-                    <option value="NONE">Yok</option>
-                    <option value="BEARER">Bearer Token</option>
-                    <option value="API_KEY">API Key</option>
-                    <option value="BASIC">Basic Auth</option>
-                </select>
-            </div>
-            
-            {apiForm.authType === 'BEARER' && (
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Token (Şifrelenerek saklanır)</label>
-                    <input type="password" value={apiForm.authToken} onChange={e => setApiForm({...apiForm, authToken: e.target.value})} className="w-full p-2 border rounded" placeholder={editApiId ? '********' : 'Token'} />
-                </div>
-            )}
-            
-            {(apiForm.authType === 'API_KEY' || apiForm.authType === 'BASIC') && (
-                <>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">API Key / Username</label>
-                        <input type="text" value={apiForm.apiKey} onChange={e => setApiForm({...apiForm, apiKey: e.target.value})} className="w-full p-2 border rounded" placeholder={editApiId ? '********' : 'Key'} />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">API Secret / Password</label>
-                        <input type="password" value={apiForm.apiSecret} onChange={e => setApiForm({...apiForm, apiSecret: e.target.value})} className="w-full p-2 border rounded" placeholder={editApiId ? '********' : 'Secret'} />
-                    </div>
-                </>
-            )}
-
-            <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ekstra Headers (JSON Formatında)</label>
-                <textarea rows={3} value={apiForm.headers} onChange={e => setApiForm({...apiForm, headers: e.target.value})} className="w-full p-2 border rounded font-mono text-sm" placeholder='{"X-Custom-Header": "value"}' />
-            </div>
-
-            <div className="col-span-2 flex justify-end gap-2 mt-2">
-                <button type="button" onClick={() => setShowApiForm(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-50">İptal</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Kaydet</button>
-            </div>
-        </form>
-    );
-
-    const renderToolForm = () => (
-        <form onSubmit={handleToolSave} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6 grid grid-cols-2 gap-4">
-            <div className="col-span-2 border-b pb-2 mb-2">
-                <h3 className="font-semibold text-gray-800 text-lg">{editToolId ? 'Araç Düzenle' : 'Yeni Bot Aracı (Function/Tool)'}</h3>
-            </div>
-            
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Araç (Fonksiyon) Adı</label>
-                <input required type="text" value={toolForm.name} onChange={e => setToolForm({...toolForm, name: e.target.value})} className="w-full p-2 border rounded font-mono text-sm" placeholder="örn: check_invoice_status" />
-                <p className="text-xs text-gray-500 mt-1">Botun çağıracağı fonksiyon ismi (Boşluksuz)</p>
-            </div>
-            
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hangi API Bağlantısı?</label>
-                <select value={toolForm.apiIntegrationId} onChange={e => setToolForm({...toolForm, apiIntegrationId: e.target.value})} className="w-full p-2 border rounded">
-                    <option value="">Bağlantı Yok (Local / Dummy)</option>
-                    {integrations.map(api => (
-                        <option key={api.id} value={api.id}>{api.name} ({api.baseUrl})</option>
-                    ))}
-                </select>
-            </div>
-
-            <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Açıklama (Botun bu aracı ne zaman kullanacağını anlaması için)</label>
-                <input required type="text" value={toolForm.description} onChange={e => setToolForm({...toolForm, description: e.target.value})} className="w-full p-2 border rounded" placeholder="Müşterinin fatura durumunu sorgulamak için kullanılır." />
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">HTTP Metodu</label>
-                <select value={toolForm.method} onChange={e => setToolForm({...toolForm, method: e.target.value})} className="w-full p-2 border rounded">
-                    <option value="GET">GET</option>
-                    <option value="POST">POST</option>
-                    <option value="PUT">PUT</option>
-                    <option value="DELETE">DELETE</option>
-                </select>
-            </div>
-
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Endpoint (Path)</label>
-                <input required type="text" value={toolForm.endpoint} onChange={e => setToolForm({...toolForm, endpoint: e.target.value})} className="w-full p-2 border rounded font-mono text-sm" placeholder="/v1/invoices" />
-                <p className="text-xs text-gray-500 mt-1">Base URL üzerine eklenecek yol.</p>
-            </div>
-
-            <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Parametre Şeması (JSON Schema)</label>
-                <textarea rows={5} value={toolForm.parametersSchema} onChange={e => setToolForm({...toolForm, parametersSchema: e.target.value})} className="w-full p-2 border rounded font-mono text-sm" placeholder='{ "type": "object", "properties": { "invoice_id": { "type": "string" } }, "required": ["invoice_id"] }' />
-            </div>
-
-            <div className="col-span-2 flex justify-end gap-2 mt-2">
-                <button type="button" onClick={() => setShowToolForm(false)} className="px-4 py-2 border rounded text-gray-600 hover:bg-gray-50">İptal</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Kaydet</button>
-            </div>
-        </form>
-    );
-
     return (
-        <div className="p-6 h-[calc(100vh-64px)] overflow-y-auto bg-gray-50">
-            <div className="flex justify-between items-center mb-6">
+        <div className="integrations-page">
+            <div className="integrations-header">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Entegrasyonlar ve Bot Araçları</h1>
-                    <p className="text-gray-500 text-sm mt-1">Dış sistem bağlantılarınızı ve AI botlarınızın kullanacağı araçları (fonksiyonları) yönetin.</p>
+                    <h1>Entegrasyonlar ve Bot Araçları</h1>
+                    <p>Dış sistem bağlantılarınızı ve AI botlarınızın kullanacağı araçları (fonksiyonları) yönetin.</p>
                 </div>
-                
                 {activeTab === 'API' && !showApiForm && (
-                    <button onClick={() => { setEditApiId(null); setApiForm({name:'', baseUrl:'', authType:'NONE', authToken:'', apiKey:'', apiSecret:'', headers:'', assignedBotId:''}); setShowApiForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition">
+                    <button onClick={() => { setEditApiId(null); setApiForm({name:'', baseUrl:'', authType:'NONE', authToken:'', apiKey:'', apiSecret:'', headers:'', assignedBotId:''}); setShowApiForm(true); }} className="btn-add-integration">
                         + Yeni API Bağlantısı
                     </button>
                 )}
                 {activeTab === 'TOOLS' && !showToolForm && (
-                    <button onClick={() => { setEditToolId(null); setToolForm({name:'', description:'', method:'GET', endpoint:'', parametersSchema:'', apiIntegrationId:''}); setShowToolForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition">
+                    <button onClick={() => { setEditToolId(null); setToolForm({name:'', description:'', method:'GET', endpoint:'', parametersSchema:'', apiIntegrationId:''}); setShowToolForm(true); }} className="btn-add-integration">
                         + Yeni Bot Aracı
                     </button>
                 )}
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 mb-6 bg-white p-2 rounded-t-lg shadow-sm">
-                {[
-                    { id: 'API', label: 'API Bağlantıları' },
-                    { id: 'TOOLS', label: 'Bot Araçları (Fonksiyonlar)' },
-                    { id: 'WEBHOOKS', label: 'Giden Webhooklar (Yakında)' }
-                ].map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => { setActiveTab(tab.id); setShowApiForm(false); setShowToolForm(false); }}
-                        className={`px-4 py-2 rounded-md font-medium text-sm transition-colors ${activeTab === tab.id ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'} ${tab.id === 'WEBHOOKS' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        disabled={tab.id === 'WEBHOOKS'}
-                    >
-                        {tab.label}
-                    </button>
-                ))}
+            <div className="integrations-tabs">
+                <button onClick={() => { setActiveTab('API'); setShowApiForm(false); setShowToolForm(false); }} className={`integration-tab-btn ${activeTab === 'API' ? 'active' : ''}`}>
+                    API Bağlantıları
+                </button>
+                <button onClick={() => { setActiveTab('TOOLS'); setShowApiForm(false); setShowToolForm(false); }} className={`integration-tab-btn ${activeTab === 'TOOLS' ? 'active' : ''}`}>
+                    Bot Araçları (Fonksiyonlar)
+                </button>
+                <button disabled className="integration-tab-btn disabled" title="Yakında!">
+                    Giden Webhooklar (Yakında)
+                </button>
             </div>
 
-            {/* Content API */}
-            {activeTab === 'API' && (
-                <>
-                    {showApiForm && renderApiForm()}
-                    {loading ? <div className="text-center p-8">Yükleniyor...</div> : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {integrations.map(api => (
-                                <div key={api.id} className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm hover:shadow-md transition">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h3 className="font-semibold text-lg text-gray-800">{api.name}</h3>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleApiEdit(api)} className="text-gray-400 hover:text-blue-600">✏️</button>
-                                            <button onClick={() => handleApiDelete(api.id)} className="text-gray-400 hover:text-red-600">🗑️</button>
-                                        </div>
-                                    </div>
-                                    <div className="text-sm text-gray-600 mb-1 font-mono break-all">{api.baseUrl}</div>
-                                    <div className="text-xs inline-block px-2 py-1 bg-gray-100 rounded text-gray-600 font-medium">Auth: {api.authType}</div>
-                                </div>
-                            ))}
-                            {integrations.length === 0 && !showApiForm && (
-                                <div className="col-span-2 text-center p-12 text-gray-500 bg-white border border-dashed rounded">API Bağlantısı bulunmuyor.</div>
-                            )}
+            {/* API FORM */}
+            {showApiForm && activeTab === 'API' && (
+                <form onSubmit={handleApiSave} className="integration-form-card">
+                    <h3>{editApiId ? 'API Bağlantısını Düzenle' : 'Yeni API Bağlantısı Ekle'}</h3>
+                    <div className="form-grid">
+                        <div className="form-field">
+                            <label>Bağlantı Adı</label>
+                            <input required type="text" value={apiForm.name} onChange={e => setApiForm({...apiForm, name: e.target.value})} className="form-input" placeholder="Örn: Hastane CRM API" />
                         </div>
-                    )}
-                </>
+                        <div className="form-field">
+                            <label>Base URL</label>
+                            <input required type="text" value={apiForm.baseUrl} onChange={e => setApiForm({...apiForm, baseUrl: e.target.value})} className="form-input" placeholder="https://api.hastane.com/v1" />
+                        </div>
+                        <div className="form-field">
+                            <label>Kimlik Doğrulama Tipi</label>
+                            <select value={apiForm.authType} onChange={e => setApiForm({...apiForm, authType: e.target.value})} className="form-select">
+                                <option value="NONE">Yok</option>
+                                <option value="BEARER">Bearer Token</option>
+                                <option value="API_KEY">API Key</option>
+                                <option value="BASIC">Basic Auth (Base64)</option>
+                            </select>
+                        </div>
+                        {apiForm.authType === 'BEARER' && (
+                            <div className="form-field">
+                                <label>Bearer Token</label>
+                                <input type="password" value={apiForm.authToken} onChange={e => setApiForm({...apiForm, authToken: e.target.value})} className="form-input" placeholder="eyJhbGci..." />
+                            </div>
+                        )}
+                        {apiForm.authType === 'API_KEY' && (
+                            <>
+                                <div className="form-field">
+                                    <label>API Key Header / Param Adı</label>
+                                    <input type="text" value={apiForm.apiKey} onChange={e => setApiForm({...apiForm, apiKey: e.target.value})} className="form-input" placeholder="x-api-key" />
+                                </div>
+                                <div className="form-field">
+                                    <label>API Key Değeri</label>
+                                    <input type="password" value={apiForm.apiSecret} onChange={e => setApiForm({...apiForm, apiSecret: e.target.value})} className="form-input" placeholder="secret_key_123" />
+                                </div>
+                            </>
+                        )}
+                        <div className="form-field full-width">
+                            <label>Sabit Başlıklar (Headers - JSON)</label>
+                            <textarea rows={3} value={apiForm.headers} onChange={e => setApiForm({...apiForm, headers: e.target.value})} className="form-textarea" placeholder='{"Content-Type": "application/json"}' />
+                        </div>
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" onClick={() => setShowApiForm(false)} className="btn-cancel">İptal</button>
+                        <button type="submit" className="btn-save">Kaydet</button>
+                    </div>
+                </form>
             )}
 
-            {/* Content TOOLS */}
-            {activeTab === 'TOOLS' && (
-                <>
-                    {showToolForm && renderToolForm()}
-                    {loading ? <div className="text-center p-8">Yükleniyor...</div> : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {tools.map(tool => (
-                                <div key={tool.id} className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm hover:shadow-md transition">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h3 className="font-semibold text-blue-700 text-lg font-mono">{tool.name}</h3>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleToolEdit(tool)} className="text-gray-400 hover:text-blue-600">✏️</button>
-                                            <button onClick={() => handleToolDelete(tool.id)} className="text-gray-400 hover:text-red-600">🗑️</button>
-                                        </div>
-                                    </div>
-                                    <p className="text-sm text-gray-700 mb-3">{tool.description}</p>
-                                    
-                                    <div className="bg-gray-50 p-2 rounded text-sm mb-2 border border-gray-100 flex items-center gap-2">
-                                        <span className={`font-bold ${tool.method === 'GET' ? 'text-green-600' : tool.method === 'POST' ? 'text-blue-600' : 'text-orange-600'}`}>{tool.method}</span>
-                                        <span className="font-mono text-gray-600 truncate">{tool.endpoint}</span>
-                                    </div>
-                                    
-                                    {tool.apiIntegration && (
-                                        <div className="text-xs text-gray-500 flex items-center gap-1">
-                                            <span>🔌 Bağlantı:</span> <span className="font-medium text-gray-700">{tool.apiIntegration.name}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                            {tools.length === 0 && !showToolForm && (
-                                <div className="col-span-2 text-center p-12 text-gray-500 bg-white border border-dashed rounded">Bot Aracı bulunmuyor.</div>
-                            )}
+            {/* TOOL FORM */}
+            {showToolForm && activeTab === 'TOOLS' && (
+                <form onSubmit={handleToolSave} className="integration-form-card">
+                    <h3>{editToolId ? 'Bot Aracını Düzenle' : 'Yeni Bot Aracı Ekle'}</h3>
+                    <div className="form-grid">
+                        <div className="form-field">
+                            <label>Fonksiyon Adı (snake_case olmalı)</label>
+                            <input required type="text" value={toolForm.name} onChange={e => setToolForm({...toolForm, name: e.target.value})} className="form-input" placeholder="randevu_sorgula" />
                         </div>
-                    )}
-                </>
+                        <div className="form-field">
+                            <label>Bağlı API Entegrasyonu</label>
+                            <select required value={toolForm.apiIntegrationId} onChange={e => setToolForm({...toolForm, apiIntegrationId: e.target.value})} className="form-select">
+                                <option value="">API Bağlantısı Seçin...</option>
+                                {integrations.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="form-field">
+                            <label>HTTP Metodu</label>
+                            <select value={toolForm.method} onChange={e => setToolForm({...toolForm, method: e.target.value})} className="form-select">
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                        </div>
+                        <div className="form-field">
+                            <label>Endpoint Yolu</label>
+                            <input required type="text" value={toolForm.endpoint} onChange={e => setToolForm({...toolForm, endpoint: e.target.value})} className="form-input" placeholder="/appointments/check" />
+                        </div>
+                        <div className="form-field full-width">
+                            <label>Açıklama (AI Botun aracı ne zaman çağıracağını anlaması için)</label>
+                            <textarea required rows={2} value={toolForm.description} onChange={e => setToolForm({...toolForm, description: e.target.value})} className="form-textarea" placeholder="Müşterinin kimlik numarasıyla mevcut randevularını sorgular." />
+                        </div>
+                        <div className="form-field full-width">
+                            <label>Parametre Şeması (JSON Schema)</label>
+                            <textarea rows={5} value={toolForm.parametersSchema} onChange={e => setToolForm({...toolForm, parametersSchema: e.target.value})} className="form-textarea" placeholder='{"type": "object", "properties": {"tckn": {"type": "string", "description": "11 haneli TCKN"}}, "required": ["tckn"]}' />
+                        </div>
+                    </div>
+                    <div className="form-actions">
+                        <button type="button" onClick={() => setShowToolForm(false)} className="btn-cancel">İptal</button>
+                        <button type="submit" className="btn-save">Kaydet</button>
+                    </div>
+                </form>
             )}
+
+            {/* CONTENT LISTS */}
+            {loading ? (
+                <div className="empty-state">Yükleniyor...</div>
+            ) : activeTab === 'API' ? (
+                integrations.length === 0 ? (
+                    <div className="empty-state">
+                        <p>Henüz tanımlanmış bir API bağlantısı bulunmuyor.</p>
+                    </div>
+                ) : (
+                    <div className="integrations-grid">
+                        {integrations.map(item => (
+                            <div key={item.id} className="integration-card">
+                                <div>
+                                    <div className="card-header">
+                                        <h3 className="integration-title">{item.name}</h3>
+                                        <div className="card-actions">
+                                            <button onClick={() => handleApiEdit(item)} className="icon-btn" title="Düzenle">✏️</button>
+                                            <button onClick={() => handleApiDelete(item.id)} className="icon-btn" title="Sil">🗑️</button>
+                                        </div>
+                                    </div>
+                                    <div className="integration-url">{item.baseUrl}</div>
+                                    <span className="auth-badge">Auth: {item.authType}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )
+            ) : activeTab === 'TOOLS' ? (
+                tools.length === 0 ? (
+                    <div className="empty-state">
+                        <p>Henüz tanımlanmış bir bot aracı (fonksiyon) bulunmuyor.</p>
+                    </div>
+                ) : (
+                    <div className="integrations-grid">
+                        {tools.map(item => (
+                            <div key={item.id} className="integration-card">
+                                <div>
+                                    <div className="card-header">
+                                        <h3 className="integration-title">
+                                            <span className={`method-badge ${item.method.toLowerCase()}`}>{item.method}</span> {item.name}
+                                        </h3>
+                                        <div className="card-actions">
+                                            <button onClick={() => handleToolEdit(item)} className="icon-btn" title="Düzenle">✏️</button>
+                                            <button onClick={() => handleToolDelete(item.id)} className="icon-btn" title="Sil">🗑️</button>
+                                        </div>
+                                    </div>
+                                    <div className="integration-url">{item.endpoint}</div>
+                                    <p className="integration-desc">{item.description}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )
+            ) : null}
         </div>
     );
 };
