@@ -1391,7 +1391,7 @@ async function processWebhookAsync(body) {
                             }
                         }
                     } catch (error) {
-                        console.error('Error fetching user info:', error.response?.data || error.message);
+                        console.log('⚠️ [FB User API] Error fetching user info:', error.response?.data?.error?.message || error.message);
                     }
 
                     // Create contact with best available name
@@ -1404,8 +1404,10 @@ async function processWebhookAsync(body) {
 
                     console.log(`👤 [Contact Create] ID: ${contactFacebookId}, Name: "${finalName}"`);
 
-                    contact = await prisma.contact.create({
-                        data: {
+                    contact = await prisma.contact.upsert({
+                        where: { facebookId: contactFacebookId },
+                        update: {}, // Başka bir process oluşturduysa hiçbir şey güncelleme, sadece al
+                        create: {
                             workspaceId: facebookPage.workspaceId,
                             facebookId: contactFacebookId,
                             name: finalName,
@@ -2120,8 +2122,8 @@ export const getContactProfile = async (req, res) => {
 
                 return res.json({ profile: mergedProfile });
             } catch (fbError) {
-                // Only log non-Instagram errors (Instagram errors are expected)
-                console.error('Facebook Graph API error:', fbError.response?.data || fbError.message);
+                // Sadece uyarı olarak bas, PM2 error loglarını şişirmesin
+                console.log('⚠️ [FB Graph API] Error fetching profile:', fbError.response?.data?.error?.message || fbError.message);
                 // Continue to local fallback
             }
         }
@@ -3136,6 +3138,19 @@ async function handleLeadgenEvent(leadValue, entryId) {
             console.error('Lead Gen attribution error:', attrErr);
         }
 
+        // --- Disao CRM Integration ---
+        try {
+            const { disaoService } = await import('../services/disao.service.js');
+            await disaoService.addCustomer(facebookPage.workspaceId, {
+                fullName: leadName,
+                phoneNumber: leadPhone,
+                mail: leadEmail
+            });
+        } catch (disaoErr) {
+            console.error('❌ [DisaoService] Failed to send leadgen to Disao CRM:', disaoErr);
+        }
+        // -----------------------------
+
         // 3. Find or Create Conversation for Inbox (prevent duplicates)
         let conversation = await prisma.conversation.findFirst({
             where: {
@@ -3518,6 +3533,25 @@ async function handleLeadgenEvent(leadValue, entryId) {
                 );
             } catch (caseErr) {
                 console.error('⚠️ [AutoCase] Leadgen import error:', caseErr.message);
+            }
+        }
+
+        // 🏢 DISAO CRM: Facebook Lead'i Disao CRM'e gönder
+        if (contact?.id && facebookPage?.workspaceId) {
+            try {
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: facebookPage.workspaceId },
+                    select: { disaoCrmEnabled: true }
+                });
+                if (ws?.disaoCrmEnabled) {
+                    const { default: disaoCrmService } = await import('../services/disaoCrm.service.js');
+                    disaoCrmService.sendCustomer(facebookPage.workspaceId, contact, 'FACEBOOK_LEAD').catch(disaoErr =>
+                        console.error('⚠️ [DisaoCRM] Leadgen send error:', disaoErr.message)
+                    );
+                    console.log('📤 [DisaoCRM] Facebook lead gönderildi:', contact.name || contact.phone);
+                }
+            } catch (disaoErr) {
+                console.error('⚠️ [DisaoCRM] Leadgen hook error:', disaoErr.message);
             }
         }
 

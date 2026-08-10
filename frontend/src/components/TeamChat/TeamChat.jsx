@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Users, ChevronUp, Circle, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { workspaceAPI } from '../../services/api';
+import { workspaceAPI, conversationAPI } from '../../services/api';
 import './TeamChat.css';
 
 const TeamChat = ({ isCollapsed }) => {
@@ -49,12 +49,22 @@ const TeamChat = ({ isCollapsed }) => {
         return (a.name || '').localeCompare(b.name || '', 'tr');
     });
 
-    const handleMemberClick = (member) => {
-        // Navigate to inbox - use replace + custom event to ensure it opens
-        if (window.location.pathname === '/inbox') {
-            // Already on inbox — dispatch event to focus
-            window.dispatchEvent(new CustomEvent('inbox_focus', { detail: { agentId: member.userId } }));
-        } else {
+    const handleMemberClick = async (member) => {
+        try {
+            // Create or get internal conversation
+            const res = await conversationAPI.createInternal(currentWorkspace.id, { targetUserId: member.userId });
+            const convId = res.data?.id || res.id;
+            
+            // Navigate to inbox with this conversation ID
+            if (window.location.pathname === '/inbox') {
+                navigate(`/inbox?conversationId=${convId}`, { replace: true });
+                // Note: Inbox.jsx listens to the searchParams directly, no event dispatch needed.
+            } else {
+                navigate(`/inbox?conversationId=${convId}`);
+            }
+        } catch (e) {
+            console.error('Failed to create internal chat', e);
+            // Fallback to old behavior
             navigate('/inbox');
         }
         setIsOpen(false);

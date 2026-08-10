@@ -7,7 +7,7 @@ export const executeBuiltInTool = async (functionName, args, context) => {
     const { workspaceId, conversationId, activeBotId } = context;
 
     if (!conversationId) {
-        throw new Error("Conversation ID is required for built-in tools");
+        return { success: false, error: "This tool is not available for comment replies because it requires an active conversation." };
     }
 
     switch (functionName) {

@@ -7,7 +7,7 @@ import { RetellAgentManager, RetellKnowledgeBaseSync } from './RetellAgentManage
 const RetellSettings = ({ onSave, hideApiSetup = false }) => {
     const { currentWorkspace } = useAuth();
     const workspaceId = currentWorkspace?.id;
-    const [activeTab, setActiveTab] = useState('general');
+    const [activeTab, setActiveTab] = useState(hideApiSetup ? 'agents' : 'general');
 
     const [settings, setSettings] = useState({
         retellApiKey: '',
@@ -289,31 +289,30 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
         if (!allUsed) {
             return ['ALL', ...available];
         }
-        return available;
+        return allSources.filter(s => !usedSources.includes(s.value));
     };
 
-    if (loading) {
-        return (
-            <div className="settings-section" style={{ textAlign: 'center', padding: 40 }}>
-                <Loader size={24} className="spin" />
-                <p>Yükleniyor...</p>
-            </div>
-        );
-    }
+    if (loading) return <div style={{ padding: 20 }}><Loader size={20} className="spin" /> Yükleniyor...</div>;
 
-    const inputStyle = { padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: '0.85rem', boxSizing: 'border-box', background: '#fff' };
+    const inputStyle = {
+        width: '100%', padding: '10px 14px', borderRadius: 8,
+        border: '1px solid #e5e7eb', fontSize: '0.9rem',
+        outline: 'none', transition: 'border-color 0.2s',
+        marginBottom: 4, fontFamily: 'inherit'
+    };
+
+    const labelStyle = { display: 'block', marginBottom: 6, fontSize: '0.85rem', fontWeight: 600, color: '#374151' };
+    const hintStyle = { display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginTop: 2, marginBottom: 16 };
     const selectStyle = { ...inputStyle, minWidth: 100, cursor: 'pointer', appearance: 'auto' };
 
     return (
         <div className="settings-section">
 
             {/* Tab Navigation */}
-            {!hideApiSetup && (
             <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #e5e7eb', paddingBottom: 0 }}>
                 {[
                     { id: 'general', icon: <Phone size={15} />, label: '⚙️ Genel Ayarlar' },
-                    { id: 'agents',  icon: <Bot size={15} />,   label: '🤖 Agent Yönetimi' },
-                    { id: 'kb',      icon: <BookOpen size={15} />, label: '📚 Bilgi Bankası' },
+                    { id: 'agents',  icon: <BookOpen size={15} />,   label: '📚 Bilgi Bankası' },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -332,14 +331,9 @@ const RetellSettings = ({ onSave, hideApiSetup = false }) => {
                     </button>
                 ))}
             </div>
-            )}
 
             {activeTab === 'agents' && (
                 <RetellAgentManager workspaceId={workspaceId} />
-            )}
-
-            {activeTab === 'kb' && (
-                <RetellKnowledgeBaseSync workspaceId={workspaceId} />
             )}
 
             {activeTab === 'general' && (<>

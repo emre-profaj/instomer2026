@@ -29,7 +29,8 @@ import {
     getUnifiedTimeline,
     getContactGroupedConversations,
     archiveConversation,
-    unarchiveConversation
+    unarchiveConversation,
+    createInternalConversation
 } from '../controllers/conversation.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 
@@ -45,6 +46,9 @@ router.post('/transfers/:transferId/reject', rejectTransfer);
 
 // Create manual conversation (must be before /:workspaceId/:conversationId to avoid conflict)
 router.post('/:workspaceId/manual', requireWorkspaceAccess, createManualConversation);
+
+// Internal Agent Chat
+router.post('/:workspaceId/internal', requireWorkspaceAccess, createInternalConversation);
 
 // Get unread count for workspace (messages only: Facebook, Instagram, WhatsApp)
 // IMPORTANT: Must be before /:workspaceId/:conversationId to avoid "unread-count" being treated as conversationId

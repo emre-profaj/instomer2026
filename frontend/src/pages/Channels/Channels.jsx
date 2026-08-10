@@ -2,11 +2,12 @@ import { useTranslation } from 'react-i18next';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI } from '../../services/api';
+import { facebookAPI, aiAPI, emailAPI, whatsappAPI, formWebhookAPI, channelRoutingAPI, teamAPI, webWidgetAPI, retellAPI, healthSystemAPI, funnelAPI, workspaceAPI } from '../../services/api';
 import WhatsAppSettings from '../../components/Settings/WhatsAppSettings';
 import RetellSettings from '../../components/Settings/RetellSettings';
-import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight } from 'lucide-react';
+import { Facebook, Trash2, Plus, Instagram, Mail, RefreshCcw, MessageCircle, Info, AlertCircle, CheckCircle, FileText, Copy, Check, Globe, Eye, EyeOff, GitBranch, Users, Bot, X, Settings, History, Phone, Activity, Loader2, Shield, Unplug, Zap, ChevronRight, Database } from 'lucide-react';
 import WebWidgetModal from '../../components/WebWidgetModal';
+import DisaoSettingsModal from '../../components/Settings/DisaoSettingsModal';
 import './Channels.css';
 
 
@@ -45,6 +46,16 @@ const Channels = () => {
     const [healthError, setHealthError] = useState('');
     const [healthSuccess, setHealthSuccess] = useState('');
 
+    // Disao CRM states
+    const [showDisaoModal, setShowDisaoModal] = useState(false);
+    const [disaoCrmEnabled, setDisaoCrmEnabled] = useState(false);
+    const [disaoConnecting, setDisaoConnecting] = useState(false);
+    const [disaoTesting, setDisaoTesting] = useState(false);
+    const [disaoError, setDisaoError] = useState('');
+    const [disaoSuccess, setDisaoSuccess] = useState('');
+    const [disaoForm, setDisaoForm] = useState({ email: '', password: '', idProject: '', idAdvice: '' });
+    const [disaoConnection, setDisaoConnection] = useState(null);
+
     // Routing states
     const [channelRoutings, setChannelRoutings] = useState([]);
     const [teams, setTeams] = useState([]);
@@ -66,6 +77,7 @@ const Channels = () => {
     const [newFormName, setNewFormName] = useState('');
     const [newSiteUrl, setNewSiteUrl] = useState('');
     const [copiedUrl, setCopiedUrl] = useState(null);
+    const [showDisaoModal, setShowDisaoModal] = useState(false);
 
     // Email provider modal states
     const [showEmailModal, setShowEmailModal] = useState(false);
@@ -110,7 +122,8 @@ const Channels = () => {
     const loadAllChannels = async () => {
         setLoading(true);
         try {
-            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes] = await Promise.all([
+            const API = import.meta.env.VITE_API_URL || 'http://localhost:5008';
+            const [pagesRes, emailRes, botsRes, webhooksRes, teamsRes, routingsRes, whatsappRes, widgetsRes, retellRes, healthRes, funnelsRes, wsRes] = await Promise.all([
                 facebookAPI.getPages(currentWorkspace.id).catch(() => ({ data: { pages: [] } })),
                 emailAPI.getChannels(currentWorkspace.id).catch(() => ({ data: { emailChannels: [] } })),
                 aiAPI.getBots(currentWorkspace.id).catch(() => ({ data: { bots: [] } })),
@@ -121,7 +134,8 @@ const Channels = () => {
                 webWidgetAPI.getAll(currentWorkspace.id).catch(() => ({ data: { widgets: [] } })),
                 retellAPI.getSettings(currentWorkspace.id).catch(() => ({ data: { isConfigured: false } })),
                 healthSystemAPI.getStatus(currentWorkspace.id).catch(() => ({ data: { connected: false } })),
-                funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: [] }))
+                funnelAPI.getAll(currentWorkspace.id).catch(() => ({ data: [] })),
+                fetch(`${API}/workspaces/${currentWorkspace.id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } }).then(res => res.json()).catch(() => null)
             ]);
 
             console.log('📡 Loaded channels:', {
@@ -142,6 +156,20 @@ const Channels = () => {
             setRetellSettings(retellRes.data.isConfigured ? retellRes.data : null);
             setHealthConnection(healthRes.data.connected ? healthRes.data.integration : null);
             setFunnels(funnelsRes.data?.funnels || funnelsRes.data || []);
+
+            if (wsRes?.workspace) {
+                setDisaoCrmEnabled(wsRes.workspace.disaoCrmEnabled || false);
+                if (wsRes.workspace.disaoCrmSettings) {
+                    try {
+                        const settings = typeof wsRes.workspace.disaoCrmSettings === 'string' ? JSON.parse(wsRes.workspace.disaoCrmSettings) : wsRes.workspace.disaoCrmSettings;
+                        setDisaoConnection({ email: settings.email });
+                    } catch (e) {
+                        console.error('Error parsing disao settings', e);
+                    }
+                } else {
+                    setDisaoConnection(null);
+                }
+            }
         } catch (error) {
             console.error('Error loading channels:', error);
         } finally {
@@ -250,6 +278,20 @@ const Channels = () => {
         } catch (error) {
             console.error('Error deleting web widget:', error);
             alert('Web Widget could not be deleted.');
+        }
+    };
+
+    const handleDeleteDisaoCrm = async () => {
+        if (!confirm('Disao CRM bağlantısını silmek istediğinize emin misiniz?')) return;
+        try {
+            await workspaceAPI.updateDisaoCrmSettings(currentWorkspace.id, {
+                enabled: false,
+                settings: null
+            });
+            window.location.reload();
+        } catch (error) {
+            console.error('Error deleting disao crm:', error);
+            alert('Disao CRM bağlantısı silinemedi.');
         }
     };
 
@@ -750,6 +792,23 @@ const Channels = () => {
             });
         }
 
+        // Disao CRM
+        if (disaoConnection) {
+            channels.push({
+                id: 'disao-crm',
+                type: 'disao-crm',
+                routingChannel: 'DISAO_CRM',
+                icon: Zap,
+                color: '#6366f1',
+                bgColor: '#eef2ff',
+                name: 'Disao CRM',
+                subtitle: disaoConnection.email || 'Bağlı',
+                data: disaoConnection,
+                hasRouting: false,
+                hasChatBot: false
+            });
+        }
+
         return channels;
     };
 
@@ -797,6 +856,10 @@ const Channels = () => {
                     <button className="quick-add-btn health-system" onClick={() => { setHealthError(''); setHealthSuccess(''); setShowHealthModal(true); }}>
                         <Activity size={16} />
                         Sağlık Sistemi
+                    </button>
+                    <button className="quick-add-btn disao-crm" onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }}>
+                        <Zap size={16} />
+                        Disao CRM
                     </button>
                 </div>
             </div>
@@ -886,7 +949,17 @@ const Channels = () => {
                                                     <Settings size={14} />
                                                 </button>
                                             )}
-                                            {channel.type !== 'retell' && channel.type !== 'health-system' && (
+                                            {channel.type === 'disao-crm' && (
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    onClick={() => { setDisaoError(''); setDisaoSuccess(''); setShowDisaoModal(true); }}
+                                                    title="Bağlantı Ayarları"
+                                                    style={{ background: '#eef2ff', color: '#6366f1' }}
+                                                >
+                                                    <Settings size={14} />
+                                                </button>
+                                            )}
+                                            {channel.type !== 'retell' && channel.type !== 'health-system' && channel.type !== 'disao-crm' && (
                                                 <button
                                                     className="channel-delete-btn"
                                                     style={{
@@ -913,11 +986,13 @@ const Channels = () => {
                                                             handleDeleteWhatsapp(channel.id);
                                                         } else if (channel.type === 'webwidget') {
                                                             handleDeleteWebWidget(channel.id);
+                                                        } else if (channel.type === 'disao-crm') {
+                                                            handleDeleteDisaoCrm();
                                                         }
                                                     }}
-                                                    title="Kaldır"
+                                                    title="Sil / Kopar"
                                                 >
-                                                    <Trash2 size={14} color="#ef4444" />
+                                                    <Trash2 size={14} color="#dc2626" />
                                                 </button>
                                             )}
                                         </div>
@@ -1568,6 +1643,180 @@ const Channels = () => {
                 </div>
             )}
 
+            {/* Disao CRM Modal */}
+            {showDisaoModal && (
+                <div className="modal-overlay" onClick={() => setShowDisaoModal(false)}>
+                    <div className="modal-content disao-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2><Zap size={20} /> Disao CRM Entegrasyonu</h2>
+                            <button className="modal-close" onClick={() => setShowDisaoModal(false)}><X size={20} /></button>
+                        </div>
+
+                        <div className="modal-body">
+                            <p className="modal-desc">
+                                Disao CRM entegrasyonunu aktif ederek Facebook Lead'leri ve Sıcak Fırsat aşamasındaki kişileri otomatik olarak Disao CRM'e gönderebilirsiniz.
+                            </p>
+
+                            {disaoConnection && (
+                                <div className="disao-status-card connected">
+                                    <CheckCircle size={18} />
+                                    <span>Disao CRM Bağlı — {disaoConnection.user?.username || disaoConnection.email || ''}</span>
+                                    <button className="btn-sm danger" onClick={async () => {
+                                        try {
+                                            const API = import.meta.env.VITE_API_URL;
+                                            await fetch(`${API}/disao-crm/${currentWorkspace.id}/settings`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                                                body: JSON.stringify({ disaoCrmEnabled: false, disaoCrmSettings: null })
+                                            });
+                                            setDisaoConnection(null);
+                                            setDisaoCrmEnabled(false);
+                                            setDisaoSuccess('Disao CRM bağlantısı kaldırıldı');
+                                        } catch (e) {
+                                            setDisaoError('Bağlantı kaldırılamadı');
+                                        }
+                                    }}>
+                                        <Unplug size={14} /> Bağlantıyı Kes
+                                    </button>
+                                </div>
+                            )}
+
+                            {disaoError && <div className="alert error"><AlertCircle size={16} /> {disaoError}</div>}
+                            {disaoSuccess && <div className="alert success"><CheckCircle size={16} /> {disaoSuccess}</div>}
+
+
+                            <div className="disao-form">
+                                    <div className="form-group">
+                                        <label>Kullanıcı Adı (E-posta)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Disao CRM kullanıcı adınız"
+                                            value={disaoForm.email}
+                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, email: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Şifre</label>
+                                        <input
+                                            type="password"
+                                            placeholder="Disao CRM şifreniz"
+                                            value={disaoForm.password}
+                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, password: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Proje ID</label>
+                                        <input
+                                            type="number"
+                                            placeholder="Disao proje ID'si (zorunlu)"
+                                            value={disaoForm.idProject}
+                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, idProject: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Tavsiye Kaynağı ID <span className="optional">(Opsiyonel)</span></label>
+                                        <input
+                                            type="number"
+                                            placeholder="idAdvice değeri"
+                                            value={disaoForm.idAdvice}
+                                            onChange={(e) => setDisaoForm(prev => ({ ...prev, idAdvice: e.target.value }))}
+                                        />
+                                    </div>
+
+                                    <div className="disao-btn-row">
+                                        <button
+                                            className="btn-test"
+                                            disabled={disaoTesting || !disaoForm.email || !disaoForm.password}
+                                            onClick={async () => {
+                                                setDisaoTesting(true);
+                                                setDisaoError('');
+                                                setDisaoSuccess('');
+                                                try {
+                                                    const API = import.meta.env.VITE_API_URL;
+                                                    const res = await fetch(`${API}/disao-crm/test-connection`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                                                        body: JSON.stringify({ email: disaoForm.email, password: disaoForm.password })
+                                                    });
+                                                    const data = await res.json();
+                                                    if (data.success) {
+                                                        setDisaoSuccess('✅ Bağlantı başarılı! Kullanıcı: ' + (data.user?.username || disaoForm.email));
+                                                    } else {
+                                                        setDisaoError(data.message || 'Bağlantı başarısız');
+                                                    }
+                                                } catch (e) {
+                                                    setDisaoError('Bağlantı testi sırasında hata oluştu');
+                                                } finally {
+                                                    setDisaoTesting(false);
+                                                }
+                                            }}
+                                        >
+                                            {disaoTesting ? <><Loader2 size={16} className="spin" /> Test Ediliyor...</> : <><Shield size={16} /> Bağlantıyı Test Et</>}
+                                        </button>
+
+                                        <button
+                                            className="btn-connect"
+                                            disabled={disaoConnecting || !disaoForm.email || !disaoForm.password || !disaoForm.idProject}
+                                            onClick={async () => {
+                                                setDisaoConnecting(true);
+                                                setDisaoError('');
+                                                setDisaoSuccess('');
+                                                try {
+                                                    const API = import.meta.env.VITE_API_URL;
+                                                    // First test connection
+                                                    const testRes = await fetch(`${API}/disao-crm/test-connection`, {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                                                        body: JSON.stringify({ email: disaoForm.email, password: disaoForm.password })
+                                                    });
+                                                    const testData = await testRes.json();
+                                                    if (!testData.success) {
+                                                        setDisaoError(testData.message || 'Kimlik doğrulama başarısız');
+                                                        return;
+                                                    }
+
+                                                    // Save settings to workspace
+                                                    const settings = {
+                                                        email: disaoForm.email,
+                                                        password: disaoForm.password,
+                                                        idProject: parseInt(disaoForm.idProject) || null,
+                                                        idAdvice: disaoForm.idAdvice ? parseInt(disaoForm.idAdvice) : null,
+                                                        disaoWorkspaceId: '0c128f78-d034-4704-af57-18bd9215affe'
+                                                    };
+
+                                                    const saveRes = await fetch(`${API}/disao-crm/${currentWorkspace.id}/settings`, {
+                                                        method: 'PUT',
+                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                                                        body: JSON.stringify({
+                                                            disaoCrmEnabled: true,
+                                                            disaoCrmSettings: JSON.stringify(settings)
+                                                        })
+                                                    });
+
+                                                    const saveData = await saveRes.json();
+                                                    if (saveData.success || saveRes.ok) {
+                                                        setDisaoSuccess('✅ Disao CRM başarıyla bağlandı!');
+                                                        setDisaoConnection({ email: disaoForm.email, user: testData.user });
+                                                        setDisaoCrmEnabled(true);
+                                                    } else {
+                                                        setDisaoError(saveData.error || 'Ayarlar kaydedilemedi');
+                                                    }
+                                                } catch (e) {
+                                                    setDisaoError('Bağlantı sırasında hata oluştu: ' + e.message);
+                                                } finally {
+                                                    setDisaoConnecting(false);
+                                                }
+                                            }}
+                                        >
+                                            {disaoConnecting ? <><Loader2 size={16} className="spin" /> Bağlanıyor...</> : <><Zap size={16} /> Kaydet & Bağlan</>}
+                                        </button>
+                                    </div>
+                                </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Web Widget Modal */}
             {showWidgetModal && (
                 <WebWidgetModal
@@ -1576,6 +1825,15 @@ const Channels = () => {
                     widget={selectedWidget}
                     onClose={() => { setShowWidgetModal(false); setSelectedWidget(null); }}
                     onSave={() => { setShowWidgetModal(false); loadAllChannels(); }}
+                />
+            )}
+
+            {/* Disao CRM Settings Modal */}
+            {showDisaoModal && (
+                <DisaoSettingsModal
+                    isOpen={showDisaoModal}
+                    onClose={() => setShowDisaoModal(false)}
+                    onSaved={() => loadAllChannels()}
                 />
             )}
         </div>

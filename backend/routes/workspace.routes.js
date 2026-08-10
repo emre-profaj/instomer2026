@@ -27,7 +27,9 @@ import {
     toggleWorkspaceAppointmentModule,
     updateAppointmentSchedule,
     toggleRealEstateModuleWS,
-    toggleSalesModuleWS
+    toggleSalesModuleWS,
+    updateDisaoCrmSettings,
+    testDisaoCrmConnection
 } from '../controllers/workspace.controller.js';
 import { authenticateJWT, requireWorkspaceAccess } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/roleAuth.js';
@@ -158,5 +160,9 @@ router.patch('/:workspaceId/realestate-module', requireWorkspaceAccess, toggleRe
 
 // Satış modülü (workspace tarafından)
 router.patch('/:workspaceId/sales-module', requireWorkspaceAccess, toggleSalesModuleWS);
+
+// Disao CRM Settings
+router.patch('/:workspaceId/disao-crm', requireWorkspaceAccess, updateDisaoCrmSettings);
+router.post('/:workspaceId/disao-crm/test', requireWorkspaceAccess, testDisaoCrmConnection);
 
 export default router;

@@ -2380,17 +2380,26 @@ async function handleCallStarted(call) {
                                     setTimeout(async () => {
                                         try {
                                             const analyzed = await retellClient.call.retrieve(realCallId);
+                                            
+                                            // Her durumda analysis datasını DB'ye kaydet
+                                            await prisma.retellCall.update({
+                                                where: { id: rec.id },
+                                                data: {
+                                                    transcript: analyzed.transcript || null,
+                                                    recordingUrl: analyzed.recording_url || null,
+                                                    summary: analyzed.call_analysis?.call_summary || null,
+                                                    sentiment: analyzed.call_analysis?.user_sentiment || null,
+                                                    callSuccessful: analyzed.call_analysis?.call_successful ?? null
+                                                }
+                                            });
+
+                                            // Özet ve kaydı Tamamlandı mesajına ekle (webhook kaçırmış olabilir)
+                                            if (analyzed.call_analysis?.call_summary || analyzed.recording_url) {
+                                                await handleCallAnalyzed(analyzed);
+                                            }
+
+                                            // Sadece transcript varsa chat ekranına uzun uzun mesajları at
                                             if (analyzed.transcript) {
-                                                await prisma.retellCall.update({
-                                                    where: { id: rec.id },
-                                                    data: {
-                                                        transcript: analyzed.transcript,
-                                                        recordingUrl: analyzed.recording_url || null,
-                                                        summary: analyzed.call_analysis?.call_summary || null,
-                                                        sentiment: analyzed.call_analysis?.user_sentiment || null,
-                                                        callSuccessful: analyzed.call_analysis?.call_successful ?? null
-                                                    }
-                                                });
                                                 await injectTranscriptToChat(
                                                     { ...rec, conversationId: convId },
                                                     analyzed,
@@ -3990,9 +3999,25 @@ export const listKnowledgeBases = async (req, res) => {
         const client = new Retell({ apiKey: workspace.retellApiKey });
         const knowledgeBases = await client.knowledgeBase.list();
 
+        let syncedKbText = '';
+        if (workspace.retellKnowledgeBaseId) {
+            try {
+                const kb = await client.knowledgeBase.retrieve(workspace.retellKnowledgeBaseId);
+                const source = kb.knowledge_base_sources?.[0];
+                if (source && source.type === 'text' && source.content_url) {
+                    const axios = (await import('axios')).default;
+                    const result = await axios.get(source.content_url);
+                    syncedKbText = typeof result.data === 'string' ? result.data : JSON.stringify(result.data);
+                }
+            } catch (e) {
+                console.warn('⚠️ [RetellKB] KB text fetch failed (may be deleted):', e.message);
+            }
+        }
+
         res.json({
             knowledgeBases: knowledgeBases || [],
-            syncedKbId: workspace.retellKnowledgeBaseId
+            syncedKbId: workspace.retellKnowledgeBaseId,
+            syncedKbText
         });
     } catch (error) {
         console.error('❌ [RetellKB] listKnowledgeBases error:', error.message);
