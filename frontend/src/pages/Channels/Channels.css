@@ -1775,3 +1775,151 @@
 .routing-bot-toggle:hover {
     transform: scale(1.03);
 }
+
+/* ========== Disao CRM ========== */
+.quick-add-btn.disao-crm {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    border-color: #6366f1;
+}
+.quick-add-btn.disao-crm:hover {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.disao-modal {
+    max-width: 520px;
+}
+.disao-modal .modal-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6366f1;
+}
+.disao-modal .modal-desc {
+    color: #64748b;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.disao-status-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+.disao-status-card.connected {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+}
+.disao-status-card .btn-sm.danger {
+    margin-left: auto;
+    background: #fee2e2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s;
+}
+.disao-status-card .btn-sm.danger:hover {
+    background: #dc2626;
+    color: white;
+}
+
+.disao-form .form-group {
+    margin-bottom: 16px;
+}
+.disao-form .form-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+.disao-form .form-group label .optional {
+    font-weight: 400;
+    color: #9ca3af;
+    font-size: 0.8rem;
+}
+.disao-form .form-group input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    background: #f9fafb;
+}
+.disao-form .form-group input:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    background: white;
+}
+
+.disao-btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+.disao-btn-row .btn-test {
+    flex: 1;
+    padding: 10px 16px;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    background: white;
+    color: #374151;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+.disao-btn-row .btn-test:hover:not(:disabled) {
+    border-color: #6366f1;
+    color: #6366f1;
+    background: #eef2ff;
+}
+.disao-btn-row .btn-test:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.disao-btn-row .btn-connect {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+.disao-btn-row .btn-connect:hover:not(:disabled) {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+.disao-btn-row .btn-connect:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

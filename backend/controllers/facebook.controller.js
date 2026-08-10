@@ -3536,6 +3536,25 @@ async function handleLeadgenEvent(leadValue, entryId) {
             }
         }
 
+        // 🏢 DISAO CRM: Facebook Lead'i Disao CRM'e gönder
+        if (contact?.id && facebookPage?.workspaceId) {
+            try {
+                const ws = await prisma.workspace.findUnique({
+                    where: { id: facebookPage.workspaceId },
+                    select: { disaoCrmEnabled: true }
+                });
+                if (ws?.disaoCrmEnabled) {
+                    const { default: disaoCrmService } = await import('../services/disaoCrm.service.js');
+                    disaoCrmService.sendCustomer(facebookPage.workspaceId, contact, 'FACEBOOK_LEAD').catch(disaoErr =>
+                        console.error('⚠️ [DisaoCRM] Leadgen send error:', disaoErr.message)
+                    );
+                    console.log('📤 [DisaoCRM] Facebook lead gönderildi:', contact.name || contact.phone);
+                }
+            } catch (disaoErr) {
+                console.error('⚠️ [DisaoCRM] Leadgen hook error:', disaoErr.message);
+            }
+        }
+
         console.log('✅ [LEADGEN] Processing complete!');
 
     } catch (error) {

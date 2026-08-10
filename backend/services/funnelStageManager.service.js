@@ -212,7 +212,25 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
       console.error('[changeFunnelStage] Score update error:', err.message)
     );
 
-    // 10. Sonucu dön
+    // 11. Disao CRM — Sıcak Fırsat tetikleyicisi
+    if (newStage?.name === 'Sıcak Fırsat') {
+      try {
+        const { default: disaoCrmService } = await import('./disaoCrm.service.js');
+        const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { disaoCrmEnabled: true } });
+        if (workspace?.disaoCrmEnabled) {
+          const fullContact = await prisma.contact.findUnique({ where: { id: contactId } });
+          if (fullContact) {
+            disaoCrmService.sendCustomer(workspaceId, fullContact, 'SICAK_FIRSAT').catch(err =>
+              console.error('[changeFunnelStage] Disao CRM error:', err.message)
+            );
+          }
+        }
+      } catch (disaoErr) {
+        console.error('[changeFunnelStage] Disao CRM hook error:', disaoErr.message);
+      }
+    }
+
+    // 12. Sonucu dön
     return {
       changed: true,
       oldFunnelId,
