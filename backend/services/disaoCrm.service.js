@@ -226,14 +226,17 @@ class DisaoCrmService {
           await prisma.conversationEvent.create({
             data: {
               conversationId: conversation.id,
+              contactId: contact.id,
+              workspaceId,
               eventType: 'DISAO_CRM_SYNC',
-              eventData: JSON.stringify({
+              title: 'Disao CRM Senkronizasyonu',
+              details: JSON.stringify({
                 disaoCustomerId: response.data?.id,
                 source,
                 sentAt: new Date().toISOString(),
                 status: 'SUCCESS'
               }),
-              createdBy: 'SYSTEM'
+              actorType: 'SYSTEM'
             }
           });
         }

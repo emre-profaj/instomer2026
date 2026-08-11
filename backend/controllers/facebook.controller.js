@@ -1404,17 +1404,28 @@ async function processWebhookAsync(body) {
 
                     console.log(`👤 [Contact Create] ID: ${contactFacebookId}, Name: "${finalName}"`);
 
-                    contact = await prisma.contact.upsert({
-                        where: { facebookId: contactFacebookId },
-                        update: {}, // Başka bir process oluşturduysa hiçbir şey güncelleme, sadece al
-                        create: {
-                            workspaceId: facebookPage.workspaceId,
-                            facebookId: contactFacebookId,
-                            name: finalName,
-                            avatar: avatarUrl,
-                            source: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
+                    try {
+                        contact = await prisma.contact.upsert({
+                            where: { facebookId: contactFacebookId },
+                            update: {}, // Başka bir process oluşturduysa hiçbir şey güncelleme, sadece al
+                            create: {
+                                workspaceId: facebookPage.workspaceId,
+                                facebookId: contactFacebookId,
+                                name: finalName,
+                                avatar: avatarUrl,
+                                source: isInstagram ? 'INSTAGRAM' : 'FACEBOOK'
+                            }
+                        });
+                    } catch (upsertError) {
+                        if (upsertError.code === 'P2002') {
+                            contact = await prisma.contact.findUnique({
+                                where: { facebookId: contactFacebookId }
+                            });
+                            if (!contact) throw upsertError;
+                        } else {
+                            throw upsertError;
                         }
-                    });
+                    }
                 } else {
                     // Contact exists - check if it has a placeholder name that needs syncing from Meta
                     const currentName = contact.name || '';
