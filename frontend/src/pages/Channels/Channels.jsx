@@ -78,7 +78,6 @@ const Channels = () => {
     const [newSiteUrl, setNewSiteUrl] = useState('');
     const [copiedUrl, setCopiedUrl] = useState(null);
 
-
     // Email provider modal states
     const [showEmailModal, setShowEmailModal] = useState(false);
     const [emailProvider, setEmailProvider] = useState(''); // 'gmail' or 'imap'

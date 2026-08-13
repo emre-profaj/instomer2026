@@ -311,6 +311,7 @@ const CONVERSATION_STATUS_OPTIONS = [
 // Customer status options
 const CUSTOMER_STATUS_OPTIONS = [
     { value: 'NEW_APPLICATION', label: 'Yeni Başvuru', color: '#3b82f6' },
+    { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#06b6d4' },
     { value: 'OPPORTUNITY', label: 'Fırsat', color: '#f59e0b' },
     { value: 'HOT_OPPORTUNITY', label: 'Sıcak Fırsat', color: '#ef4444' },
     { value: 'UNREACHABLE', label: 'Ulaşılamadı', color: '#64748b' },

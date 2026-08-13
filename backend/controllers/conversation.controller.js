@@ -2619,7 +2619,7 @@ export const updateFunnel = async (req, res) => {
 
         const funnelChanged = funnelType !== undefined && funnelType !== existing.funnelType;
         const stageChanged = funnelStageId && funnelStageId !== existing.funnelStageId;
-        const hasValidStageId = funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length > 5;
+        const hasValidStageId = funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length > 20;
 
         // ─── Senkronize Atama Önerisi Hesaplama ───
         let suggestedUserId = null;
@@ -2754,7 +2754,7 @@ export const updateFunnel = async (req, res) => {
         let updateData = {}; // defined at higher scope
 
         if (isClearingFunnel) {
-            updateData = { funnelType: null, funnelStageId: null };
+            updateData = { funnelType: null, funnelStageId: funnelStageId !== undefined ? funnelStageId : null };
             // Simple update for clearing funnel
             if (suggestedTeamId) {
                 updateData.assignedTeamId = suggestedTeamId;
@@ -2782,10 +2782,11 @@ export const updateFunnel = async (req, res) => {
             
             if (funnelType !== undefined || funnelStageId !== undefined) {
                 const targetFunnelId = funnelType !== undefined ? (funnelType || null) : existing.funnelType;
-                const targetStageId = (funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length > 5) ? funnelStageId : existing.funnelStageId;
+                const requestedStageId = funnelStageId !== undefined ? funnelStageId : existing.funnelStageId;
+                const isValidDbStageId = requestedStageId && typeof requestedStageId === 'string' && requestedStageId.length > 20;
                 
-                if (targetFunnelId && targetStageId) {
-                    await changeFunnelStage(contactId, workspaceId, targetFunnelId, targetStageId, {
+                if (targetFunnelId && isValidDbStageId) {
+                    await changeFunnelStage(contactId, workspaceId, targetFunnelId, requestedStageId, {
                         source: 'ui_manual',
                         isManual: true,
                         skipGuards: true,

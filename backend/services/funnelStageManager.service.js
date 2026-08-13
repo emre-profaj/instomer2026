@@ -30,10 +30,11 @@ export async function changeFunnelStage(contactId, workspaceId, funnelId, stageI
     const oldFunnelId = contact.funnelType;
     const oldStageId = contact.funnelStageId;
     
-    // Zaten bu aşamadaysa hiçbir şey yapma
-    if (oldFunnelId === funnelId && oldStageId === stageId) {
-      return { changed: false, reason: 'already_in_stage' };
-    }
+    // YENİ DÜZENLEME: Contact zaten bu aşamada görünse bile, Case tablosu senkronize olmamış olabilir.
+    // Bu yüzden "already_in_stage" kontrolünü kaldırıyoruz, böylece Case'leri de zorla güncelleyebilelim.
+    // if (oldFunnelId === funnelId && oldStageId === stageId) {
+    //   return { changed: false, reason: 'already_in_stage' };
+    // }
 
     // 2. Guards (Korumalar)
     if (!skipGuards) {

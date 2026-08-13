@@ -1849,7 +1849,16 @@ export const updateContact = async (req, res) => {
         if (status !== undefined) updateData.status = status;
         if (category !== undefined) updateData.category = category;
         if (funnelType !== undefined) updateData.funnelType = funnelType;
-        if (funnelStageId !== undefined) updateData.funnelStageId = funnelStageId;
+        if (funnelStageId !== undefined) {
+            if (funnelStageId && typeof funnelStageId === 'string' && funnelStageId.length < 20) {
+                // Prevent foreign key constraint failure for static statuses like "HOT_OPPORTUNITY"
+                if (status === undefined) {
+                    updateData.status = funnelStageId;
+                }
+            } else {
+                updateData.funnelStageId = funnelStageId;
+            }
+        }
         if (language !== undefined) updateData.language = language;
         if (country !== undefined) updateData.country = country;
         if (city !== undefined) updateData.city = city;
@@ -1917,7 +1926,7 @@ export const updateContact = async (req, res) => {
         }
 
         // ── Auto-update Case status based on stage's statusType ──
-        if (funnelStageId !== undefined && funnelStageId !== existing.funnelStageId) {
+        if (funnelStageId !== undefined) {
             try {
                 // Look up the new stage to check its statusType
                 const newStage = funnelStageId ? await prisma.funnelStage.findUnique({
@@ -1955,7 +1964,18 @@ export const updateContact = async (req, res) => {
                         console.log(`🏷️ [Case] Auto-updated case ${activeCase.caseNumber || activeCase.id} → ${newStage.statusType} (stage: ${newStage.name})`);
                     }
                 } else if (newStage && !newStage.isClosing) {
-                    // Moving to an open (non-closing) stage — reopen closed cases
+                    // Moving to an open (non-closing) stage — reopen closed cases and update active ones
+                    const activeCases = await prisma.case.findMany({
+                        where: { workspaceId, contactId: id, status: 'ACTIVE' }
+                    });
+                    for (const activeCase of activeCases) {
+                        await prisma.case.update({
+                            where: { id: activeCase.id },
+                            data: { funnelStageId: funnelStageId, funnelType: updateData.funnelType || activeCase.funnelType }
+                        });
+                        console.log(`🏷️ [Case] Auto-updated active case ${activeCase.caseNumber || activeCase.id} → stage: ${newStage.name}`);
+                    }
+
                     const closedCases = await prisma.case.findMany({
                         where: { workspaceId, contactId: id, status: { in: ['WON', 'LOST', 'CLOSED'] } },
                         orderBy: { updatedAt: 'desc' },
@@ -1976,6 +1996,21 @@ export const updateContact = async (req, res) => {
                             }
                         });
                         console.log(`🔄 [Case] Reopened case ${closedCase.caseNumber || closedCase.id} → ACTIVE (stage: ${newStage.name})`);
+                    }
+                } else if (!newStage) {
+                    // Stage is a short string or null (e.g. HOT_OPPORTUNITY)
+                    // Clear the funnelStageId on active cases so UI falls back to contact.status
+                    const activeCases = await prisma.case.findMany({
+                        where: { workspaceId, contactId: id, status: 'ACTIVE' }
+                    });
+                    for (const activeCase of activeCases) {
+                        await prisma.case.update({
+                            where: { id: activeCase.id },
+                            data: { 
+                                funnelStageId: funnelStageId === null ? null : (funnelStageId.length < 20 ? null : funnelStageId), 
+                                funnelType: updateData.funnelType || activeCase.funnelType 
+                            }
+                        });
                     }
                 }
             } catch (caseErr) {

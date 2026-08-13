@@ -96,6 +96,7 @@ const Customers = () => {
 
     const CUSTOMER_STATUS_OPTIONS = [
         { value: 'NEW', label: t('contacts.statusNew'), color: '#3b82f6', bg: '#eff6ff' },
+        { value: 'INFO_GIVEN', label: 'Bilgi Verildi', color: '#06b6d4', bg: '#ecfeff' },
         { value: 'OPPORTUNITY', label: t('contacts.statusOpportunity'), color: '#f59e0b', bg: '#fffbeb' },
         { value: 'HOT_OPPORTUNITY', label: t('contacts.statusHotOpportunity'), color: '#ef4444', bg: '#fef2f2' },
         { value: 'UNREACHABLE', label: t('contacts.statusUnreachable'), color: '#64748b', bg: '#f8fafc' },
@@ -1200,26 +1201,28 @@ const Customers = () => {
                     activeCase: c.activeCase ? { ...c.activeCase, funnelStageId: stageId, funnelType: funnelId } : c.activeCase
                 } : c
             ));
-            // 1. Update contact record
-            await contactAPI.update(currentWorkspace.id, contact.id, {
-                funnelStageId: stageId,
-                funnelType: funnelId
-            });
-            // 2. Update conversations
+            // 1. Update conversations first so the Case is updated in the DB
             if (contact.conversations) {
                 for (const conv of contact.conversations) {
                     try {
                         await conversationAPI.updateFunnel(currentWorkspace.id, conv.id || conv, {
                             funnelStageId: stageId,
-                            funnelType: funnelId
+                            funnelType: funnelId,
+                            confirmAssignmentUpdate: true
                         });
                     } catch (convErr) {
                         console.warn('Conv update failed:', convErr);
                     }
                 }
             }
+            // 2. Update contact record
+            await contactAPI.update(currentWorkspace.id, contact.id, {
+                status: stageId,
+                funnelStageId: stageId.length > 20 ? stageId : null,
+                funnelType: funnelId
+            });
         } catch (err) {
-            console.error('Inline stage change error:', err);
+            console.error('🔥 [Customers] Inline stage change ERROR:', err);
             // Revert on error
             silentReloadContacts();
         }
@@ -2609,12 +2612,13 @@ Telefonsuz: ${s.withoutPhone}`}</title>
                                                                                         whiteSpace: 'nowrap'
                                                                                     }}>{activeFunnel.name}</div>
                                                                                     {activeFunnel.stages?.map(stage => {
-                                                                                        const isCurrentStage = contact.funnelStageId === stage.id;
+                                                                                        const stageId = stage.id || stage.value;
+                                                                                        const isCurrentStage = effectiveFunnelStageId === stageId;
                                                                                         const stageColor = stage.color || '#6366f1';
                                                                                         return (
                                                                                             <div
-                                                                                                key={stage.id}
-                                                                                                onClick={() => handleInlineStageChange(contact, activeFunnel.id, stage.id)}
+                                                                                                key={stageId}
+                                                                                                onClick={() => handleInlineStageChange(contact, activeFunnel.id, stageId)}
                                                                                                 style={{
                                                                                                     padding: '7px 14px',
                                                                                                     fontSize: '0.82rem',
