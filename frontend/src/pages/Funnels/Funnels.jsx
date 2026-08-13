@@ -231,7 +231,10 @@ const Funnels = () => {
                 entryActions: stagePanel.entryActions || null,
                 timedActions: stagePanel.timedActions || null,
                 exitActions: stagePanel.exitActions || null,
-                requiredFields: stagePanel.requiredFields || null
+                requiredFields: stagePanel.requiredFields || null,
+                aiGoal: stagePanel.aiGoal || null,
+                aiInstruction: stagePanel.aiInstruction || null,
+                transitionCriteria: stagePanel.transitionCriteria || null
             };
             const res = await funnelAPI.updateStage(
                 currentWorkspace.id, stagePanel.funnelId, stagePanel.id, data
@@ -728,6 +731,54 @@ const Funnels = () => {
                                         <option value="LOST">🔴 Kaybedildi</option>
                                         <option value="CLOSED">⚫ Kapandı</option>
                                     </select>
+                                </div>
+                            </div>
+
+                            {/* AI Davranışı */}
+                            <div className="settings-section">
+                                <div className="settings-section-title">🧠 AI Davranışı</div>
+                                <p className="settings-hint">Bu aşamadayken AI'ın nasıl davranacağını tanımlayın</p>
+                                <div className="settings-field">
+                                    <label>AI Hedefi</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Örn: Müşteriyi randevuya yönlendir"
+                                        value={stagePanel.aiGoal || ''}
+                                        onChange={e => setStagePanel(p => ({ ...p, aiGoal: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="settings-field">
+                                    <label>AI Talimatı</label>
+                                    <textarea
+                                        rows={3}
+                                        placeholder="Örn: Müşteriyle görüşme saati belirle, telefon numarası al. Nazik ve profesyonel ol."
+                                        value={stagePanel.aiInstruction || ''}
+                                        onChange={e => setStagePanel(p => ({ ...p, aiInstruction: e.target.value }))}
+                                        style={{ width: '100%', resize: 'vertical', minHeight: 60 }}
+                                    />
+                                </div>
+                                <div className="settings-field">
+                                    <label>Geçiş Kriteri</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Örn: Telefon numarası ve randevu saati alındığında sonraki aşamaya geç"
+                                        value={(() => {
+                                            if (!stagePanel.transitionCriteria) return '';
+                                            try {
+                                                const parsed = typeof stagePanel.transitionCriteria === 'string' 
+                                                    ? JSON.parse(stagePanel.transitionCriteria) 
+                                                    : stagePanel.transitionCriteria;
+                                                return parsed.description || '';
+                                            } catch { return stagePanel.transitionCriteria || ''; }
+                                        })()}
+                                        onChange={e => setStagePanel(p => ({ 
+                                            ...p, 
+                                            transitionCriteria: e.target.value 
+                                                ? JSON.stringify({ description: e.target.value, autoTransition: true })
+                                                : null
+                                        }))}
+                                    />
+                                    <span style={{ fontSize: 11, color: '#94a3b8' }}>Bu kriter sağlandığında konuşma otomatik sonraki aşamaya geçer</span>
                                 </div>
                             </div>
 

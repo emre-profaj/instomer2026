@@ -43,6 +43,24 @@ export async function evaluateClassifierRules(workspaceId, channel, options = {}
                 case 'DEFAULT':
                     // Her zaman eşleşir (fallback kuralı)
                     return rule;
+                case 'TIME': {
+                    // Zaman bazlı kural: conditions.timeStart, conditions.timeEnd
+                    const { timeStart, timeEnd } = conditions;
+                    if (timeStart && timeEnd) {
+                        const now = new Date();
+                        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+                        const [sH, sM] = timeStart.split(':').map(Number);
+                        const [eH, eM] = timeEnd.split(':').map(Number);
+                        const startMin = sH * 60 + sM;
+                        const endMin = eH * 60 + eM;
+                        // Handle overnight (e.g. 18:00-09:00)
+                        const inRange = startMin <= endMin
+                            ? (currentMinutes >= startMin && currentMinutes < endMin)
+                            : (currentMinutes >= startMin || currentMinutes < endMin);
+                        if (inRange) return rule;
+                    }
+                    break;
+                }
                 case 'AI':
                     // Faz 1 için AI'ı atlayabiliriz ya da basic bırakabiliriz. (TODO: LLM ile sınıflandırma)
                     break;

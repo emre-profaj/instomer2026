@@ -1303,6 +1303,14 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                 const shouldClassify = hasPhoneInMessage || !conv?.classifiedAt || conv.classifiedAt < thirtyMinAgo;
 
                 if (shouldClassify) {
+                    // Feature Flag: Birleşik AI modu açıksa ayrı classifier çağrısını atla
+                    const { isUnifiedAIEnabled } = await import('../services/unifiedAI.service.js');
+                    const unifiedMode = await isUnifiedAIEnabled(workspaceId);
+                    
+                    if (unifiedMode) {
+                        console.log('🧠 [UnifiedAI] Birleşik mod aktif — ayrı classifier çağrısı atlanıyor');
+                        // Sınıflandırma chat yanıtıyla birlikte yapılacak (aşağıda)
+                    } else {
                     const { classifyAndExtract, executeClassificationActions } = await import('../services/universalClassifier.service.js');
 
                     const recentMsgs = await prisma.message.findMany({
@@ -1364,6 +1372,7 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
                     }
 
                     console.log(`🎯 [Classifier] Sınıflandırma tamamlandı: ${classResult.classification} | Lead: ${classResult.isQualifiedLead}`);
+                    } // end else (eski ayrık classifier modu)
                 }
             } catch (classifyErr) {
                 // Sınıflandırma hatası bot yanıtını ENGELLEMEMELİ
@@ -1608,6 +1617,96 @@ export const getAutoReply = async (workspaceId, conversationId, userMessage, cha
             // Does NOT generate responses, always falls through to normal AI
             processRoutingFlow(conversation, activeBot, userMessage, workspaceId)
                 .catch(err => console.error('❌ [Routing] Background routing error:', err));
+        }
+
+        // 🧠 BİRLEŞİK AI ÇAĞRISI — classifier + chat tek seferde
+        if (type === 'CHATS' && conversationId) {
+            try {
+                const { isUnifiedAIEnabled, executeUnifiedAICall } = await import('../services/unifiedAI.service.js');
+                const unifiedMode = await isUnifiedAIEnabled(workspaceId);
+
+                if (unifiedMode) {
+                    console.log('🧠 [UnifiedAI] Birleşik AI çağrısı başlatılıyor...');
+
+                    // Aşama AI konfigürasyonunu al
+                    let stageAIConfig = {};
+                    if (conversation?.funnelStageId) {
+                        const { getStageAIConfig } = await import('../services/responsibilityLookup.service.js');
+                        stageAIConfig = await getStageAIConfig(conversation.funnelStageId);
+                    }
+
+                    // Son mesajları al
+                    const recentMsgs = await prisma.message.findMany({
+                        where: { conversationId },
+                        orderBy: { createdAt: 'desc' },
+                        take: 15,
+                        select: { content: true, isFromContact: true, direction: true }
+                    });
+
+                    // Contact bilgilerini al
+                    const contact = conversation?.contactId
+                        ? await prisma.contact.findUnique({
+                            where: { id: conversation.contactId },
+                            select: { name: true, phone: true, email: true }
+                        })
+                        : {};
+
+                    const unifiedResult = await executeUnifiedAICall({
+                        workspaceId,
+                        conversationId,
+                        userMessage,
+                        channel,
+                        contact: contact || {},
+                        recentMessages: recentMsgs.reverse(),
+                        activeBot,
+                        stageAIConfig
+                    });
+
+                    if (unifiedResult?.chatResponse) {
+                        // Sınıflandırma sonuçlarını kaydet
+                        if (unifiedResult.classification) {
+                            const classResult = unifiedResult.classification;
+                            const extractedTopic = classResult.extractedData?.topic || null;
+                            const topicCategoryId = classResult.topicCategoryId || null;
+                            await prisma.conversation.update({
+                                where: { id: conversationId },
+                                data: {
+                                    classificationData: JSON.stringify(classResult),
+                                    classifiedAt: new Date(),
+                                    isQualifiedLead: classResult.isQualifiedLead,
+                                    ...(extractedTopic && { aiTopic: extractedTopic }),
+                                    ...(topicCategoryId && { topicCategoryId })
+                                }
+                            });
+
+                            // Lead ise aksiyonları çalıştır
+                            if (classResult.isQualifiedLead) {
+                                try {
+                                    const { executeClassificationActions } = await import('../services/universalClassifier.service.js');
+                                    await executeClassificationActions(
+                                        workspaceId, conversationId, conversation.contactId, classResult
+                                    );
+                                } catch (actionErr) {
+                                    console.error('⚠️ [UnifiedAI] Classification action error:', actionErr.message);
+                                }
+                            }
+                        }
+
+                        // AI kullanım sayacını artır
+                        try { await incrementAiUsage(workspaceId); } catch { }
+
+                        if (type === 'CHATS' && conversationId) releaseAiReplyLock(conversationId);
+                        console.log(`🧠 [UnifiedAI] Birleşik yanıt hazır (${unifiedResult.chatResponse.length} chars)`);
+                        return unifiedResult.chatResponse;
+                    }
+
+                    // Birleşik çağrı başarısız olduysa normal akışa devam et
+                    console.log('⚠️ [UnifiedAI] Birleşik çağrı sonuç vermedi, normal akışa geçiliyor');
+                }
+            } catch (unifiedErr) {
+                console.error('⚠️ [UnifiedAI] Non-fatal error:', unifiedErr.message);
+                // Normal akışa devam et
+            }
         }
 
         // 2. Prepare Context (similar to generateResponse)

@@ -70,8 +70,7 @@ const Sidebar = () => {
         { path: '/funnels', icon: Kanban, label: 'Akışlar' },
         { path: '/knowledge-base', icon: Database, label: t('nav.knowledgeBase') },
         { path: '/products', icon: Package, label: 'Ürün ve Hizmetler' },
-        { path: '/automations', icon: Zap, label: t('nav.automations') },
-        { path: '/functions', icon: Wrench, label: 'Fonksiyonlar (API)' }
+        { path: '/automations', icon: Zap, label: t('nav.automations') }
     ];
 
     const salesSubItems = [
@@ -182,7 +181,7 @@ const Sidebar = () => {
         setIsRealEstateOpen(path.startsWith('/real-estate'));
         setIsSalesOpen(['/quotes', '/orders', '/invoices', '/products'].some(p => path === p));
         setIsAnalyticsOpen(['/general-report', '/call-analytics', '/ai-call-analytics'].some(p => path === p) || path.startsWith('/general-report/'));
-        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations', '/functions'].some(p => path === p));
+        setIsSettingsOpen(['/settings', '/channels', '/channels2', '/teams', '/assistants', '/funnels', '/knowledge-base', '/automations'].some(p => path === p));
     }, [location.pathname]);
 
 

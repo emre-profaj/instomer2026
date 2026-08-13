@@ -717,7 +717,7 @@ export const createStage = async (req, res) => {
 export const updateStage = async (req, res) => {
     try {
         const { workspaceId, funnelId, stageId } = req.params;
-        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType, entryRules, entryPriority, entryActions, timedActions, exitActions, requiredFields } = req.body;
+        const { name, color, order, assignedUserId, assignedTeamId, assignedBotId, isClosing, statusType, entryRules, entryPriority, entryActions, timedActions, exitActions, requiredFields, aiGoal, aiInstruction, transitionCriteria } = req.body;
 
         const funnel = await prisma.funnel.findFirst({ where: { id: funnelId, workspaceId } });
         if (!funnel) return res.status(404).json({ error: 'Akış bulunamadı' });
@@ -742,6 +742,9 @@ export const updateStage = async (req, res) => {
                 ...(timedActions !== undefined && { timedActions: timedActions || null }),
                 ...(exitActions !== undefined && { exitActions: exitActions || null }),
                 ...(requiredFields !== undefined && { requiredFields: requiredFields || null }),
+                ...(aiGoal !== undefined && { aiGoal: aiGoal || null }),
+                ...(aiInstruction !== undefined && { aiInstruction: aiInstruction || null }),
+                ...(transitionCriteria !== undefined && { transitionCriteria: transitionCriteria || null }),
             }
         });
         res.json({ stage });

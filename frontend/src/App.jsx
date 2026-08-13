@@ -42,7 +42,7 @@ import Calendar from './pages/Calendar/Calendar';
 
 
 import Automations from './pages/Automations/Automations';
-import Functions from './pages/Automations/Functions';
+// Functions page removed - merged into Integrations
 import WebForms from './pages/WebForms/WebForms';
 import Quotes from './pages/Sales/Quotes';
 import Orders from './pages/Sales/Orders';
@@ -134,7 +134,7 @@ function App() {
               <Route path="activities/calendar" element={<Calendar />} />
 
               <Route path="automations" element={<Automations />} />
-              <Route path="functions" element={<Functions />} />
+              {/* Functions route removed - merged into Integrations */}
               <Route path="web-forms" element={<WebForms />} />
               <Route path="quotes" element={<Quotes />} />
               <Route path="orders" element={<Orders />} />

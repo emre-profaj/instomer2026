@@ -61,7 +61,7 @@ import realEstateRoutes from './routes/realestate.routes.js';
 import activityRoutes from './routes/activity.routes.js';
 import appointmentConfigRoutes from './routes/appointmentConfig.routes.js';
 import healthSystemRoutes from './routes/probel_proxy.routes.js';
-import routerRuleRoutes from './routes/routerRule.routes.js';
+// RouterRule kaldırıldı — ClassifierRule kullanılıyor (routerRule.routes.js deprecated)
 import classifierRuleRoutes from './routes/classifierRule.routes.js';
 import caseRoutes from './routes/case.routes.js';
 import productRoutes from './routes/product.routes.js';
@@ -206,7 +206,7 @@ app.use('/api/realestate', realEstateRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/appointment-config', appointmentConfigRoutes);
 app.use('/api/health-system', healthSystemRoutes);
-app.use('/api/workspaces', routerRuleRoutes);
+// RouterRule route kaldırıldı — ClassifierRule kullanılıyor
 app.use('/api/classifier', classifierRuleRoutes);
 app.use('/api/contact-cases', caseRoutes);
 app.use('/api/workspaces', productRoutes);

@@ -1,12 +1,15 @@
 /**
  * WorkspaceRouter Service
  * ─────────────────────────────────────────────────────────────
- * Gelen mesajı analiz eder ve eşleşen RouterRule'a göre
+ * Gelen mesajı analiz eder ve eşleşen ClassifierRule'a göre
  * konuşmayı ilgili Funnel'a taşır + bot/takım atar.
  *
- * Eşleşme sırası:
- *   1. Anahtar kelime (ANY/ALL)
- *   2. AI intent analizi (Gemini) — useAI=true ise
+ * Eşleşme sırası (conditionType):
+ *   - KEYWORD: Anahtar kelime (ANY/ALL)
+ *   - AI: AI intent analizi (Gemini)
+ *   - CHANNEL: Kanal bazlı eşleşme
+ *   - TIME: Zaman bazlı eşleşme
+ *   - DEFAULT: Her zaman eşleşir (fallback)
  */
 
 import prisma from '../lib/prisma.js';
@@ -201,19 +204,39 @@ async function moveConversationToFunnel(conversation, funnelId, botId = null, te
     }
 }
 
+// ─── Zaman eşleşme ───────────────────────────────────────────
+function timeMatch(timeStart, timeEnd) {
+    if (!timeStart || !timeEnd) return false;
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    const [startH, startM] = timeStart.split(':').map(Number);
+    const [endH, endM] = timeEnd.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+    
+    // Handle overnight ranges (e.g. 18:00 - 09:00)
+    if (startMinutes <= endMinutes) {
+        return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+    } else {
+        return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+}
+
 // ─── Ana Router Fonksiyonu ────────────────────────────────────
 /**
- * Gelen mesajı RouterRule'larla karşılaştırır.
+ * Gelen mesajı ClassifierRule'larla karşılaştırır.
  * Eşleşen ilk kural uygulanır ve konuşma yönlendirilir.
  *
  * @returns {{ matched: boolean, rule?: object, result?: object }}
  */
-export async function runWorkspaceRouter(workspaceId, conversationId, message) {
+export async function runWorkspaceRouter(workspaceId, conversationId, message, channel = null) {
     try {
         console.log('\n🚦 [ROUTER] ===== START =====');
         console.log(`🚦 [ROUTER] workspaceId=${workspaceId} convId=${conversationId} msg="${message?.substring(0,80)}"`);
 
-        const rules = await prisma.routerRule.findMany({
+        // ClassifierRule kullan (RouterRule yerine)
+        const rules = await prisma.classifierRule.findMany({
             where: { workspaceId, isActive: true },
             orderBy: { priority: 'asc' }
         });
@@ -239,47 +262,85 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message) {
 
         for (const rule of rules) {
             let conditions = {};
-            let targets = {};
             try { conditions = JSON.parse(rule.conditions || '{}'); } catch { }
-            try { targets = JSON.parse(rule.targets || '{}'); } catch { }
 
-            console.log(`🚦 [ROUTER] Kural: "${rule.name}" | keywords=${JSON.stringify(conditions.keywords)} | funnelId=${targets.funnelId}`);
-
-            const keywords = conditions.keywords || [];
-            const matchMode = conditions.matchMode || 'ANY';
-            const useAI = conditions.useAI || false;
-            const aiDesc = conditions.aiDescription || '';
+            const condType = rule.conditionType || 'KEYWORD';
+            console.log(`🚦 [ROUTER] Kural: "${rule.name}" | type=${condType} | funnelId=${rule.targetFunnelId}`);
 
             let matched = false;
 
-            if (keywords.length) {
-                matched = keywordMatch(message, keywords, matchMode);
-                console.log(`🚦 [ROUTER] keyword match: ${matched}`);
-            }
-
-            if (!matched && useAI && aiDesc) {
-                matched = await aiIntentMatch(message, aiDesc, workspaceId);
-                console.log(`🚦 [ROUTER] AI match: ${matched}`);
-            }
-
-            if (!keywords.length && !useAI) {
-                matched = true;
-                console.log('🚦 [ROUTER] koşulsuz kural → matched');
+            switch (condType) {
+                case 'KEYWORD': {
+                    const kws = conditions.keywords;
+                    const keywords = Array.isArray(kws) ? kws : (typeof kws === 'string' && kws ? kws.split(',').map(k => k.trim()).filter(Boolean) : []);
+                    const matchMode = conditions.matchMode || 'ANY';
+                    if (keywords.length) {
+                        matched = keywordMatch(message, keywords, matchMode);
+                    }
+                    console.log(`🚦 [ROUTER] keyword match: ${matched}`);
+                    break;
+                }
+                case 'AI': {
+                    const aiDesc = conditions.aiDescription || '';
+                    if (aiDesc) {
+                        matched = await aiIntentMatch(message, aiDesc, workspaceId);
+                    }
+                    console.log(`🚦 [ROUTER] AI match: ${matched}`);
+                    break;
+                }
+                case 'CHANNEL': {
+                    const ruleChannels = conditions.channels || [];
+                    if (channel && ruleChannels.length) {
+                        matched = ruleChannels.some(ch => ch === channel || ch === `wa-${channel}` || ch === `fb-${channel}` || ch === `ig-${channel}`);
+                    }
+                    console.log(`🚦 [ROUTER] channel match: ${matched}`);
+                    break;
+                }
+                case 'TIME': {
+                    matched = timeMatch(conditions.timeStart, conditions.timeEnd);
+                    console.log(`🚦 [ROUTER] time match: ${matched} (${conditions.timeStart}-${conditions.timeEnd})`);
+                    break;
+                }
+                case 'DEFAULT': {
+                    matched = true;
+                    console.log('🚦 [ROUTER] DEFAULT kural → matched');
+                    break;
+                }
+                default: {
+                    // Legacy RouterRule compat: keywords + useAI
+                    const keywords = conditions.keywords || [];
+                    const useAI = conditions.useAI || false;
+                    const aiDesc = conditions.aiDescription || '';
+                    
+                    if (keywords.length) {
+                        matched = keywordMatch(message, keywords, conditions.matchMode || 'ANY');
+                    }
+                    if (!matched && useAI && aiDesc) {
+                        matched = await aiIntentMatch(message, aiDesc, workspaceId);
+                    }
+                    if (!keywords.length && !useAI) {
+                        matched = true;
+                    }
+                    break;
+                }
             }
 
             if (!matched) { console.log('🚦 [ROUTER] eşleşmedi'); continue; }
 
-            console.log(`✅ [ROUTER] Kural "${rule.name}" EŞLEŞTİ! funnelId=${targets.funnelId}`);
+            console.log(`✅ [ROUTER] Kural "${rule.name}" EŞLEŞTİ! funnelId=${rule.targetFunnelId}`);
 
-            if (targets.funnelId) {
-                console.log(`🚦 [ROUTER] Funnel'a taşınıyor: ${targets.funnelId}`);
+            // ClassifierRule doğrudan targetFunnelId alanı kullanır
+            const funnelId = rule.targetFunnelId;
+            
+            if (funnelId) {
+                console.log(`🚦 [ROUTER] Funnel'a taşınıyor: ${funnelId}`);
                 const result = await moveConversationToFunnel(
                     conversation,
-                    targets.funnelId,
-                    targets.botId || null,
-                    targets.teamId || null,
+                    funnelId,
+                    null, // botId — ClassifierRule'da yok, takım/stage'den miras alınır
+                    rule.targetTeamId || null,
                     workspaceId,
-                    alreadyAssigned // skipAssignment: zaten birine atanmışsa atamayı ezme
+                    alreadyAssigned
                 );
                 console.log('🚦 [ROUTER] Taşıma tamamlandı:', result ? 'başarılı' : 'sonuç yok');
                 return { matched: true, rule, result };
@@ -299,3 +360,4 @@ export async function runWorkspaceRouter(workspaceId, conversationId, message) {
 
 // Alias for backward compatibility (ai.controller.js imports this name)
 export const routeConversationToFunnel = runWorkspaceRouter;
+

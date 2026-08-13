@@ -181,6 +181,9 @@ model Workspace {
   // Varsayılan Dil (agent'ta boşsa buradan alınır)
   defaultLanguage String @default("tr-TR") // tr-TR, en-US, en-GB, de-DE, fr-FR, ar-SA, multi
 
+  // AI Birleşik Çağrı (Sınıflandırma + Sohbet tek çağrıda)
+  useUnifiedAI  Boolean @default(false) // true = tek AI çağrısı, false = ayrı classifier + chat
+
   defaultFunnelId String? // Varsayılan satış akışı ID'si
 
   agentDataVisibility String          @default("ALL") // SELF, TEAM, ALL
@@ -188,8 +191,6 @@ model Workspace {
   CaseType            CaseType[]
   EmailTemplate       EmailTemplate[]
   SmsTemplate         SmsTemplate[]
-  disaoCrmEnabled     Boolean?        @default(false)
-  disaoCrmSettings    String?         @db.Text
 
   @@index([companyId])
   @@map("workspaces")
@@ -445,10 +446,6 @@ model Conversation {
   assignedById   String? // Son atamayı yapan kişi
   assignedByType String    @default("USER") // USER | SYSTEM | AUTOMATION | BOT
   assignedAt     DateTime? // Son atama zamanı
-
-  // Internal Chat (Temsilciler Arası Sohbet)
-  isInternalChat Boolean   @default(false)
-  participantIds String    @default("[]") // JSON array of userIds: ["userId1", "userId2"]
 
   // UTM Takibi (reklam kaynağı)
   utmSource   String? // google, facebook, instagram
@@ -1406,6 +1403,11 @@ model FunnelStage {
   contacts        Contact[]
   channelRoutings ChannelRouting[] @relation("ChannelRoutingStage")
 
+  // YENİ: Aşama bazlı AI davranışı
+  aiGoal              String?  @db.Text // "Bu aşamada müşteriyi randevuya yönlendir"
+  aiInstruction       String?  @db.Text // "Müşteriyle görüşme saati belirle, telefon numarası al"
+  transitionCriteria  String?  @db.Text // JSON: { conditions: [{ field: "phone", op: "exists" }], autoTransition: true }
+
   @@index([funnelId])
   @@map("funnel_stages")
 }
@@ -2005,8 +2007,8 @@ model ClassifierRule {
   isActive    Boolean @default(true)
 
   // Condition
-  conditionType String // FORM | CHANNEL | SUB_CHANNEL | KEYWORD | AI | DEFAULT
-  conditions    String @default("{}") // JSON: { formIds:[], channels:[], subChannels:[], keywords:[], matchMode:'ANY', aiDescription:'' }
+  conditionType String // FORM | CHANNEL | SUB_CHANNEL | KEYWORD | AI | TIME | DEFAULT
+  conditions    String @default("{}") // JSON: { formIds:[], channels:[], subChannels:[], keywords:[], matchMode:'ANY', aiDescription:'', timeStart:'', timeEnd:'' }
 
   // Target
   targetFunnelId String?

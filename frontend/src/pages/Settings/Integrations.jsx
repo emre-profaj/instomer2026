@@ -5,6 +5,7 @@ import {
     getBotTools, createBotTool, updateBotTool, deleteBotTool
 } from '../../services/apiIntegration.api';
 import './Integrations.css';
+import RetellActionsSettings from '../../components/Settings/RetellActionsSettings';
 
 const Integrations = () => {
     const { currentWorkspace } = useAuth();
@@ -170,8 +171,8 @@ const Integrations = () => {
                 <button onClick={() => { setActiveTab('TOOLS'); setShowApiForm(false); setShowToolForm(false); }} className={`integration-tab-btn ${activeTab === 'TOOLS' ? 'active' : ''}`}>
                     Bot Araçları (Fonksiyonlar)
                 </button>
-                <button disabled className="integration-tab-btn disabled" title="Yakında!">
-                    Giden Webhooklar (Yakında)
+                <button onClick={() => { setActiveTab('RETELL_ACTIONS'); setShowApiForm(false); setShowToolForm(false); }} className={`integration-tab-btn ${activeTab === 'RETELL_ACTIONS' ? 'active' : ''}`}>
+                    Otomatik Gönderimler
                 </button>
             </div>
 
@@ -325,6 +326,10 @@ const Integrations = () => {
                         ))}
                     </div>
                 )
+            ) : activeTab === 'RETELL_ACTIONS' ? (
+                <div style={{ padding: '16px 0' }}>
+                    <RetellActionsSettings workspaceId={workspaceId} />
+                </div>
             ) : null}
         </div>
     );

@@ -77,7 +77,7 @@ const Channels = () => {
     const [newFormName, setNewFormName] = useState('');
     const [newSiteUrl, setNewSiteUrl] = useState('');
     const [copiedUrl, setCopiedUrl] = useState(null);
-    const [showDisaoModal, setShowDisaoModal] = useState(false);
+
 
     // Email provider modal states
     const [showEmailModal, setShowEmailModal] = useState(false);
