@@ -1321,6 +1321,18 @@ async function checkOverdueAgentCalls() {
             }
             // ─────────────────────────────────────────────────────────────────
 
+            // ─── AGENT BAZLI MAX OVERDUE KONTROLÜ ─────────────────────────────
+            // Agent'ın kendi maxOverdueDays ayarı varsa onu kullan, yoksa workspace default
+            const agentMaxDays = agentCfg?.maxOverdueDays ?? wsConfig?.retellMaxOverdueDays ?? 3;
+            if (activity.dueDate) {
+                const activityAge = now.getTime() - new Date(activity.dueDate).getTime();
+                const maxAgeMs = agentMaxDays * 24 * 60 * 60 * 1000;
+                if (activityAge > maxAgeMs) {
+                    console.log(`⏭️ [CallRouter] Activity ${activity.id} is ${Math.round(activityAge / 86400000)}d old > agent limit ${agentMaxDays}d — skipping`);
+                    continue;
+                }
+            }
+
             // Build dynamic variables with call topic
             const dynVars = {
                 customer_name: activity.contact.name || activity.contact.fullName || 'Müşteri',
@@ -1409,14 +1421,19 @@ export const processScheduledCalls = async () => {
                 const scheduledHour = new Date(new Date(sc.scheduledAt).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' })).getHours();
                 const wasScheduledOutsideBusinessHours = scheduledHour < 10 || scheduledHour >= 21;
 
-                // Workspace'ten timeout süresini al (default 2 saat)
+                // Agent config > Workspace default > hardcoded 2 saat
                 let timeoutHours = 2;
                 try {
                     const wsTimeout = await prisma.workspace.findUnique({
                         where: { id: sc.workspaceId },
-                        select: { retellScheduledCallTimeoutHours: true }
+                        select: { retellScheduledCallTimeoutHours: true, retellAutoCallTriggers: true }
                     });
-                    timeoutHours = wsTimeout?.retellScheduledCallTimeoutHours ?? 2;
+                    // Önce agent config'den bak
+                    const agentCfgs = wsTimeout?.retellAutoCallTriggers?.agentConfigs || {};
+                    const agentCfg = sc.agentId ? agentCfgs[sc.agentId] : null;
+                    timeoutHours = agentCfg?.scheduledCallTimeoutHours
+                        ?? wsTimeout?.retellScheduledCallTimeoutHours
+                        ?? 2;
                 } catch (_) {}
                 const timeoutMs = timeoutHours * 60 * 60 * 1000;
 
