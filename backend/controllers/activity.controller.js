@@ -733,9 +733,12 @@ export const getContactTimeline = async (req, res) => {
 export const updateActivity = async (req, res) => {
     try {
         const { activityId } = req.params;
-        const { title, description, dueDate, assignedToId, teamId, topicCategoryId, caseId } = req.body;
+        const { title, description, dueDate, assignedToId, teamId, topicCategoryId, caseId, aiAgentId } = req.body;
 
-        const existing = await prisma.contactActivity.findUnique({ where: { id: activityId } });
+        const existing = await prisma.contactActivity.findUnique({
+            where: { id: activityId },
+            include: { contact: { select: { phone: true, name: true, fullName: true } } }
+        });
         if (!existing) return res.status(404).json({ error: 'Aktivite bulunamadı.' });
 
         const updateData = {
@@ -758,6 +761,11 @@ export const updateActivity = async (req, res) => {
             }
         }
 
+        // aiAgentId değiştiyse güncelle
+        if (aiAgentId !== undefined) {
+            updateData.aiAgentId = aiAgentId || null;
+        }
+
         const updated = await prisma.contactActivity.update({
             where: { id: activityId },
             data: updateData,
@@ -766,6 +774,57 @@ export const updateActivity = async (req, res) => {
                 assignee: { select: { name: true } }
             }
         });
+
+        // ─── BOT'A ATANDI → HEMEN ARA ───────────────────────────────────────
+        // aiAgentId yeni set edildiyse ve görev CALL tipinde PLANNED ise → direkt ScheduledCall oluştur
+        const botJustAssigned = aiAgentId && aiAgentId !== existing.aiAgentId;
+        const isCallableActivity = existing.type === 'CALL' && existing.status === 'PLANNED' && !existing.aiFallbackTriggered;
+        const contactPhone = existing.contact?.phone?.trim();
+
+        if (botJustAssigned && isCallableActivity && contactPhone) {
+            try {
+                // Daha önce bu activity için ScheduledCall var mı?
+                const existingSC = await prisma.scheduledCall.findFirst({
+                    where: { createdById: `activity_${activityId}`, status: { in: ['PENDING', 'IN_PROGRESS'] } }
+                });
+
+                if (!existingSC) {
+                    const workspace = await prisma.workspace.findUnique({
+                        where: { id: existing.workspaceId },
+                        select: { retellAutoCallTriggers: true }
+                    });
+                    const agentCfgs = workspace?.retellAutoCallTriggers?.agentConfigs || {};
+                    const agentCfg = agentCfgs[aiAgentId];
+                    const retrySteps = agentCfg?.retrySteps || [{ delay: 10 }, { delay: 60 }, { delay: 1440 }];
+
+                    await prisma.scheduledCall.create({
+                        data: {
+                            workspaceId: existing.workspaceId,
+                            contactId: existing.contactId,
+                            contactName: existing.contact?.name || existing.contact?.fullName || 'Müşteri',
+                            toNumber: contactPhone,
+                            agentId: aiAgentId,
+                            scheduledAt: new Date(),
+                            status: 'PENDING',
+                            createdById: `activity_${activityId}`,
+                            maxAttempts: retrySteps.length + 1,
+                            retryDelayMin: retrySteps[0]?.delay || 10,
+                            attemptNumber: 1
+                        }
+                    });
+
+                    // Activity'yi triggered olarak işaretle
+                    await prisma.contactActivity.update({
+                        where: { id: activityId },
+                        data: { aiFallbackTriggered: true }
+                    });
+
+                    console.log(`🚀 [Activity] Bot atandı → hemen arama planlandı: ${contactPhone} (agent: ${aiAgentId})`);
+                }
+            } catch (botCallErr) {
+                console.error('⚠️ [Activity] Bot atama auto-call error:', botCallErr.message);
+            }
+        }
 
         res.json(updated);
     } catch (error) {
