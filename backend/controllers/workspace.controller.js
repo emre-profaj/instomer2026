@@ -214,22 +214,49 @@ export const getWorkspaceMembers = async (req, res) => {
     try {
         const { workspaceId } = req.params;
 
-        const members = await prisma.workspaceMember.findMany({
-            where: { workspaceId },
-            include: {
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        avatar: true,
-                        isOnline: true,
-                        lastSeenAt: true,
-                        workingHours: true
+        const [membersResult, workspace] = await Promise.all([
+            prisma.workspaceMember.findMany({
+                where: { workspaceId },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            avatar: true,
+                            isOnline: true,
+                            lastSeenAt: true,
+                            workingHours: true
+                        }
                     }
                 }
-            }
-        });
+            }),
+            prisma.workspace.findUnique({
+                where: { id: workspaceId },
+                select: { retellAutoCallTriggers: true }
+            })
+        ]);
+
+        // Retell agent'ları "sanal bot üye" olarak ekle
+        const agentConfigs = workspace?.retellAutoCallTriggers?.agentConfigs || {};
+        const botMembers = Object.entries(agentConfigs)
+            .filter(([_, cfg]) => cfg.active !== false)
+            .map(([agentId, cfg]) => ({
+                id: `bot:${agentId}`,
+                userId: `bot:${agentId}`,
+                role: 'BOT',
+                isBot: true,
+                user: {
+                    id: `bot:${agentId}`,
+                    name: cfg.name || `🤖 AI Asistan`,
+                    email: null,
+                    avatar: null,
+                    isOnline: true,
+                    isBot: true
+                }
+            }));
+
+        const members = [...membersResult, ...botMembers];
 
         res.json({ members });
     } catch (error) {

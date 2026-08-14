@@ -752,17 +752,35 @@ export const updateActivity = async (req, res) => {
         };
 
         // assignedToId değiştiyse atama bilgisini güncelle
+        // "bot:agent_xxx" formatıyla gelirse → bot ataması olarak işle
         if (assignedToId !== undefined) {
-            updateData.assignedToId = assignedToId || null;
-            if (assignedToId !== existing.assignedToId) {
+            if (assignedToId && assignedToId.startsWith('bot:')) {
+                // Bot seçildi → aiAgentId set et, assignedToId temizle
+                const botAgentId = assignedToId.replace('bot:', '');
+                updateData.aiAgentId = botAgentId;
+                updateData.assignedToId = null; // Bot user değil, atanan kişi yok
                 updateData.assignedById = req.user?.id || null;
-                updateData.assignedByType = req.user?.id ? 'USER' : 'SYSTEM';
+                updateData.assignedByType = 'USER';
                 updateData.assignedAt = new Date();
+                console.log(`🤖 [Activity] Bot atandı: ${botAgentId} (activity: ${activityId})`);
+            } else {
+                // Normal insan ataması
+                updateData.assignedToId = assignedToId || null;
+                if (assignedToId !== existing.assignedToId) {
+                    // İnsan atandığında bot atamasını temizle
+                    if (existing.aiAgentId) {
+                        updateData.aiAgentId = null;
+                        updateData.aiFallbackTriggered = false;
+                    }
+                    updateData.assignedById = req.user?.id || null;
+                    updateData.assignedByType = req.user?.id ? 'USER' : 'SYSTEM';
+                    updateData.assignedAt = new Date();
+                }
             }
         }
 
-        // aiAgentId değiştiyse güncelle
-        if (aiAgentId !== undefined) {
+        // Doğrudan aiAgentId gönderildiyse (eski API uyumluluğu)
+        if (aiAgentId !== undefined && !assignedToId?.startsWith('bot:')) {
             updateData.aiAgentId = aiAgentId || null;
         }
 
