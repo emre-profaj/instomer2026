@@ -966,7 +966,11 @@ export const triggerAutoCall = async (workspaceId, phoneNumber, contactId, conta
                 assignedToId: assignedToId,
                 teamId: assignedTeamId,
                 callTopic: dynamicVars.interest_topic || null,
-                aiAgentId: ruleAgentId, // Her zaman AI agent ata — dueDate geldiğinde otomatik arar
+                // aiAgentId SADECE şu durumlarda set edilir:
+                // 1. Kimseye atanmamış (pool/sahipsiz) → bot direkt alsın
+                // 2. immediateCall=true → bot hemen arasın
+                // 3. assignedToId varsa SET ETMEYİZ → önce insan denesin, fallback süresi dolunca HUMAN_TIMEOUT devreye girer
+                aiAgentId: (!assignedToId || agentCfg?.immediateCall) ? ruleAgentId : null,
                 fallbackToAi: true,
                 fallbackDelayMinutes: fallbackDelayMinutes,
                 aiFallbackTriggered: false
