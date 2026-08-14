@@ -228,6 +228,41 @@ const ChatPopup = ({ conversationId, onClose }) => {
                     (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
                 );
                 setMessages(combined);
+
+                // If no messages found, try to find a better conversation for this contact
+                if (combined.length === 0 && contactId) {
+                    try {
+                        const allConvRes = await conversationAPI.getAll(currentWorkspace.id, { contactId });
+                        const allConvs = allConvRes.data?.conversations || [];
+                        // Find a non-LEAD conversation with messages, sorted by most recent
+                        const betterConv = allConvs
+                            .filter(c => c.id !== conversationId && c.lastMessageAt)
+                            .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt))[0];
+                        if (betterConv) {
+                            // Re-load with the better conversation
+                            const betterRes = await conversationAPI.getById(currentWorkspace.id, betterConv.id);
+                            const betterData = betterRes.data.conversation || betterRes.data;
+                            setConversation(betterData);
+                            setAiTopic(betterData.aiTopic || '');
+                            setBotEnabled(!!betterData.assignedBotId || !!betterData.botEnabled);
+                            const betterMsgs = betterData.messages || [];
+                            const betterNotes = (betterData.internalNotes || []).map(n => ({
+                                ...n, isInternalNote: true, messageType: 'NOTE', sender: n.user, isFromContact: false
+                            }));
+                            const betterEvents = (betterData.events || []).map(e => ({
+                                id: e.id, createdAt: e.createdAt, isSystemEvent: true,
+                                eventType: e.eventType, title: e.title, actorType: e.actorType,
+                                actorId: e.actorId, details: e.details
+                            }));
+                            const betterCombined = [...betterMsgs, ...betterNotes, ...betterEvents].sort(
+                                (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+                            );
+                            setMessages(betterCombined);
+                        }
+                    } catch (fallbackErr) {
+                        console.warn('[ChatPopup] Fallback conversation lookup failed:', fallbackErr.message);
+                    }
+                }
             } catch (error) {
                 console.error('Error loading conversation for popup:', error);
             } finally {

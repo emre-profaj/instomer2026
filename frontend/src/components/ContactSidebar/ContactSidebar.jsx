@@ -1046,7 +1046,27 @@ const ContactSidebar = ({ conversationId, contactId, isOpen, members = [], onAss
         }
     };
 
-    const activeConv = localConvOverride || conversationData || (contactConversations.length > 0 ? contactConversations[0] : null);
+    // Pick the best conversation: prefer non-LEAD channels with recent messages
+    const pickBestConversation = (convs) => {
+        if (!convs || convs.length === 0) return null;
+        if (convs.length === 1) return convs[0];
+        // Sort by lastMessageAt descending (most recent first)
+        const sorted = [...convs].sort((a, b) => {
+            const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+            const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+            return bTime - aTime;
+        });
+        // Prefer non-LEAD conversation with messages
+        const nonLead = sorted.find(c => c.channel !== 'LEAD' && c.lastMessageAt);
+        if (nonLead) return nonLead;
+        // Fallback: any conversation with messages
+        const withMsg = sorted.find(c => c.lastMessageAt);
+        if (withMsg) return withMsg;
+        // Fallback: first in sorted order
+        return sorted[0];
+    };
+
+    const activeConv = localConvOverride || conversationData || pickBestConversation(contactConversations);
 
     const handleAssign = async (teamId, userId) => {
         if (!activeConv) return;
