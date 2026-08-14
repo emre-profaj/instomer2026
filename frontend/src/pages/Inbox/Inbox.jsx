@@ -5438,8 +5438,8 @@ const Inbox = () => {
                                         }
 
                                         // Check if this is a lead form message
-                                        const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead') || msg.content?.includes('Manuel Kayıt');
-                                        const isImportedLead = msg.content?.includes('İçe aktarılan lead bilgileri:');
+                                        const isLeadMessage = msg.content?.includes('YENİ LEAD FORMU') || msg.content?.includes('YENİ LEAD') || msg.content?.includes('Yeni Facebook Lead') || msg.content?.includes('Manuel Kayıt') || msg.content?.includes('📋 Yeni kayıt:');
+                                        const isImportedLead = msg.content?.includes('İçe aktarılan lead bilgileri:') || msg.content?.includes('📥 Yeni lead:') || msg.sender === 'SYSTEM';
 
                                         // Check for handoff messages
                                         const isHandoffAsk = !msg.isFromContact && (

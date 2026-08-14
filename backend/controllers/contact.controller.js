@@ -2213,6 +2213,25 @@ export const createContact = async (req, res) => {
             });
             console.log(`📋 [Create Contact] LEAD conversation created: ${conversation.id}, assigned to: ${req.user?.id || 'none'}`);
 
+            // Create initial system message so conversation isn't empty
+            const contactInfo = [
+                `📋 Yeni kayıt: ${name}`,
+                phone ? `📞 ${phone}` : null,
+                email ? `✉️ ${email}` : null,
+                company ? `🏢 ${company}` : null,
+                `👤 Ekleyen: ${req.user?.name || req.user?.email || 'Sistem'}`
+            ].filter(Boolean).join('\n');
+
+            await prisma.message.create({
+                data: {
+                    conversationId: conversation.id,
+                    content: contactInfo,
+                    sender: 'SYSTEM',
+                    type: 'SYSTEM',
+                    createdAt: new Date()
+                }
+            });
+
             // Auto-create a case for this conversation
             ensureCaseForConversation(workspaceId, conversation.id).catch(err =>
                 console.error('⚠️ [Create Contact] Auto-case creation error:', err.message)
@@ -2363,6 +2382,26 @@ export const bulkImportContacts = async (req, res) => {
                         channel: 'LEAD',
                         status: 'OPEN',
                         lastMessageAt: contactDate,
+                        createdAt: contactDate
+                    }
+                });
+
+                // Create initial system message so conversation isn't empty
+                const importInfo = [
+                    `📥 Yeni lead: ${name}`,
+                    phone ? `📞 ${phone}` : null,
+                    email ? `✉️ ${email}` : null,
+                    notes ? `📝 ${notes}` : null,
+                    tag ? `🏷️ Etiket: ${tag}` : null,
+                    `📥 Kaynak: İçe Aktarma`
+                ].filter(Boolean).join('\n');
+
+                await prisma.message.create({
+                    data: {
+                        conversationId: conversation.id,
+                        content: importInfo,
+                        sender: 'SYSTEM',
+                        type: 'SYSTEM',
                         createdAt: contactDate
                     }
                 });
