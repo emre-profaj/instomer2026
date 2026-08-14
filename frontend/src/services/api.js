@@ -809,3 +809,13 @@ export const caseAPI = {
     split: (workspaceId, data) =>
         api.post(`/cases/${workspaceId}/split`, data)
 };
+
+export const mediaAPI = {
+    upload: (workspaceId, file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post(`/media/${workspaceId}/upload`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+    }
+};

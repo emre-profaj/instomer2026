@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ReactDOM from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI, caseAPI } from '../../services/api';
+import { conversationAPI, facebookAPI, emailAPI, leadsAPI, workspaceAPI, aiAPI, teamAPI, automationAPI, dealAPI, appointmentAPI, contactAPI, quickReplyAPI, retellAPI, funnelAPI, caseAPI, mediaAPI } from '../../services/api';
 import { activityAPI } from '../../services/activity.api';
 import { io } from 'socket.io-client';
 import DOMPurify from 'dompurify';
@@ -12,7 +12,7 @@ import {
     Check, CheckCheck, Phone, PhoneCall, Calendar, CalendarDays, Tag, FileText, TrendingUp,
     Clock, Star, Plus, X, ExternalLink, ChevronDown, Filter,
     Inbox as InboxIcon, Image as ImageIcon, AlertCircle, Sparkles, Loader, Zap, Globe,
-    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal
+    UserRoundPlus, CheckCircle2, Circle, Bell, BookOpen, Edit2, Smile, KanbanSquare, MessageSquareDot, UserPlus, MapPin, Target, Briefcase, Link2, SlidersHorizontal, Paperclip
 } from 'lucide-react';
 import ContactSidebar from '../../components/ContactSidebar/ContactSidebar';
 import ConversationPopup from '../../components/ConversationPopup/ConversationPopup';
@@ -2515,10 +2515,34 @@ const Inbox = () => {
         }
     };
 
+    // --- File Attachment State & Handlers ---
+    const fileInputRef = useRef(null);
+    const [pendingFile, setPendingFile] = useState(null); // { file, preview, mediaType }
+    const [fileUploading, setFileUploading] = useState(false);
+
+    const handleFileSelect = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const mimeType = file.type || '';
+        let mediaType = 'document';
+        if (mimeType.startsWith('image/')) mediaType = 'image';
+        else if (mimeType.startsWith('video/')) mediaType = 'video';
+        else if (mimeType.startsWith('audio/')) mediaType = 'audio';
+        const preview = mediaType === 'image' ? URL.createObjectURL(file) : null;
+        setPendingFile({ file, preview, mediaType, name: file.name, size: file.size });
+        e.target.value = ''; // Reset input
+    };
+
+    const cancelFileAttachment = () => {
+        if (pendingFile?.preview) URL.revokeObjectURL(pendingFile.preview);
+        setPendingFile(null);
+    };
+
     const handleSendMessage = async (e) => {
 
         e.preventDefault();
-        if (!newMessage.trim() || !selectedItem) return;
+        if (!newMessage.trim() && !pendingFile && !selectedItem) return;
+        if (!selectedItem) return;
 
         try {
             // Check if this is an internal note
@@ -2577,6 +2601,26 @@ const Inbox = () => {
                     if (emailBcc.trim()) messageData.bcc = emailBcc.trim();
                 }
 
+                // 📎 Dosya varsa önce upload et
+                if (pendingFile) {
+                    try {
+                        setFileUploading(true);
+                        const uploadRes = await mediaAPI.upload(currentWorkspace.id, pendingFile.file);
+                        const { url, mediaType, filename } = uploadRes.data;
+                        messageData.mediaUrl = url;
+                        messageData.mediaType = mediaType;
+                        messageData.fileName = pendingFile.name || filename;
+                        if (!messageData.content) messageData.content = pendingFile.name || 'Dosya';
+                    } catch (uploadErr) {
+                        console.error('❌ File upload error:', uploadErr);
+                        alert('Dosya yüklenemedi: ' + (uploadErr.response?.data?.error || uploadErr.message));
+                        setFileUploading(false);
+                        return;
+                    } finally {
+                        setFileUploading(false);
+                    }
+                }
+
                 const response = await conversationAPI.sendMessage(
                     currentWorkspace.id,
                     selectedItem.id,
@@ -2599,6 +2643,7 @@ const Inbox = () => {
                 }
             }
             setNewMessage('');
+            cancelFileAttachment();
         } catch (error) {
             console.error('Error sending message:', error);
             alert('Mesaj gönderilemedi.');
@@ -5915,11 +5960,32 @@ const Inbox = () => {
                                                         })}
                                                     </div>
                                                 )}
+                                                {/* 📎 Dosya Önizleme Bandı */}
+                                                {pendingFile && (
+                                                    <div style={{
+                                                        display: 'flex', alignItems: 'center', gap: 8,
+                                                        padding: '6px 12px', background: '#f0f9ff', borderBottom: '1px solid #bae6fd',
+                                                        fontSize: '0.78rem', color: '#0369a1'
+                                                    }}>
+                                                        {pendingFile.preview ? (
+                                                            <img src={pendingFile.preview} alt="" style={{ width: 32, height: 32, borderRadius: 4, objectFit: 'cover' }} />
+                                                        ) : (
+                                                            <FileText size={16} style={{ color: '#0284c7' }} />
+                                                        )}
+                                                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {pendingFile.name} <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>({(pendingFile.size / 1024).toFixed(0)} KB)</span>
+                                                        </span>
+                                                        <button type="button" onClick={cancelFileAttachment}
+                                                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}>
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                )}
                                                 <textarea
                                                     ref={textareaRef}
                                                     value={newMessage}
                                                     onChange={handleMessageChange}
-                                                    placeholder={isInternalNoteMode ? '📝 Dahili not yazın...' : 'Yanıtınızı yazın...'}
+                                                    placeholder={pendingFile ? '📎 Dosya seçildi, mesaj ekleyebilirsiniz...' : (isInternalNoteMode ? '📝 Dahili not yazın...' : 'Yanıtınızı yazın...')}
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter' && !e.shiftKey) {
                                                             e.preventDefault();
@@ -6251,6 +6317,25 @@ const Inbox = () => {
                                                             </div>
                                                         )}
                                                     </div>
+
+                                                    {/* 📎 Dosya Ekle */}
+                                                    <input type="file" ref={fileInputRef} onChange={handleFileSelect} style={{ display: 'none' }}
+                                                        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.csv,.txt" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        disabled={fileUploading}
+                                                        title="Dosya Ekle"
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 4,
+                                                            padding: '4px 6px', border: 'none', borderRadius: 6,
+                                                            background: pendingFile ? '#dbeafe' : 'transparent',
+                                                            cursor: 'pointer', color: pendingFile ? '#1d4ed8' : '#6b7280',
+                                                            transition: 'all 0.15s'
+                                                        }}
+                                                    >
+                                                        {fileUploading ? <Loader size={15} className="spin" /> : <Paperclip size={15} />}
+                                                    </button>
 
                                                     {/* Separator */}
                                                     <div style={{ width: 1, height: 18, background: '#e5e7eb', margin: '0 4px' }} />
